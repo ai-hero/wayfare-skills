@@ -8,15 +8,36 @@ user-invocable: false
 
 # Harden: audit read-only, emit execution-ready hardening plans
 
-Deeply audit the codebase for security and robustness hardening opportunities, then write plans precise enough that a downstream executor (a cheaper model, a fresh session, or `wayfare:wayfare-build-task`) can apply, test, and verify them with **zero context from this session**.
+Deeply audit the codebase for security and robustness hardening opportunities,
+then write plans precise enough that a downstream executor (a cheaper model, a
+fresh session, or `wayfare:wayfare-build-task`) can apply, test, and verify them
+with **zero context from this session**.
 
-**This is a stage of `wayfare:wayfare-sync-plan`, not a skill a person runs.** Wayfare invokes it with the line `launched by wayfare` after the architecture map is current and before the roadmap is judged; the items it writes are ready-marked in wayfare's planning postflight and grouped into a security goal there. It has no verbs of its own beyond the audit scope, no config to tune (wayfare's `recalibrate` carries the fields it reads), and no fleet fan-out (wayfare already ran in one repo by the time this starts). Every path into it is a Skill-tool chain from a skill that already ran the fleet-root test, which is why Step 0 has none.
+**This is a stage of `wayfare:wayfare-sync-plan`, not a skill a person runs.**
+Wayfare invokes it with the line `launched by wayfare` after the architecture
+map is current and before the roadmap is judged; the items it writes are
+ready-marked in wayfare's planning postflight and grouped into a security goal
+there. It has no verbs of its own beyond the audit scope, no config to tune
+(wayfare's `recalibrate` carries the fields it reads), and no fleet fan-out
+(wayfare already ran in one repo by the time this starts). Every path into it is
+a Skill-tool chain from a skill that already ran the fleet-root test, which is
+why Step 0 has none.
 
-Inspired by [shadcn/improve](https://github.com/shadcn/improve): the expensive, high-ceiling model does the part where intelligence compounds (understanding, judging, specifying); cheaper models do the execution. **The plan is the product.** This skill absorbed the former `scan-vulns` skill. Its Dependabot and Docker CVE-scanning mechanics live in Parts A and B, but the *apply-and-commit* half now lands in the plan's execution recipe instead of this session's working tree.
+Inspired by [shadcn/improve](https://github.com/shadcn/improve): the expensive,
+high-ceiling model does the part where intelligence compounds (understanding,
+judging, specifying); cheaper models do the execution. **The plan is the
+product.** This skill absorbed the former `scan-vulns` skill. Its Dependabot and
+Docker CVE-scanning mechanics live in Parts A and B, but the *apply-and-commit*
+half now lands in the plan's execution recipe instead of this session's working
+tree.
 
 ## The Hard Rule
 
-**This skill never edits source code, dependency files, Dockerfiles, or workflows. Read-only, always.** Its only writes are plan items under the git-ignored `.plans/` store. If you catch yourself about to run `npm install`, edit a Dockerfile, or `git commit`, stop. That command belongs *inside* a plan item's execution recipe.
+**This skill never edits source code, dependency files, Dockerfiles, or
+workflows. Read-only, always.** Its only writes are plan items under the
+git-ignored `.plans/` store. If you catch yourself about to run `npm install`,
+edit a Dockerfile, or `git commit`, stop. That command belongs *inside* a plan
+item's execution recipe.
 
 ## Arguments
 
@@ -29,8 +50,10 @@ Inspired by [shadcn/improve](https://github.com/shadcn/improve): the expensive, 
 ## Prerequisites
 
 - `gh` CLI installed and authenticated (for Dependabot alerts)
-- `docker` CLI installed (for Docker Scout; the `docker` part degrades to skipped without it)
-- `trivy` CLI installed (the second container scanner; see Part B. Degrades to Scout-only with a note if unavailable)
+- `docker` CLI installed (for Docker Scout; the `docker` part degrades to
+  skipped without it)
+- `trivy` CLI installed (the second container scanner; see Part B. Degrades to
+  Scout-only with a note if unavailable)
 
 ## Instructions
 
@@ -50,7 +73,11 @@ cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
 hero_ready_items "$(hero_work_store)"
 ```
 
-Read `HERO.md` for **Deployment** (registry for Docker Scout), **Projects** (languages/frameworks → which dependency files and which code-audit angles apply), and **Code Quality** (existing tooling so plans don't re-propose what a linter already enforces). Read existing .plans items so new plans reference or supersede rather than duplicate.
+Read `HERO.md` for **Deployment** (registry for Docker Scout), **Projects**
+(languages/frameworks → which dependency files and which code-audit angles
+apply), and **Code Quality** (existing tooling so plans don't re-propose what a
+linter already enforces). Read existing .plans items so new plans reference or
+supersede rather than duplicate.
 
 ### Step 1: Detect Repository Context
 
@@ -60,7 +87,7 @@ cat .github/dependabot.yml 2>/dev/null || echo "NO_DEPENDABOT_CONFIG"
 find . -name "Dockerfile*" -type f 2>/dev/null | head -10
 ```
 
----
+______________________________________________________________________
 
 ## Part A: Dependency CVE Audit (`deps` / `all`)
 
@@ -75,7 +102,12 @@ gh api repos/{owner}/{repo}/dependabot/alerts \
   }' || echo "DEPENDABOT_ALERTS_UNAVAILABLE — check that alerts are enabled for this repo and the token has the security_events/repo scope"
 ```
 
-A failed call (alerts disabled, insufficient token scope) prints nothing to stdout, which is indistinguishable from "zero open alerts" unless the failure is caught explicitly. If `DEPENDABOT_ALERTS_UNAVAILABLE` fires, the summary's Dependabot line is exactly `Dependabot alerts: skipped (unavailable) — REASON` rather than "0 alerts, clean." Wayfare reads that spelling back as an `unverified` row.
+A failed call (alerts disabled, insufficient token scope) prints nothing to
+stdout, which is indistinguishable from "zero open alerts" unless the failure is
+caught explicitly. If `DEPENDABOT_ALERTS_UNAVAILABLE` fires, the summary's
+Dependabot line is exactly `Dependabot alerts: skipped (unavailable) — REASON`
+rather than "0 alerts, clean." Wayfare reads that spelling back as an
+`unverified` row.
 
 Prioritize by severity: **critical > high > medium > low**.
 
@@ -85,37 +117,73 @@ Prioritize by severity: **critical > high > medium > low**.
 gh pr list --author "app/dependabot" --state open --json number,title,headRefName,url
 ```
 
-For each PR, view the diff and extract: package name, version change, file affected. An open Dependabot PR is *evidence for the plan*. Note whether the plan item should say "merge Dependabot PR #N" or "apply the update manually", for example when the PR is stale or conflicts.
+For each PR, view the diff and extract: package name, version change, file
+affected. An open Dependabot PR is *evidence for the plan*. Note whether the
+plan item should say "merge Dependabot PR #N" or "apply the update manually",
+for example when the PR is stale or conflicts.
 
-A bot PR that can merge as it stands is not harden's to re-implement: wayfare's `deps` stage writes it as a `shape: dependency` task with `bot:`, and `wayfare-advance-item ID` takes that one PR through review, tests, `@auto-approve`, merge and the deployment check, without a copy of its diff. Harden's batch (A4) exists for the alerts no PR covers, and for bumps that must be tested together; a batch that supersedes a bot's PR names it, so wayfare leaves that PR's item `accepted` rather than carrying both.
+A bot PR that can merge as it stands is not harden's to re-implement: wayfare's
+`deps` stage writes it as a `shape: dependency` task with `bot:`, and
+`wayfare-advance-item ID` takes that one PR through review, tests,
+`@auto-approve`, merge and the deployment check, without a copy of its diff.
+Harden's batch (A4) exists for the alerts no PR covers, and for bumps that must
+be tested together; a batch that supersedes a bot's PR names it, so wayfare
+leaves that PR's item `accepted` rather than carrying both.
 
 ### A3: Judge Each Alert
 
-For each open alert, read enough of the codebase to judge (this is the expensive-model work):
+For each open alert, read enough of the codebase to judge (this is the
+expensive-model work):
 
 - Is the vulnerable code path actually reachable from this repo's usage?
-- Is the fix a patch/minor bump (low risk) or a major bump (breaking-change risk, so flag it)?
-- What is the correct update command for this ecosystem (`npm install PACKAGE@VERSION`, `uv lock && uv sync` after a `pyproject.toml` edit, a version pin bump in `.github/workflows/*.yml`)?
+- Is the fix a patch/minor bump (low risk) or a major bump (breaking-change
+  risk, so flag it)?
+- What is the correct update command for this ecosystem
+  (`npm install PACKAGE@VERSION`, `uv lock && uv sync` after a `pyproject.toml`
+  edit, a version pin bump in `.github/workflows/*.yml`)?
 - What test/verification proves the update didn't break anything?
 
 ### A4: Specify the Batching Strategy in the Plan
 
-The plan's execution recipe (Step 3) must have the executor batch **every** dependency bump onto one fresh branch, tested together in one e2e run. Two individually-passing bumps can still break once combined, and that interaction bug only surfaces when the fixes are tested together. Bake this into the recipe rather than emitting one plan item per package:
+The plan's execution recipe (Step 3) must have the executor batch **every**
+dependency bump onto one fresh branch, tested together in one e2e run. Two
+individually-passing bumps can still break once combined, and that interaction
+bug only surfaces when the fixes are tested together. Bake this into the recipe
+rather than emitting one plan item per package:
 
-1. Branch fresh off the default branch (never a long-lived security-fix branch reused across runs, because a fresh branch off today's default never has a stale base to reconcile against).
-2. Edit every version bump directly into the manifest first (`package.json`, `pyproject.toml`, workflow pins) rather than one `npm install PKG@VER` per package, which regenerates the lockfile N times over.
+1. Branch fresh off the default branch (never a long-lived security-fix branch
+   reused across runs, because a fresh branch off today's default never has a
+   stale base to reconcile against).
+2. Edit every version bump directly into the manifest first (`package.json`,
+   `pyproject.toml`, workflow pins) rather than one `npm install PKG@VER` per
+   package, which regenerates the lockfile N times over.
 3. Regenerate the lockfile **once**, covering all bumps together.
-4. Run the test suite once against the combined change. A bump that breaks tests gets reverted individually and noted as skipped. It does not block the rest of the batch.
+4. Run the test suite once against the combined change. A bump that breaks tests
+   gets reverted individually and noted as skipped. It does not block the rest
+   of the batch.
 5. One commit for the whole batch; `wayfare:wayfare-push-pr` opens the PR.
-6. Once `wayfare:wayfare-ship-pr` merges it, close every Dependabot PR listed in A2 directly with `gh pr close N --comment "Superseded by #MERGED_PR_NUMBER, merged in MERGED_SHA."` **Do not wait for GitHub to auto-close them.** This is not a timing issue, and it is not "nightly" or slow. GitHub only recognizes a fix as resolving a Dependabot PR when *that PR itself* is the one merged. A batched fix lands via a different commit by design (step 2), and Dependabot does not reliably detect that as equivalent; confirmed both by two real runs of this workflow where the originals stayed open indefinitely after merge, and by GitHub's own community reports (dependabot-core#3880). Proactively closing with a reference is the only reliable path.
+6. Once `wayfare:wayfare-ship-pr` merges it, close every Dependabot PR listed in
+   A2 directly with
+   `gh pr close N --comment "Superseded by #MERGED_PR_NUMBER, merged in MERGED_SHA."`
+   **Do not wait for GitHub to auto-close them.** This is not a timing issue,
+   and it is not "nightly" or slow. GitHub only recognizes a fix as resolving a
+   Dependabot PR when *that PR itself* is the one merged. A batched fix lands
+   via a different commit by design (step 2), and Dependabot does not reliably
+   detect that as equivalent; confirmed both by two real runs of this workflow
+   where the originals stayed open indefinitely after merge, and by GitHub's own
+   community reports (dependabot-core#3880). Proactively closing with a
+   reference is the only reliable path.
 
----
+______________________________________________________________________
 
 ## Part B: Container CVE Audit (`docker` / `all`)
 
 ### B1: Identify and Scan Images
 
-If `docker` is unavailable, do not let Part B silently drop out of the audit. Report `Docker/Scout: skipped (unavailable) — container CVE audit not performed` in the Step 4 summary and stop here for this part, the same way an unavailable `trivy` is reported below rather than left unmentioned:
+If `docker` is unavailable, do not let Part B silently drop out of the audit.
+Report `Docker/Scout: skipped (unavailable) — container CVE audit not performed`
+in the Step 4 summary and stop here for this part, the same way an unavailable
+`trivy` is reported below rather than left unmentioned:
 
 ```bash
 command -v docker > /dev/null 2>&1 || echo "DOCKER_UNAVAILABLE"
@@ -128,13 +196,21 @@ find . -name "Dockerfile*" -type f
 docker scout cves IMAGE_NAME:TAG --only-fixed
 ```
 
-**Scan with a second scanner too.** Scout and Trivy have different advisory databases and each misses what the other catches. Report the union, not whichever ran first:
+**Scan with a second scanner too.** Scout and Trivy have different advisory
+databases and each misses what the other catches. Report the union, not
+whichever ran first:
 
 ```bash
 trivy image --severity HIGH,CRITICAL --scanners vuln IMAGE_NAME:TAG
 ```
 
-Example of the gap this closes: on one distroless Node image, Trivy reported only the Debian `libssl3` CVEs and had no advisory for the Node runtime CVEs, while Scout caught the Node CVEs plus `glibc`. Trivy alone would have concluded OpenSSL was the whole story. The two scanners' advisory databases genuinely do not overlap, and this is not a one-off fluke. If `trivy` is unavailable, report `Trivy: skipped (unavailable)` and proceed on Scout alone rather than failing the whole audit.
+Example of the gap this closes: on one distroless Node image, Trivy reported
+only the Debian `libssl3` CVEs and had no advisory for the Node runtime CVEs,
+while Scout caught the Node CVEs plus `glibc`. Trivy alone would have concluded
+OpenSSL was the whole story. The two scanners' advisory databases genuinely do
+not overlap, and this is not a one-off fluke. If `trivy` is unavailable, report
+`Trivy: skipped (unavailable)` and proceed on Scout alone rather than failing
+the whole audit.
 
 ### B2: Get recommendations, and do not trust a clean one blindly
 
@@ -144,7 +220,9 @@ docker scout recommendations IMAGE_NAME:TAG
 
 Read-only: record the recommended base-image bumps and system-package updates.
 
-**`scout recommendations` is unreliable for non-Docker-Hub bases.** For `gcr.io/distroless/*` (and other registries outside Hub's tag graph) it auto-detects the base as `:latest` and reports a false all-clear:
+**`scout recommendations` is unreliable for non-Docker-Hub bases.** For
+`gcr.io/distroless/*` (and other registries outside Hub's tag graph) it
+auto-detects the base as `:latest` and reports a false all-clear:
 
 ```text
 Base image is :latest
@@ -152,15 +230,22 @@ Refresh base image  -> This image version is up to date.
 Change base image   -> There are no tag recommendations at this time.
 ```
 
-It printed exactly that for an image carrying 14 HIGH (1 CRITICAL). **Never treat "no tag recommendations" as "no fix exists"** for these bases. The tool is blind, not reassuring. Enumerate the upgrade axes by hand (B2a) before the plan concludes a CVE has no fix.
+It printed exactly that for an image carrying 14 HIGH (1 CRITICAL). **Never
+treat "no tag recommendations" as "no fix exists"** for these bases. The tool is
+blind, not reassuring. Enumerate the upgrade axes by hand (B2a) before the plan
+concludes a CVE has no fix.
 
 ### B2a: Enumerate Every Upgrade Axis Before the Plan Says "No Fix Available"
 
-Before a plan item claims "upstream has not published a fix" or "clears on the next base bump", check **all** of these, because a fix on any one axis resolves it today:
+Before a plan item claims "upstream has not published a fix" or "clears on the
+next base bump", check **all** of these, because a fix on any one axis resolves
+it today:
 
 1. **Tag refresh**: repull, then compare against upstream `IMAGE:TAG` directly.
 2. **Runtime major**: for example `nodejs22` to `nodejs24`.
-3. **OS generation**: for example `-debian12` to `-debian13`. **Most often missed.** A newer OS generation frequently ships both a newer runtime and patched system libs, and Scout never suggests it for distroless.
+3. **OS generation**: for example `-debian12` to `-debian13`. **Most often
+   missed.** A newer OS generation frequently ships both a newer runtime and
+   patched system libs, and Scout never suggests it for distroless.
 4. **Variant**: `:nonroot`, `:debug`, or `-static`.
 
 Verify by scanning the candidate directly rather than reasoning about it:
@@ -175,45 +260,82 @@ for base in nodejs24-debian12 nodejs24-debian13; do
 done
 ```
 
-**Example of the miss this guards against:** a run bumped `nodejs22-debian12` -> `nodejs24-debian12` and deferred 2 HIGH, reasoning that the newer Node runtime was "not yet published to distroless" on a newer OS generation. It *was* published, on `nodejs24-debian13`, which also cleared the `libssl3` and `glibc` CVEs. Only axis 3 was skipped, and the finding was written off as unfixable. The lesson generalizes: whichever axis gets skipped is the one that silently produces a false "no fix available."
+**Example of the miss this guards against:** a run bumped `nodejs22-debian12` ->
+`nodejs24-debian12` and deferred 2 HIGH, reasoning that the newer Node runtime
+was "not yet published to distroless" on a newer OS generation. It *was*
+published, on `nodejs24-debian13`, which also cleared the `libssl3` and `glibc`
+CVEs. Only axis 3 was skipped, and the finding was written off as unfixable. The
+lesson generalizes: whichever axis gets skipped is the one that silently
+produces a false "no fix available."
 
-Record which axes were checked and what each returned directly in the plan item, so the executor (or the next harden run) can refute a deferred CVE instead of silently inheriting it.
+Record which axes were checked and what each returned directly in the plan item,
+so the executor (or the next harden run) can refute a deferred CVE instead of
+silently inheriting it.
 
 ### B2b: Note What the Plan's Verification Must Cover
 
-A base bump can scan clean and still not boot. Flag this so the plan's Verification section (Step 3) requires more than a rescan:
+A base bump can scan clean and still not boot. Flag this so the plan's
+Verification section (Step 3) requires more than a rescan:
 
 - Rescan with **both** scanners after the bump.
-- Every binary `COPY`'d in from another stage: a base-OS bump changes the runtime linker/libc, and a static-binary assumption may not hold, so the recipe should run `docker run --rm --entrypoint BINARY_PATH IMAGE_NAME:TAG --version` for each.
-- Bring up the project's smoke stack, wait for the healthcheck, and hit a route that exercises each process. A base-OS generation bump is otherwise low-risk when the payload does not link the base libs (a `CGO_ENABLED=0` Go binary, a static tini), but that assumption still needs proving per image.
+- Every binary `COPY`'d in from another stage: a base-OS bump changes the
+  runtime linker/libc, and a static-binary assumption may not hold, so the
+  recipe should run
+  `docker run --rm --entrypoint BINARY_PATH IMAGE_NAME:TAG --version` for each.
+- Bring up the project's smoke stack, wait for the healthcheck, and hit a route
+  that exercises each process. A base-OS generation bump is otherwise low-risk
+  when the payload does not link the base libs (a `CGO_ENABLED=0` Go binary, a
+  static tini), but that assumption still needs proving per image.
 
-A base-image plan item is not done when it merely "scans clean". Say so in the plan's success criteria.
+A base-image plan item is not done when it merely "scans clean". Say so in the
+plan's success criteria.
 
----
+______________________________________________________________________
 
 ## Part C: Code-Level Hardening Audit (`code` / `all`)
 
-Sweep the codebase for robustness gaps that scanning tools can't see. Audit angles, applying the ones the stack makes relevant:
+Sweep the codebase for robustness gaps that scanning tools can't see. Audit
+angles, applying the ones the stack makes relevant:
 
-- **Boundary validation**: unvalidated input at API routes, CLI args, or file and env parsing
-- **Silent failures**: swallowed exceptions, a bare `except` or empty `catch`, error paths that return defaults
-- **Secrets hygiene**: credentials in code, config or logs, tokens in URLs, missing redaction
-- **Authentication and authorization seams**: endpoints missing checks that sibling endpoints have
-- **Unsafe defaults**: debug modes, permissive CORS, `verify=False`, world-readable artifacts
-- **Missing timeouts and retries**: outbound calls that can hang forever, retry loops without backoff or caps
-- **Injection surfaces**: string-built SQL, shell or HTML where a parameterized or escaped form exists
+- **Boundary validation**: unvalidated input at API routes, CLI args, or file
+  and env parsing
+- **Silent failures**: swallowed exceptions, a bare `except` or empty `catch`,
+  error paths that return defaults
+- **Secrets hygiene**: credentials in code, config or logs, tokens in URLs,
+  missing redaction
+- **Authentication and authorization seams**: endpoints missing checks that
+  sibling endpoints have
+- **Unsafe defaults**: debug modes, permissive CORS, `verify=False`,
+  world-readable artifacts
+- **Missing timeouts and retries**: outbound calls that can hang forever, retry
+  loops without backoff or caps
+- **Injection surfaces**: string-built SQL, shell or HTML where a parameterized
+  or escaped form exists
 
-High signal only: every finding needs a concrete failure or exploit scenario and a specific fix. Skip theoretical issues, DoS/rate-limiting noise, and anything the repo's linters already enforce. For a large codebase, fan the angles out as parallel read-only agents, never forks (see *A fan-out subagent is never a fork* in `docs/PIPELINES.md`), and aggregate only once every angle has reported (*A fan-out waits for every agent, then one writer commits once*).
+High signal only: every finding needs a concrete failure or exploit scenario and
+a specific fix. Skip theoretical issues, DoS/rate-limiting noise, and anything
+the repo's linters already enforce. For a large codebase, fan the angles out as
+parallel read-only agents, never forks (see *A fan-out subagent is never a fork*
+in `docs/PIPELINES.md`), and aggregate only once every angle has reported (*A
+fan-out waits for every agent, then one writer commits once*).
 
----
+______________________________________________________________________
 
 ## Step 2: Prioritize
 
-Rank everything found by `severity × blast radius ÷ effort`. Cluster related findings into plan-sized units (one dependency-update batch per ecosystem; one code-hardening item per subsystem or mechanism, not per line). Cap the emitted plans at the top **10** items per run; note what was cut so nothing is silently dropped.
+Rank everything found by `severity × blast radius ÷ effort`. Cluster related
+findings into plan-sized units (one dependency-update batch per ecosystem; one
+code-hardening item per subsystem or mechanism, not per line). Cap the emitted
+plans at the top **10** items per run; note what was cut so nothing is silently
+dropped.
 
 ## Step 3: Emit Plan Items
 
-Write each unit as a work-item in `.plans/` using wayfare-grill-idea's format (id numbering continues from the highest existing id; filename `NNN-slug.md`; `depends_on` when one plan must land first, `discovered_from` for provenance only), with two extra sections the executor needs. Emit every plan with `status: planning`.
+Write each unit as a work-item in `.plans/` using wayfare-grill-idea's format
+(id numbering continues from the highest existing id; filename `NNN-slug.md`;
+`depends_on` when one plan must land first, `discovered_from` for provenance
+only), with two extra sections the executor needs. Emit every plan with
+`status: planning`.
 
 ```markdown
 ---
@@ -260,18 +382,21 @@ How the executor proves it worked (tests to run, rescan commands with both scann
 What can break, and the rollback (e.g., major-bump risk: pin back and mark blocked).
 ```
 
-A plan an executor cannot follow without asking questions is not done. Rewrite it rather than handing it off vague.
+A plan an executor cannot follow without asking questions is not done. Rewrite
+it rather than handing it off vague.
 
 ### Self-Check: Confirm Nothing Tracked Was Touched
 
-Before printing the Step 4 summary, verify the Hard Rule actually held. Do not just assert it:
+Before printing the Step 4 summary, verify the Hard Rule actually held. Do not
+just assert it:
 
 ```bash
 git diff --stat --exit-code || echo "VIOLATION: tracked files were modified — this run broke the read-only contract"
 git status --porcelain | grep -v '^?? \.plans/' && echo "VIOLATION: unexpected changes outside .plans/"
 ```
 
-If either check reports a violation, do not print "Source files modified: NONE". Say what changed instead and treat it as a bug in this run, not a footnote.
+If either check reports a violation, do not print "Source files modified: NONE".
+Say what changed instead and treat it as a bug in this run, not a footnote.
 
 ## Step 4: Summary
 
@@ -297,29 +422,48 @@ Source files modified: NONE (read-only by contract)
 
 ```
 
-Then return to wayfare. The summary above is what its `wayfare-audit-security` stage reads
-back: every `skipped (unavailable)` and every `Deferred:` line becomes an
-`unverified` row in the sync report, and the emitted items are ready-marked
-in its planning postflight. Print no terminal next step of your own, because the
-stage after this one is wayfare's to announce. (Run standalone, the next
-step is `wayfare:wayfare-sync-plan`, which is also what ready-marks the items.)
+Then return to wayfare. The summary above is what its `wayfare-audit-security`
+stage reads back: every `skipped (unavailable)` and every `Deferred:` line
+becomes an `unverified` row in the sync report, and the emitted items are
+ready-marked in its planning postflight. Print no terminal next step of your
+own, because the stage after this one is wayfare's to announce. (Run standalone,
+the next step is `wayfare:wayfare-sync-plan`, which is also what ready-marks the
+items.)
 
 ## Safety Notes
 
-- Never edit source, dependency files, Dockerfiles, or workflows. The plan is the product.
-- Flag major version updates as breaking-change risks in the plan; default the recipe to the non-breaking path.
-- Never assume Dependabot auto-closes its own PRs once a batched fix lands. It does not reliably fire for a fix that lands via a different commit than its own PR (see A4 step 6). The execution recipe must close each superseded Dependabot PR explicitly after merge, with a comment referencing the merged PR.
-- Always specify rescanning with **both** Scout and Trivy in a Docker plan item's verification. Neither scanner alone is sufficient (see B1).
+- Never edit source, dependency files, Dockerfiles, or workflows. The plan is
+  the product.
+- Flag major version updates as breaking-change risks in the plan; default the
+  recipe to the non-breaking path.
+- Never assume Dependabot auto-closes its own PRs once a batched fix lands. It
+  does not reliably fire for a fix that lands via a different commit than its
+  own PR (see A4 step 6). The execution recipe must close each superseded
+  Dependabot PR explicitly after merge, with a comment referencing the merged
+  PR.
+- Always specify rescanning with **both** Scout and Trivy in a Docker plan
+  item's verification. Neither scanner alone is sufficient (see B1).
 - `.plans/` is private and git-ignored; never commit or push it.
 
 ### Before a plan says "no fix available"
 
 That phrase is a claim about upstream, and it has been wrong. Earn it:
 
-- Walk **every** axis in B2a (tag, runtime major, **OS generation**, variant) and scan the candidate. Do not infer availability from a version number.
-- "`scout recommendations` had nothing" is **not** evidence, especially for `gcr.io/distroless/*`, where it is blind and reports a false all-clear.
-- If a CVE is genuinely deferred, record **which axes were checked** and what each returned in the plan item, so the next audit can refute it instead of inheriting it.
+- Walk **every** axis in B2a (tag, runtime major, **OS generation**, variant)
+  and scan the candidate. Do not infer availability from a version number.
+- "`scout recommendations` had nothing" is **not** evidence, especially for
+  `gcr.io/distroless/*`, where it is blind and reports a false all-clear.
+- If a CVE is genuinely deferred, record **which axes were checked** and what
+  each returned in the plan item, so the next audit can refute it instead of
+  inheriting it.
 
 ### This audit is a snapshot, and pinned base tags rot between runs
 
-This runs once per `wayfare-sync-plan`, and it is typically wired into neither CI nor pre-commit. A pinned base tag accrues new CVEs with nothing watching: one image went from "0 CRITICAL, 2 HIGH" at audit time to "1 CRITICAL, 14 HIGH" shortly after, with no code change. A clean audit means clean **as of now**, never clean going forward. When a repo has no automated scanning, say so in the summary and note in the emitted plan(s) whether to add a scheduled CI gate (`trivy image --exit-code 1 --severity HIGH,CRITICAL` on a `schedule:` trigger). A push-only gate cannot catch rot, because rot happens without pushes.
+This runs once per `wayfare-sync-plan`, and it is typically wired into neither
+CI nor pre-commit. A pinned base tag accrues new CVEs with nothing watching: one
+image went from "0 CRITICAL, 2 HIGH" at audit time to "1 CRITICAL, 14 HIGH"
+shortly after, with no code change. A clean audit means clean **as of now**,
+never clean going forward. When a repo has no automated scanning, say so in the
+summary and note in the emitted plan(s) whether to add a scheduled CI gate
+(`trivy image --exit-code 1 --severity HIGH,CRITICAL` on a `schedule:` trigger).
+A push-only gate cannot catch rot, because rot happens without pushes.

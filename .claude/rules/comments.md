@@ -14,11 +14,11 @@ it gets believed.
 
 **Don't** write what the next line does, where the code came from, that a change
 is correct, or that a PR fixed something. That is talking to the reviewer, and
-it is stale the moment the PR merges. Git already records the history. The
-usual agent-generated forms all fail the test above: narrating the diff
+it is stale the moment the PR merges. Git already records the history. The usual
+agent-generated forms all fail the test above: narrating the diff
 (`// added validation`), restating the signature above a function, section
-banners over three lines, `// TODO: consider...` filler. Leaving them out is
-not an optimization; a change that adds them is wrong and gets reworked.
+banners over three lines, `// TODO: consider...` filler. Leaving them out is not
+an optimization; a change that adds them is wrong and gets reworked.
 
 **Do** write the comment that stops a plausible "fix" from putting a bug back.
 Every comment that has earned its place in this repo names a trap:
@@ -31,9 +31,9 @@ Every comment that has earned its place in this repo names a trap:
   spoofable end to end despite code that read correctly.
 - `curl -fsS ... | jq` swallows curl's exit status, so a documented "non-zero on
   503" becomes a lie (`just health`).
-- The container `HEALTHCHECK` probes `/livez`, never `/readyz`: container
-  health drives restarts, so probing dependencies makes an orchestrator
-  restart the container over someone else's outage.
+- The container `HEALTHCHECK` probes `/livez`, never `/readyz`: container health
+  drives restarts, so probing dependencies makes an orchestrator restart the
+  container over someone else's outage.
 
 Each reads as an odd choice until you know the failure. That is exactly when a
 comment pays for itself.

@@ -1,4 +1,5 @@
 # Hero Configuration
+
 <!-- This file configures wayfare. See wayfare:wayfare-init-repo to update. -->
 
 ## Repository
@@ -16,7 +17,8 @@
 - platform: github-actions
 - workflows: auto-approve
 - auto-approve-installed: true
-- auto-approve-gates: prior-review-required, all-threads-resolved, claude-metadata-check
+- auto-approve-gates: prior-review-required, all-threads-resolved,
+  claude-metadata-check
 
 ## Deployment
 
@@ -36,6 +38,7 @@
      `agent: none` (not a made-up value) is what tells wayfare-build-task's Step 7
      to skip the bot-await poll; self-review already runs as wayfare-build-task's own
      Step 5 via wayfare:wayfare-review-pr regardless of this field. -->
+
 - agent: none
 - trigger: none
 - poll-method: none
@@ -45,7 +48,8 @@
 
 - pre-commit: true
 - linters: markdownlint, shellcheck, codespell
-- hooks: detect-secrets, validate-plugin, audit, shell-unit-tests, agents-md, agents-md-commit-msg
+- hooks: detect-secrets, validate-plugin, audit, shell-unit-tests, agents-md,
+  agents-md-commit-msg
 
 ## Connections
 
@@ -55,7 +59,9 @@
 
 ### design
 
-- type: none # PERMANENT: wayfare is a plugin repo with no product and no UI (per AGENTS.md); it will never have a design project. Do not re-propose at sync
+- type: none # PERMANENT: wayfare is a plugin repo with no product and no UI
+  (per AGENTS.md); it will never have a design project. Do not re-propose at
+  sync
 
 ### design-system
 
@@ -63,11 +69,13 @@
 
 ### reference
 
-- type: none # this repo IS the fleet's plugin; hero-template is a consumer of it, not a template for it
+- type: none # this repo IS the fleet's plugin; hero-template is a consumer of
+  it, not a template for it
 
 ### architecture
 
-- type: self # the root DESIGN.md is the record; nothing outside this repo holds it
+- type: self # the root DESIGN.md is the record; nothing outside this repo holds
+  it
 
 ### infrastructure
 

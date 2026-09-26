@@ -7,15 +7,27 @@ argument-hint: "[#PR] [--no-mark-ready] | recalibrate"
 
 # Review: review a pull request
 
-Context-aware PR review. Auto-detects whether you're reviewing your own draft or someone else's PR and runs the right mode. Every review includes a security-focused pass (a checklist similar to `/security-review`, run as an in-process agent rather than invoking that skill) alongside the pr-review-toolkit agents.
+Context-aware PR review. Auto-detects whether you're reviewing your own draft or
+someone else's PR and runs the right mode. Every review includes a
+security-focused pass (a checklist similar to `/security-review`, run as an
+in-process agent rather than invoking that skill) alongside the
+pr-review-toolkit agents.
 
 ## Arguments
 
 - `$ARGUMENTS` - Optional PR number or URL, plus optional flags
-  - `recalibrate` - Tune the `HERO.md` fields this skill reads, then stop (see below). Matched before every other form.
-  - (none) - Auto-detect from the current branch, to your draft PR, to self-review mode
-  - `#123` or URL - Your PR: self-review mode. Someone else's PR: review mode (no edits).
-  - `--no-mark-ready` - Self-review mode only: run Steps 1 to 8 (post review, apply fixes, push, post improvements summary, update PR description) but skip Step 9 (the mark-ready prompt and `gh pr ready`). Used by `wayfare:wayfare-build-task` so its DAG can render `self-review` (Step 5) and `mark-ready` (Step 6) as distinct nodes without double-prompting. Combine with a PR number/URL as needed (`#42 --no-mark-ready`).
+  - `recalibrate` - Tune the `HERO.md` fields this skill reads, then stop (see
+    below). Matched before every other form.
+  - (none) - Auto-detect from the current branch, to your draft PR, to
+    self-review mode
+  - `#123` or URL - Your PR: self-review mode. Someone else's PR: review mode
+    (no edits).
+  - `--no-mark-ready` - Self-review mode only: run Steps 1 to 8 (post review,
+    apply fixes, push, post improvements summary, update PR description) but
+    skip Step 9 (the mark-ready prompt and `gh pr ready`). Used by
+    `wayfare:wayfare-build-task` so its DAG can render `self-review` (Step 5)
+    and `mark-ready` (Step 6) as distinct nodes without double-prompting.
+    Combine with a PR number/URL as needed (`#42 --no-mark-ready`).
 
 Parse `$ARGUMENTS` for the flag once at the top of Step 0:
 
@@ -40,14 +52,13 @@ ARGS_FILTERED=$(printf '%s' "$ARGS_FILTERED" | sed 's/^ //')
 
 ## `recalibrate`
 
-`wayfare:wayfare-review-pr recalibrate` tunes the config that drives this skill, and
-stops. It does not go on to run the skill. You want to see which field was
+`wayfare:wayfare-review-pr recalibrate` tunes the config that drives this skill,
+and stops. It does not go on to run the skill. You want to see which field was
 wrong, not spend a whole run finding out.
 
-Dispatch on it before parsing any other argument, in whichever step does
-that parsing. When the first token of
-`$ARGUMENTS` is exactly `recalibrate`, print `wayfare-review-pr: running recalibrate`,
-follow the four phases in
+Dispatch on it before parsing any other argument, in whichever step does that
+parsing. When the first token of `$ARGUMENTS` is exactly `recalibrate`, print
+`wayfare-review-pr: running recalibrate`, follow the four phases in
 [docs/RECALIBRATE.md](../../docs/RECALIBRATE.md) (report, ask, write, commit)
 using the table below as the report, and stop.
 
@@ -70,14 +81,16 @@ cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow **At the fleet root** in `docs/FLEET-MD.md`.
+If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
+**At the fleet root** in `docs/FLEET-MD.md`.
 
 Read `HERO.md` for:
 
 - **Code Quality** → pre-commit (re-run after fixes in self-review mode)
 - **Code Review Agent** → bot username (to avoid duplicating its comments)
 
-If `HERO.md` is missing, suggest `wayfare:wayfare-init-repo` but proceed with defaults.
+If `HERO.md` is missing, suggest `wayfare:wayfare-init-repo` but proceed with
+defaults.
 
 Detect the PR and mode:
 
@@ -112,14 +125,14 @@ BASE_BRANCH=$(echo "$PR_JSON" | jq -r '.baseRefName')
 **Mode selection:**
 
 | Condition | Mode |
-| --- | --- |
+| -- | -- |
 | No PR found | STOP: "No PR for '$BRANCH'. Run `wayfare:wayfare-push-pr` first." |
 | Closed or merged | STOP and report status. |
 | PR author is you AND draft | Self-review mode |
 | PR author is you AND not draft | Warn "PR is already ready-for-review. Continue self-review? [y/N]" |
 | PR author is someone else | Review mode (no edits) |
 
----
+______________________________________________________________________
 
 ## Self-Review Mode
 
@@ -135,7 +148,8 @@ If `CURRENT != PR_BRANCH`, check for uncommitted changes:
 git status --porcelain
 ```
 
-If uncommitted changes exist, STOP. Show what is uncommitted and tell the user to commit or cancel. Never silently stash.
+If uncommitted changes exist, STOP. Show what is uncommitted and tell the user
+to commit or cancel. Never silently stash.
 
 When working tree is clean, switch:
 
@@ -147,8 +161,8 @@ git pull origin "$PR_BRANCH"
 
 **Rebase onto the base before judging anything.** Work is concurrent: other
 branches merge while this PR waits, so the head on the branch is routinely
-behind the base, and a review of a stale head reviews code that is not what
-will merge.
+behind the base, and a review of a stale head reviews code that is not what will
+merge.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
@@ -159,18 +173,18 @@ BASE_BRANCH=${BASE_BRANCH:-$(hero_default_branch)}
 hero_rebase_on_base "$BASE_BRANCH"; echo "REBASE_RC=$?"
 ```
 
-`REBASE_RC=0` continues (up to date, or rebased and pushed; say which).
-`1` is a conflict: the rebase was aborted and the branch is unchanged; STOP,
-list the conflicting files it printed, and hand back to the user. Never
-resolve a conflict on someone's behalf. `2` cannot proceed (dirty tree,
-detached HEAD, fetch or lease failure): STOP with its message.
+`REBASE_RC=0` continues (up to date, or rebased and pushed; say which). `1` is a
+conflict: the rebase was aborted and the branch is unchanged; STOP, list the
+conflicting files it printed, and hand back to the user. Never resolve a
+conflict on someone's behalf. `2` cannot proceed (dirty tree, detached HEAD,
+fetch or lease failure): STOP with its message.
 
 ### Step 2: Scale the Review to the Diff, Then Run Agents in Parallel
 
 **Measure the diff first, and pick a tier.** The full fan-out is six agents; a
-16-line config change does not need six agents, and spending them there is how
-a review that should take a minute takes ten and buries one real finding in
-five "no findings" reports.
+16-line config change does not need six agents, and spending them there is how a
+review that should take a minute takes ten and buries one real finding in five
+"no findings" reports.
 
 ```bash
 CHANGED_FILES=$(git diff --name-only "origin/$BASE_BRANCH...HEAD" | wc -l | tr -d ' ')
@@ -181,22 +195,22 @@ CHANGED_LINES=$(git diff --numstat "origin/$BASE_BRANCH...HEAD" \
 echo "wayfare-review-pr: $CHANGED_FILES files, $CHANGED_LINES lines changed"
 ```
 
-Pick the tier from `CHANGED_LINES` and `CHANGED_FILES`. They are the input,
-not a printout to read by eye:
+Pick the tier from `CHANGED_LINES` and `CHANGED_FILES`. They are the input, not
+a printout to read by eye:
 
 | Diff | Agents | Which |
-| --- | --- | --- |
+| -- | -- | -- |
 | **under ~50 lines** | review inline, **no agents** | Read it yourself. Say you did, and why the fan-out was skipped. |
 | **~50 to 300 lines** | 2 | `code-reviewer` + security |
 | **~300 to 1500 lines** | all 6 | the five pr-review-toolkit agents plus security |
 | **over ~1500 lines or 50 files** | all 6 | the same six. Review the whole diff; do not ask the author to shrink it |
 
-**The tiers size the review effort, never the PR.** A PR is as big as the
-work it does. A goal that genuinely takes 2000 lines gets a 2000-line review,
-not a request to carve it into pieces that each review cleanly and none of
-which is the change. What matters is that the commits are logical changesets a
-reviewer can walk one at a time; line count is a hint about effort, not a
-limit anyone has to stay under.
+**The tiers size the review effort, never the PR.** A PR is as big as the work
+it does. A goal that genuinely takes 2000 lines gets a 2000-line review, not a
+request to carve it into pieces that each review cleanly and none of which is
+the change. What matters is that the commits are logical changesets a reviewer
+can walk one at a time; line count is a hint about effort, not a limit anyone
+has to stay under.
 
 Two rules keep the tiers honest:
 
@@ -210,12 +224,11 @@ Two rules keep the tiers honest:
   not. Judge by blast radius, not by `wc -l`.
 
 Say which tier you picked and why, in one line, before launching. A review that
-silently ran two agents reads identically to one that ran six and found
-nothing.
+silently ran two agents reads identically to one that ran six and found nothing.
 
-Then launch the tier's agents simultaneously in a single message, each with
-the named type below and never `subagent_type: "fork"` (see *A fan-out
-subagent is never a fork* in `docs/PIPELINES.md`). For the full six, the five
+Then launch the tier's agents simultaneously in a single message, each with the
+named type below and never `subagent_type: "fork"` (see *A fan-out subagent is
+never a fork* in `docs/PIPELINES.md`). For the full six, the five
 pr-review-toolkit agents plus the security agent:
 
 ```
@@ -227,13 +240,30 @@ Agent(subagent_type="pr-review-toolkit:type-design-analyzer", ...)
 Agent(subagent_type="general-purpose", security review — prompt spec below)
 ```
 
-**Security agent prompt spec.** Give the agent the PR diff scope (repo path, branch/PR number) and this brief: review ONLY for security vulnerabilities that are plausibly exploitable in the changed code: injection (SQL, command, template), XSS, authentication/authorization flaws, secrets or credentials in code or logs, SSRF, path traversal, unsafe deserialization/RCE, cryptographic misuse, and sensitive-data exposure. High signal only: every finding needs a concrete exploit scenario (who sends what, what happens). Explicitly EXCLUDE noise categories: denial of service and rate limiting, memory safety in memory-safe languages, theoretical issues with no plausible attack path, and anything requiring an already-privileged attacker position. Return findings with file:line, severity (Critical = exploitable, Important = realistic hardening gap), and the exploit scenario; return "NO FINDINGS" when clean.
+**Security agent prompt spec.** Give the agent the PR diff scope (repo path,
+branch/PR number) and this brief: review ONLY for security vulnerabilities that
+are plausibly exploitable in the changed code: injection (SQL, command,
+template), XSS, authentication/authorization flaws, secrets or credentials in
+code or logs, SSRF, path traversal, unsafe deserialization/RCE, cryptographic
+misuse, and sensitive-data exposure. High signal only: every finding needs a
+concrete exploit scenario (who sends what, what happens). Explicitly EXCLUDE
+noise categories: denial of service and rate limiting, memory safety in
+memory-safe languages, theoretical issues with no plausible attack path, and
+anything requiring an already-privileged attacker position. Return findings with
+file:line, severity (Critical = exploitable, Important = realistic hardening
+gap), and the exploit scenario; return "NO FINDINGS" when clean.
 
-Wait for all agents to complete, then aggregate findings into: **Critical** (bugs, security, data loss), **Important** (quality, correctness), **Suggestions** (style, polish), **Strengths**. Security findings land in Critical or Important per the spec above. Never bury an exploitable finding in Suggestions.
+Wait for all agents to complete, then aggregate findings into: **Critical**
+(bugs, security, data loss), **Important** (quality, correctness),
+**Suggestions** (style, polish), **Strengths**. Security findings land in
+Critical or Important per the spec above. Never bury an exploitable finding in
+Suggestions.
 
 ### Step 3: Post Review Comment
 
-Render the template with real findings, humanize it against [docs/HUMANIZING.md](../../docs/HUMANIZING.md), keeping headings and counts, then post:
+Render the template with real findings, humanize it against
+[docs/HUMANIZING.md](../../docs/HUMANIZING.md), keeping headings and counts,
+then post:
 
 ```bash
 gh pr comment $PR_NUMBER --body "$(cat <<'EOF'
@@ -262,10 +292,10 @@ Omit empty sections.
 
 Two things about this comment matter, so do not "tidy" them:
 
-- **The hidden `<!-- ai-hero:self-review -->` marker is what unblocks shipping.**
-  The shared auto-approve workflow's prior-review gate accepts it as proof that
-  auto-approve is not the only review on the PR. Drop the marker and `wayfare-ship-pr`
-  gets REQUEST_CHANGES with no obvious cause.
+- **The hidden `<!-- ai-hero:self-review -->` marker is what unblocks
+  shipping.** The shared auto-approve workflow's prior-review gate accepts it as
+  proof that auto-approve is not the only review on the PR. Drop the marker and
+  `wayfare-ship-pr` gets REQUEST_CHANGES with no obvious cause.
 - **The body must not START with `@auto-approve`.** That is the workflow's
   trigger, and this comment carries the very marker the prior-review gate
   accepts, so a comment that both fires the run and satisfies the gate would
@@ -329,17 +359,21 @@ Commit logically distinct fixes separately if they touch unrelated areas.
 
 ### Step 7: Post Improvements Summary
 
-**Always post this, even when no fixes were applied.** This is the durable record that the review ran.
+**Always post this, even when no fixes were applied.** This is the durable
+record that the review ran.
 
-Render the template with real values. Never post literal placeholders. Omit sections whose count is zero. Draft this and Step 8's description together, humanize both in one `inline` call keeping the headings and the markers, then post.
+Render the template with real values. Never post literal placeholders. Omit
+sections whose count is zero. Draft this and Step 8's description together,
+humanize both in one `inline` call keeping the headings and the markers, then
+post.
 
 **Keep the `<!-- ai-hero:self-review-fixes -->` marker and the heading**, the
 same way Step 3's comment keeps its own. The prior-review gate counts this
-marker to tell this comment apart from the findings one; the heading it used
-to be recognised by is rewritten by the humanizer (`docs/HUMANIZING.md`
-forbids em dashes and rewrites heading case), so the marker is the only part
-of this comment that survives the pass intact. Lose it and a finished review
-reads as half-finished, fleet-wide.
+marker to tell this comment apart from the findings one; the heading it used to
+be recognised by is rewritten by the humanizer (`docs/HUMANIZING.md` forbids em
+dashes and rewrites heading case), so the marker is the only part of this
+comment that survives the pass intact. Lose it and a finished review reads as
+half-finished, fleet-wide.
 
 ```bash
 gh pr comment $PR_NUMBER --body "$(cat <<'EOF'
@@ -367,7 +401,8 @@ EOF
 )"
 ```
 
-If the post fails, surface the rendered body for manual paste. Do NOT swallow the error.
+If the post fails, surface the rendered body for manual paste. Do NOT swallow
+the error.
 
 ### Step 8: Update PR Description if Scope Changed
 
@@ -377,13 +412,16 @@ Update when:
 - Critical fixes changed observable behavior (security, data-loss, correctness)
 - Features were removed or defaults changed
 
-Leave unchanged for: style/typo/comment fixes only. Default to update when uncertain.
+Leave unchanged for: style/typo/comment fixes only. Default to update when
+uncertain.
 
 ```bash
 gh pr view $PR_NUMBER --json title,body --jq '{title, body}'
 ```
 
-Draft the full new body preserving structure (Summary, Changesets, Test Plan) and ending with `_Generated using wayfare._` as the final line (humanized with Step 7's summary), then apply:
+Draft the full new body preserving structure (Summary, Changesets, Test Plan)
+and ending with `_Generated using wayfare._` as the final line (humanized with
+Step 7's summary), then apply:
 
 ```bash
 gh pr edit $PR_NUMBER --title "NEW_TITLE_UNDER_70_CHARS" --body "$(cat <<'EOF'
@@ -392,11 +430,15 @@ EOF
 )"
 ```
 
-Substitute `DRAFTED_FULL_BODY_HERE` with actual Markdown before running. The drafted body must end with `_Generated using wayfare._`.
+Substitute `DRAFTED_FULL_BODY_HERE` with actual Markdown before running. The
+drafted body must end with `_Generated using wayfare._`.
 
 ### Step 9: Ask to Mark Ready
 
-**Skip this step entirely when `$NO_MARK_READY` is `true`** (caller passed `--no-mark-ready`, typically `wayfare:wayfare-build-task` whose own Step 6 owns the mark-ready gate). In that case, jump straight to Step 10. The summary will show `PR state: Draft (mark-ready deferred to caller)`.
+**Skip this step entirely when `$NO_MARK_READY` is `true`** (caller passed
+`--no-mark-ready`, typically `wayfare:wayfare-build-task` whose own Step 6 owns
+the mark-ready gate). In that case, jump straight to Step 10. The summary will
+show `PR state: Draft (mark-ready deferred to caller)`.
 
 Otherwise, ask the user:
 
@@ -435,12 +477,21 @@ URL: {pr-url}
 Next step: (pick exactly one, based on what actually happened above)
 ```
 
-- **`$NO_MARK_READY` is `true`** (deferred to caller, e.g. `wayfare-build-task`): no next-step line. The caller owns what happens next (wayfare-build-task's own Step 7 mark-ready gate).
-- **Marked ready, agent configured**: print `Waiting on {agent}'s first review, then run wayfare:wayfare-respond-pr.` (no prompt, nothing to invoke yet).
-- **Marked ready, `agent: none`**: `Next step: wayfare:wayfare-ship-pr, which posts @auto-approve, merges, and resets` (offer to auto-run: ask "Run it now? [y/N]", invoke via Skill tool on yes).
-- **Declined mark-ready**: `Next step: address the findings above, then re-run wayfare:wayfare-review-pr.` (print only, because re-invoking the same skill right after it finishes is not auto-chained).
+- **`$NO_MARK_READY` is `true`** (deferred to caller, e.g.
+  `wayfare-build-task`): no next-step line. The caller owns what happens next
+  (wayfare-build-task's own Step 7 mark-ready gate).
+- **Marked ready, agent configured**: print
+  `Waiting on {agent}'s first review, then run wayfare:wayfare-respond-pr.` (no
+  prompt, nothing to invoke yet).
+- **Marked ready, `agent: none`**:
+  `Next step: wayfare:wayfare-ship-pr, which posts @auto-approve, merges, and resets`
+  (offer to auto-run: ask "Run it now? [y/N]", invoke via Skill tool on yes).
+- **Declined mark-ready**:
+  `Next step: address the findings above, then re-run wayfare:wayfare-review-pr.`
+  (print only, because re-invoking the same skill right after it finishes is not
+  auto-chained).
 
----
+______________________________________________________________________
 
 ## Review Mode (Someone Else's PR)
 
@@ -457,25 +508,31 @@ gh pr view $PR_NUMBER --json commits --jq '.commits[].messageHeadline'
 
 Read the PR description carefully. It explains design decisions.
 
-Apply the same tiering as self-review Step 2: measure the diff, pick the tier, say which one and why. A large diff means more review effort, not a request for the author to split it; walk the commits in order, since that is the structure they carry.
+Apply the same tiering as self-review Step 2: measure the diff, pick the tier,
+say which one and why. A large diff means more review effort, not a request for
+the author to split it; walk the commits in order, since that is the structure
+they carry.
 
 ### Step 2: Run All Review Agents in Parallel
 
-Same as self-review Step 2: pick the tier from the diff size (with the security-always and content-overrides-size rules), launch that tier's agents simultaneously, and aggregate findings.
+Same as self-review Step 2: pick the tier from the diff size (with the
+security-always and content-overrides-size rules), launch that tier's agents
+simultaneously, and aggregate findings.
 
 ### Step 3: Post Inline Comments
 
 Map severity to prefix:
 
 | Category | Prefix |
-| --- | --- |
+| -- | -- |
 | Critical | `🔴` |
 | Important | `🟡` |
 | Suggestion | `🔵 nit:` |
 | Question | `❓` |
 | Strength | `👍` |
 
-Comment guidelines: be specific, constructive, respectful. Skip findings already raised by others. Skip nits the linter catches.
+Comment guidelines: be specific, constructive, respectful. Skip findings already
+raised by others. Skip nits the linter catches.
 
 ```bash
 OWNER=$(echo "$PR_URL" | awk -F/ '{print $4}')
@@ -495,7 +552,7 @@ For multi-line: also pass `-F start_line=$START_LINE -f start_side="RIGHT"`.
 ### Step 4: Submit Overall Review
 
 | Has criticals? | Has importants? | Decision |
-| --- | --- | --- |
+| -- | -- | -- |
 | Yes | any | `--request-changes` |
 | No | Yes | `--comment` |
 | No | No | `--approve` (unless questions remain) |

@@ -14,13 +14,14 @@ one, or the subagent, rule, or hook that fits better.
 
 ## Arguments
 
-- `recalibrate` - Tune the `HERO.md` fields this skill reads, then stop (see below). Matched before the description.
+- `recalibrate` - Tune the `HERO.md` fields this skill reads, then stop (see
+  below). Matched before the description.
 - `$ARGUMENTS` - Description of what you want the skill to do
 
 ## Component Types
 
 | Type | Location | Use When |
-| --- | --- | --- |
+| -- | -- | -- |
 | **Skill** | `.claude/skills/NAME/SKILL.md` | Workflows, guidelines |
 | **Subagent** | `.claude/agents/NAME.md` | Isolated execution |
 | **Rule** | `.claude/rules/NAME.md` | Always-on constraints |
@@ -60,49 +61,48 @@ wayfare: sync
 ---
 ```
 
-Only `name` and `description` are required by the spec. `argument-hint`
-and `disable-model-invocation` are Claude Code fields, and `wayfare` is
-this plugin's own; a skill meant to be portable carries neither.
+Only `name` and `description` are required by the spec. `argument-hint` and
+`disable-model-invocation` are Claude Code fields, and `wayfare` is this
+plugin's own; a skill meant to be portable carries neither.
 
 - `name`: 1-64 chars, lowercase letters, digits and hyphens; no leading,
   trailing or doubled hyphen; must equal the folder name. Use verb-object.
 - `description`: 1-1024 chars. Say what the skill does and when to use it,
   phrased as an instruction ("Use when the user..."). Name the user's intent,
-  not the mechanics, and list the cases where they won't say the keyword.
-  It is the only thing the agent reads before deciding to load the skill.
+  not the mechanics, and list the cases where they won't say the keyword. It is
+  the only thing the agent reads before deciding to load the skill.
 
 Optional spec fields: `license`, `compatibility` (only when the skill needs
 specific tools or network), `metadata`, `allowed-tools`.
 
 ### Body
 
-The agent loads the whole `SKILL.md` on activation, so every line competes
-with the conversation for attention. Three rules:
+The agent loads the whole `SKILL.md` on activation, so every line competes with
+the conversation for attention. Three rules:
 
 1. **Add what the agent lacks.** Project conventions, non-obvious edge cases,
-   the exact tool to use. Not what a PDF is. Ask of each line: "would the
-   agent get this wrong without it?" If no, cut it.
-2. **Keep it under 500 lines.** Longer material goes in `references/`, with
-   the instruction saying *when* to read each file ("read
-   `references/api-errors.md` if the API returns non-200"), not a bare
-   "see references/".
-3. **Match specificity to fragility.** Prose where several approaches are
-   fine; exact commands where the sequence matters. Give a default and
-   mention alternatives briefly, never a menu.
+   the exact tool to use. Not what a PDF is. Ask of each line: "would the agent
+   get this wrong without it?" If no, cut it.
+2. **Keep it under 500 lines.** Longer material goes in `references/`, with the
+   instruction saying *when* to read each file ("read `references/api-errors.md`
+   if the API returns non-200"), not a bare "see references/".
+3. **Match specificity to fragility.** Prose where several approaches are fine;
+   exact commands where the sequence matters. Give a default and mention
+   alternatives briefly, never a menu.
 
-Patterns that earn their place: a **Gotchas** list (facts that defy
-reasonable assumptions), a **template** for any output that must have a
-shape, a **checklist** for multi-step work, and a **validate-then-proceed**
-loop (run the check, fix, re-run, only then continue).
+Patterns that earn their place: a **Gotchas** list (facts that defy reasonable
+assumptions), a **template** for any output that must have a shape, a
+**checklist** for multi-step work, and a **validate-then-proceed** loop (run the
+check, fix, re-run, only then continue).
 
 Scripts in `scripts/` must never prompt for input, must answer `--help`, and
-should print structured output to stdout and diagnostics to stderr.
-Reference them by path relative to the skill root.
+should print structured output to stdout and diagnostics to stderr. Reference
+them by path relative to the skill root.
 
 ### Anti-patterns
 
 | Don't | Do Instead |
-| --- | --- |
+| -- | -- |
 | "When to Use" section in body | Put triggers in the frontmatter description |
 | 1000-line SKILL.md | Split into `references/` with load conditions |
 | Duplicate info across files | Single source of truth |
@@ -111,13 +111,13 @@ Reference them by path relative to the skill root.
 
 ## `recalibrate`
 
-`wayfare:wayfare-create-skill recalibrate` tunes the config this skill reads, then
-stops. It does not go on to run the skill. You want to see which field was
+`wayfare:wayfare-create-skill recalibrate` tunes the config this skill reads,
+then stops. It does not go on to run the skill. You want to see which field was
 wrong, not spend a whole run finding out.
 
-Dispatch on it before parsing any other argument, in whichever step does
-that parsing. When the first token of
-`$ARGUMENTS` is exactly `recalibrate`, print `wayfare-create-skill: running recalibrate`, follow the four phases in
+Dispatch on it before parsing any other argument, in whichever step does that
+parsing. When the first token of `$ARGUMENTS` is exactly `recalibrate`, print
+`wayfare-create-skill: running recalibrate`, follow the four phases in
 [docs/RECALIBRATE.md](../../docs/RECALIBRATE.md) (report, ask, write, commit)
 using the table below as the report, and stop.
 
@@ -134,7 +134,9 @@ wrong. A row that already holds the right value is not a question.
 
 ### Step 0: Load Configuration
 
-**If `$ARGUMENTS` is exactly `recalibrate`, run the `recalibrate` section above and stop.** Everything below reads `$ARGUMENTS` as free text describing the skill to build, so the verb would otherwise be planned and built as one.
+**If `$ARGUMENTS` is exactly `recalibrate`, run the `recalibrate` section above
+and stop.** Everything below reads `$ARGUMENTS` as free text describing the
+skill to build, so the verb would otherwise be planned and built as one.
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -142,15 +144,18 @@ cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow **At the fleet root** in `docs/FLEET-MD.md`.
+If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
+**At the fleet root** in `docs/FLEET-MD.md`.
 
-Use `HERO.md` to understand the project's stack and conventions when creating skills that reference project-specific tools.
+Use `HERO.md` to understand the project's stack and conventions when creating
+skills that reference project-specific tools.
 
 ### Step 1: Understand the Goal
 
 Ask for:
 
-1. What should this do? Use a verb-object name, like `deploy-service` or `notify-slack`.
+1. What should this do? Use a verb-object name, like `deploy-service` or
+   `notify-slack`.
 2. When should it trigger? (what signals or user requests)
 3. What does success look like?
 
@@ -161,11 +166,11 @@ helps nobody.
 
 ### Step 2: Plan the Component
 
-Pick the component type from the table above. For a skill, decide what goes
-in `SKILL.md` (the core procedure, every run) and what goes in
-`references/`, `scripts/` or `assets/` (loaded only when a step needs it).
-Scope it as one coherent unit of work: narrow enough to trigger precisely,
-wide enough that one task does not need three skills.
+Pick the component type from the table above. For a skill, decide what goes in
+`SKILL.md` (the core procedure, every run) and what goes in `references/`,
+`scripts/` or `assets/` (loaded only when a step needs it). Scope it as one
+coherent unit of work: narrow enough to trigger precisely, wide enough that one
+task does not need three skills.
 
 ### Step 3: Create the Files
 
@@ -184,9 +189,9 @@ Write `SKILL.md` with frontmatter and instructions, then any referenced files.
 - Every file the body references exists, one level deep from the skill root
 - No empty `scripts/`, `references/` or `assets/` folder
 
-Then run the skill once on a real task and fold the corrections back in.
-When the agent makes a mistake you have to correct, that correction is a
-Gotchas entry.
+Then run the skill once on a real task and fold the corrections back in. When
+the agent makes a mistake you have to correct, that correction is a Gotchas
+entry.
 
 ### Step 5: Summary
 
@@ -207,4 +212,5 @@ wiring. Print this line only; wayfare-audit-plugin is user-only and cannot be
 started automatically.
 ```
 
-Don't also print `wayfare:wayfare-push-pr`; `wayfare-audit-plugin`'s own next-steps already lead there.
+Don't also print `wayfare:wayfare-push-pr`; `wayfare-audit-plugin`'s own
+next-steps already lead there.

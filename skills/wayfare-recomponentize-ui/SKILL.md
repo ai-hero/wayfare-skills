@@ -37,21 +37,23 @@ shadcn or the project's existing UI library instead of a private registry.
 ## Arguments
 
 - `$ARGUMENTS`:
-  - `recalibrate` - tune the `HERO.md` fields this skill reads, then stop (see below). Matched before every other form.
+  - `recalibrate` - tune the `HERO.md` fields this skill reads, then stop (see
+    below). Matched before every other form.
   - (none) - full pass using the component source resolved in Step 0
-  - `--audit-only` - run `wayfare-check-preflight`, `inventory`, `map`; report the plan, change nothing. Skips `enforce` too: installing the rule and hook writes files, which `--audit-only` promises not to do.
+  - `--audit-only` - run `wayfare-check-preflight`, `inventory`, `map`; report
+    the plan, change nothing. Skips `enforce` too: installing the rule and hook
+    writes files, which `--audit-only` promises not to do.
   - `REGISTRY_NAMESPACE` - override the registry, for example `@acme`
 
 ## `recalibrate`
 
-`wayfare:wayfare-recomponentize-ui recalibrate` tunes the config that drives this skill, and
-stops. It does not go on to run the skill. You want to see which field was
-wrong, not spend a whole run finding out.
+`wayfare:wayfare-recomponentize-ui recalibrate` tunes the config that drives
+this skill, and stops. It does not go on to run the skill. You want to see which
+field was wrong, not spend a whole run finding out.
 
-Dispatch on it before parsing any other argument, in whichever step does
-that parsing. When the first token of
-`$ARGUMENTS` is exactly `recalibrate`, print `wayfare-recomponentize-ui: running recalibrate`,
-follow the four phases in
+Dispatch on it before parsing any other argument, in whichever step does that
+parsing. When the first token of `$ARGUMENTS` is exactly `recalibrate`, print
+`wayfare-recomponentize-ui: running recalibrate`, follow the four phases in
 [docs/RECALIBRATE.md](../../docs/RECALIBRATE.md) (report, ask, write, commit)
 using the table below as the report, and stop.
 
@@ -66,15 +68,18 @@ wrong. A row that already holds the right value is not a question.
 
 ## Step 0: Resolve the component source
 
-**If the first token of `$ARGUMENTS` is exactly `recalibrate`, run the `recalibrate` section above and stop.** Do this before the producer opt-out below, which halts the skill entirely on a `role: producer` repo and would take the verb down with it.
+**If the first token of `$ARGUMENTS` is exactly `recalibrate`, run the
+`recalibrate` section above and stop.** Do this before the producer opt-out
+below, which halts the skill entirely on a `role: producer` repo and would take
+the verb down with it.
 
 ### Producer repos must opt out, so check this first
 
-**If `HERO.md` says `role: producer` (or `enabled: false`) under `## Design
-System`, stop immediately.** Report that this repo *publishes* the design system
-and exit without changing anything. A registry repo's pipeline runs mockup →
-design system; running this skill there would invert it and try to consume its
-own output.
+**If `HERO.md` says `role: producer` (or `enabled: false`) under
+`## Design System`, stop immediately.** Report that this repo *publishes* the
+design system and exit without changing anything. A registry repo's pipeline
+runs mockup → design system; running this skill there would invert it and try to
+consume its own output.
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -87,7 +92,8 @@ sed -n -e '/^### design-system/,/^#\{2,3\} /p' -e '/^## Design System/,/^## /p' 
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow **At the fleet root** in `docs/FLEET-MD.md`.
+If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
+**At the fleet root** in `docs/FLEET-MD.md`.
 
 A repo is a producer if it builds a `registry.json`, serves `/r/*`, or its
 `components.json` aliases `ui` to an internal atomic directory rather than
@@ -99,7 +105,7 @@ trust the signals, stop, and tell the user `HERO.md` looks wrong.
 Resolve in this order and **state which one you picked** before proceeding:
 
 | Condition | Source |
-| --- | --- |
+| -- | -- |
 | The `design-system` connection carries a `namespace` | That registry |
 | No config, but the user wants one | Offer `@aihero` at `https://design.aihero.studio`. Needs a token (Step 1) |
 | No registry, `components.json` exists | Stock shadcn: `npx shadcn@latest add ITEM` |
@@ -107,9 +113,9 @@ Resolve in this order and **state which one you picked** before proceeding:
 | Nothing, just plain HTML and CSS | Recomponentize and codemod only; **ask** before introducing any dependency |
 
 Expected keys on the `design-system` connection (docs/CONNECTIONS.md):
-`namespace`, `registry-url`, `token-env-var`, `docs`, `atomic-layers`.
-A repo that has not migrated still carries them under `## Design System`;
-read that as the same block rather than reporting no registry. AI Hero defaults:
+`namespace`, `registry-url`, `token-env-var`, `docs`, `atomic-layers`. A repo
+that has not migrated still carries them under `## Design System`; read that as
+the same block rather than reporting no registry. AI Hero defaults:
 
 - namespace: `@aihero`
 - registry-url: `https://design.aihero.studio/r/{name}.json`
@@ -118,20 +124,20 @@ read that as the same block rather than reporting no registry. AI Hero defaults:
 
 **If the registry publishes a consumer handbook, read it first and let it win
 over this skill.** For `@aihero` that is `handbook/consuming-the-registry.md` in
-the `ai-hero/design-system` repo, which ships a canonical consumer AGENTS.md stanza
-and consumer SKILL.md. Install those rather than re-deriving them.
+the `ai-hero/design-system` repo, which ships a canonical consumer AGENTS.md
+stanza and consumer SKILL.md. Install those rather than re-deriving them.
 
 Never introduce a UI library into a project that has none without asking. The
 atomic refactor is valuable on its own and carries no new dependency.
 
 ## Step 1: Preflight (`wayfare-check-preflight`)
 
-**Skip to Step 2 when the source is "recomponentize only". The enforcement layer still applies.** Otherwise, never run
-`npx shadcn init` on an existing project. It does not add the `registries` block
-and may pick a conflicting style.
+**Skip to Step 2 when the source is "recomponentize only". The enforcement layer
+still applies.** Otherwise, never run `npx shadcn init` on an existing project.
+It does not add the `registries` block and may pick a conflicting style.
 
 | Check | Requirement |
-| --- | --- |
+| -- | -- |
 | `components.json` | Has a `registries` block for the namespace; `"ui": "@/components/ui"` |
 | Token expansion | Header is `Bearer ${REGISTRY_TOKEN}`, the plain form ONLY |
 | `.env` | Holds the token; `.gitignore` covers `.env` BEFORE the token is written |
@@ -155,7 +161,7 @@ value, and gitignore the real one. Never commit a token.
 empirically against shadcn 4.13:
 
 | `.env` location | cwd | Result |
-| --- | --- | --- |
+| -- | -- | -- |
 | repo root | repo root, `-c ui` | **fails** |
 | repo root | `ui/` | fails |
 | `ui/` | repo root, `-c ui` | works |
@@ -164,10 +170,11 @@ empirically against shadcn 4.13:
 
 So in a monorepo whose UI lives in `ui/`, the token goes in `ui/.env` even when
 the repo's house convention keeps every other secret in a root `.env`. A root
-`.env` produces `Set the required environment variables to your .env or
-.env.local file`, which reads like a missing variable rather than a
-wrong-directory problem, so it is easy to misdiagnose. Exporting the variable in
-the shell or a task-runner recipe also works and beats duplicating the secret.
+`.env` produces
+`Set the required environment variables to your .env or .env.local file`, which
+reads like a missing variable rather than a wrong-directory problem, so it is
+easy to misdiagnose. Exporting the variable in the shell or a task-runner recipe
+also works and beats duplicating the secret.
 
 Confirm the wiring before going further. Install the theme item first so tokens
 land before any component references them:
@@ -192,18 +199,18 @@ It writes, without overwriting customized files (exit 2 on drift, same contract
 as `install-auto-approve.sh`):
 
 - `.claude/rules/design-system.md`, path-scoped to `**/*.{tsx,jsx,css}`, so the
-  constraints load whenever Claude reads a UI file rather than when a description
-  happens to match.
-- `.claude/hooks/check-design-tokens.sh` plus `PostToolUse` wiring, which flags raw hex,
-  palette classes, and component-root margins on write.
+  constraints load whenever Claude reads a UI file rather than when a
+  description happens to match.
+- `.claude/hooks/check-design-tokens.sh` plus `PostToolUse` wiring, which flags
+  raw hex, palette classes, and component-root margins on write.
 
 Then add the registry's AGENTS.md stanza (Part 8 of the `@aihero` handbook) and
 the consumer SKILL.md (Part 9). If the registry ships them, paste verbatim.
 
 Optionally port the registry's lint config (for `@aihero`,
-`eslint.taste.config.mjs`, covering Tailwind correctness, token discipline and an a11y floor).
-Its atomic-boundaries block **does** apply once Step 6's layers exist; add `ui`
-and `blocks` as the lowest elements in the layer matrix.
+`eslint.taste.config.mjs`, covering Tailwind correctness, token discipline and
+an a11y floor). Its atomic-boundaries block **does** apply once Step 6's layers
+exist; add `ui` and `blocks` as the lowest elements in the layer matrix.
 
 ## Step 3: Inventory the current UI (`inventory`)
 
@@ -246,8 +253,9 @@ There is no `--registry` flag; registries come only from `components.json`. For
 
 **Browse the docs/gallery site** (finds by appearance): open it with the browser
 tools and look at the rendered components. Search matches keywords; the gallery
-matches *look*. A local "stat card" may be a `tile` or a `kpi-strip`, and only the
-gallery makes that obvious. For stock shadcn, use `ui.shadcn.com/docs/components`.
+matches *look*. A local "stat card" may be a `tile` or a `kpi-strip`, and only
+the gallery makes that obvious. For stock shadcn, use
+`ui.shadcn.com/docs/components`.
 
 Optionally wire the registry's MCP server for in-editor search:
 
@@ -255,8 +263,8 @@ Optionally wire the registry's MCP server for in-editor search:
 npx shadcn@latest mcp init --client claude
 ```
 
-It reads `components.json` for registries **and** auth headers, so there is no separate MCP
-auth. If `/mcp` reports no tools, run `npx clear-npx-cache`.
+It reads `components.json` for registries **and** auth headers, so there is no
+separate MCP auth. If `/mcp` reports no tools, run `npx clear-npx-cache`.
 
 **Produce a mapping table and show it to the user before installing:**
 
@@ -292,8 +300,8 @@ typecheck passes.
 ## Step 6: Recomponentize (`recomponentize`)
 
 **This step always runs. It is the point of the skill.** It runs for components
-with no upstream match, for projects with no registry at all, and for the app code
-that composes vendored primitives. Swapping in new components without
+with no upstream match, for projects with no registry at all, and for the app
+code that composes vendored primitives. Swapping in new components without
 recomponentizing leaves the same monolith wearing new classes.
 
 Target layout. Vendored code stays flat; the app's own components go atomic:
@@ -310,26 +318,26 @@ src/components/
 
 Layer rules, enforced in review:
 
-- **atoms / molecules** are stateless and generic: no fetching, no auth, no domain
-  types. Props in, UI out. Every one accepts and merges `className`.
+- **atoms / molecules** are stateless and generic: no fetching, no auth, no
+  domain types. Props in, UI out. Every one accepts and merges `className`.
 - **organisms** may import domain types and compose molecules, but still no data
   fetching; data arrives via props.
 - **templates** define *where things go* via slot props (`header`, `sidebar`,
   `children`); they never hardcode copy or fetch data.
 - **Imports flow downward only:** templates → organisms → molecules → atoms →
-  (`ui/`, `blocks/`). `ui/` and `blocks/` are the floor, and any layer may import
-  them. An atom importing a molecule is a defect; restructure instead of
+  (`ui/`, `blocks/`). `ui/` and `blocks/` are the floor, and any layer may
+  import them. An atom importing a molecule is a defect; restructure instead of
   suppressing it.
 - **Same-layer imports** only for *family* relationships. Test: can you describe
   the importer without naming a different concept? "A row of buttons" is still
-  buttons → atom. The moment a component combines distinct siblings
-  (`input` + `button` = `search-bar`), it belongs one layer up.
+  buttons → atom. The moment a component combines distinct siblings (`input` +
+  `button` = `search-bar`), it belongs one layer up.
 - Place each component at the **lowest layer that fits**. Promote only when it
   gains domain knowledge or composition. Never preemptively.
 
 Signals a component needs recomponentizing: boolean-prop explosion, a molecule
-fetching data, two organisms sharing copy-pasted JSX, a component importing from a
-higher layer, a file well above the codebase's median length.
+fetching data, two organisms sharing copy-pasted JSX, a component importing from
+a higher layer, a file well above the codebase's median length.
 
 Migrate call sites as you move files; never leave a re-export shim behind as
 "temporary". Finish the move or do not start it.
@@ -337,7 +345,7 @@ Migrate call sites as you move files; never leave a re-export shim behind as
 ## Step 7: Codemod off-token styling (`codemod`)
 
 | Found | Replace with |
-| --- | --- |
+| -- | -- |
 | Raw palette (`bg-zinc-100`, `text-gray-500`) | Semantic token (`bg-muted`, `text-muted-foreground`) |
 | Hex / `oklch()` literal in TSX | A token in the `@theme` layer |
 | `dark:` **color** override | Delete it. A `dark:` color means the wrong token was used |
@@ -399,13 +407,13 @@ Next step: wayfare:wayfare-push-pr
 
 ## Key Principles
 
-- **Recomponentizing is the job.** Sourcing from a registry is the bonus, not the
-  point. A pass that swaps components without restructuring has failed.
+- **Recomponentizing is the job.** Sourcing from a registry is the bonus, not
+  the point. A pass that swaps components without restructuring has failed.
 - **Search before you build.** Hand-rolling an existing component is the defect
   this skill prevents.
 - **Vendored, not authored.** Rewrite call sites; never edit `ui/` or `blocks/`.
 - **The concept, not the markup.** Search for what an element *means*.
 - **Gallery and search are complementary.** Search matches keywords; the gallery
   matches appearance.
-- **Never force a match, never add a library uninvited.** No upstream equivalent →
-  keep it local, recomponentize it, and say so.
+- **Never force a match, never add a library uninvited.** No upstream equivalent
+  → keep it local, recomponentize it, and say so.

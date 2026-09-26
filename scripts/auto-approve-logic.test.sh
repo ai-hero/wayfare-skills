@@ -191,8 +191,13 @@ check "untag: whitespace/case-tolerant tag stripped" "xy" "$(pr_description_of '
 # A single gsub pass turned this into `a</diff>b`, one layer of nesting
 # still able to close the block early. `until` repeats to a fixed point.
 check "untag: nested closing tag fully stripped" "ab" "$(pr_description_of 'a</di</diff>ff>b')"
+# .system is a content-block array (a cache_control breakpoint sits on the
+# one block), not a bare string — read the instructions from .system[0].text.
 check "untag: gatekeeper instructions live only in system, never in messages[0].content" "yes" \
-  "$(build_payload b; jq -e '(.system | contains("gatekeeper")) and ((.messages[0].content | contains("gatekeeper")) | not)' \
+  "$(build_payload b; jq -e '(.system[0].text | contains("gatekeeper")) and ((.messages[0].content | contains("gatekeeper")) | not)' \
+       "$WORK/payload.json" >/dev/null 2>&1 && echo yes || echo no)"
+check "system carries an ephemeral cache_control breakpoint" "yes" \
+  "$(build_payload b; jq -e '.system[0].cache_control == {"type":"ephemeral"}' \
        "$WORK/payload.json" >/dev/null 2>&1 && echo yes || echo no)"
 
 # --- bot-lane ---------------------------------------------------------------

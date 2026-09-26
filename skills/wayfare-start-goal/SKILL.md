@@ -9,7 +9,7 @@ argument-hint: ""
 
 Source is the product as it is; Target is the product as it should be, a
 claude.ai/design project configured in HERO.md. With no design project the
-route reconciles Source against itself — `DESIGN.md`, its own gaps, its own
+route reconciles Source against itself: `DESIGN.md`, its own gaps, its own
 hardening. The README's command table says which skill does what;
 **`docs/PLAN.md` is the store's specification, and nothing here restates
 it.**
@@ -33,11 +33,11 @@ repos you pick. A run against the folder itself plans nothing.
 
 Progress:
 
-- [ ] 1. Fleet check — the command above
-- [ ] 2. Config gate — the `## Connections` blocks and `## Wayfare` (`../../references/configuration.md`)
-- [ ] 3. Store read — `hero_ready_items`, the inbox, the plan object
-- [ ] 4. Snapshot — pull the design snapshot, resolve both heads
-- [ ] 5. Local stages — this repo's own `wayfare: sync` skills, at the trust gate
+- [ ] 1. Fleet check: the command above
+- [ ] 2. Config gate: the `## Connections` blocks and `## Wayfare` (`../../references/configuration.md`)
+- [ ] 3. Store read: `hero_ready_items`, the inbox, the plan object
+- [ ] 4. Snapshot: pull the design snapshot, resolve both heads
+- [ ] 5. Local stages: this repo's own `wayfare: sync` skills, at the trust gate
 
 An unset sentinel (`SOURCE_HEAD`, `UX_FLOW`, `DS_REPO`, `RECON`) **stops the
 run**. A store that is not at schema 1 stops it too: `hero_ready_items`
@@ -54,8 +54,8 @@ exactly the failure the in-session rule exists to prevent.
 Progress:
 
 - [ ] 1. Step 0 above
-- [ ] 2. Select the goal — dependencies met, members planned
-- [ ] 3. Adopt ungrouped work that fits — `hero_goal_candidates`, judged against the DoD
+- [ ] 2. Select the goal: dependencies met, members planned
+- [ ] 3. Adopt ungrouped work that fits: `hero_goal_candidates`, judged against the DoD
 - [ ] 4. Read the goal aloud: its DoD, its members, the adoptions, its `source` paths
 - [ ] 5. Read `## Permissions` aloud and take the grant, in-session; the typed id writes the adoptions
 - [ ] 6. Cut the branch, run turn 1 (`../../references/goals.md`, *One turn*)

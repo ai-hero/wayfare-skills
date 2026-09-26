@@ -39,7 +39,7 @@ fi
 
 `NO_FLEET` → STOP. There is no map to review; say so and offer
 `wayfare:wayfare-sync-fleet`, which bootstraps one. Do not guess a candidate
-folder here — choosing one is a write decision and belongs to `sync`.
+folder here: choosing one is a write decision and belongs to `sync`.
 
 ### Report the drift
 

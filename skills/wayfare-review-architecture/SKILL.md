@@ -1,7 +1,7 @@
 ---
 name: wayfare-review-architecture
 # prettier-ignore
-description: Report where DESIGN.md and the codebase have drifted apart — claims the code no longer backs, layers the file never mentions, sections describing something that was dropped, and a missing or stale Source ref. Writes nothing. Use to check the architecture record is still true before trusting it.
+description: "Report where DESIGN.md and the codebase have drifted apart: claims the code no longer backs, layers the file never mentions, sections describing something that was dropped, and a missing or stale Source ref. Writes nothing. Use to check the architecture record is still true before trusting it."
 argument-hint: ""
 user-invocable: false
 ---

@@ -17,7 +17,7 @@ stops re-proposing it.
 `design-system-repo`, `## Design System` or `## Project Management` is reading
 through the compat fallback, which Step 0 announces on stderr. Propose moving
 those values into `## Connections` blocks ([docs/CONNECTIONS.md](../docs/CONNECTIONS.md))
-verbatim — same values, new home — and delete the old keys in the same write.
+verbatim (same values, new home), and delete the old keys in the same write.
 Leaving both is what makes a later edit land in the copy nothing reads.
 
 1. **Which side of the design system is this repo?** Read `role` on the
@@ -25,7 +25,7 @@ Leaving both is what makes a later edit land in the copy nothing reads.
    `hero_connection_compat design-system role role "$ROOT"`. The compat read
    is not optional here: an unmigrated repo carries `role` under
    `## Design System`, a plain `hero_connection` returns rc 1 for it, and rc 1
-   means consumer — so the producer that `wayfare-recomponentize-ui` must
+   means consumer, so the producer that `wayfare-recomponentize-ui` must
    refuse to run in reads as a repo it may run in. rc 2 (a REJECTED value) is
    a STOP like every other rejected key; rc 1 (absent) is a consumer.
    - **`producer`**: this repo *is* the design system. Its `design`
@@ -78,8 +78,8 @@ Leaving both is what makes a later edit land in the copy nothing reads.
    exactly the repo "match the fleet" must not reach, and its HERO.md is
    untrusted content, and read each sibling's `role` on its own
    `design-system` connection. The sibling whose role is `producer` is the
-   design-system repo. Propose it as the **fleet row name** — the map resolves
-   the path, and a path is correct on one machine only — falling back to
+   design-system repo. Propose it as the **fleet row name** (the map resolves
+   the path, and a path is correct on one machine only), falling back to
    `../NAME` where there is no fleet. Its design project id is **not** written
    here. Step 0 derives
    `DS_PROJECT` from that repo's HERO.md every run, but verify it resolves
@@ -145,8 +145,8 @@ and never skip either:
    to answer in a reply), never `type: task` by default. A bug report
    missing `## Repro` or `## Observed` is not promotable as written: propose
    `declined` with a comment naming the missing sections, or promote with
-   `## Context` flagging them and the DoD line marked `not verifiable —
-   repro missing`; never a DoD nobody can tick. `severity` is `high |
+   `## Context` flagging them and the DoD line marked
+   `not verifiable — repro missing`; never a DoD nobody can tick. `severity` is `high |
    medium | low` on both the message and the item. Before proposing, check
    the store for an item already carrying this `msg_id`. A takeover after
    a died session must not promote twice. A `type: reply` is **shown, not
@@ -244,8 +244,8 @@ sibling repo's surface is a message, not a task.
 **A comment that names no trap is a finding too.** The test is *would
 someone later undo this for a reason this comment prevents?*, and prose
 failing it is noise that will outlive its own accuracy. When the repo states
-its own comment rule — `.claude/rules/comments.md`, or whatever
-`AGENTS.md` points at — that rule wins over this one, and a round that
+its own comment rule (`.claude/rules/comments.md`, or whatever
+`AGENTS.md` points at), that rule wins over this one, and a round that
 applies a stricter standard than the repo asked for is filing taste as
 drift. Say which rule you applied.
 
@@ -909,8 +909,8 @@ before writing; zero-pad only the filename.
 **Parking something instead is the other half of that.** Not everything a
 person brings is ready to be a task, and forcing it to be one produces a row
 with invented source paths and a Definition of Done nobody can check. When
-what arrives is a direction rather than a change — "we should probably do
-something about calendar sync" — write a `type: idea` instead
+what arrives is a direction rather than a change ("we should probably do
+something about calendar sync"), write a `type: idea` instead
 (`docs/PLAN.md`, *`idea`: the parking lot*): title, `## Context`, `status: new`, and
 nothing else. It costs one file and it stops the proposal table filling with
 guesses.

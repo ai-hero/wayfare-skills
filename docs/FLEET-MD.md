@@ -21,7 +21,7 @@ Three things it is for:
 | Need | How FLEET.md serves it |
 | --- | --- |
 | **Discovery**, a skill run at the fleet root knows the repos | `hero_fleet_repos` lists them; the skill fans out (below) |
-| **Membership**: "match the fleet" applies to some folders and not others | This file is the authority: a repo is fleet when a row gives it a real `group:`. No row is also not fleet — a folder does not join by being cloned here, and `--review` says nothing about one. A `group: none` row is for a non-member that still needs something recorded, usually a `port:` it binds on the host |
+| **Membership**: "match the fleet" applies to some folders and not others | This file is the authority: a repo is fleet when a row gives it a real `group:`. No row is also not fleet: a folder does not join by being cloned here, and `--review` says nothing about one. A `group: none` row is for a non-member that still needs something recorded, usually a `port:` it binds on the host |
 | **Ports**, every dev stack publishes one host port and they must not collide | `port:` per repo is where a port is **claimed**; `wayfare-review-fleet` checks the compose file implements it |
 | **Awareness**, a repo's own instructions say it belongs to a fleet | `sync` writes a `## Fleet` section into each fleet repo's `AGENTS.md` |
 

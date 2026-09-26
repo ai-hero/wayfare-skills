@@ -5,7 +5,7 @@ back to the default branch, pull, and mark the item so the roadmap tells the
 truth about it.
 
 This was `wayfare:wayfare-drop-item`. Two things changed in the move. It takes an
-**item id**, and it writes `status: dropped` on that item — the state
+**item id**, and it writes `status: dropped` on that item, the state
 `docs/PLAN.md` defines and that nothing previously set, so an abandoned
 branch used to leave its item sitting at `active` forever, claiming work
 that had stopped. And `dropped` deliberately does **not** satisfy a
@@ -21,7 +21,7 @@ merged is not a drop, and the run says so rather than deleting it.
 Before touching the working tree, resolve the id and confirm what it names.
 After the branch work below succeeds:
 
-- Set `status: dropped` on the item. Leave `resolution` unset — `dropped` is
+- Set `status: dropped` on the item. Leave `resolution` unset: `dropped` is
   its own terminal, not a flavour of `done`.
 - Append one `## Log` line saying what was abandoned and why, dated. This is
   the only record: `.plans/` is git-ignored, so there is no diff and no blame

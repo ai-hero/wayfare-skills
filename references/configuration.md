@@ -7,7 +7,7 @@ a bad value does. Read in Step 0 of every verb.
 ## Configuration: connections, plus one key
 
 Everything wayfare attaches to on the outside is a **connection**
-([docs/CONNECTIONS.md](../docs/CONNECTIONS.md)) — one `### kind` block under
+([docs/CONNECTIONS.md](../docs/CONNECTIONS.md)): one `### kind` block under
 `## Connections`, each with `type`, `at`, `reach`, and whatever else that kind
 needs. Wayfare reads four of the six kinds:
 
@@ -48,8 +48,8 @@ guess.
 
 `source-repo` is the one key that is **not** a connection: it names this repo,
 and a thing is not attached to itself. Everything else wayfare used to keep in
-`## Wayfare` — `design-project`, `design-transport`, `ux-flow`,
-`reconciliation`, `design-system-repo` — is a connection field now, and an
+`## Wayfare` (`design-project`, `design-transport`, `ux-flow`,
+`reconciliation`, `design-system-repo`) is a connection field now, and an
 unmigrated HERO.md still carrying them is what `sync`'s config gate migrates
 on sight.
 
@@ -57,7 +57,7 @@ on sight.
 block at all.** `none` is "looked, there is none" and stops the question;
 an absent block is "nobody has looked" and gets asked once. The design
 question is re-asked every run even after a `none`, unlike every other
-connection, **unless the comment says `PERMANENT`** — see below.
+connection, **unless the comment says `PERMANENT`** (see below).
 
 **Read the bound copy before pulling a second project.** An app design project
 that consumes a design system typically **vendors it into itself**, at
@@ -80,7 +80,7 @@ source *installs from* (namespace, registry URL, token) and the repo that is a
 **party to the reconciliation** are the same system, so they are one block.
 `at` answers the one question reading needs: the design system's **design** is
 read from that repo's own `design` connection, which is the authority on where
-its design lives. It is not where design-system feedback goes — that row is
+its design lives. It is not where design-system feedback goes: that row is
 named at delivery, like every other lane, so a fleet that moves the system to a
 different checkout does not silently keep feeding the old one. `type: none` is
 a complete answer. A repo with no upstream design system runs the two-layer
@@ -201,13 +201,13 @@ Ask only about rows whose CURRENT is parenthesised: `(unset)`, `(no-section)`,
 wrong. A row that already holds the right value is not a question.
 
 A connection's rows read `Connections::KIND` in the SECTION column, and
-`(no-section)` there means the whole `### KIND` block is missing — the "nobody
+`(no-section)` there means the whole `### KIND` block is missing, the "nobody
 has looked" state, which is a question. A block that exists and says
 `type: none` reports that value, not a sentinel, and is therefore **not** a
 question: it is the answer already given ([docs/CONNECTIONS.md](../docs/CONNECTIONS.md)).
 
 **`type: none` silences that connection's other rows too.** They report
-`(n/a: type=none)` — and `(n/a: type=self)` for a connection that lives in this
+`(n/a: type=none)`, and `(n/a: type=self)` for a connection that lives in this
 repo, `(n/a: type=refused)` for one whose `type` the reader rejected. Those are
 the **one parenthesised value that is not a question**: the block has already
 answered, or is blocked on its own discriminator, and asking for the address of

@@ -1,7 +1,7 @@
 ---
 name: wayfare-init-repo
 # prettier-ignore
-description: Configure a repo for wayfare: investigate it, write HERO.md, and create the plan object .plans/PLAN.md, migrating an older store on sight. Scaffolds first in an empty directory. Use on a repo that has no HERO.md or no .plans/PLAN.md.
+description: "Configure a repo for wayfare: investigate it, write HERO.md, and create the plan object .plans/PLAN.md, migrating an older store on sight. Scaffolds first in an empty directory. Use on a repo that has no HERO.md or no .plans/PLAN.md."
 argument-hint: "[recalibrate]"
 ---
 
@@ -9,7 +9,7 @@ argument-hint: "[recalibrate]"
 
 Source is the product as it is; Target is the product as it should be, a
 claude.ai/design project configured in HERO.md. With no design project the
-route reconciles Source against itself — `DESIGN.md`, its own gaps, its own
+route reconciles Source against itself: `DESIGN.md`, its own gaps, its own
 hardening. The README's command table says which skill does what;
 **`docs/PLAN.md` is the store's specification, and nothing here restates
 it.**
@@ -40,12 +40,12 @@ falls through into it.
 
 Progress:
 
-- [ ] 1. Fleet check — at a fleet root this is `wayfare:wayfare-sync-fleet`, not init
+- [ ] 1. Fleet check: at a fleet root this is `wayfare:wayfare-sync-fleet`, not init
 - [ ] 2. Scaffold, only when there is no repo yet (`../../references/scaffold.md`)
 - [ ] 3. Investigate, then confirm the findings with evidence-based questions
 - [ ] 4. Write `HERO.md` and refresh `AGENTS.md`'s managed sections
 - [ ] 5. Write `.plans/PLAN.md`, or migrate an unmigrated store and say so
-- [ ] 6. Fill `## Scope` — a round that plans against "TODO" plans against nothing
+- [ ] 6. Fill `## Scope`: a round that plans against "TODO" plans against nothing
 
 This is the only skill that creates the plan object. Every other one reads
 it, and `hero_ready_items` refuses a store without one rather than printing

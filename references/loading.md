@@ -9,8 +9,8 @@ Bash calls (verified: unset in a Claude Code session's own Bash tool).
 Resolution takes it when it is set, else an exported `WAYFARE_ROOT`, else the
 default clone path. An agent with neither needs `WAYFARE_ROOT` exported
 before Step 0 runs, precisely: `WAYFARE_ROOT="$(cd "$(dirname
-"$SKILL_MD")/../.." && pwd)"` — the plugin root, since a skill lives at
-`PLUGIN_ROOT/skills/NAME/SKILL.md`. That export is the other agent's own
+"$SKILL_MD")/../.." && pwd)"` (the plugin root, since a skill lives at
+`PLUGIN_ROOT/skills/NAME/SKILL.md`). That export is the other agent's own
 bootstrap, not something this repo runs.
 
 ```bash
@@ -378,8 +378,8 @@ into the store arrives `status: planning` at most, never `ready`: the stage
 compares `hero_ready_items` before and after and reports any new READY row
 as a finding, not a plan. A `wayfare: verify` skill is trusted the same way,
 since a verifier that says "verified" to every line lets a goal write
-`done`. Its contract is one line, last on stdout: `verdict: PASS | FAIL |
-UNVERIFIED — reason`; anything else is `UNVERIFIED`.
+`done`. Its contract is one line, last on stdout:
+`verdict: PASS | FAIL | UNVERIFIED — reason`; anything else is `UNVERIFIED`.
 
 If `FLEET_ROOT` printed, this folder is a fleet, not a repo: for every skill but `wayfare-audit-compliance`, stop and follow **At the fleet root** in `docs/FLEET-MD.md`; `wayfare-audit-compliance` has a fleet-root form of its own (`references/improve.md`).
 

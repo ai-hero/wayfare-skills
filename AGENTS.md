@@ -9,7 +9,7 @@ skill's `WAYFARE_ROOT` line.
 **Renamed from `hero-skills` on 2026-09-21, and a `uses:` does NOT follow a
 rename redirect.** The content API and the web UI do redirect, which is what
 made this look safe; Actions does not, so every consumer's auto-approve failed
-at startup — zero jobs, no failing step — from the rename until its caller was
+at startup (zero jobs, no failing step) from the rename until its caller was
 re-vendored. Measured, not guessed: four consumers went green the minute their
 `uses:` was updated. A consumer still on the old path is **broken now**, not
 running on borrowed time, and `wayfare-init-repo` reports it as
@@ -55,6 +55,10 @@ repo's own gate while `auto-approve.yaml` is the fleet's.
 - **Read before edit.** Match the surrounding style; don't introduce new patterns.
 - **This file follows [docs/AGENTS-MD.md](./docs/AGENTS-MD.md)**, and
   `scripts/check-agents-md.sh` gates it on commit.
+- **Don't wrap Markdown by hand.** The `mdformat` hook re-wraps every paragraph
+  at 80 on commit, so write the sentence and let it place the breaks. Mechanical
+  doc rules (dashes, banned phrases, step numbers, counts beside a chain) are
+  `scripts/check_docs.py`'s, and its error names the fix.
 - **Comments: see [.claude/rules/comments.md](./.claude/rules/comments.md).**
   Claude Code loads it automatically; other agents must read it first. The
   one-line test, so it survives a skimmed read:
@@ -89,16 +93,17 @@ repo's own gate while `auto-approve.yaml` is the fleet's.
   Six kinds, closed list, one `### kind` block each under `## Connections` in
   HERO.md ([docs/CONNECTIONS.md](./docs/CONNECTIONS.md)). Three states, never
   two: no block means nobody looked, `type: none` means looked and there is
-  none, and a set `type` whose `reach` is unavailable means broken — read
+  none, and a set `type` whose `reach` is unavailable means broken. Read
   that last one as absent and the run silently drops the lane it should have
   reported.
 - **`recalibrate` writes HERO.md; `sync` writes the skill's own file.**
-  Eleven skills carry the verb ([docs/RECALIBRATE.md](./docs/RECALIBRATE.md));
+  Ten skills carry the verb ([docs/RECALIBRATE.md](./docs/RECALIBRATE.md)),
+  and `wayfare-recalibrate-config` is the verb itself;
   their field map is `scripts/hero-fields.sh`, and a field missing there is a
   field no recalibrate can ask about. `wayfare-sync-fleet` and `wayfare-sync-plan` are
   unrelated: they converge FLEET.md and the plan, not config. `wayfare-audit-compliance`
-  writes no config at all — it is the compliance audit and the backport drafts
-  — so the config verb is always `recalibrate`, however much `improve` sounds
+  writes no config at all (it is the compliance audit and the backport drafts),
+  so the config verb is always `recalibrate`, however much `improve` sounds
   like one.
 - **Three skills are stages, reached only by another skill.**
   `wayfare-review-architecture`, `wayfare-sync-architecture` and

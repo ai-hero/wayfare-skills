@@ -1,7 +1,7 @@
 ---
 name: wayfare-sync-architecture
 # prettier-ignore
-description: Converge DESIGN.md with the codebase — bootstrap it where it does not exist, and apply the drift rows a review found, writing only what the user confirms. Decisions are append-only. Use after wayfare-review-architecture reports rows, or to create the record for the first time.
+description: "Converge DESIGN.md with the codebase: bootstrap it where it does not exist, and apply the drift rows a review found, writing only what the user confirms. Decisions are append-only. Use after wayfare-review-architecture reports rows, or to create the record for the first time."
 argument-hint: ""
 user-invocable: false
 ---
@@ -13,7 +13,7 @@ the code cannot state. This skill writes it: bootstrapping it where there is
 none, and applying the rows a review surfaced. It writes only what the user
 confirms.
 
-The read half lives in `wayfare:wayfare-review-architecture` — the Hard Rule
+The read half lives in `wayfare:wayfare-review-architecture`: the Hard Rule
 the file is held to, the section skeleton, and the findings table. It is not
 repeated here, because two copies of the rule a document is judged by drift
 apart and then disagree about the same file.

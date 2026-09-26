@@ -354,7 +354,7 @@ memory between turns:
    by the first turn and read by every later one. It is
    `feat/goal-GOAL_ID-SLUG`, where SLUG is the goal's title slugified the
    way `hero_branch_policy` slugifies a subject. The `feat/` prefix is
-   load-bearing: consumer repos' `no-commit-to-branch` hook carries a
+   required: consumer repos' `no-commit-to-branch` hook carries a
    branch-name allowlist (`ci|chore|docs|feat|task|fix|refactor|test`),
    so a bare `goal/` branch cannot take a commit there. Do not run
    `hero_branch_policy` for it: that function derives TYPE and SLUG from a
@@ -375,7 +375,7 @@ memory between turns:
    parallel launches: tasks land in member order on this one branch, so
    each is built against the tree the previous one left. That is what makes
    the local test at step 5 meaningful, and it is why integration conflicts
-   cannot happen — there is nothing to integrate.
+   cannot happen: there is nothing to integrate.
 
    For each member (`hero_goal_members`), in order, that is READY, or
    mid-flight (`active`), or `blocked` only by `[committed dep:]` ids that
@@ -432,12 +432,12 @@ memory between turns:
    ```
 
    **The `source` list is where the build starts, not a fence.** Held
-   strictly inside it, a build produces the half-change — the route added,
-   its caller left on the old signature — and the missing half returns as a
+   strictly inside it, a build produces the half-change (the route added,
+   its caller left on the old signature), and the missing half returns as a
    branch-test failure or a bug item. Scope here is relatedness, not paths.
    What does NOT loosen is the forbidden list. *Admitting discovered work*
-   states why it exists — those paths widen what the NEXT goal may do
-   without touching `## Permissions` — and that argument is about privilege,
+   states why it exists (those paths widen what the NEXT goal may do
+   without touching `## Permissions`), and that argument is about privilege,
    not about item bookkeeping, so it binds a build subagent's edits exactly
    as it binds an admission. A cheaper model building for a goal that will
    merge without asking again is the last place to relax it.
@@ -511,12 +511,12 @@ memory between turns:
    not a second copy: an append-only section written twice is written twice.
    Append only what the report names and the file lacks. A report
    with wrong turns and no `mistake` line means the run died before writing
-   them — say so on the `mistakes:` line rather than reconstructing them
+   them. Say so on the `mistakes:` line rather than reconstructing them
    from the transcript, which is gone next session anyway.
 
    **Record the files touched outside `source:`, and do not widen the field.**
    They go in the task's `## Log` as a dated `note` line, and that line is
-   a record for whoever reads the item next — nothing reconciles the field
+   a record for whoever reads the item next. Nothing reconciles the field
    from it, and `source:` stays as it was planned, which is what the
    admission test wants. That asymmetry is deliberate: a build's *edits*
    roam to what the change implicates, while an *admission* stays bounded by
@@ -524,7 +524,7 @@ memory between turns:
    path is follow-up ground even though the build was told to edit exactly
    those files. Editing a file is this task's work; adopting a new item
    is the goal taking on scope nobody authorized. A turn must never edit a
-   member task's declared paths: *Admitting discovered work* rests on them being unmovable — they
+   member task's declared paths: *Admitting discovered work* rests on them being unmovable: they
    were written at plan time and read aloud at the gate, which is what makes
    criterion 3 mechanical when the judgment is the thing under attack. A
    turn that widened `source:` at step 4 would hand step 8 a parent bound
@@ -551,11 +551,11 @@ memory between turns:
    Print it again after step 5's branch run, after each fix commit, and
    after each admission at step 8.
 
-   It is transcript-only — the durable records are the item's fields and
+   It is transcript-only: the durable records are the item's fields and
    its `turn` lines in `## Log`, and a table written to the store would be a third copy of
    state that the other two already hold.
 
-   **One row per plan item, in member order — every item, not just the
+   **One row per plan item, in member order: every item, not just the
    built ones.** That is what makes it a status table rather than a commit
    log: the built rows say what was done, the unbuilt rows say what is left,
    and both are visible at once. An item that honestly took two commits
@@ -588,7 +588,7 @@ memory between turns:
    ```
 
    **`What was done` is the column the table exists for.** It names the
-   file, the symbol, the count — what a reader could check. "Implemented
+   file, the symbol, the count: what a reader could check. "Implemented
    task 149" describes every commit ever made and tells nobody anything;
    the row above says which baselines went, which flag left `ci.yaml`, and
    that three tests had silently never run. That specificity is what lets
@@ -600,7 +600,7 @@ memory between turns:
    once step 5 has run, the branch run, never from inference. Until then a
    row's evidence is its task-scoped tests, and says so. "Tests pass" with
    no number is not evidence, and a row nothing was run against says `not
-   checked` — which the reader is entitled to see, and which step 6 will
+   checked`, which the reader is entitled to see, and which step 6 will
    have to answer for. On an admitted row it carries the DoD line the
    admission was justified by, which is the evidence that row has.
 
@@ -678,8 +678,8 @@ memory between turns:
    reproduces it (one test file, not the suite).
 
    - **A test file the goal added** (`git cat-file -e origin/$BASE:PATH`
-     fails) is attributed to the commit that added it (`git log
-     --diff-filter=A --format=%H origin/$BASE..GOAL_BRANCH -- PATH`), or to
+     fails) is attributed to the commit that added it
+     (`git log --diff-filter=A --format=%H origin/$BASE..GOAL_BRANCH -- PATH`), or to
      a later task by bisecting from that commit. Never from the base: every
      commit before the file existed would fail it and read as bad.
    - **A test that exists at the base** is run there first (`git checkout
@@ -743,7 +743,7 @@ memory between turns:
    answered: wayfare-ship-pr waited for the merge commit's runs and reported
    post-merge CI and deployment health inline. `hero_deploy_pending` holds
    whatever outlasted that cap; probe each entry, report it, clear it, and
-   let a DEGRADED one — or a failed post-merge CI run — fail the DoD line it
+   let a DEGRADED one (or a failed post-merge CI run) fail the DoD line it
    belongs to. A goal that proceeds over an
    unverified deploy is reporting a met Definition of Done it never checked.
    The DoD verification itself is not by inference from the tasks. That is
@@ -752,8 +752,8 @@ memory between turns:
    what was seen. Where this repo declares `wayfare: verify` skills (Step 0
    listed them), run each against the DoD lines it covers and quote its
    verdict line. An infrastructure repo's "the env is healthy" is its
-   `apply-verify`, not a screenshot. Its last stdout line is `verdict: PASS |
-   FAIL | UNVERIFIED — reason` (Step 0's contract); `UNVERIFIED`, or any
+   `apply-verify`, not a screenshot. Its last stdout line is
+   `verdict: PASS | FAIL | UNVERIFIED — reason` (Step 0's contract); `UNVERIFIED`, or any
    other shape, leaves the line `not checked`. A goal whose tasks are all
    done but whose DoD does not hold is the most useful thing this verb finds.
 
@@ -785,7 +785,7 @@ memory between turns:
    in *Advancing one item* refuses to build against. A `merged, not
    deployed` stop leaves them `committed` as well: `done` means the deploy
    was verified. Then run step 8, then write `status: done` on
-   the goal — and only if step 8 admitted nothing. Admitted work is work this
+   the goal, and only if step 8 admitted nothing. Admitted work is work this
    goal still owes, so a goal that absorbed an item is not done; it stays
    `active` for the next turn. A STOP from wayfare-build-task (a declined gate,
    REQUEST_CHANGES, a failed workflow) is the turn's stop too, reported with
@@ -847,7 +847,7 @@ memory between turns:
      stop:      none
    ```
 
-   The `mistakes:` line is a count per task — the wrong turns themselves
+   The `mistakes:` line is a count per task. The wrong turns themselves
    live in each task's `## Log` as `mistake` lines. It is what makes a run that
    reported them and wrote none down visible, so a task whose run
    reported none says `0 recorded`, never nothing at all.

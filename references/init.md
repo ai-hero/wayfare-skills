@@ -1328,7 +1328,7 @@ When `recalibrate` is passed:
 
 `HERO.md` is only half of what `init` writes. The other half is
 `.plans/PLAN.md`, the plan object (`docs/PLAN.md`), and without it
-`hero_ready_items` refuses the store outright — it cannot tell an empty
+`hero_ready_items` refuses the store outright: it cannot tell an empty
 roadmap from an unreadable one, so it declines to guess.
 
 Three cases, decided by what is already on disk:

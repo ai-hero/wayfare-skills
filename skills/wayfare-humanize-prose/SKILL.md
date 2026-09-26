@@ -22,7 +22,7 @@ and they read it directly rather than invoking this skill.
 2. Resolve what to humanize, in this order: `$ARGUMENTS` as literal text; a
    path in `$ARGUMENTS`, if it names a file that exists; otherwise the text
    already in the conversation the user is pointing at. If none of the three
-   resolves, ask which text — never guess and rewrite something the user did
+   resolves, ask which text. Never guess and rewrite something the user did
    not mean.
 3. Apply the file's rules. **Rewrite, never delete**: cover everything the
    original covers. Five paragraphs in, five paragraphs out.

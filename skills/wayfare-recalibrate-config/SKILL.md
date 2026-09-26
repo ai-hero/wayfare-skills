@@ -1,7 +1,7 @@
 ---
 name: wayfare-recalibrate-config
 # prettier-ignore
-description: Report and tune the config every wayfare skill reads — the `## Connections` blocks and `## Wayfare` in HERO.md plus the fields the architecture and security stages read. Asks only about fields that are unset or wrong, then writes. Use when a run complained about config, or after the repo changed shape.
+description: "Report and tune the config every wayfare skill reads: the `## Connections` blocks and `## Wayfare` in HERO.md plus the fields the architecture and security stages read. Asks only about fields that are unset or wrong, then writes. Use when a run complained about config, or after the repo changed shape."
 argument-hint: ""
 ---
 
@@ -12,7 +12,7 @@ else: you want to see which field was wrong, not spend a whole run finding
 out.
 
 Follow the four phases in [docs/RECALIBRATE.md](../../docs/RECALIBRATE.md)
-— report, ask, write, commit — using the table below as the report.
+(report, ask, write, commit) using the table below as the report.
 
 ## Instructions
 

@@ -4,8 +4,8 @@ Remove the signs of AI-generated writing so prose reads as written by a
 person. Based on Wikipedia's "Signs of AI writing".
 
 **This file is the substance; it is read on demand and nothing else holds a
-copy.** The four pipeline steps that emit prose — `wayfare-push-pr`, `wayfare-review-pr`,
-`wayfare-respond-pr`, and wayfare's review step — read it directly at the
+copy.** The four pipeline steps that emit prose (`wayfare-push-pr`, `wayfare-review-pr`,
+`wayfare-respond-pr`, and wayfare's review step) read it directly at the
 step that needs it. `wayfare:wayfare-humanize-prose` is a thin skill over it, for
 running the same filter over text by hand; it carries no rules of its own.
 
@@ -164,7 +164,11 @@ Avoiding AI patterns is only half the job. Sterile, voiceless writing is just as
 
 ### 7. Overused "AI Vocabulary" Words
 
+<!-- check-docs: off -->
+
 **High-frequency AI words:** Actually, additionally, align with, crucial, delve, emphasizing, enduring, enhance, fostering, garner, highlight (verb), interplay, intricate/intricacies, key (adjective), landscape (abstract noun), pivotal, showcase, tapestry (abstract noun), testament, underscore (verb), valuable, vibrant
+
+<!-- check-docs: on -->
 
 **Problem:** These words appear far more frequently in post-2023 text. They often co-occur.
 
@@ -246,16 +250,24 @@ Avoiding AI patterns is only half the job. Sterile, voiceless writing is just as
 
 ### 14. Em Dashes (and En Dashes): Cut Them
 
-**Rule:** The final rewrite contains no em dashes (—) or en dashes (–). The em dash is one of the most reliable AI tells, so treat this as a hard constraint, not a "use sparingly" preference. Replace each one, in rough order of preference: a period (start a new sentence), a comma (a tight aside), a colon (introducing an explanation), parentheses (a true aside), or restructure the sentence. Also catch spaced em dashes (` — `) and double hyphens (` -- `) used the same way.
+**Rule:** The final rewrite contains no em dashes (`—`) or en dashes (`–`). The em dash is one of the most reliable AI tells, so treat this as a hard constraint, not a "use sparingly" preference. Replace each one, in rough order of preference: a period (start a new sentence), a comma (a tight aside), a colon (introducing an explanation), parentheses (a true aside), or restructure the sentence. Also catch spaced em dashes (` — `) and double hyphens (` -- `) used the same way.
+
+<!-- check-docs: off -->
 
 **Before:**
 > The term is primarily promoted by Dutch institutions—not by the people themselves. You don't say "Netherlands, Europe" as an address—yet this mislabeling continues—even in official documents.
 
+<!-- check-docs: on -->
+
 **After:**
 > The term is primarily promoted by Dutch institutions, not by the people themselves. You don't say "Netherlands, Europe" as an address, yet this mislabeling continues in official documents.
 
+<!-- check-docs: off -->
+
 **Before:**
 > The new policy — announced without warning — affects thousands of workers. The changes -- long overdue according to critics -- will take effect immediately.
+
+<!-- check-docs: on -->
 
 **After:**
 > The new policy, announced without warning, affects thousands of workers. The changes, long overdue according to critics, will take effect immediately.
@@ -301,20 +313,28 @@ Before returning the final rewrite, scan it for `—` and `–`. Any hit means t
 
 **Problem:** AI chatbots often decorate headings or bullet points with emojis.
 
+<!-- check-docs: off -->
+
 **Before:**
 > 🚀 **Launch Phase:** The product launches in Q3
 > 💡 **Key Insight:** Users prefer simplicity
 > ✅ **Next Steps:** Schedule follow-up meeting
+
+<!-- check-docs: on -->
 
 **After:**
 > The product launches in Q3. User research showed a preference for simplicity. Next step: schedule a follow-up meeting.
 
 ### 19. Curly Quotation Marks
 
-**Problem:** ChatGPT uses curly quotes (“...”) instead of straight quotes ("...").
+**Problem:** ChatGPT uses curly quotes (`“...”`) instead of straight quotes (`"..."`).
+
+<!-- check-docs: off -->
 
 **Before:**
 > He said “the project is on track” but others disagreed.
+
+<!-- check-docs: on -->
 
 **After:**
 > He said "the project is on track" but others disagreed.
@@ -323,7 +343,11 @@ Before returning the final rewrite, scan it for `—` and `–`. Any hit means t
 
 ### 20. Collaborative Communication Artifacts
 
+<!-- check-docs: off -->
+
 **Words to watch:** I hope this helps, Of course!, Certainly!, You're absolutely right!, Would you like..., Want me to...?, Want me to give examples?, Should I continue?, let me know, here is a...
+
+<!-- check-docs: on -->
 
 **Problem:** Text meant as chatbot correspondence gets pasted as content.
 
@@ -355,8 +379,12 @@ Before returning the final rewrite, scan it for `—` and `–`. Any hit means t
 
 **Problem:** Overly positive, people-pleasing language.
 
+<!-- check-docs: off -->
+
 **Before:**
 > Great question! You're absolutely right that this is a complex topic. That's an excellent point about the economic factors.
+
+<!-- check-docs: on -->
 
 **After:**
 > The economic factors you mentioned are relevant here.
@@ -541,6 +569,8 @@ Deliver the draft, the brief "still-AI" bullets, the final rewrite, and (optiona
 
 ## Full Example
 
+<!-- check-docs: off -->
+
 **Before (AI-sounding):**
 > I recently spent five unforgettable days in Lisbon, and let me tell you — this city completely stole my heart. From the moment I arrived, I knew I was somewhere truly special.
 >
@@ -553,6 +583,8 @@ Deliver the draft, the brief "still-AI" bullets, the final rewrite, and (optiona
 > Of course, the must-see São Jorge Castle offers stunning views over the rooftops below. The queues can be long, but the experience is absolutely worth it for any history buff or curious traveler.
 >
 > Would I go back? Absolutely. Lisbon isn't just a place to visit — it's a place to fall in love with, again and again. If you're dreaming of your next getaway, this is one destination that promises memories to last a lifetime. ✨
+
+<!-- check-docs: on -->
 
 **Draft rewrite:**
 > I spent five days in Lisbon last October and I am still a little split on it. The city is beautiful, but it is also more tiring than I expected.

@@ -94,7 +94,7 @@ the skill that owns it.
    | `NOT_FLEET_AWARE` | *Make the repos fleet-aware*, below |
 
 2. Checkouts with no row: `"$SCAN" "$FLEET_ROOT" --list`, minus the paths
-   FLEET.md names. `--review` does not report these, deliberately — **FLEET.md
+   FLEET.md names. `--review` does not report these, deliberately: **FLEET.md
    defines the fleet, and a folder does not join it by being cloned there.**
    Print them as *on disk, not listed* and add no rows unless the user asks
    for one by name. Offering a row per parked clone is how a repo nobody

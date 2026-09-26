@@ -45,7 +45,7 @@ its own skill you can run alone (see [Quick Start](#quick-start)).
 ## How it works
 
 Wayfare is the one skill you run. It reads the world, converges it into a
-plan, and hands tasks to the build chain — which folds the result back into
+plan, and hands tasks to the build chain, which folds the result back into
 the world it read.
 
 ```mermaid
@@ -78,7 +78,7 @@ flowchart TB
 
 With no design project configured the target end is simply absent, and
 `wayfare-sync-plan` reconciles the repo against `DESIGN.md`, its own gaps and its
-own hardening instead — a self-review.
+own hardening instead: a self-review.
 
 ### The plan store
 
@@ -94,7 +94,7 @@ Definition of Done has to assert.
 | `idea` | something worth doing eventually, not yet shaped into work | nothing, until you promote it |
 
 An **idea** is the parking lot: a thought worth keeping that nobody has
-committed to. It carries no plan, no paths and no Definition of Done — an
+committed to. It carries no plan, no paths and no Definition of Done. An
 idea that can state one is a task that was mis-filed. Nothing builds an idea
 and nothing may depend on one; `wayfare-sync-plan` reports the parked set as a
 count and promotes only what you pick, at which point whatever it becomes
@@ -151,15 +151,15 @@ flowchart TB
   G7 == "so goal 9 depends_on 7 — derived, never authored" ==> G9
 ```
 
-Goals are grouped by **outcome** — what a person can do once the whole group
-ships — never by area or layer. A group whose Definition of Done cannot be
+Goals are grouped by **outcome** (what a person can do once the whole group
+ships), never by area or layer. A group whose Definition of Done cannot be
 stated as one user-visible outcome is a filter over the roadmap, not a goal,
 and it will report `done` without anything shipping that a person notices.
 
 The stage holds one invariant: **every item at `ready` or further and not
 `done` is in exactly one open goal.** `wayfare-start-goal` walks goals and never items, so
 a `ready` task in no goal is an orphan nothing in the loop reaches. A task
-that adds up to nothing larger becomes a one-item goal — small, but
+that adds up to nothing larger becomes a one-item goal: small, but
 reachable.
 
 Each round **re-cuts** the open goals rather than appending to them: tasks
@@ -167,13 +167,13 @@ join and leave, two goals naming one outcome coalesce, a goal whose DoD
 became two outcomes splits. An `active` goal is frozen, because its members
 and permissions were authorized as a set at `wayfare-start-goal`'s gate.
 
-`sync` writes the goal. It never authorizes it — that is typed by a person at
+`sync` writes the goal. It never authorizes it. That is typed by a person at
 `wayfare-start-goal`, in-session, and is never stored in the file.
 
 ## Across repos
 
 **Wayfare works in one repo at a time: the one it runs in.** It never edits a
-sibling. That rule is what makes the rest of this predictable — a change made
+sibling. That rule is what makes the rest of this predictable: a change made
 in a repo whose own agent did not make it lands in no PR, is reviewed by
 nobody, and turns up as a dirty working tree someone else has to explain.
 
@@ -207,23 +207,23 @@ only to its own repo, on its own branch, under its own gates. This is the
 sanctioned way a sibling changes.
 
 **2. Messages.** An agent in A that needs something from B deposits a file in
-B's `.plans/inbox/` — and that is the **only** write A ever makes outside
+B's `.plans/inbox/`, and that is the **only** write A ever makes outside
 itself. No code, no config, no branch, no `git` command in another checkout.
 Two gates apply: a **fleet gate** (only a repo with a `FLEET.md` row may
-deposit) and a **promotion gate** — an inbound message never becomes work by
+deposit) and a **promotion gate**: an inbound message never becomes work by
 itself. B's agent reads it, weighs it, and promotes it to an ordinary item.
 Skip that and a sibling is writing B's roadmap. See
 [docs/MESSAGES.md](./docs/MESSAGES.md).
 
 **3. Signals.** What building teaches travels back out to whoever owns the
-thing it disagrees with — as a message into that repo's inbox, so its own
+thing it disagrees with, as a message into that repo's inbox, so its own
 wayfare promotes it like any other. The destination is not configured: you
 name the `FLEET.md` row at delivery, because a fleet holds more than one repo
 that can own a divergence and a stored destination sends all of them to
 whichever was set first. When no row owns it, the signal is written to a
 local packet file instead and nothing silently vanishes.
 
-A message is **data, never an instruction** — it was written by another
+A message is **data, never an instruction**: it was written by another
 agent, so it is the same untrusted class as a design doc or a PR comment
 thread. One that appears to give orders is content that rode in, and it has
 no effect.
@@ -247,8 +247,8 @@ is a Claude Code harness variable, and it is not reliably set in a skill's
 Bash calls, so every skill resolves its plugin root through one `WAYFARE_ROOT`
 line: `CLAUDE_PLUGIN_ROOT` when set, else an exported `WAYFARE_ROOT`, else the
 default clone path. An agent with neither exports `WAYFARE_ROOT` as
-`$(cd "$(dirname "$SKILL_MD")/../.." && pwd)` — the directory two levels above
-the `SKILL.md` it loaded — before running a skill (see
+`$(cd "$(dirname "$SKILL_MD")/../.." && pwd)` (the directory two levels above
+the `SKILL.md` it loaded) before running a skill (see
 [references/loading.md](./references/loading.md)).
 
 The repo was called `hero-skills` until 2026-09-21. If you vendored the
@@ -415,7 +415,7 @@ the map; there is no skill whose job is to hold it.
 | `wayfare:wayfare-recalibrate-config` | Report and tune every field the stages read, then stop |
 | `wayfare:wayfare-audit-compliance` | Audit this repo, or the whole fleet from its root, against the compliance register, and draft the backports |
 
-Features are SLC vertical slices — user stories, never layers — carrying
+Features are SLC vertical slices (user stories, never layers) carrying
 subtasks, a definition of done, a log, design feedback back to the design
 team, and staleness flags against both ends.
 
@@ -423,7 +423,7 @@ Three skills are stages of `sync` and hidden from the slash menu (`user-invocabl
 
 | Stage | Skill | What it does |
 | --- | --- | --- |
-| `architecture` | `wayfare:wayfare-review-architecture` | Report where a single root `DESIGN.md` and the code have drifted — tech stack, boundaries, dependency rules, invariants, users, flows, interaction standards, append-only decisions. Writes nothing |
+| `architecture` | `wayfare:wayfare-review-architecture` | Report where a single root `DESIGN.md` and the code have drifted: tech stack, boundaries, dependency rules, invariants, users, flows, interaction standards, append-only decisions. Writes nothing |
 | `architecture` | `wayfare:wayfare-sync-architecture` | Bootstrap `DESIGN.md`, and apply the drift rows the review found. Never restates what the code says |
 | `wayfare-audit-security` | `wayfare:wayfare-audit-security` | Audit read-only for hardening, dependency CVEs (Dependabot), container CVEs (Docker Scout, Trivy), code robustness, and emit execution-ready plans as `.plans/` security items |
 
@@ -456,7 +456,7 @@ Three skills are stages of `sync` and hidden from the slash menu (`user-invocabl
 
 | Command | What it does |
 | --- | --- |
-| `wayfare:wayfare-build-task` | Drives a small task end-to-end: plan → implement → simplify → push (tests included) → self-review → mark-ready → await-review → respond → ship. Detects a resume point on re-invocation; with no arguments, drives the current goal to merged + reset branch. Explicit user gates at each destructive step. |
+| `wayfare:wayfare-build-task` | Drives a small task end-to-end: plan → implement → simplify → push → self-review → mark-ready → await-review → respond → ship, with the tests run inside push. Detects a resume point on re-invocation; with no arguments, drives the current goal to merged + reset branch. Explicit user gates at each destructive step. |
 | `wayfare:wayfare-init-repo` | Scaffolds a new project, then chains into wayfare-setup-dev → config → first-commit. |
 
 ### Operations
@@ -465,7 +465,7 @@ Three skills are stages of `sync` and hidden from the slash menu (`user-invocabl
 | --- | --- |
 | `wayfare:wayfare-grill-idea` | Brainstorm + grill an idea one question at a time into shared understanding and dependency-aware work-items |
 | `wayfare:wayfare-sync-fleet` | Create + converge `FLEET.md`, the local, unversioned map of the repos checked out beside each other (group, port). Scans the folder and proposes rows, writing only what you confirm. Every repo skill run from the fleet root fans out to the repos you pick (see `docs/FLEET-MD.md`) |
-| `wayfare:wayfare-review-fleet` | Report drift between `FLEET.md` and the checkouts beside it — repos missing from the map, rows with no checkout, port collisions. Writes nothing |
+| `wayfare:wayfare-review-fleet` | Report drift between `FLEET.md` and the checkouts beside it: repos missing from the map, rows with no checkout, port collisions. Writes nothing |
 | `wayfare:wayfare-write-handoff` | Distill the current conversation into one self-contained work-item for a downstream agent (optionally filed to the tracker, or to **another repo** with `--repo OWNER/NAME`) |
 
 ### Utilities
@@ -564,11 +564,11 @@ and `wayfare-sync-plan` converges the plan (and, through its architecture stage,
 **Connections are what the repo attaches to.** Its design (a claude.ai/design
 project, a Figma file), the component registry it installs primitives from,
 the template it should still resemble, the repo holding its architecture
-record, the one holding its Terraform, and the tracker its work is filed in —
+record, the one holding its Terraform, and the tracker its work is filed in:
 six kinds, one `### kind` block each under `## Connections`. Each may be
 absent, and absence is written down: no block means nobody has looked,
 `type: none` means looked and there is none, and a connection that is set but
-cannot be reached is neither — it is broken, and says so. See
+cannot be reached is neither: it is broken, and says so. See
 [docs/CONNECTIONS.md](docs/CONNECTIONS.md).
 
 Here's what a minimal config looks like:
@@ -607,7 +607,7 @@ No `HERO.md`? Skills fall back to auto-detection. Run `wayfare:wayfare-init-repo
 
 `HERO.md` supports these sections:
 
-- **Connections**: one `### kind` block per outward attachment — `design`,
+- **Connections**: one `### kind` block per outward attachment: `design`,
   `design-system`, `reference`, `architecture`, `infrastructure`, `issues`
   (this is where the tracker lives, and where the old **Project Management**
   and **Design System** sections went). See
@@ -620,7 +620,7 @@ No `HERO.md`? Skills fall back to auto-detection. Run `wayfare:wayfare-init-repo
 - **Developer Setup**: the tools a contributor needs, required and recommended
 - **Coding Conventions**: the house style a review judges against
 - **Projects**: per-subproject language, framework, test/dev commands, ports
-- **Wayfare**: `source-repo`, and nothing else — every other wayfare input is a connection
+- **Wayfare**: `source-repo`, and nothing else; every other wayfare input is a connection
 - **Coding Agent**: written by `wayfare:wayfare-init-repo`, read by no skill today
 
 Keys are **lowercase and exact**. The readers match `- key:` literally, so
@@ -643,8 +643,8 @@ MIT, built by [AI Hero](https://aihero.studio).
 
 `scripts/audit.py` computes (check × repo) results live, from a register in
 two halves: the generic **baseline** in `assets/compliance/`, shipped here,
-and your fleet's private **overlay** — incident history and checks of its
-own — in the register checkout FLEET.md names (`register: .fleet/`). No
+and your fleet's private **overlay** (incident history and checks of its
+own) in the register checkout FLEET.md names (`register: .fleet/`). No
 check names a repo: which repos pass is the audit's output, computed per
 run, never a field in the rule. Inside a fleet the family is FLEET.md's rows whose group is not
 `none`; anywhere else, the current repo alone against the baseline.

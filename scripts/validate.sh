@@ -580,10 +580,15 @@ for absorbed in $ABSORBED_SKILLS; do
       "Either this skill was reinstated (update ABSORBED_SKILLS in scripts/validate.sh to drop it) or the merge is incomplete"
     continue
   fi
+  # The lineage word may sit on the line before the name: the formatter
+  # wraps paragraphs, and "absorbed the former" often ends the previous line.
   HITS=$(grep -rn "$absorbed" --include='*.md' --include='*.sh' \
     "$SKILLS_DIR" "$PLUGIN_ROOT/README.md" "$PLUGIN_ROOT/docs/PIPELINES.md" "$PLUGIN_ROOT/scripts" 2>/dev/null \
     | grep -v "$(basename "$0")" \
-    | grep -viE 'absorb' || true)
+    | while IFS= read -r hit; do
+        f="${hit%%:*}"; rest="${hit#*:}"; n="${rest%%:*}"
+        sed -n "$(( n > 1 ? n - 1 : 1 )),${n}p" "$f" | grep -qiE 'absorb' || printf '%s\n' "$hit"
+      done || true)
   if [[ -n "$HITS" ]]; then
     while IFS= read -r hit; do
       hit_file="${hit%%:*}"

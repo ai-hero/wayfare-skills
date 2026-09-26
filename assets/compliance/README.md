@@ -1,4 +1,4 @@
-# Compliance register — the baseline
+# Compliance register: the baseline
 
 `scripts/audit.py` computes (check × repo) results from a register with two
 halves:
@@ -6,12 +6,12 @@ halves:
 | Half | Where | Holds |
 | --- | --- | --- |
 | baseline | this directory, shipped with the plugin | controls and checks any repo on this workflow is held to; generic rationale only |
-| overlay | the fleet's register checkout — FLEET.md `register:`, default `.fleet/` | the fleet's incident history, `applies_to: [GROUP, …]` narrowings, any controls or checks of its own, and a `checkers.py` holding the checkers that know its repos by name. It may NOT name a repo in a check: `reference:` and `known_violations` are retired and rejected at load |
+| overlay | the fleet's register checkout (FLEET.md `register:`, default `.fleet/`) | the fleet's incident history, `applies_to: [GROUP, …]` narrowings, any controls or checks of its own, and a `checkers.py` holding the checkers that know its repos by name. It may NOT name a repo in a check: `reference:` and `known_violations` are retired and rejected at load |
 
 Merged by id, overlay fields winning. A check's `applies_to` may name
-FLEET.md groups (`template`, `apps`, `infra`, …) — a repo outside them reads
+FLEET.md groups (`template`, `apps`, `infra`, …); a repo outside them reads
 n/a, which is how a fleet keeps an infra repo in the family without holding
-it to app-shaped conventions — or a capability name (`go`, `ships-image`,
+it to app-shaped conventions. It may instead name a capability (`go`, `ships-image`,
 the closed set in `audit.py`'s `CAPABILITIES`), which the checker detects
 for itself and the engine ignores. Any other name fails to load. Explicit
 per-capability repo lists are not a thing: they are a copy of what

@@ -140,8 +140,8 @@ flows back: wayfare-build-task logs a divergence it found while building as a
 `signal` line in the task's `## Log`, and `wayfare-sync-plan` delivers it. Two
 destinations, no third: a sibling checkout the user names from the `FLEET.md`
 rows gets a **message** in its `.plans/inbox/` (entries verbatim plus a
-manifest, its own agent promotes it), and everything else — no fleet, no row
-that owns the divergence, no `.plans/inbox/` to deposit into — gets a packet
+manifest, its own agent promotes it), and everything else (no fleet, no row
+that owns the divergence, no `.plans/inbox/` to deposit into) gets a packet
 under `$STORE/.feedback/` that the user delivers by hand. There is no
 configured destination: a fleet holds more than one repo that can own a
 divergence, and a stored one sends every lane to whichever was set first.

@@ -38,7 +38,7 @@ roadmap, and wayfare owns only the contract it fills:
 - **`source` names where the change begins, not its boundary.** A plan that
   stops at the file list and leaves a caller, a migration or a test
   un-updated is incomplete, and the build has to go further than the plan
-  did anyway (*One turn* step 4) — the change reaches further, never the
+  did anyway (*One turn* step 4): the change reaches further, never the
   field, which no turn edits. Name the ripple in `## Subtasks` so the build works from a list rather
   than discovering it.
 - Conclusions land IN the task file per the format below: `## Approach`

@@ -110,7 +110,7 @@ than a comparison:
   a space is a command that probe would run, and refusing a leading `-` does
   not stop it.
 - **`issues.at` is shaped by its `type`.** `github` puts a repo there and it
-  reaches `gh --repo`, so it is `OWNER/NAME` — a shape that also excludes a
+  reaches `gh --repo`, so it is `OWNER/NAME`, a shape that also excludes a
   host qualifier, which would file this repo's work into someone else's
   GitHub Enterprise with this user's token. `linear` and `jira` put a
   workspace there instead, and holding those to `OWNER/NAME` would refuse the

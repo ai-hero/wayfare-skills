@@ -1,7 +1,7 @@
 ---
 name: wayfare-audit-compliance
 # prettier-ignore
-description: Run the compliance register audit on its own — this repo against the baseline, or the whole fleet at merged state — report register defects, regenerate CONSISTENCY.md, and draft backports to the template. Use to check conformance without a full roadmap sync.
+description: "Run the compliance register audit on its own (this repo against the baseline, or the whole fleet at merged state), report register defects, regenerate CONSISTENCY.md, and draft backports to the template. Use to check conformance without a full roadmap sync."
 argument-hint: ""
 ---
 

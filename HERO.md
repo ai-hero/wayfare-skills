@@ -33,7 +33,7 @@
 
 <!-- No external review bot posts to PRs here (checked #68-#72: only
      github-actions[bot], which is this repo's own auto-approve workflow).
-     `agent: none` — not a made-up value — is what tells wayfare-build-task's Step 7
+     `agent: none` (not a made-up value) is what tells wayfare-build-task's Step 7
      to skip the bot-await poll; self-review already runs as wayfare-build-task's own
      Step 5 via wayfare:wayfare-review-pr regardless of this field. -->
 - agent: none
@@ -50,12 +50,12 @@
 ## Connections
 
 <!-- What this repo is attached to on the outside; see docs/CONNECTIONS.md.
-     `type: none` means LOOKED, there is none — an absent block would mean
+     `type: none` means LOOKED, there is none; an absent block would mean
      nobody has looked, and sync would ask again every run. -->
 
 ### design
 
-- type: none # PERMANENT — wayfare is a plugin repo with no product and no UI (per AGENTS.md); it will never have a design project. Do not re-propose at sync
+- type: none # PERMANENT: wayfare is a plugin repo with no product and no UI (per AGENTS.md); it will never have a design project. Do not re-propose at sync
 
 ### design-system
 

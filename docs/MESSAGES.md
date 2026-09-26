@@ -440,7 +440,7 @@ sessions in one repo is ordinary.
 | `skills/wayfare-sync-fleet/SKILL.md` `sync` | DONE: it deposits a `type: ask` per repo instead of appending to each `AGENTS.md`, and each repo's own agent lands the section in its own PR. A row with no `.plans/` cannot receive one and is reported, never given a store to make the deposit work |
 | `docs/FLEET-MD.md` fan-out prompt | DONE: modify nothing, read a sibling only for the dedupe and deadlock probes, and deposit only into `.plans/inbox/` |
 | `skills/wayfare-write-handoff/SKILL.md` | DONE: the "store is not a transport" rule names the mailbox as the one narrow exception and says why it is not a handoff, a message is never work until the recipient promotes it |
-| `skills/wayfare-grill-idea/SKILL.md` | DONE: the canonical frontmatter block carries `awaiting` |
+| `references/work-item-format.md` | DONE: the canonical frontmatter block carries `awaiting` |
 | `references/feedback-channels.md` | DONE: all three lanes deposit a `type: ask` message, one per signal item, into a `FLEET.md` row the user names at delivery. There is no configured destination: the `design-system` lane used to write a ready-to-build item straight into that repo's roadmap (the promotion gate's own anti-pattern with the sender's name on it), and the design lanes used to file a GitHub issue wherever one key happened to point. No row that owns the divergence means no deposit; the packet path takes it |
 
 ## Anti-patterns

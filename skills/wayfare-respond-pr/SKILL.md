@@ -288,7 +288,7 @@ If checks fail, fix the issues before committing.
 
 ```bash
 git add CHANGED_FILES
-git commit -m "$(cat <<'EOF'
+MSG=$(cat <<'EOF'
 fix: address PR review feedback
 
 - [Summary of fix 1]
@@ -296,7 +296,10 @@ fix: address PR review feedback
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
-)"
+)
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind commit --body-file - <<<"$MSG" || exit 1
+git commit -m "$MSG"
 ```
 
 Group related fixes into a single commit. If fixes are logically independent and
@@ -378,13 +381,13 @@ COMMENT_BODY=$(cat <<'EOF'
 ## Respond-to-Comments Improvements
 
 **Code changes (X applied):**
-- FILE:LINE — REVIEWER_FEEDBACK — FIX_DESCRIPTION
+- FILE:LINE: REVIEWER_FEEDBACK. Fixed: FIX_DESCRIPTION
 
 **Questions answered (Y):**
-- FILE:LINE — QUESTION — ANSWER_OR_RATIONALE
+- FILE:LINE: QUESTION. Answer: ANSWER_OR_RATIONALE
 
 **Declined (Z, with rationale):**
-- FILE:LINE — REVIEWER_FEEDBACK — REASON_FOR_DECLINING
+- FILE:LINE: REVIEWER_FEEDBACK. Declined: REASON_FOR_DECLINING
 
 Commits: SHA1, SHA2
 
@@ -399,6 +402,8 @@ EOF
 # If the post fails (network, gh auth), surface the rendered body so
 # the user can paste it manually — do NOT swallow the error and
 # pretend the comment was posted.
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind comment --body-file - <<<"$COMMENT_BODY" || exit 1
 if ! gh pr comment $PR_NUMBER --body "$COMMENT_BODY"; then
   echo "ERROR: Failed to post improvements comment. Body follows — paste manually:"
   printf '%s\n' "$COMMENT_BODY"
@@ -445,10 +450,15 @@ heredoc literally.** `gh pr edit --body` fully replaces the body, so the heredoc
 must contain the entire drafted Markdown:
 
 ```bash
-gh pr edit $PR_NUMBER --title "NEW_TITLE_UNDER_70_CHARS" --body "$(cat <<'EOF'
+BODY=$(cat <<'EOF'
 DRAFTED_FULL_BODY_HERE
 EOF
-)"
+)
+# The exact text that gets posted. A finding means fix the text and
+# re-run, never post around it.
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind pr --title "NEW_TITLE_UNDER_70_CHARS" --body-file - <<<"$BODY" || exit 1
+gh pr edit $PR_NUMBER --title "NEW_TITLE_UNDER_70_CHARS" --body "$BODY"
 ```
 
 Substitute `DRAFTED_FULL_BODY_HERE` with the actual drafted Markdown before

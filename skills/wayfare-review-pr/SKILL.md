@@ -266,18 +266,18 @@ Render the template with real findings, humanize it against
 then post:
 
 ```bash
-gh pr comment $PR_NUMBER --body "$(cat <<'EOF'
+BODY=$(cat <<'EOF'
 ## Self-Review
 <!-- ai-hero:self-review -->
 
 ### Critical ({N})
-- [agent] {file:line} — {finding}
+- [agent] {file:line}: {finding}
 
 ### Important ({N})
-- [agent] {file:line} — {finding}
+- [agent] {file:line}: {finding}
 
 ### Suggestions ({N})
-- [agent] {file:line} — {finding}
+- [agent] {file:line}: {finding}
 
 ### Strengths
 - {what's well-done}
@@ -285,7 +285,12 @@ gh pr comment $PR_NUMBER --body "$(cat <<'EOF'
 ---
 _Generated using wayfare._
 EOF
-)"
+)
+# The exact text that gets posted. A finding means fix the text and
+# re-run, never post around it.
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind comment --body-file - <<<"$BODY" || exit 1
+gh pr comment $PR_NUMBER --body "$BODY"
 ```
 
 Omit empty sections.
@@ -343,7 +348,7 @@ Fix any pre-commit failures before continuing.
 
 ```bash
 git add "${CHANGED_FILES[@]}"
-git commit -m "$(cat <<'EOF'
+MSG=$(cat <<'EOF'
 fix: address self-review findings
 
 - {summary of fix 1}
@@ -351,7 +356,10 @@ fix: address self-review findings
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
-)"
+)
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind commit --body-file - <<<"$MSG" || exit 1
+git commit -m "$MSG"
 git push origin "$PR_BRANCH"
 ```
 
@@ -376,29 +384,34 @@ comment that survives the pass intact. Lose it and a finished review reads as
 half-finished, fleet-wide.
 
 ```bash
-gh pr comment $PR_NUMBER --body "$(cat <<'EOF'
-## Self-Review — Improvements
+BODY=$(cat <<'EOF'
+## Self-Review: Improvements
 <!-- ai-hero:self-review -->
 <!-- ai-hero:self-review-fixes -->
 
 **Critical (A / X fixed):**
-- FILE:LINE — FINDING — FIX_DESCRIPTION
+- FILE:LINE: FINDING. Fixed: FIX_DESCRIPTION
 
 **Important (B / Y fixed):**
-- FILE:LINE — FINDING — FIX_DESCRIPTION
+- FILE:LINE: FINDING. Fixed: FIX_DESCRIPTION
 
 **Suggestions (C / Z fixed):**
-- FILE:LINE — FINDING — FIX_DESCRIPTION
+- FILE:LINE: FINDING. Fixed: FIX_DESCRIPTION
 
 **Skipped:**
-- FILE:LINE — FINDING — REASON
+- FILE:LINE: FINDING. Skipped: REASON
 
 Commits: SHA1, SHA2
 
 ---
 _Generated using wayfare._
 EOF
-)"
+)
+# The exact text that gets posted. A finding means fix the text and
+# re-run, never post around it.
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind comment --body-file - <<<"$BODY" || exit 1
+gh pr comment $PR_NUMBER --body "$BODY"
 ```
 
 If the post fails, surface the rendered body for manual paste. Do NOT swallow
@@ -424,10 +437,15 @@ and ending with `_Generated using wayfare._` as the final line (humanized with
 Step 7's summary), then apply:
 
 ```bash
-gh pr edit $PR_NUMBER --title "NEW_TITLE_UNDER_70_CHARS" --body "$(cat <<'EOF'
+BODY=$(cat <<'EOF'
 DRAFTED_FULL_BODY_HERE
 EOF
-)"
+)
+# The exact text that gets posted. A finding means fix the text and
+# re-run, never post around it.
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind pr --title "NEW_TITLE_UNDER_70_CHARS" --body-file - <<<"$BODY" || exit 1
+gh pr edit $PR_NUMBER --title "NEW_TITLE_UNDER_70_CHARS" --body "$BODY"
 ```
 
 Substitute `DRAFTED_FULL_BODY_HERE` with actual Markdown before running. The
@@ -558,7 +576,7 @@ For multi-line: also pass `-F start_line=$START_LINE -f start_side="RIGHT"`.
 | No | No | `--approve` (unless questions remain) |
 
 ```bash
-gh pr review $PR_NUMBER {DECISION_FLAG} --body "$(cat <<'EOF'
+BODY=$(cat <<'EOF'
 ## Review Summary
 
 **Findings:** {X} critical, {Y} important, {Z} suggestions
@@ -576,7 +594,12 @@ gh pr review $PR_NUMBER {DECISION_FLAG} --body "$(cat <<'EOF'
 ---
 _Generated using wayfare._
 EOF
-)"
+)
+# The exact text that gets posted. A finding means fix the text and
+# re-run, never post around it.
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind review --body-file - <<<"$BODY" || exit 1
+gh pr review $PR_NUMBER {DECISION_FLAG} --body "$BODY"
 ```
 
 ### Step 5: Report

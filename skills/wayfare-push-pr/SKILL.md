@@ -845,9 +845,21 @@ Additional checks beyond simplify:
 
 **Code Quality**
 
-- [ ] No debug code (print, console.log, debugger)
+Debug code and TODOs without an issue are a script's job, not a read. In
+`commit` mode it reads the uncommitted change, untracked files included;
+otherwise, the whole branch:
+
+```bash
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/diff_leftovers.py"                                  # commit mode
+python3 "$WAYFARE_ROOT/scripts/diff_leftovers.py" --base "origin/$DEFAULT_BRANCH"  # otherwise
+```
+
+Each hit is fixed before the commit: remove the debug line, or give the TODO an
+issue reference (`#123`, `ABC-123`, or a URL). Then read for what a script
+cannot judge:
+
 - [ ] No commented-out code
-- [ ] No TODO/FIXME without associated issue
 - [ ] No obvious security issues
 
 **Completeness**
@@ -889,14 +901,17 @@ Group logically related changes:
 ```bash
 git add file1 file2 ...
 git diff --cached --stat
-git commit -m "$(cat <<'EOF'
+MSG=$(cat <<'EOF'
 {type}({scope}): {description}
 
 {body if needed}
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
-)"
+)
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind commit --body-file - <<<"$MSG" || exit 1
+git commit -m "$MSG"
 ```
 
 **Types:** feat, fix, refactor, docs, style, test, chore, perf
@@ -1034,7 +1049,7 @@ drafted body (3c) before creating. End the body with exactly one attribution
 line, `_Generated using wayfare._`:
 
 ```bash
-gh pr create $DRAFT_FLAG --base "$DEFAULT_BRANCH" --title "$PR_TITLE" --body "$(cat <<'EOF'
+BODY=$(cat <<'EOF'
 ## Summary
 [1-3 sentence overview of what this PR accomplishes]
 
@@ -1059,7 +1074,12 @@ Brief description of what this commit does and why
 
 _Generated using wayfare._
 EOF
-)"
+)
+# The exact text that gets posted. A finding means fix the text and
+# re-run, never post around it.
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind pr --title "$PR_TITLE" --body-file - <<<"$BODY" || exit 1
+gh pr create $DRAFT_FLAG --base "$DEFAULT_BRANCH" --title "$PR_TITLE" --body "$BODY"
 ```
 
 ### A4: Report Success

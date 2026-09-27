@@ -44,7 +44,7 @@ fixture() {
   cat > "$R/skills/wayfare-demo/SKILL.md" <<'EOF'
 ---
 name: wayfare-demo
-description: "Does one thing: demo. Use when testing."
+description: "Does one thing: a demo skill for the suite. Use when testing the checker."
 ---
 
 # Demo
@@ -178,6 +178,27 @@ check "recalibrate count claim" "count" "$(checks_of)"
 
 fixture; printf 'caf\xe9\n' > "$R/latin1.md"
 check "a non-UTF-8 file is reported, not a crash" "read" "$(checks_of)"
+
+fixture; printf -- '---\nname: wayfare-demo\ndescription: "Too short."\n---\n' > "$(SK)"
+check "description under 50 characters" "frontmatter" "$(checks_of)"
+
+fixture; printf -- '---\nname: wayfare-demo\ndescription: "Does one thing and another thing, at length, with no trigger at all."\n---\n' > "$(SK)"
+check "description with no Use phrase" "frontmatter" "$(checks_of)"
+
+fixture; printf -- '---\nname: wayfare-demo\ndescription: "Does one thing and another thing, at length, with no trigger at all."\nuser-invocable: false\n---\n' > "$(SK)"
+check "a chained stage needs no trigger phrase" "" "$(run)"
+
+fixture; printf -- '---\nname: wayfare-demo\ndescription: "Does one thing: a demo skill for the suite. Use when testing the checker."\nuser-invocable: false\nargument-hint: x\n---\n' > "$(SK)"
+check "argument-hint out of place" "frontmatter" "$(checks_of)"
+
+fixture; printf '\n```\ngit commit -m "x\n\nCo-Authored-By: Claude Opus 9.1 <noreply@anthropic.com>"\n```\n' >> "$(SK)"
+check "a model name in an attribution template, even in code" "attribution" "$(checks_of)"
+
+fixture; printf '\nSee [the plan][p].\n\n[p]: docs/MISSING.md\n' >> "$R/README.md"
+check "reference-style link that does not resolve" "link" "$(checks_of)"
+
+fixture; printf '\nSee [the plan](docs/MISSING.md "Plan").\n' >> "$R/README.md"
+check "titled link that does not resolve" "link" "$(checks_of)"
 
 # The banned list is a copy of docs/AGENTS-MD.md R6 (as check-agents-md.sh's
 # is); read the doc so the two cannot drift apart without this failing.

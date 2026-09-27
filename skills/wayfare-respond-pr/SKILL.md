@@ -286,6 +286,9 @@ If checks fail, fix the issues before committing.
 
 ### Step 7: Commit the Fixes
 
+End the message with the attribution trailer your harness specifies, if it
+specifies one; never a model name copied from an example, which goes stale.
+
 ```bash
 git add CHANGED_FILES
 MSG=$(cat <<'EOF'
@@ -293,8 +296,6 @@ fix: address PR review feedback
 
 - [Summary of fix 1]
 - [Summary of fix 2]
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
 )
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
@@ -581,7 +582,11 @@ Trigger depends on the configured method:
 - **Comment trigger** (e.g., Greptile): Post a comment on the PR
 
   ```bash
-  gh pr comment $PR_NUMBER --body "TRIGGER_TEXT"
+  # The trigger carries no footer: a bot matches it exactly.
+  [ -n "$TRIGGER" ] || { echo "HERO.md sets no trigger; nothing to post"; exit 1; }
+  WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+  python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind inline --body-file - <<<"$TRIGGER" || exit 1
+  gh pr comment $PR_NUMBER --body "$TRIGGER"
   ```
 
 - **Label trigger** (e.g., some CodeRabbit setups): Add a label

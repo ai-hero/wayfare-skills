@@ -1,7 +1,7 @@
 ---
 name: wayfare-sync-plan
 # prettier-ignore
-description: "Converge the roadmap with the world: the architecture record, the design snapshot, the hardening audit, prose gone false about the code, the compliance register, the dependency bots' PRs, branches built and never merged, and the goals over it, all into .plans. Proposes items and goals; writes only what the user confirms. Use to refresh what is worth doing."
+description: "Converge the roadmap with the world: the architecture record, the design snapshot, the hardening audit, prose gone false about the code, the compliance register, the dependency bots' PRs, branches built and never merged, and goals, into .plans. Proposes items and goals; writes only what the user confirms. Use to refresh what is worth doing."
 argument-hint: "[CONTEXT | ideas]"
 ---
 

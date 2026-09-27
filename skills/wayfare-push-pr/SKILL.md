@@ -909,6 +909,9 @@ Group logically related changes:
 
 #### 3f: Commit Each Changeset
 
+End the message with the attribution trailer your harness specifies, if it
+specifies one; never a model name copied from an example, which goes stale.
+
 ```bash
 git add file1 file2 ...
 git diff --cached --stat
@@ -916,8 +919,6 @@ MSG=$(cat <<'EOF'
 {type}({scope}): {description}
 
 {body if needed}
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
 )
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"

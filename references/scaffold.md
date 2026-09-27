@@ -193,6 +193,9 @@ DESCRIPTION
 
 ## Step 6: Initialize Git (if standalone)
 
+End the message with the attribution trailer your harness specifies, if it
+specifies one; never a model name copied from an example, which goes stale.
+
 ```bash
 git init
 git add -A
@@ -200,8 +203,6 @@ git commit -m "$(cat <<'EOF'
 chore: initialize PROJECT_NAME
 
 DESCRIPTION
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -245,8 +246,6 @@ into a follow-up commit:
 git add HERO.md AGENTS.md CLAUDE.md
 git commit -m "$(cat <<'EOF'
 chore: add HERO.md and AGENTS.md from wayfare:wayfare-init-repo
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
 )"
 ```

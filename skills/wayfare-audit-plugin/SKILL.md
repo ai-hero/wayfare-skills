@@ -175,12 +175,13 @@ DESCRIPTION QUALITY
 [??] wayfare-create-skill: no trigger phrase — add "Use when..." or "Use for..."
 ```
 
-#### 2f: Alphabetical & Organizational Checks
+#### 2f: Organizational Checks
 
-- Are skills listed alphabetically when referenced in tables (e.g. the "What
-  each skill needs" table)?
 - Are HERO.md sections in a logical order?
-- Are frontmatter fields in a consistent order across skills?
+
+Frontmatter key order, step numbering, description length and the trigger phrase
+are `scripts/check_docs.py`'s, run on every commit and in CI; this audit reports
+what they cannot judge.
 
 ### Step 3: Report Summary
 
@@ -211,11 +212,12 @@ Next step: wayfare:wayfare-push-pr — commit and push the plugin changes (offer
 
 If `--fix` is passed, automatically fix:
 
-- Alphabetical ordering in tables
 - Frontmatter field ordering (name, description, argument-hint,
   disable-model-invocation)
 - Step renumbering gaps
-- Trailing whitespace, inconsistent newlines
+
+Whitespace and line wrapping are the pre-commit hooks' (trailing-whitespace,
+end-of-file-fixer, mdformat), so this skill leaves them alone.
 
 **Never auto-fix:** content changes, description rewrites, and structural
 reorganization. Those need human review.

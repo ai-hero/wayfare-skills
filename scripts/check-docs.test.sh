@@ -218,10 +218,14 @@ check "a footnote is not a link" "" "$(run)"
 fixture; mkdir -p "$R/docs"; printf 'x\n' > "$R/docs/My Plan.md"; printf '\nSee [p](<docs/My Plan.md>) and [q][q].\n\n[q]: <docs/My Plan.md>\n' >> "$R/README.md"
 check "angle-bracket targets with spaces resolve" "" "$(run)"
 
-fixture; git -C "$R" add -A; git -C "$R" -c user.email=t@t -c user.name=t commit -qm base
-git -C "$R" checkout -qb side; printf '\nside \xe2\x80\x94 one\n' >> "$R/README.md"; git -C "$R" -c user.email=t@t -c user.name=t commit -qam side
-git -C "$R" checkout -q -; printf '\nmain two\n' >> "$R/README.md"; git -C "$R" -c user.email=t@t -c user.name=t commit -qam main
+fixture
+# git merge needs an identity before it will even try, and a CI runner has none.
+export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
+git -C "$R" add -A; git -C "$R" commit -qm base
+git -C "$R" checkout -qb side; printf '\nside \xe2\x80\x94 one\n' >> "$R/README.md"; git -C "$R" commit -qam side
+git -C "$R" checkout -q -; printf '\nmain two\n' >> "$R/README.md"; git -C "$R" commit -qam main
 git -C "$R" merge -q side >/dev/null 2>&1
+check "the merge fixture really conflicts" "yes" "$(git -C "$R" ls-files -u -- README.md | grep -q . && echo yes || echo no)"
 check "a conflicted file is read once, not once per stage" "1" "$(python3 "$SCRIPT" --root "$R" 2>/dev/null | grep -c '^README.md:.*em dash')"
 
 # The banned list is a copy of docs/AGENTS-MD.md R6 (as check-agents-md.sh's

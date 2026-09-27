@@ -845,9 +845,32 @@ Additional checks beyond simplify:
 
 **Code Quality**
 
-- [ ] No debug code (print, console.log, debugger)
+Debug code and TODOs without an issue are a script's job, not a read. In
+`commit` mode it reads the uncommitted change against `HEAD`; otherwise, the
+whole branch against its merge base with the default branch. Both read the
+working tree and untracked files, since this runs before the commit:
+
+```bash
+# shellcheck source=/dev/null
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT — export WAYFARE_ROOT as the plugin root"; exit 1; }
+FIRST_ARG=$(printf '%s' "$ARGUMENTS" | awk '{print $1}')
+if [ "$FIRST_ARG" = "commit" ]; then
+  python3 "$WAYFARE_ROOT/scripts/diff_leftovers.py"
+else
+  DEFAULT_BRANCH=$(hero_default_branch)
+  python3 "$WAYFARE_ROOT/scripts/diff_leftovers.py" --base "origin/$DEFAULT_BRANCH"
+fi
+```
+
+Each hit is fixed before the commit, or marked `leftovers: ok` on the same line
+with a reason when the line means it (a test fixture, a pattern list). Fixing
+means removing the debug line or giving the TODO an issue reference (`#123`,
+`ABC-123`, or a URL). Exit 2 is git failing to answer (an unknown base, say):
+fetch the base and re-run, never read it as clean. Then read for what a script
+cannot judge:
+
 - [ ] No commented-out code
-- [ ] No TODO/FIXME without associated issue
 - [ ] No obvious security issues
 
 **Completeness**
@@ -889,14 +912,17 @@ Group logically related changes:
 ```bash
 git add file1 file2 ...
 git diff --cached --stat
-git commit -m "$(cat <<'EOF'
+MSG=$(cat <<'EOF'
 {type}({scope}): {description}
 
 {body if needed}
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
-)"
+)
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind commit --body-file - <<<"$MSG" || exit 1
+git commit -m "$MSG"
 ```
 
 **Types:** feat, fix, refactor, docs, style, test, chore, perf
@@ -1005,7 +1031,7 @@ If `$FETCH_FOR_DIFF_OK` is `false`: this does not block the PR (GitHub computes
 the actual base and diff server-side regardless of local staleness), but the
 title and changeset list generated below are built from this possibly-stale
 local log. Prepend a note to the generated PR body:
-`⚠️ Generated against a possibly-stale local view of $DEFAULT_BRANCH (fetch failed) — verify the changeset list against GitHub's own diff.`
+`Note: generated against a possibly-stale local view of $DEFAULT_BRANCH (fetch failed); verify the changeset list against GitHub's own diff.`
 
 Determine the draft flag (drafts are the default). Parse the first
 whitespace-separated token of `$ARGUMENTS` so trailing whitespace or extra
@@ -1034,7 +1060,7 @@ drafted body (3c) before creating. End the body with exactly one attribution
 line, `_Generated using wayfare._`:
 
 ```bash
-gh pr create $DRAFT_FLAG --base "$DEFAULT_BRANCH" --title "$PR_TITLE" --body "$(cat <<'EOF'
+BODY=$(cat <<'EOF'
 ## Summary
 [1-3 sentence overview of what this PR accomplishes]
 
@@ -1059,7 +1085,12 @@ Brief description of what this commit does and why
 
 _Generated using wayfare._
 EOF
-)"
+)
+# The exact text that gets posted. A finding means fix the text and
+# re-run, never post around it.
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind pr --title "$PR_TITLE" --body-file - <<<"$BODY" || exit 1
+gh pr create $DRAFT_FLAG --base "$DEFAULT_BRANCH" --title "$PR_TITLE" --body "$BODY"
 ```
 
 ### A4: Report Success

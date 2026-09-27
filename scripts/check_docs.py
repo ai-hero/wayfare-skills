@@ -34,8 +34,6 @@ import re
 import subprocess
 import sys
 
-import yaml
-
 # docs/superpowers/ holds dated plans: a record of what was true then.
 EXCLUDE_DIRS = ("analysis/", "memory/", "docs/superpowers/")
 
@@ -130,6 +128,9 @@ def check_frontmatter(rel, text):
     if fm is None:
         error(rel, 1, "frontmatter", "no frontmatter block")
         return
+    # Imported here, not at the top: pr_text_lint.py imports this module for
+    # its prose rules and runs in consumer repos that may not have pyyaml.
+    import yaml
     try:
         data = yaml.safe_load(fm)
     except yaml.YAMLError as e:
@@ -152,6 +153,7 @@ def check_frontmatter(rel, text):
 
 
 def check_yaml_only(rel, text):
+    import yaml
     try:
         yaml.safe_load(frontmatter(text)[0])
     except yaml.YAMLError:

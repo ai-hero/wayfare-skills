@@ -1,7 +1,7 @@
 {
   "name": "wayfare",
   "description": "Plan work and have agents execute it, in a repo and across a fleet of them",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "author": { "name": "AI Hero Inc", "url": "https://github.com/ai-hero" },
   "skills": "./skills/"
 }

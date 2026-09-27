@@ -365,7 +365,9 @@ bash "$WAYFARE_ROOT/scripts/unshipped-branches.sh" "$ROOT"
 
 `UNSHIPPED_OK=false` is not an empty stage: name `UNSHIPPED_ERRORS` and render
 the stage `unverified`. When only `gh` failed the rows still print with
-`pr=unknown`, and a class git decided is still true. Then, by class:
+`pr=unknown`, and a class git decided is still true. A PR column naming a merged
+PR on a row that is not `merged` means that PR shipped an older head and the
+commits since it did not. Then, by class:
 
 - `ship-now` and `stale`: propose one item per branch, `origin: wayfare`,
   `status: accepted`, listed **first** in the proposal table, because finished
@@ -379,6 +381,10 @@ the stage `unverified`. When only `gh` failed the rows still print with
 - `dirty`: a worktree whose branch lands nothing but holds uncommitted files.
   Report the path and the count, and propose nothing until the user says whether
   it is work.
+- `detached`: a worktree on a detached HEAD holding uncommitted files or a
+  commit no branch or tag reaches; its BRANCH column is the HEAD sha. Report the
+  path, the sha and the count, and propose nothing until the user says whether
+  it is work. Removing that worktree destroys the commit with it.
 - `merged`: leftovers. List each with the command that deletes it
   (`git branch -D`, or `git push origin --delete` for an `origin/` row) and run
   none of them. Deleting a branch is the user's act, never this stage's.

@@ -99,7 +99,10 @@ is your next question.
   loss, public contract, money) or a two-way door (cheap to change)? One-way
   doors get slow, deep scrutiny; two-way doors get decided fast and moved past.
 - **Measurable success criteria**: what you will observe to know it worked,
-  stated before building.
+  stated before building. Ask "how would you test this?" of every
+  `## Definition of Done` line; a line with no concrete answer is too vague and
+  gets rewritten. Write the line, never the answer: test design belongs to the
+  build (`../../references/testing.md`).
 - **Failure modes**: the ways this breaks, and the blast radius of each.
 - **Cross-cutting concerns**: security, privacy, observability: addressed while
   they're still cheap to change, not bolted on later.

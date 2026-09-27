@@ -1,7 +1,7 @@
 # Design
 
-> Last updated: 2026-09-22 · Source ref:
-> ac526c82ed713fa612a968ba2f0b80ca1f0a462b
+> Last updated: 2026-09-27 · Source ref:
+> 36ce2b7ab2b488062554b642050cc18718e4396b
 
 Why wayfare is shaped the way it is. Facts the code cannot state about itself,
 and decisions someone would otherwise undo.
@@ -18,10 +18,14 @@ so the interesting risks are distribution risks, not correctness risks.
 
 ## Tech stack
 
-Markdown, bash, and Python for the compliance engine only. No compiled language,
-no dependency manifest beyond the per-agent plugin manifests, no build step.
-`pre-commit` and `scripts/validate.sh` are the entire toolchain. GitHub Actions
-runs the same two gates CI runs locally.
+Markdown, bash, and Python: the compliance engine, the doc checker
+(`check_docs.py`), and the linters the skills run before they post or commit
+(`pr_text_lint.py`, `diff_leftovers.py`). No compiled language, no dependency
+manifest beyond the per-agent plugin manifests (pyyaml is pinned in
+`.pre-commit-config.yaml`), no build step. `pre-commit` holds the gates and the
+`Justfile` names them: `just lint`, `typecheck`, `test` and `validate` run the
+same checks locally and in `pr-check.yaml`, one recipe per CI step. mdformat
+owns Markdown line breaks, so nobody re-wraps a paragraph by hand.
 
 ## Codemap
 
@@ -30,7 +34,9 @@ runs the same two gates CI runs locally.
 | `skills/<name>/SKILL.md` | One skill each: instructions an agent follows, not code it runs. |
 | `references/` | Procedure shared by several skills; a skill points at it rather than restating it. |
 | `docs/` | The standards: the store, connections, the fleet map, messages, pipelines, and the rest. |
-| `scripts/` | The shell library every skill sources, its helpers and `*.test.sh` suites, and the Python compliance engine. |
+| `scripts/` | The shell library every skill sources, its helpers and `*.test.sh` suites, the Python compliance engine (`audit.py`, `consistency.py`), and the Python checkers (`check_docs.py`, `pr_text_lint.py`, `diff_leftovers.py`). |
+| `hooks/` | Claude Code hooks (`hooks.json`): a Stop hook, `check-deferrals.sh`, that blocks a stop once when deferred work was never filed in `.plans/`. Claude Code only; other hosts do not run it. |
+| `Justfile` | The gate recipes CI calls, one per step. |
 | `assets/` | Files installed **into** other repos, except `assets/compliance/`, the baseline register read in place. |
 | `.claude-plugin/`, `.codex-plugin/`, `.agents/` | One manifest per agent host, over the same skills. |
 | `.github/workflows/auto-approve.yaml` | The shared reusable workflow ~25 repos execute at `@main`. |
@@ -47,14 +53,14 @@ runs the same two gates CI runs locally.
 | `assets/` → consumers | Vendored into other repos by the installers and the fleet scan. Treat as downstream output: fix here, re-vendor. |
 | `assets/compliance/` → engine | Not installed anywhere. The engine reads the baseline in place and merges the fleet's overlay over it by id. |
 | `.github/workflows/auto-approve.yaml` → consumers | Executed *in place* by ~25 repos via `uses: …@main`. Not copied; resolved at trigger time. |
-| repo → sibling repo | Through a message in the sibling's `.plans/inbox/`, never by writing into its checkout. |
+| repo → sibling repo | Through a message, a new file in the sibling's `.plans/inbox/` and the only write allowed there; never by editing its code or config. |
 
 The `auto-approve` rows are the ones that surprise people.
 `assets/auto-approve/caller.yaml` is **copied**; `auto-approve.yaml` is
 **called**. A change to the first reaches a repo when someone re-runs the
 installer. A change to the second reaches every repo on merge.
 
-Three files carry wayfare's state in a consuming repo, and each has one owner:
+Three places carry wayfare's state in a consuming repo, and each has one owner:
 `HERO.md` (one repo's config), `FLEET.md` (the local, unversioned map of the
 sibling checkouts), and `.plans/` (the roadmap store, whose schema
 `docs/PLAN.md` defines). A verb scoped to the wrong one writes the wrong file.
@@ -64,10 +70,12 @@ sibling checkouts), and `.plans/` (the roadmap store, whose schema
 ### Testing
 
 `scripts/*.test.sh`, globbed by both `pre-commit` and CI so a new suite gates
-without a runner edit; the Python engine's tests run through one of them. They
-assert exit codes and filesystem state, never stdout wording: output text
-changes for documentation reasons and would make the suite brittle for no
-bug-catching value.
+without a runner edit; the Python scripts' tests run through them too
+(`audit.test.sh` runs `audit_test.py`; `check-docs.test.sh` and
+`pr-text-checks.test.sh` drive the checkers). They assert exit codes, filesystem
+state and a finding's machine tag, never its prose: output text changes for
+documentation reasons and would make the suite brittle for no bug-catching
+value.
 
 `install-auto-approve.test.sh` additionally asserts the **caller↔callee
 contract**: secret declarations line up, the caller's permissions cover what the
@@ -111,13 +119,13 @@ errored. That is the failure mode copying produces: a fix made once reaches
 nobody, and nothing reports the drift.
 
 Calling it means this class of bug is fixed once. The cost is the blast radius
-above, which is why `main`'s protection settings are a gate rather than hygiene.
+above, which is why `main`'s protection settings are a gate, not hygiene.
 
 ### Gates live in code, not in the prompt
 
-`auto-approve.yaml` checks *prior review present* and *all threads resolved* as
-deterministic bash steps before the model is consulted. Other repos in the fleet
-historically asked the model to judge those in the prompt.
+`auto-approve.yaml` checks *prior review present*, *all threads resolved* and
+*CI green* as deterministic bash steps before the model is consulted. Other
+repos in the fleet historically asked the model to judge those in the prompt.
 
 Deterministic beats judged for anything with a crisp answer: the model's job is
 narrowed to what only a model can do: reading a diff against a description. A
@@ -126,6 +134,12 @@ gate that a prompt can be talked out of is not a gate.
 The trigger is anchored for the same reason: it fires only when a comment
 *starts with* the command. Matching anywhere meant that merely writing about
 `@auto-approve` (as a self-review comment does) posted a real approval.
+
+The same holds for this repo's own commits. `scripts/check_docs.py` enforces the
+mechanical doc rules (frontmatter, step numbering, dashes, banned phrases,
+chains, counts, links) that a model review used to judge on every commit, and
+`pr_text_lint.py` and `diff_leftovers.py` gate PR text and added lines before a
+skill posts. What still needs judgment runs on demand, not on every commit.
 
 ### 2026-09-22: The repo is renamed to wayfare-skills, and consumers are re-vendored before anything else
 
@@ -146,7 +160,10 @@ The trigger is anchored for the same reason: it fires only when a comment
 - Context: the skills were Claude Code only, and found their scripts through
   `CLAUDE_PLUGIN_ROOT`, a harness variable that is not reliably set even there.
 - Decision: ship a manifest per host over the same `skills/`, and resolve
-  scripts through `WAYFARE_ROOT` with the default clone path as fallback, rather
-  than forking skills per agent.
+  scripts through one sanctioned line,
+  `WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"`,
+  rather than forking skills per agent.
 - Consequences: a skill may not depend on a Claude-Code-only mechanism without a
-  fallback; `validate.sh` rejects a bare `CLAUDE_PLUGIN_ROOT`.
+  fallback; `validate.sh` fails any other plugin-root resolver in `skills/` or
+  `references/` code blocks. Hooks are the exception: `hooks/` is Claude Code
+  only, and not covered.

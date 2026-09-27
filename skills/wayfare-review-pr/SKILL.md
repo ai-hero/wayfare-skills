@@ -444,12 +444,15 @@ EOF
 # The exact text that gets posted. A finding means fix the text and
 # re-run, never post around it.
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind pr --title "NEW_TITLE_UNDER_70_CHARS" --body-file - <<<"$BODY" || exit 1
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind pr-edit --title "NEW_TITLE_UNDER_70_CHARS" --body-file - <<<"$BODY" || exit 1
 gh pr edit $PR_NUMBER --title "NEW_TITLE_UNDER_70_CHARS" --body "$BODY"
 ```
 
 Substitute `DRAFTED_FULL_BODY_HERE` with actual Markdown before running. The
-drafted body must end with `_Generated using wayfare._`.
+drafted body must end with `_Generated using wayfare._`. `--kind pr-edit` skips
+the prose rules on the body, because the body it edits was often written by a
+person or before those rules existed; the title, footer and placeholders are
+still checked, and the lines you add still follow HUMANIZING.md.
 
 ### Step 9: Ask to Mark Ready
 
@@ -539,24 +542,32 @@ simultaneously, and aggregate findings.
 
 ### Step 3: Post Inline Comments
 
-Map severity to prefix:
+Start each comment with its severity as a word, never an emoji
+([docs/HUMANIZING.md](../../docs/HUMANIZING.md) bans them in posted text):
 
 | Category | Prefix |
 | -- | -- |
-| Critical | `🔴` |
-| Important | `🟡` |
-| Suggestion | `🔵 nit:` |
-| Question | `❓` |
-| Strength | `👍` |
+| Critical | `Critical:` |
+| Important | `Important:` |
+| Suggestion | `nit:` |
+| Question | `Question:` |
+| Strength | `Nice:` |
 
 Comment guidelines: be specific, constructive, respectful. Skip findings already
-raised by others. Skip nits the linter catches.
+raised by others. Skip nits the linter catches. An inline comment carries no
+footer; the lint still checks it for placeholders and the prose rules.
 
 ```bash
 OWNER=$(echo "$PR_URL" | awk -F/ '{print $4}')
 REPO=$(echo "$PR_URL" | awk -F/ '{print $5}')
 HEAD_SHA=$(gh pr view "$PR_NUMBER" --json commits --jq '.commits[-1].oid')
 
+COMMENT_BODY=$(cat <<'EOF'
+Important: {finding}
+EOF
+)
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind inline --body-file - <<<"$COMMENT_BODY" || exit 1
 gh api "repos/$OWNER/$REPO/pulls/$PR_NUMBER/comments" \
   -f body="$COMMENT_BODY" \
   -f commit_id="$HEAD_SHA" \

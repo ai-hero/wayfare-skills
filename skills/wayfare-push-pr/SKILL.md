@@ -846,17 +846,28 @@ Additional checks beyond simplify:
 **Code Quality**
 
 Debug code and TODOs without an issue are a script's job, not a read. In
-`commit` mode it reads the uncommitted change, untracked files included;
-otherwise, the whole branch:
+`commit` mode it reads the uncommitted change against `HEAD`; otherwise, the
+whole branch against its merge base with the default branch. Both read the
+working tree and untracked files, since this runs before the commit:
 
 ```bash
+# shellcheck source=/dev/null
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-python3 "$WAYFARE_ROOT/scripts/diff_leftovers.py"                                  # commit mode
-python3 "$WAYFARE_ROOT/scripts/diff_leftovers.py" --base "origin/$DEFAULT_BRANCH"  # otherwise
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT — export WAYFARE_ROOT as the plugin root"; exit 1; }
+FIRST_ARG=$(printf '%s' "$ARGUMENTS" | awk '{print $1}')
+if [ "$FIRST_ARG" = "commit" ]; then
+  python3 "$WAYFARE_ROOT/scripts/diff_leftovers.py"
+else
+  DEFAULT_BRANCH=$(hero_default_branch)
+  python3 "$WAYFARE_ROOT/scripts/diff_leftovers.py" --base "origin/$DEFAULT_BRANCH"
+fi
 ```
 
-Each hit is fixed before the commit: remove the debug line, or give the TODO an
-issue reference (`#123`, `ABC-123`, or a URL). Then read for what a script
+Each hit is fixed before the commit, or marked `leftovers: ok` on the same line
+with a reason when the line means it (a test fixture, a pattern list). Fixing
+means removing the debug line or giving the TODO an issue reference (`#123`,
+`ABC-123`, or a URL). Exit 2 is git failing to answer (an unknown base, say):
+fetch the base and re-run, never read it as clean. Then read for what a script
 cannot judge:
 
 - [ ] No commented-out code
@@ -1020,7 +1031,7 @@ If `$FETCH_FOR_DIFF_OK` is `false`: this does not block the PR (GitHub computes
 the actual base and diff server-side regardless of local staleness), but the
 title and changeset list generated below are built from this possibly-stale
 local log. Prepend a note to the generated PR body:
-`⚠️ Generated against a possibly-stale local view of $DEFAULT_BRANCH (fetch failed) — verify the changeset list against GitHub's own diff.`
+`Note: generated against a possibly-stale local view of $DEFAULT_BRANCH (fetch failed); verify the changeset list against GitHub's own diff.`
 
 Determine the draft flag (drafts are the default). Parse the first
 whitespace-separated token of `$ARGUMENTS` so trailing whitespace or extra

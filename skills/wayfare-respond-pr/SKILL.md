@@ -315,12 +315,20 @@ git push origin $(git branch --show-current)
 
 Draft every reply first, humanize them in one pass against
 [docs/HUMANIZING.md](../../docs/HUMANIZING.md), then for each addressed comment
-post its reply and resolve the thread:
+lint its reply, post it, and resolve the thread. Paraphrase what the reviewer
+said rather than quoting it: a verbatim quote carries their em dashes and emoji
+into your text, and the lint rejects them. A reply carries no footer, so it is
+linted as `--kind inline`.
 
 ```bash
-# Reply to the comment explaining the fix
+REPLY=$(cat <<'EOF'
+Fixed: FIX_DESCRIPTION
+EOF
+)
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind inline --body-file - <<<"$REPLY" || exit 1
 gh api repos/{owner}/{repo}/pulls/$PR_NUMBER/comments \
-  -f body="Fixed — [brief description of what changed]" \
+  -f body="$REPLY" \
   -F in_reply_to=$COMMENT_ID
 
 # Resolve the thread via GraphQL
@@ -336,8 +344,14 @@ gh api graphql -f query='
 For question comments where the user provided an answer:
 
 ```bash
+REPLY=$(cat <<'EOF'
+ANSWER_OR_RATIONALE
+EOF
+)
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind inline --body-file - <<<"$REPLY" || exit 1
 gh api repos/{owner}/{repo}/pulls/$PR_NUMBER/comments \
-  -f body="[User's explanation or rationale]" \
+  -f body="$REPLY" \
   -F in_reply_to=$COMMENT_ID
 ```
 
@@ -399,11 +413,11 @@ EOF
 )
 
 # Substitute the placeholders, drop empty sections, then post.
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind comment --body-file - <<<"$COMMENT_BODY" || exit 1
 # If the post fails (network, gh auth), surface the rendered body so
 # the user can paste it manually — do NOT swallow the error and
 # pretend the comment was posted.
-WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind comment --body-file - <<<"$COMMENT_BODY" || exit 1
 if ! gh pr comment $PR_NUMBER --body "$COMMENT_BODY"; then
   echo "ERROR: Failed to post improvements comment. Body follows — paste manually:"
   printf '%s\n' "$COMMENT_BODY"
@@ -457,14 +471,18 @@ EOF
 # The exact text that gets posted. A finding means fix the text and
 # re-run, never post around it.
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind pr --title "NEW_TITLE_UNDER_70_CHARS" --body-file - <<<"$BODY" || exit 1
+python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind pr-edit --title "NEW_TITLE_UNDER_70_CHARS" --body-file - <<<"$BODY" || exit 1
 gh pr edit $PR_NUMBER --title "NEW_TITLE_UNDER_70_CHARS" --body "$BODY"
 ```
 
 Substitute `DRAFTED_FULL_BODY_HERE` with the actual drafted Markdown before
-running. The drafted body must end with `_Generated using wayfare._`. Never run
-the snippet with the placeholder still in place, or it will overwrite the PR
-description with the literal string `DRAFTED_FULL_BODY_HERE`.
+running. The drafted body must end with `_Generated using wayfare._`.
+`--kind pr-edit` skips the prose rules on the body, because the body it edits
+was often written by a person or before those rules existed; the title, footer
+and placeholders are still checked, and the lines you add still follow
+HUMANIZING.md. Never run the snippet with the placeholder still in place, or it
+will overwrite the PR description with the literal string
+`DRAFTED_FULL_BODY_HERE`.
 
 Rules:
 

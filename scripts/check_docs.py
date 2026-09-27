@@ -34,6 +34,8 @@ import re
 import subprocess
 import sys
 
+import yaml
+
 # docs/superpowers/ holds dated plans: a record of what was true then.
 EXCLUDE_DIRS = ("analysis/", "memory/", "docs/superpowers/")
 
@@ -96,9 +98,12 @@ def prose_lines(text):
         if m:
             if fence is None:
                 fence = m.group(1)
-            elif stripped.startswith(fence):
+                continue
+            # Only a bare run of the same character, at least as long, closes
+            # a fence (CommonMark); a ```bash line inside one is content.
+            if re.fullmatch(re.escape(fence[0]) + "{%d,}\\s*" % len(fence), stripped):
                 fence = None
-            continue
+                continue
         keep[i] = fence is None and not off
     # Strip inline code over the whole text, not per line: the formatter wraps
     # paragraphs, so a code span routinely starts on one line and ends on the
@@ -125,9 +130,6 @@ def check_frontmatter(rel, text):
     if fm is None:
         error(rel, 1, "frontmatter", "no frontmatter block")
         return
-    # Imported here so pr_text_lint.py, which shares the prose rules, runs in
-    # a consumer repo without pyyaml installed.
-    import yaml
     try:
         data = yaml.safe_load(fm)
     except yaml.YAMLError as e:
@@ -136,10 +138,13 @@ def check_frontmatter(rel, text):
         error(rel, line, "frontmatter",
               "does not parse as YAML (quote a value that contains ': ')")
         return
-    keys = list(data or {})
+    if not isinstance(data, dict):
+        error(rel, 2, "frontmatter", "is not a mapping of keys to values")
+        return
+    keys = list(data)
     if keys[:2] != ["name", "description"]:
         error(rel, 2, "frontmatter", f"keys must start name, description; got {keys[:2]}")
-    desc = (data or {}).get("description")
+    desc = data.get("description")
     if not isinstance(desc, str) or not desc.strip():
         error(rel, 2, "frontmatter", "description missing")
     elif len(desc) > 1024:
@@ -147,7 +152,6 @@ def check_frontmatter(rel, text):
 
 
 def check_yaml_only(rel, text):
-    import yaml
     try:
         yaml.safe_load(frontmatter(text)[0])
     except yaml.YAMLError:
@@ -201,6 +205,23 @@ def check_skill_prose(rel, text):
             error(rel, n, "todo", "TODO/FIXME/XXX note left in skill prose")
 
 
+def check_markers(rel, text):
+    # prose_lines honours these silently, so a missing `on` would exempt the
+    # rest of the file without anyone seeing it.
+    state, opened = "on", 0
+    for n, line in enumerate(text.splitlines(), 1):
+        if "<!-- check-docs: off -->" in line:
+            if state == "off":
+                error(rel, n, "marker", "check-docs: off inside an off region")
+            state, opened = "off", n
+        elif "<!-- check-docs: on -->" in line:
+            if state == "on":
+                error(rel, n, "marker", "check-docs: on with no off before it")
+            state = "on"
+    if state == "off":
+        error(rel, opened, "marker", "check-docs: off is never turned back on")
+
+
 def check_prose(rel, text):
     for n, line in prose_lines(text):
         for pat, what in PROSE_CHARS:
@@ -229,7 +250,8 @@ def canonical_chains(root):
 
 def count_word_near(lines, i):
     for j in range(max(0, i - 2), min(len(lines), i + 3)):
-        m = re.search(r"\b(\w+) (?:stages|steps)\b", lines[j], re.I)
+        # "Four steps:" introduces the chain; "the next two steps" does not.
+        m = re.search(r"\b(\w+) (?:stages|steps):", lines[j], re.I)
         if m and m.group(1).lower() in NUMBER_WORDS:
             return j + 1, NUMBER_WORDS[m.group(1).lower()]
     return None, None
@@ -237,19 +259,33 @@ def count_word_near(lines, i):
 
 def check_chains(rel, text, chains):
     lines = text.splitlines()
-    for i, line in enumerate(lines):
-        for m in CHAIN.finditer(line):
-            seq = m.group(0).split(" → ")
-            for canon in chains:
-                if seq[:2] != canon[:2]:
-                    continue
-                if seq != canon:
-                    error(rel, i + 1, "chain",
-                          f"'{m.group(0)}' differs from docs/PIPELINES.md: {' → '.join(canon)}")
-                    continue
-                ln, n = count_word_near(lines, i)
-                if n is not None and n != len(canon):
-                    error(rel, ln, "chain", f"says {n} but the chain has {len(canon)}")
+    # The formatter wraps a chain written in prose, so match across single
+    # line breaks. One character for one keeps every offset, so a match's
+    # line number is still the count of newlines before it.
+    joined = re.sub(r"\n(?!\n)", " ", text)
+    # Spaces and tabs only, so a match cannot run past a paragraph break.
+    for m in re.finditer(r"[\w-]+(?:[ \t]+→[ \t]+[\w-]+)+", joined):
+        seq = re.split(r"[ \t]+→[ \t]+", m.group(0))
+        i = text.count("\n", 0, m.start())
+        for canon in chains:
+            if seq[:2] != canon[:2]:
+                continue
+            if seq != canon:
+                error(rel, i + 1, "chain",
+                      f"'{' → '.join(seq)}' differs from docs/PIPELINES.md: {' → '.join(canon)}")
+                continue
+            ln, n = count_word_near(lines, i)
+            if n is not None and n != len(canon):
+                error(rel, ln, "chain", f"says {n} but the chain has {len(canon)}")
+
+
+def read(root, rel):
+    """The file's text with CRLF normalised, or None after reporting why not."""
+    try:
+        return (root / rel).read_text(encoding="utf-8").replace("\r\n", "\n")
+    except (OSError, UnicodeDecodeError) as e:
+        error(rel, 1, "read", f"unreadable: {e.__class__.__name__}")
+        return None
 
 
 def check_counts(root):
@@ -271,7 +307,9 @@ def check_counts(root):
         ("ship-pr-fields", r"about the (\w+) fields `?wayfare-ship-pr`? reads"),
     ]
     for rel in tracked(root, "*.md"):
-        text = (root / rel).read_text()
+        text = read(root, rel)
+        if text is None:
+            continue
         for n, line in enumerate(text.splitlines(), 1):
             for fact, pat in claims:
                 for m in re.finditer(pat, line, re.I):
@@ -301,15 +339,24 @@ def main():
         ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True,
         check=True).stdout.strip())
 
+    for required in ("docs/PIPELINES.md", "docs/CONNECTIONS.md", "scripts/hero-fields.sh"):
+        if not (root / required).is_file():
+            print(f"check_docs: {required} is missing; the chain and count checks read it",
+                  file=sys.stderr)
+            return 2
     chains = canonical_chains(root)
     for rel in tracked(root, "*.md"):
-        text = (root / rel).read_text()
+        text = read(root, rel)
+        if text is None:
+            continue
         if re.fullmatch(r"skills/[^/]+/SKILL\.md", rel):
             check_frontmatter(rel, text)
             check_steps(rel, text)
-            check_skill_prose(rel, text)
         elif frontmatter(text)[0] is not None:
             check_yaml_only(rel, text)
+        if re.fullmatch(r"skills/[^/]+/SKILL\.md|references/.+\.md", rel):
+            check_skill_prose(rel, text)
+        check_markers(rel, text)
         check_prose(rel, text)
         check_chains(rel, text, chains)
         check_links(root, rel, text)

@@ -17,6 +17,8 @@ check: lint test validate
 lint:
     @pre-commit run shellcheck --all-files
     @pre-commit run markdownlint --all-files
+    @pre-commit run mdformat --all-files
+    @pre-commit run check-docs --all-files
 
 # rglob, not glob: glob drops any path component starting with a dot, so
 # .github/ and .pre-commit-config.yaml would be invisible and this would

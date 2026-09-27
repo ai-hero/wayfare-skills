@@ -73,8 +73,7 @@ errored. That is the failure mode copying produces: a fix made once reaches
 nobody, and nothing reports the drift.
 
 Calling it means this class of bug is fixed once. The cost is the blast radius
-above, which is why `main`'s protection settings are the only gate rather than
-hygiene.
+above, which is why `main`'s protection settings are a gate, not hygiene.
 
 ### Gates live in code, not in the prompt
 

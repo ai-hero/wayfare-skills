@@ -137,5 +137,58 @@ check "broken relative link" "link" "$(checks_of)"
 fixture; ln -s README.md "$R/CLAUDE.md"; printf '\nThis \xe2\x80\x94 that.\n' >> "$R/README.md"
 check "a symlink is not checked twice" "1" "$(run | grep -c '\[prose\]')"
 
+fixture; sed -i.bak 's/^#### 1b: Sub/#### 2a: Sub/' "$(SK)"; rm -f "$(SK).bak"
+check "sub-step under the wrong step" "steps" "$(checks_of)"
+
+fixture; printf -- '---\nname: wayfare-demo\ndescription: "%s"\n---\n' "$(printf 'x%.0s' {1..1030})" > "$(SK)"
+check "description over 1024 characters" "frontmatter" "$(checks_of)"
+
+fixture; printf '# No frontmatter\n' > "$(SK)"
+check "skill with no frontmatter" "frontmatter" "$(checks_of)"
+
+fixture; printf -- '---\n- just\n- a list\n---\n' > "$(SK)"
+check "frontmatter that is not a mapping is reported, not a crash" "frontmatter" "$(checks_of)"
+
+fixture; printf '\nPages 3\xe2\x80\x935.\n' >> "$R/README.md"
+check "en dash" "prose" "$(checks_of)"
+
+fixture; printf '\nShip it \xf0\x9f\x9a\x80\n' >> "$R/README.md"
+check "emoji" "prose" "$(checks_of)"
+
+fixture; printf '\n```\nTODO: an example note\n```\n' >> "$(SK)"
+check "a TODO inside a fence is exempt" "" "$(run)"
+
+fixture; printf '\n```\ncode\n```bash\nThis \xe2\x80\x94 is still code.\n```\n' >> "$R/README.md"
+check "an info-string line does not close a fence" "" "$(run)"
+
+fixture; printf '\n<!-- check-docs: off -->\nx\n' >> "$R/README.md"
+check "an off marker never turned back on" "marker" "$(checks_of)"
+
+fixture; printf '\nThe build runs a →\nb → c in order.\n' >> "$R/README.md"
+check "a chain wrapped across lines is still the chain" "" "$(run)"
+
+fixture; printf '\nThe next two steps are optional.\na → b → c\n' >> "$R/README.md"
+check "a number of steps that does not introduce the chain" "" "$(run)"
+
+fixture; printf '\nIt is one of two kinds, one block each.\n' >> "$R/README.md"
+check "a kinds count in another wording is not a claim" "" "$(run)"
+
+fixture; printf '\nEleven skills carry the verb.\n' >> "$R/README.md"
+check "recalibrate count claim" "count" "$(checks_of)"
+
+fixture; printf 'caf\xe9\n' > "$R/latin1.md"
+check "a non-UTF-8 file is reported, not a crash" "read" "$(checks_of)"
+
+# The banned list is a copy of docs/AGENTS-MD.md R6 (as check-agents-md.sh's
+# is); read the doc so the two cannot drift apart without this failing.
+DOC="$(cd "$(dirname "$0")/.." && pwd)/docs/AGENTS-MD.md"
+r6=$(awk 'index($0, "6. **R6") == 1 {on=1; print; next} on && (/^[0-9]+\. / || /^$/) {exit} on' "$DOC" \
+  | grep -oE '`[^`]+`' | tr -d '`')
+check "R6 list read from docs/AGENTS-MD.md" "yes" "$([ -n "$r6" ] && echo yes || echo no)"
+while IFS= read -r phrase; do
+  fixture; printf '\nWe %s here.\n' "$phrase" >> "$R/README.md"
+  check "R6 phrase '$phrase' is banned in docs" "prose" "$(checks_of)"
+done <<<"$r6"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

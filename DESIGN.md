@@ -1,49 +1,87 @@
 # Design
 
-> Last updated: 2026-08-07 · Source ref:
-> ffe17a28a74d0a0f23730ad438e01486d297f880
+> Last updated: 2026-09-22 · Source ref:
+> ac526c82ed713fa612a968ba2f0b80ca1f0a462b
 
 Why wayfare is shaped the way it is. Facts the code cannot state about itself,
 and decisions someone would otherwise undo.
 
 ## Overview
 
-A Claude Code plugin: skills, the scripts they call, and assets they install
-into other repos. No product, no build, no runtime. Its output is *other repos'
-configuration*.
+Scope: the whole repo. An agent plugin, installed into Claude Code and, through
+the same skills, into Codex and other agents: skills, the procedure documents
+they read, the scripts they call, and assets they install into other repos. No
+product, no build, no runtime. Its output is *other repos' configuration*.
 
 That inversion drives everything below: a change here is a change to ~25 repos,
 so the interesting risks are distribution risks, not correctness risks.
 
 ## Tech stack
 
-Shell (bash) and Markdown. No compiled language, no package manifest, no build
-step. `pre-commit` and `scripts/validate.sh` are the entire toolchain. GitHub
-Actions runs the same two gates CI runs locally.
+Markdown, bash, and Python for the compliance engine only. No compiled language,
+no dependency manifest beyond the per-agent plugin manifests, no build step.
+`pre-commit` and `scripts/validate.sh` are the entire toolchain. GitHub Actions
+runs the same two gates CI runs locally.
 
 ## Codemap
 
 | Path | What lives there |
 | -- | -- |
 | `skills/<name>/SKILL.md` | One skill each: instructions an agent follows, not code it runs. |
-| `scripts/` | Shell helpers and their `*.test.sh` suites; `validate.sh` checks plugin structure. |
-| `assets/` | Files copied **into** other repos by the installers. |
+| `references/` | Procedure shared by several skills; a skill points at it rather than restating it. |
+| `docs/` | The standards: the store, connections, the fleet map, messages, pipelines, and the rest. |
+| `scripts/` | The shell library every skill sources, its helpers and `*.test.sh` suites, and the Python compliance engine. |
+| `assets/` | Files installed **into** other repos, except `assets/compliance/`, the baseline register read in place. |
+| `.claude-plugin/`, `.codex-plugin/`, `.agents/` | One manifest per agent host, over the same skills. |
 | `.github/workflows/auto-approve.yaml` | The shared reusable workflow ~25 repos execute at `@main`. |
 | `.github/workflows/pr-check.yaml` | This repo's own gate. |
-| `docs/` | Non-entry documentation, e.g. `PIPELINES.md`. |
 
 ## Boundaries
 
 | Boundary | Rule |
 | -- | -- |
 | `skills/` → the world | Skills are instructions, not code. They are read by an agent and executed with the agent's own tools. |
-| `assets/` → consumers | Copied verbatim into other repos by `scripts/install-*.sh`. Treat as vendored downstream: fix here, re-vendor. |
+| `skills/` → `references/`, `docs/` | A skill links procedure; it never copies it. Two copies of a rule drift and then disagree about the same file. |
+| `skills/` → `scripts/` | Resolved through `WAYFARE_ROOT` (the plugin root), never the checkout's own `scripts/`: during a review the checkout is the branch under review, and a file in it cannot prove it is the plugin. |
+| skill → skill | Stage skills are not user-invocable and are reached only through the skill that chains them; `validate.sh` enforces who may chain whom. |
+| `assets/` → consumers | Vendored into other repos by the installers and the fleet scan. Treat as downstream output: fix here, re-vendor. |
+| `assets/compliance/` → engine | Not installed anywhere. The engine reads the baseline in place and merges the fleet's overlay over it by id. |
 | `.github/workflows/auto-approve.yaml` → consumers | Executed *in place* by ~25 repos via `uses: …@main`. Not copied; resolved at trigger time. |
+| repo → sibling repo | Through a message in the sibling's `.plans/inbox/`, never by writing into its checkout. |
 
-The last row is the one that surprises people. `assets/auto-approve/caller.yaml`
-is **copied**; `auto-approve.yaml` is **called**. A change to the first reaches
-a repo when someone re-runs the installer. A change to the second reaches every
-repo on merge.
+The `auto-approve` rows are the ones that surprise people.
+`assets/auto-approve/caller.yaml` is **copied**; `auto-approve.yaml` is
+**called**. A change to the first reaches a repo when someone re-runs the
+installer. A change to the second reaches every repo on merge.
+
+Three files carry wayfare's state in a consuming repo, and each has one owner:
+`HERO.md` (one repo's config), `FLEET.md` (the local, unversioned map of the
+sibling checkouts), and `.plans/` (the roadmap store, whose schema
+`docs/PLAN.md` defines). A verb scoped to the wrong one writes the wrong file.
+
+## Invariants
+
+### Testing
+
+`scripts/*.test.sh`, globbed by both `pre-commit` and CI so a new suite gates
+without a runner edit; the Python engine's tests run through one of them. They
+assert exit codes and filesystem state, never stdout wording: output text
+changes for documentation reasons and would make the suite brittle for no
+bug-catching value.
+
+`install-auto-approve.test.sh` additionally asserts the **caller↔callee
+contract**: secret declarations line up, the caller's permissions cover what the
+callee declares, `secrets: inherit` is absent, and the caller tracks `main`.
+Those violations fail in the *consuming* repos, not here, so nothing in this
+repo's normal feedback loop would surface them.
+
+### Compliance
+
+The engine and a generic baseline register ship here; the fleet's overlay (its
+incident history and any checks of its own) lives in the fleet's register
+checkout and wins by id. This repo is audited as a family member. A check names
+no repo (not an exemplar and not an exemption), so an open gap shows up as a
+failing cell every run rather than as a carve-out nobody re-reads.
 
 ## Decisions
 
@@ -73,7 +111,7 @@ errored. That is the failure mode copying produces: a fix made once reaches
 nobody, and nothing reports the drift.
 
 Calling it means this class of bug is fixed once. The cost is the blast radius
-above, which is why `main`'s protection settings are a gate, not hygiene.
+above, which is why `main`'s protection settings are a gate rather than hygiene.
 
 ### Gates live in code, not in the prompt
 
@@ -89,24 +127,26 @@ The trigger is anchored for the same reason: it fires only when a comment
 *starts with* the command. Matching anywhere meant that merely writing about
 `@auto-approve` (as a self-review comment does) posted a real approval.
 
-## Invariants
+### 2026-09-22: The repo is renamed to wayfare-skills, and consumers are re-vendored before anything else
 
-### Testing
+- Context: `hero-skills` became `wayfare-skills`. The content API and the web UI
+  follow the rename redirect; Actions does not, so every consumer's `uses:`
+  failed at startup (zero jobs, no failing step) until its caller was
+  re-vendored. Measured: four consumers went green the minute their `uses:` was
+  updated.
+- Decision: treat a consumer still on the old path as broken now, reported by
+  `wayfare-init-repo` as `AUTO_APPROVE_STALE`; once nothing references it, claim
+  `ai-hero/hero-skills` as an empty archived repo.
+- Consequences: a rename of this repo or of `auto-approve.yaml` is a sequenced
+  migration, never a merge. Leaving the old name unclaimed would let any org
+  member who creates it receive the secrets a stale consumer passes.
 
-`scripts/*.test.sh`, globbed by both `pre-commit` and CI so a new suite gates
-without a runner edit. They assert exit codes and filesystem state, never stdout
-wording: output text changes for documentation reasons and would make the suite
-brittle for no bug-catching value.
+### 2026-09-22: One set of skills, installed into more than one agent
 
-`install-auto-approve.test.sh` additionally asserts the **caller↔callee
-contract**: secret declarations line up, the caller's permissions cover what the
-callee declares, `secrets: inherit` is absent, and the caller tracks `main`.
-Those violations fail in the *consuming* repos, not here, so nothing in this
-repo's normal feedback loop would surface them.
-
-### Compliance
-
-Controls are defined in the fleet's register checkout (`CONTROLS.yaml` /
-`CHECKS.yaml`), not here. This repo is audited as a family member. A check names
-no repo (not an exemplar and not an exemption), so an open gap shows up as a
-failing cell every run rather than as a carve-out nobody re-reads.
+- Context: the skills were Claude Code only, and found their scripts through
+  `CLAUDE_PLUGIN_ROOT`, a harness variable that is not reliably set even there.
+- Decision: ship a manifest per host over the same `skills/`, and resolve
+  scripts through `WAYFARE_ROOT` with the default clone path as fallback, rather
+  than forking skills per agent.
+- Consequences: a skill may not depend on a Claude-Code-only mechanism without a
+  fallback; `validate.sh` rejects a bare `CLAUDE_PLUGIN_ROOT`.

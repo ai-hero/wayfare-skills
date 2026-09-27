@@ -208,11 +208,11 @@ contract is [RECALIBRATE.md](./RECALIBRATE.md).
 ### Pipeline 4: wayfare-sync-plan, one round of convergence
 
 ```
-config → inbox → architecture → harden → comments → compliance → local → deps → design → reconcile → plan → goals
+config → inbox → architecture → harden → comments → compliance → local → deps → unshipped → design → reconcile → plan → goals
 ```
 
-Owner: `wayfare:wayfare-sync-plan`. Twelve stages: the config gate; the mailbox
-(`docs/MESSAGES.md`, every unread message through the fleet gate and the
+Owner: `wayfare:wayfare-sync-plan`. Thirteen stages: the config gate; the
+mailbox (`docs/MESSAGES.md`, every unread message through the fleet gate and the
 promotion gate, a `type: bug` message becoming a proposed `shape: defect` task);
 `wayfare:wayfare-review-architecture` (offering its `sync`);
 `wayfare:wayfare-audit-security all`; the `comments` stage (prose gone false
@@ -220,8 +220,9 @@ about the code, references/sync.md *The `comments` stage*); the compliance audit
 (`scripts/audit.py --repo THIS`, baseline plus the fleet's register overlay)
 with each failing check proposed as an item; the repo's own `wayfare: sync`
 skills (discovered in `.claude/skills/`, run with the harden contract); the
-dependency bots' open PRs written as `shape: dependency` tasks; the design
-snapshot refresh; the reconciliation lanes; the planning postflight
+dependency bots' open PRs written as `shape: dependency` tasks; branches that
+would land a change but were never merged (`scripts/unshipped-branches.sh`); the
+design snapshot refresh; the reconciliation lanes; the planning postflight
 (`wayfare:wayfare-grill-idea` in Roadmap mode); and goals proposed bottom-up
 until every planned build item is in exactly one open goal, with existing
 `accepted` goals re-cut, coalesced when two name one outcome, split when one

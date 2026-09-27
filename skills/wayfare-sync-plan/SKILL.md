@@ -1,7 +1,7 @@
 ---
 name: wayfare-sync-plan
 # prettier-ignore
-description: "Converge the roadmap with the world: the architecture record, the design snapshot, the hardening audit, prose gone false about the code, the compliance register, the dependency bots' PRs, and the goals over it, all into .plans. Proposes items and goals; writes only what the user confirms. Use to refresh what is worth doing."
+description: "Converge the roadmap with the world: the architecture record, the design snapshot, the hardening audit, prose gone false about the code, the compliance register, the dependency bots' PRs, branches built and never merged, and the goals over it, all into .plans. Proposes items and goals; writes only what the user confirms. Use to refresh what is worth doing."
 argument-hint: "[CONTEXT | ideas]"
 ---
 
@@ -61,7 +61,7 @@ Progress:
 - [ ] 1. Step 0 above
 - [ ] 2. Inbox: triage `.plans/inbox/`, resume what the replies unblock
 - [ ] 3. Reconciliation lanes: design, architecture, design system, hardening,
-  comments, compliance, deps
+  comments, compliance, deps, unshipped
 - [ ] 4. Visual pass: the shipped screens, per `../../references/shaping.md`
 - [ ] 5. Store defects: dangling deps, orphaned members, missing anchors
 - [ ] 6. Confirm the proposal table with the user, row by row

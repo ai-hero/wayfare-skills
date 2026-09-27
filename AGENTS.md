@@ -128,6 +128,11 @@ while `auto-approve.yaml` is the fleet's.
 - **Assets are vendored downstream, not authored there.** Fix a bug here, then
   re-vendor. A consuming repo's copy is output.
 
+- **`hooks/hooks.json` runs in every session of everyone with the plugin
+  enabled**, in every repo they open. Its Stop hook gates itself to repos with a
+  `.plans/` store and exits 0 silently on any failure. Keep both: a hook that
+  errors or blocks here traps sessions that have nothing to do with wayfare.
+
 - **Tests are `scripts/*.test.sh` and both runners glob.** Add a suite and it
   gates automatically, with no runner edit needed.
 

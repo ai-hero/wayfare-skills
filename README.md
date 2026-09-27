@@ -332,8 +332,8 @@ Three commands. Everything else is run by them.
 # 1. Configure your project (run once per repo)
 wayfare:wayfare-init-repo
 
-# 2. Converge the world into a plan. One round, twelve stages:
-#    config → inbox → architecture → harden → comments → compliance → local → deps → design → reconcile → plan → goals
+# 2. Converge the world into a plan. One round, thirteen stages:
+#    config → inbox → architecture → harden → comments → compliance → local → deps → unshipped → design → reconcile → plan → goals
 #    Reads the mailbox from sibling repos (bug reports become bug items),
 #    reviews DESIGN.md (offers to converge it), audits dependency/container/
 #    code hardening, flags comments and docs the code now contradicts,
@@ -447,7 +447,7 @@ map; there is no skill whose job is to hold it.
 | Command | What it does |
 | -- | -- |
 | `wayfare:wayfare-init-repo` | Investigate the repo, write `HERO.md`, create the plan object `.plans/PLAN.md`, migrating an older store on sight. Scaffolds first in an empty directory |
-| `wayfare:wayfare-sync-plan` | One round of convergence (`config → inbox → architecture → harden → comments → compliance → local → deps → design → reconcile → plan → goals`), writing every `.plans/` item and proposing goals bottom-up over what was planned. Writes only what you confirm |
+| `wayfare:wayfare-sync-plan` | One round of convergence (`config → inbox → architecture → harden → comments → compliance → local → deps → unshipped → design → reconcile → plan → goals`), writing every `.plans/` item and proposing goals bottom-up over what was planned. Writes only what you confirm |
 | `wayfare:wayfare-start-goal` | Pick the next runnable goal, read its `## Permissions` aloud (mark-ready, respond, auto-approve, merge, deploy, absorb) for your in-session authorization, and run its first turn |
 | `wayfare:wayfare-advance-item` | Advance one item as far as its gates allow: a ready task, a Dependabot PR to merged, or one goal turn. Never plans |
 | `wayfare:wayfare-drop-item` | Abandon work on an unmerged branch and write `status: dropped`, so the roadmap stops claiming it |

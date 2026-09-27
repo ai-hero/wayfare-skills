@@ -1,0 +1,16 @@
+{
+  "description": "wayfare: catch deferred work that was never filed in .plans/",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/check-deferrals.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

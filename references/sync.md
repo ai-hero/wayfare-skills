@@ -351,6 +351,47 @@ left `accepted` with a `note` line naming the batch item. The batch's recipe
 closes the bot's PR after its own merge, so the two never race. No open bot PRs
 → `(–)` and one line saying so.
 
+**The `unshipped` stage: work built and never merged.** A goal branch abandoned
+mid-run, a worktree subagent whose session died, a person's side branch: each is
+work already done, sitting where no other stage looks, because the store sees
+only the branches its items name. It is also the backlog that decays fastest,
+since every commit to the default branch widens the conflict. Classify every
+branch by what merging it would land:
+
+```bash
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+bash "$WAYFARE_ROOT/scripts/unshipped-branches.sh" "$ROOT"
+```
+
+`UNSHIPPED_OK=false` is not an empty stage: name `UNSHIPPED_ERRORS` and render
+the stage `unverified`. When only `gh` failed the rows still print with
+`pr=unknown`, and a class git decided is still true. A PR column naming a merged
+PR on a row that is not `merged` means that PR shipped an older head and the
+commits since it did not. Then, by class:
+
+- `ship-now` and `stale`: propose one item per branch, `origin: wayfare`,
+  `status: accepted`, listed **first** in the proposal table, because finished
+  work that never merges is the cheapest value this round can recover. Read the
+  branch's diff to choose `shape` and title. Its `## Context` names the branch,
+  its net change and its age, and so does one `## Log` note. Leave `branch:`
+  unset: that field means a build has started. A `stale` row asks the user
+  first: rebase and keep, or drop.
+- `conflicts`: the same row, asking the same rebase-or-drop question with the
+  conflict stated.
+- `dirty`: a worktree whose branch lands nothing but holds uncommitted files.
+  Report the path and the count, and propose nothing until the user says whether
+  it is work.
+- `detached`: a worktree on a detached HEAD holding uncommitted files or a
+  commit no branch or tag reaches; its BRANCH column is the HEAD sha. Report the
+  path, the sha and the count, and propose nothing until the user says whether
+  it is work. Removing that worktree destroys the commit with it.
+- `merged`: leftovers. List each with the command that deletes it
+  (`git branch -D`, or `git push origin --delete` for an `origin/` row) and run
+  none of them. Deleting a branch is the user's act, never this stage's.
+- `owned` and `open-pr`: in flight. One count line, no rows.
+
+No branch besides the default → `(–)` and one line saying so.
+
 **Bootstrap: no roadmap yet.**
 
 1. **Map the source.** Already done by the `architecture` stage above; the map
@@ -893,6 +934,15 @@ task captures conclusions rather than guesses, and it is written with the same
 confirm flow, same format, same `status: accepted`. Ids continue the store's
 sequence per wayfare-grill-idea's numbering rules, re-checked immediately before
 writing; zero-pad only the filename.
+
+**A batch is exploded before any of it is judged.** When what the user brings is
+a list (a pasted bug report, QA notes, review findings, a spreadsheet export),
+write one proposal row per discrete issue before investigating the first,
+carrying the source's own words and repro clues into each row. An issue an
+existing item already covers becomes a `note` line on that item, named in the
+table, never a silent skip. A batch held in context while its first row is
+investigated loses its tail when the session ends, and nothing records that it
+was there.
 
 **Parking something instead is the other half of that.** Not everything a person
 brings is ready to be a task, and forcing it to be one produces a row with

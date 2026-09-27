@@ -557,6 +557,7 @@ Rows are first-match, top to bottom.
 | `$ARGUMENTS` matches a **review** task (`status: review`) | Check its PR first (URL recorded in the task's `## Log`; else `gh pr list --search`). Open → `gh pr checkout` its branch and let Step 0.5's resume detection route from there. Merged → the close-out was missed: run Step 9a on it now. No PR found → treat as active/in-flight and confirm with the user. Never assume the PR is open. A merged-but-not-closed-out task must not loop here. |
 | `$ARGUMENTS` matches a **done** item | STOP: report that it already landed, with the item's `success` criteria as evidence. Offer the next READY item. Do NOT re-grill it; that writes a duplicate. |
 | `$ARGUMENTS` matches an **active** item | STOP and confirm: another session may hold it. Step 2 marks items `active` before the first edit precisely so two runs cannot claim one item. |
+| `$ARGUMENTS` is a **batch**: several discrete issues (a pasted bug list, a QA report, review findings) | STOP before building any of them. Write every non-trivial issue as its own item at `status: new` (`docs/PLAN.md` format, `origin:` the person, the source's words and repro clues in `## Context`), and put a `note` line on any existing item that already covers one instead of writing a duplicate. Print the ids and route to `wayfare:wayfare-sync-plan` to triage them. Building the first while holding the rest in context loses the rest when the session ends. |
 | `$ARGUMENTS` matches nothing, or is empty | Print the readiness view and ask: pick a READY item, or grill this as new work → 1d |
 | `$ARGUMENTS` matches more than one READY item | Ask which one. Never guess. |
 
@@ -741,6 +742,18 @@ others a goal has in flight. Follow these rules:
   output, env values or connection strings into one. Create the section if the
   item lacks one (a legacy item will not have it). Under a goal turn, the report
   to the parent is a copy of those lines, not a substitute for writing them.
+
+- **Say what changed before you retry, and stop after two.** Before a second
+  attempt at the same failure (a fix that did not take, a test still red, a
+  command that did not do what you expected), state in one line what is
+  different this time: new evidence, a different hypothesis, a different layer.
+  If nothing is, do not retry, because the same attempt twice is a loop, not
+  persistence. After two attempts make no progress, pivot: narrow the subtask,
+  read different evidence, or stop and report the blocker with both attempts
+  named. Under a goal turn that report is the task's `stop: failure`. Each
+  failed attempt is already a `mistake` line under the rule above, so the Log
+  shows the count. Re-running a check to confirm a fix is verification, not an
+  attempt.
 
 - **Read before edit**: Always Read a file before modifying it.
 

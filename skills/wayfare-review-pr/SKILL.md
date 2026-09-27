@@ -1,7 +1,7 @@
 ---
 name: wayfare-review-pr
 # prettier-ignore
-description: Review a PR with the pr-review-toolkit agents plus a security pass. No argument reviews your own draft PR and applies fixes. A PR number reviews the author's code via inline comments, no edits.
+description: Review a PR with the pr-review-toolkit agents plus a security pass. No argument reviews your own draft PR and applies fixes. A PR number reviews the author's code via inline comments, no edits. Use before marking your PR ready, or to review someone else's.
 argument-hint: "[#PR] [--no-mark-ready] | recalibrate"
 ---
 
@@ -346,6 +346,10 @@ Fix any pre-commit failures before continuing.
 
 ### Step 6: Commit and Push Fixes
 
+End the message with the attribution trailer your harness specifies. If it
+specifies none, end with `Co-Authored-By: Claude <noreply@anthropic.com>`, which
+names no model and so cannot go stale.
+
 ```bash
 git add "${CHANGED_FILES[@]}"
 MSG=$(cat <<'EOF'
@@ -353,8 +357,6 @@ fix: address self-review findings
 
 - {summary of fix 1}
 - {summary of fix 2}
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
 )
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"

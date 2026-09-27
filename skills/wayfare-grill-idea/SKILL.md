@@ -1,7 +1,7 @@
 ---
 name: wayfare-grill-idea
 # prettier-ignore
-description: Brainstorm and grill an idea one question at a time into principal-level shared understanding, captured as dependency-aware work-items. Use when starting a feature, refactor or migration bigger than a one-liner, when a task arrives vague, before a decision that is expensive to reverse, or when about to build on an assumption nobody has stated. Skip it for typos, copy tweaks and dependency bumps.
+description: Brainstorm and grill an idea one question at a time into shared understanding, as dependency-aware work-items. Use when starting a feature, refactor or migration past a one-liner, when a task arrives vague, before an expensive-to-reverse decision, or before building on an unstated assumption. Skip it for typos, copy tweaks and dependency bumps.
 argument-hint: "[IDEA_OR_TASK]"
 ---
 

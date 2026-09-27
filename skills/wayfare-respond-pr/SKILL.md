@@ -286,6 +286,10 @@ If checks fail, fix the issues before committing.
 
 ### Step 7: Commit the Fixes
 
+End the message with the attribution trailer your harness specifies. If it
+specifies none, end with `Co-Authored-By: Claude <noreply@anthropic.com>`, which
+names no model and so cannot go stale.
+
 ```bash
 git add CHANGED_FILES
 MSG=$(cat <<'EOF'
@@ -293,8 +297,6 @@ fix: address PR review feedback
 
 - [Summary of fix 1]
 - [Summary of fix 2]
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
 )
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
@@ -581,7 +583,17 @@ Trigger depends on the configured method:
 - **Comment trigger** (e.g., Greptile): Post a comment on the PR
 
   ```bash
-  gh pr comment $PR_NUMBER --body "TRIGGER_TEXT"
+  # Re-read here: each block runs in a fresh shell, so Loop Setup's TRIGGER is
+  # gone. The field names the method (`"@greptile review" comment`); a bot
+  # matches only the quoted text, so post that and no footer.
+  WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+  # shellcheck source=/dev/null
+  . "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT"; exit 1; }
+  TRIGGER=$(hero_field trigger)
+  TEXT=$(printf '%s' "$TRIGGER" | sed -nE 's/^[`"]([^`"]+)[`"].*/\1/p')
+  [ -n "$TEXT" ] || { echo "HERO.md trigger '$TRIGGER' quotes no comment text; ask the user what to post"; exit 1; }
+  python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind inline --body-file - <<<"$TEXT" || exit 1
+  gh pr comment $PR_NUMBER --body "$TEXT"
   ```
 
 - **Label trigger** (e.g., some CodeRabbit setups): Add a label

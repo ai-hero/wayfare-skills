@@ -156,12 +156,11 @@ Projects → dependency-file     | init    | scan, test
 
 #### 2e: Description Quality
 
-Check every skill's frontmatter `description` for:
+`scripts/check_docs.py` already fails a description outside 50 to 350 characters
+or with no "Use when..." trigger. Check what it cannot:
 
-- **Trigger clarity**: Does it say when to use the skill? ("Use when...", "Use
-  for...", "Use before...")
-- **Length**: One to three sentences. The Agent Skills spec caps it at 1024
-  chars; past about 350 it is padding, and under 50 it cannot carry a trigger.
+- **Trigger clarity**: does the trigger name the situation a person is in, not
+  just the word "Use"?
 - **Specificity**: Vague descriptions like "helps with code" are useless for
   Claude's skill matching. Name the user's intent, not the skill's mechanics.
 
@@ -175,12 +174,13 @@ DESCRIPTION QUALITY
 [??] wayfare-create-skill: no trigger phrase — add "Use when..." or "Use for..."
 ```
 
-#### 2f: Alphabetical & Organizational Checks
+#### 2f: Organizational Checks
 
-- Are skills listed alphabetically when referenced in tables (e.g. the "What
-  each skill needs" table)?
 - Are HERO.md sections in a logical order?
-- Are frontmatter fields in a consistent order across skills?
+
+Frontmatter key order, step numbering, description length and the trigger phrase
+are `scripts/check_docs.py`'s, run on every commit and in CI; this audit reports
+what they cannot judge.
 
 ### Step 3: Report Summary
 
@@ -211,11 +211,12 @@ Next step: wayfare:wayfare-push-pr — commit and push the plugin changes (offer
 
 If `--fix` is passed, automatically fix:
 
-- Alphabetical ordering in tables
-- Frontmatter field ordering (name, description, argument-hint,
-  disable-model-invocation)
+- Frontmatter field ordering (name, description, argument-hint, then the rest;
+  `check_docs.py` enforces the first three)
 - Step renumbering gaps
-- Trailing whitespace, inconsistent newlines
+
+Whitespace and line wrapping are the pre-commit hooks' (trailing-whitespace,
+end-of-file-fixer, mdformat), so this skill leaves them alone.
 
 **Never auto-fix:** content changes, description rewrites, and structural
 reorganization. Those need human review.

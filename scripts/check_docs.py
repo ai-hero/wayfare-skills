@@ -73,6 +73,8 @@ def error(path, line, check, msg):
 def tracked(root, pattern):
     out = subprocess.run(["git", "-C", str(root), "ls-files", pattern],
                          capture_output=True, text=True, check=True).stdout
+    # Mid-merge, ls-files lists a conflicted path once per stage.
+    out = "\n".join(dict.fromkeys(out.splitlines()))
     # A symlink (CLAUDE.md -> AGENTS.md) would report every finding twice.
     return [p for p in out.splitlines()
             if not p.startswith(EXCLUDE_DIRS) and not (root / p).is_symlink()]
@@ -150,6 +152,17 @@ def check_frontmatter(rel, text):
         error(rel, 2, "frontmatter", "description missing")
     elif len(desc) > 1024:
         error(rel, 2, "frontmatter", f"description is {len(desc)} chars, over 1024")
+    elif not 50 <= len(desc) <= 350:
+        # Past about 350 a description is padding and dilutes skill matching;
+        # under 50 it cannot carry a trigger (wayfare-audit-plugin 2e).
+        error(rel, 2, "frontmatter", f"description is {len(desc)} chars; keep it within 50 to 350")
+    # A chained stage is never matched against a user's request, so it needs
+    # no trigger; everything else is picked by its description.
+    if (isinstance(desc, str) and data.get("user-invocable") is not False
+            and not re.search(r"\bUse (when|for|before|after|to|on|from)\b", desc)):
+        error(rel, 2, "frontmatter", 'description says what, not when: add "Use when ..."')
+    if "argument-hint" in keys and keys.index("argument-hint") != 2:
+        error(rel, 2, "frontmatter", "argument-hint comes third, after name and description")
 
 
 def check_yaml_only(rel, text):
@@ -222,6 +235,15 @@ def check_markers(rel, text):
             state = "on"
     if state == "off":
         error(rel, opened, "marker", "check-docs: off is never turned back on")
+
+
+def check_attribution(rel, text):
+    # Read raw, fences included: the templates this guards live in code blocks.
+    # A model name copied into a template is stale the next time a model ships.
+    for n, line in enumerate(text.splitlines(), 1):
+        if re.search(r"Co-Authored-By:\s*Claude\s+[\w .-]*\d", line, re.I):
+            error(rel, n, "attribution",
+                  "model name in a Co-Authored-By template; say to use the harness's trailer")
 
 
 def check_prose(rel, text):
@@ -325,7 +347,10 @@ def check_links(root, rel, text):
         return
     base = (root / rel).parent
     for n, line in prose_lines(text):
-        for target in re.findall(r"\]\(([^)\s]+)\)", line):
+        # `<...>` wraps a target that may hold spaces; `[^1]:` is a footnote.
+        found = re.findall(r"\]\((?:<([^>]+)>|([^)\s]+))(?:\s+\"[^\"]*\")?\)", line)
+        found += re.findall(r"^\s{0,3}\[(?!\^)[^\]]+\]:\s+(?:<([^>]+)>|(\S+))", line)
+        for target in (a or b for a, b in found):
             if re.match(r"[a-z]+:|#|/", target):
                 continue
             path = target.split("#", 1)[0].split("?", 1)[0]
@@ -358,6 +383,8 @@ def main():
             check_yaml_only(rel, text)
         if re.fullmatch(r"skills/[^/]+/SKILL\.md|references/.+\.md", rel):
             check_skill_prose(rel, text)
+        if rel.startswith(("skills/", "references/", "assets/")):
+            check_attribution(rel, text)
         check_markers(rel, text)
         check_prose(rel, text)
         check_chains(rel, text, chains)

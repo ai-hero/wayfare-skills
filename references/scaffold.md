@@ -193,6 +193,10 @@ DESCRIPTION
 
 ## Step 6: Initialize Git (if standalone)
 
+End the message with the attribution trailer your harness specifies. If it
+specifies none, end with `Co-Authored-By: Claude <noreply@anthropic.com>`, which
+names no model and so cannot go stale.
+
 ```bash
 git init
 git add -A
@@ -200,8 +204,6 @@ git commit -m "$(cat <<'EOF'
 chore: initialize PROJECT_NAME
 
 DESCRIPTION
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -239,14 +241,12 @@ Now running: first-commit
 
 If the repo was initialized standalone in Step 6 with an initial commit, the
 `first-commit` step folds HERO.md and AGENTS.md (written by the config pass)
-into a follow-up commit:
+into a follow-up commit, ending with the same trailer as Step 6:
 
 ```bash
 git add HERO.md AGENTS.md CLAUDE.md
 git commit -m "$(cat <<'EOF'
 chore: add HERO.md and AGENTS.md from wayfare:wayfare-init-repo
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
 EOF
 )"
 ```

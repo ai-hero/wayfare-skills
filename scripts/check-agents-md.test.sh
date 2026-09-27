@@ -248,7 +248,10 @@ check "R5 heading inside a code fence: rc" "0" "$rc"
 # docs/AGENTS-MD.md is the spec: every name it lists under R5 must trip the
 # checker. The extraction is asserted non-empty first, because a renumbered doc
 # would otherwise run zero cases and pass.
-r5_names=$(grep -E '^5\. \*\*R5' "$DOC" | grep -oE '`[^`]+`' | tr -d '`')
+# The whole numbered item, not its first line: mdformat wraps the doc, so a
+# list of names routinely continues onto the next lines.
+doc_item() { awk -v head="$1. **R$1" 'index($0, head) == 1 {on=1; print; next} on && (/^[0-9]+\. / || /^$/) {exit} on' "$DOC"; }
+r5_names=$(doc_item 5 | grep -oE '`[^`]+`' | tr -d '`')
 check "R5 doc list extracted" "yes" "$([[ -n "$r5_names" ]] && echo yes || echo no)"
 while IFS= read -r name; do
   d=$(fixture "doc_r5_$(tr -c 'a-z' _ <<<"$name")")
@@ -258,7 +261,7 @@ while IFS= read -r name; do
 done <<<"$r5_names"
 
 # --- R6 ------------------------------------------------------------------------
-r6_phrases=$(grep -E '^6\. \*\*R6' "$DOC" | grep -oE '`[^`]+`' | tr -d '`')
+r6_phrases=$(doc_item 6 | grep -oE '`[^`]+`' | tr -d '`')
 check "R6 doc list extracted" "yes" "$([[ -n "$r6_phrases" ]] && echo yes || echo no)"
 while IFS= read -r phrase; do
   d=$(fixture "doc_r6_$(tr -c 'a-z' _ <<<"$phrase")")

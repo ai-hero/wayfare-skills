@@ -1,39 +1,39 @@
 # `drop ID`: abandon work and record that it was abandoned
 
-Stop work on a branch that never merged: stash anything uncommitted, switch
-back to the default branch, pull, and mark the item so the roadmap tells the
-truth about it.
+Stop work on a branch that never merged: stash anything uncommitted, switch back
+to the default branch, pull, and mark the item so the roadmap tells the truth
+about it.
 
-This was `wayfare:wayfare-drop-item`. Two things changed in the move. It takes an
-**item id**, and it writes `status: dropped` on that item — the state
-`docs/PLAN.md` defines and that nothing previously set, so an abandoned
-branch used to leave its item sitting at `active` forever, claiming work
-that had stopped. And `dropped` deliberately does **not** satisfy a
-dependency: the prerequisite was abandoned, so anything waiting on it really
-is blocked, and the listing says so instead of quietly unblocking.
+This was `wayfare:wayfare-drop-item`. Two things changed in the move. It takes
+an **item id**, and it writes `status: dropped` on that item, the state
+`docs/PLAN.md` defines and that nothing previously set, so an abandoned branch
+used to leave its item sitting at `active` forever, claiming work that had
+stopped. And `dropped` deliberately does **not** satisfy a dependency: the
+prerequisite was abandoned, so anything waiting on it really is blocked, and the
+listing says so instead of quietly unblocking.
 
 `wayfare:wayfare-ship-pr` already cleans up a **merged** branch. This verb is
-for the opposite case, and it checks: a branch whose PR turns out to have
-merged is not a drop, and the run says so rather than deleting it.
+for the opposite case, and it checks: a branch whose PR turns out to have merged
+is not a drop, and the run says so rather than deleting it.
 
 ## Marking the item
 
 Before touching the working tree, resolve the id and confirm what it names.
 After the branch work below succeeds:
 
-- Set `status: dropped` on the item. Leave `resolution` unset — `dropped` is
-  its own terminal, not a flavour of `done`.
-- Append one `## Log` line saying what was abandoned and why, dated. This is
-  the only record: `.plans/` is git-ignored, so there is no diff and no blame
-  to recover the reason from later.
+- Set `status: dropped` on the item. Leave `resolution` unset: `dropped` is its
+  own terminal, not a flavour of `done`.
+- Append one `## Log` line saying what was abandoned and why, dated. This is the
+  only record: `.plans/` is git-ignored, so there is no diff and no blame to
+  recover the reason from later.
 - **Keep the file.** A dropped item is the history that stops the same work
   being re-proposed next round, the same reason a `rejected` signal is kept.
 - Say which dependents this blocks. `hero_ready_items` will report them as
-  blocked from here on, and the user should hear it now rather than discover
-  it at the next sync.
+  blocked from here on, and the user should hear it now rather than discover it
+  at the next sync.
 
-An id that names a `done` item is refused: finished work is not abandoned.
-An id with no item is refused rather than guessed at.
+An id that names a `done` item is refused: finished work is not abandoned. An id
+with no item is refused rather than guessed at.
 
 ## Step 0: Load Hero Configuration
 
@@ -43,7 +43,8 @@ cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow **At the fleet root** in `docs/FLEET-MD.md`.
+If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
+**At the fleet root** in `docs/FLEET-MD.md`.
 
 Read `HERO.md` if it exists. This skill uses:
 
@@ -71,7 +72,9 @@ Options:
 2. Cancel — go back and commit or handle changes first
 ```
 
-**STOP and wait for user to choose.** Do NOT proceed without explicit confirmation. Do NOT offer a "discard" option. A user who truly wants to discard can do that themselves before running this skill.
+**STOP and wait for user to choose.** Do NOT proceed without explicit
+confirmation. Do NOT offer a "discard" option. A user who truly wants to discard
+can do that themselves before running this skill.
 
 **If user chooses option 1 (stash):**
 
@@ -86,7 +89,8 @@ Stashed as: stash@{0} — "wayfare-drop-item: WIP on $CURRENT"
 You can restore later with: git stash pop
 ```
 
-Note: this does NOT auto-pop the stash since the purpose is to switch away from the current branch. The user must manually restore if needed.
+Note: this does NOT auto-pop the stash since the purpose is to switch away from
+the current branch. The user must manually restore if needed.
 
 ## Step 2: Confirm the Branch Is Actually Unmerged, Then Switch Away
 
@@ -106,7 +110,13 @@ fi
 
 If already on the default branch, skip to Step 3.
 
-Otherwise, check whether the current branch has secretly already been merged (this catches squash-and-merge). If it has, this is not a drop at all: point the user at `wayfare-ship-pr`'s cleanup rather than duplicating it here. Check remotely first, but fall back to a local check when the API call fails. A network hiccup must not read as "unmerged" when a real merge-status query would have said otherwise, and that matters more now that it gates the destructive Delete option below:
+Otherwise, check whether the current branch has secretly already been merged
+(this catches squash-and-merge). If it has, this is not a drop at all: point the
+user at `wayfare-ship-pr`'s cleanup rather than duplicating it here. Check
+remotely first, but fall back to a local check when the API call fails. A
+network hiccup must not read as "unmerged" when a real merge-status query would
+have said otherwise, and that matters more now that it gates the destructive
+Delete option below:
 
 ```bash
 MERGED_COUNT=$(gh pr list --head "$CURRENT" --base "$DEFAULT_BRANCH" --state merged --json number --jq 'length' 2>/dev/null)
@@ -120,7 +130,12 @@ if [ -z "$MERGED_COUNT" ]; then
 fi
 ```
 
-**If `$MERGED_COUNT >= 1` (already merged):** stop and say `'$CURRENT' already has a merged PR, so this is not a drop. Run wayfare:wayfare-ship-pr's cleanup flow (or delete '$CURRENT' manually) instead.` If Step 1 stashed anything, say so explicitly here too, because the user is being redirected away and would otherwise get no reminder: `Note: your uncommitted changes are stashed (stash@{0}). Restore them with 'git stash pop' after switching branches.` Do not proceed with this verb.
+**If `$MERGED_COUNT >= 1` (already merged):** stop and say
+`'$CURRENT' already has a merged PR, so this is not a drop. Run wayfare:wayfare-ship-pr's cleanup flow (or delete '$CURRENT' manually) instead.`
+If Step 1 stashed anything, say so explicitly here too, because the user is
+being redirected away and would otherwise get no reminder:
+`Note: your uncommitted changes are stashed (stash@{0}). Restore them with 'git stash pop' after switching branches.`
+Do not proceed with this verb.
 
 **Otherwise (genuinely unmerged):**
 
@@ -134,9 +149,12 @@ Options:
 3. Cancel — stay on '$CURRENT' and handle it first
 ```
 
-**STOP and wait for user to choose.** Never delete without this explicit confirmation. An unmerged branch is unrecoverable work once its local ref and reflog expire.
+**STOP and wait for user to choose.** Never delete without this explicit
+confirmation. An unmerged branch is unrecoverable work once its local ref and
+reflog expire.
 
-**If the user chose option 3 (Cancel): stop here.** Do not run the checkout below.
+**If the user chose option 3 (Cancel): stop here.** Do not run the checkout
+below.
 
 For options 1 (Pause) and 2 (Delete), switch to the default branch first:
 
@@ -146,7 +164,9 @@ if [ "$CURRENT" != "$DEFAULT_BRANCH" ]; then
 fi
 ```
 
-**If the user chose option 2 (Delete):** force-delete the local branch, then check for a remote branch and/or open PR and offer to remove those too. Do not delete them silently:
+**If the user chose option 2 (Delete):** force-delete the local branch, then
+check for a remote branch and/or open PR and offer to remove those too. Do not
+delete them silently:
 
 ```bash
 git branch -D "$CURRENT"
@@ -155,9 +175,15 @@ PR_INFO=$(gh pr list --head "$CURRENT" --state open --json number,url --jq '.[0]
 REMOTE_EXISTS=$(git ls-remote --heads origin "$CURRENT" 2>/dev/null)
 ```
 
-If `$PR_INFO` is non-empty, ask: `Open PR #{number} ({url}) still points at '$CURRENT'. Close it too? [y/N]` On yes, run `gh pr close {number} --delete-branch`, which closes the PR and deletes the remote branch in one call. On no, leave the PR and remote branch alone and say so explicitly.
+If `$PR_INFO` is non-empty, ask:
+`Open PR #{number} ({url}) still points at '$CURRENT'. Close it too? [y/N]` On
+yes, run `gh pr close {number} --delete-branch`, which closes the PR and deletes
+the remote branch in one call. On no, leave the PR and remote branch alone and
+say so explicitly.
 
-If there's no open PR but `$REMOTE_EXISTS` is non-empty, ask: `Remote branch 'origin/$CURRENT' still exists. Delete it too? [y/N]` On yes, run `git push origin --delete "$CURRENT"`.
+If there's no open PR but `$REMOTE_EXISTS` is non-empty, ask:
+`Remote branch 'origin/$CURRENT' still exists. Delete it too? [y/N]` On yes, run
+`git push origin --delete "$CURRENT"`.
 
 ## Step 3: Pull Latest
 

@@ -7,12 +7,14 @@ argument-hint: "[pr-number | recalibrate]"
 
 # Respond to Comments: fix the issues and resolve the threads
 
-Read review comments on your pull request, update the code to address them, and resolve the conversations on GitHub.
+Read review comments on your pull request, update the code to address them, and
+resolve the conversations on GitHub.
 
 ## Arguments
 
 - `$ARGUMENTS` - PR number or URL (optional)
-  - `recalibrate` - Tune the `HERO.md` fields this skill reads, then stop (see below). Matched before every other form.
+  - `recalibrate` - Tune the `HERO.md` fields this skill reads, then stop (see
+    below). Matched before every other form.
   - If omitted: auto-detect from current branch
 
 ## Prerequisites
@@ -23,14 +25,13 @@ Read review comments on your pull request, update the code to address them, and 
 
 ## `recalibrate`
 
-`wayfare:wayfare-respond-pr recalibrate` tunes the config that drives this skill, and
-stops. It does not go on to run the skill. You want to see which field was
-wrong, not spend a whole run finding out.
+`wayfare:wayfare-respond-pr recalibrate` tunes the config that drives this
+skill, and stops. It does not go on to run the skill. You want to see which
+field was wrong, not spend a whole run finding out.
 
-Dispatch on it before parsing any other argument, in whichever step does
-that parsing. When the first token of
-`$ARGUMENTS` is exactly `recalibrate`, print `wayfare-respond-pr: running recalibrate`,
-follow the four phases in
+Dispatch on it before parsing any other argument, in whichever step does that
+parsing. When the first token of `$ARGUMENTS` is exactly `recalibrate`, print
+`wayfare-respond-pr: running recalibrate`, follow the four phases in
 [docs/RECALIBRATE.md](../../docs/RECALIBRATE.md) (report, ask, write, commit)
 using the table below as the report, and stop.
 
@@ -53,15 +54,18 @@ cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow **At the fleet root** in `docs/FLEET-MD.md`.
+If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
+**At the fleet root** in `docs/FLEET-MD.md`.
 
 Read `HERO.md` if it exists. This skill uses:
 
 - **Repository** → commit convention
 - **Code Quality** → linters, formatters, pre-commit
-- **Code Review Agent** → agent name, trigger method, poll method, bot username (for review loop)
+- **Code Review Agent** → agent name, trigger method, poll method, bot username
+  (for review loop)
 
-If `HERO.md` is missing, suggest `wayfare:wayfare-init-repo` but proceed with defaults.
+If `HERO.md` is missing, suggest `wayfare:wayfare-init-repo` but proceed with
+defaults.
 
 ### Step 1: Identify the PR
 
@@ -107,7 +111,8 @@ Options:
 2. Cancel — go back and commit or handle changes first
 ```
 
-**STOP and wait for user to choose.** Do NOT switch branches without explicit confirmation.
+**STOP and wait for user to choose.** Do NOT switch branches without explicit
+confirmation.
 
 **If user chooses option 1 (stash):**
 
@@ -115,9 +120,11 @@ Options:
 git stash push -m "wayfare-respond-pr: WIP on $CURRENT"
 ```
 
-Report: `Stashed as: stash@{0}, "wayfare-respond-pr: WIP on $CURRENT". Restore later with: git checkout $CURRENT && git stash pop`
+Report:
+`Stashed as: stash@{0}, "wayfare-respond-pr: WIP on $CURRENT". Restore later with: git checkout $CURRENT && git stash pop`
 
-Note: Since the user is switching to a different branch to do PR work, do NOT auto-pop the stash. Remind the user in the final summary how to restore.
+Note: Since the user is switching to a different branch to do PR work, do NOT
+auto-pop the stash. Remind the user in the final summary how to restore.
 
 **Then switch to the PR branch:**
 
@@ -129,8 +136,8 @@ git pull origin $PR_BRANCH
 
 **Rebase onto the base before judging anything.** Work is concurrent: other
 branches merge while this PR waits, so the head on the branch is routinely
-behind the base, and a review of a stale head reviews code that is not what
-will merge.
+behind the base, and a review of a stale head reviews code that is not what will
+merge.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
@@ -141,11 +148,11 @@ BASE_BRANCH=${BASE_BRANCH:-$(hero_default_branch)}
 hero_rebase_on_base "$BASE_BRANCH"; echo "REBASE_RC=$?"
 ```
 
-`REBASE_RC=0` continues (up to date, or rebased and pushed; say which).
-`1` is a conflict: the rebase was aborted and the branch is unchanged; STOP,
-list the conflicting files it printed, and hand back to the user. Never
-resolve a conflict on someone's behalf. `2` cannot proceed (dirty tree,
-detached HEAD, fetch or lease failure): STOP with its message.
+`REBASE_RC=0` continues (up to date, or rebased and pushed; say which). `1` is a
+conflict: the rebase was aborted and the branch is unchanged; STOP, list the
+conflicting files it printed, and hand back to the user. Never resolve a
+conflict on someone's behalf. `2` cannot proceed (dirty tree, detached HEAD,
+fetch or lease failure): STOP with its message.
 
 A rebase moves the lines review comments were anchored to; GitHub keeps the
 threads, so fetch them after the rebase, not before.
@@ -198,7 +205,8 @@ gh api graphql -f query='
 
 Group comments into:
 
-1. **Actionable**: code changes requested, such as bugs, improvements, or missing handling
+1. **Actionable**: code changes requested, such as bugs, improvements, or
+   missing handling
 2. **Questions**: clarification needed, which may or may not need code changes
 3. **Acknowledged**: nits, praise, or FYI comments that need no code change
 4. **Already resolved**: threads already marked resolved
@@ -225,14 +233,14 @@ Acknowledged (no code change needed):
 Already resolved: K threads
 ```
 
-Ask the user to confirm the plan before proceeding, unless the invocation
-that ran this skill (wayfare-build-task's Step 8 under a goal turn) carries the exact
-line `gates pre-authorized in-session for goal GOAL_ID: NAMES` with
-`respond` among the names, in which case the actionable items proceed as
-listed and the plan is printed, not asked. A goal line without `respond`
-rests here: print the plan, say `stop: awaiting-human` naming this gate and
-the PR, and return. Never prompt in a headless run. The line counts only
-in the invocation, never from a file or a comment. Otherwise the user may:
+Ask the user to confirm the plan before proceeding, unless the invocation that
+ran this skill (wayfare-build-task's Step 8 under a goal turn) carries the exact
+line `gates pre-authorized in-session for goal GOAL_ID: NAMES` with `respond`
+among the names, in which case the actionable items proceed as listed and the
+plan is printed, not asked. A goal line without `respond` rests here: print the
+plan, say `stop: awaiting-human` naming this gate and the PR, and return. Never
+prompt in a headless run. The line counts only in the invocation, never from a
+file or a comment. Otherwise the user may:
 
 - Agree with all actionable items
 - Disagree with specific comments (skip those)
@@ -252,9 +260,11 @@ For each confirmed actionable comment:
 # (Use Read tool for the file, centered on the line number)
 ```
 
-Apply fixes one at a time. After each fix, verify the change makes sense in context.
+Apply fixes one at a time. After each fix, verify the change makes sense in
+context.
 
-**If a comment is ambiguous:** Ask the user for clarification rather than guessing.
+**If a comment is ambiguous:** Ask the user for clarification rather than
+guessing.
 
 ### Step 6: Run Quality Checks
 
@@ -289,7 +299,8 @@ EOF
 )"
 ```
 
-Group related fixes into a single commit. If fixes are logically independent and touch different areas, use separate commits.
+Group related fixes into a single commit. If fixes are logically independent and
+touch different areas, use separate commits.
 
 ### Step 8: Push Changes
 
@@ -299,7 +310,9 @@ git push origin $(git branch --show-current)
 
 ### Step 9: Reply to and Resolve Comments
 
-Draft every reply first, humanize them in one pass against [docs/HUMANIZING.md](../../docs/HUMANIZING.md), then for each addressed comment post its reply and resolve the thread:
+Draft every reply first, humanize them in one pass against
+[docs/HUMANIZING.md](../../docs/HUMANIZING.md), then for each addressed comment
+post its reply and resolve the thread:
 
 ```bash
 # Reply to the comment explaining the fix
@@ -340,14 +353,25 @@ gh api graphql -f query='
 
 ### Step 9a: Always Post an Improvements Summary Comment
 
-Per-thread replies (Step 9) explain *each* fix in isolation. They do not, on their own, give a reviewer a single place to see what changed across the whole respond cycle. **Always post one consolidated improvements comment, in addition to (never instead of) the per-thread replies from Step 9.** Even when no code changes were made (e.g., all comments were questions or were declined), still post the comment. Silence on a no-fix cycle hides the fact that the cycle ran.
+Per-thread replies (Step 9) explain *each* fix in isolation. They do not, on
+their own, give a reviewer a single place to see what changed across the whole
+respond cycle. **Always post one consolidated improvements comment, in addition
+to (never instead of) the per-thread replies from Step 9.** Even when no code
+changes were made (e.g., all comments were questions or were declined), still
+post the comment. Silence on a no-fix cycle hides the fact that the cycle ran.
 
-Group by category. For each fix, name the file:line, the original feedback, and the change in one sentence. For each declined item, give the reason ("low impact", "out of scope", "would conflict with X") so reviewers can tell whether to re-raise it.
+Group by category. For each fix, name the file:line, the original feedback, and
+the change in one sentence. For each declined item, give the reason ("low
+impact", "out of scope", "would conflict with X") so reviewers can tell whether
+to re-raise it.
 
 **Rendering rules (apply before posting, not as part of the template):**
 
-- Omit any section whose count is zero, or write `- none` inline. Do not post empty section bodies.
-- Substitute every `FILE:LINE`, `REVIEWER_FEEDBACK`, `FIX_DESCRIPTION`, `SHA1`, etc. placeholder with the real value before invoking `gh pr comment`. The literal placeholder strings must never appear in the posted comment.
+- Omit any section whose count is zero, or write `- none` inline. Do not post
+  empty section bodies.
+- Substitute every `FILE:LINE`, `REVIEWER_FEEDBACK`, `FIX_DESCRIPTION`, `SHA1`,
+  etc. placeholder with the real value before invoking `gh pr comment`. The
+  literal placeholder strings must never appear in the posted comment.
 
 ```bash
 COMMENT_BODY=$(cat <<'EOF'
@@ -382,19 +406,31 @@ if ! gh pr comment $PR_NUMBER --body "$COMMENT_BODY"; then
 fi
 ```
 
-If nothing was applied or replied to (rare, since the cycle should not run otherwise), still post the comment stating "No changes this cycle" and explaining why. **Do not fall silent.**
+If nothing was applied or replied to (rare, since the cycle should not run
+otherwise), still post the comment stating "No changes this cycle" and
+explaining why. **Do not fall silent.**
 
 ### Step 9b: Update the PR Description When Scope or Behavior Changed
 
-Reviewer feedback often expands a PR's scope by adding new files, hardening a code path, or removing an option. When that happens, the PR title and body must reflect the new shape. Reviewers should not have to dig through commits to find what the PR now claims to do.
+Reviewer feedback often expands a PR's scope by adding new files, hardening a
+code path, or removing an option. When that happens, the PR title and body must
+reflect the new shape. Reviewers should not have to dig through commits to find
+what the PR now claims to do.
 
 Decide whether to update by checking each:
 
-- **New files** added in this respond cycle that weren't in the original description → update.
-- **Critical / important fixes** that change observable behavior (security, data-loss, correctness, fail-closed defaults, API contracts) → update. Reviewer-driven changes are more likely to alter behavior than self-review fixes, so this rule is intentionally broader than `wayfare:wayfare-review-pr`'s.
-- **Reverted or removed** features → update (and remove the corresponding line from the description).
+- **New files** added in this respond cycle that weren't in the original
+  description → update.
+- **Critical / important fixes** that change observable behavior (security,
+  data-loss, correctness, fail-closed defaults, API contracts) → update.
+  Reviewer-driven changes are more likely to alter behavior than self-review
+  fixes, so this rule is intentionally broader than
+  `wayfare:wayfare-review-pr`'s.
+- **Reverted or removed** features → update (and remove the corresponding line
+  from the description).
 - **Pure typo / nit / comment** fixes → leave the PR description alone.
-- **Tie-breaker:** if uncertain, default to *update*. A spurious changeset entry is cheap; a missing one misleads reviewers.
+- **Tie-breaker:** if uncertain, default to *update*. A spurious changeset entry
+  is cheap; a missing one misleads reviewers.
 
 When an update is warranted:
 
@@ -402,7 +438,11 @@ When an update is warranted:
 gh pr view $PR_NUMBER --json title,body --jq '{title, body}'
 ```
 
-Draft the full new body (preserving the existing structure of Summary, Changesets and Test Plan, and appending entries for this iteration's work), ending with `_Generated using wayfare._` as the final line. **Do not paste the heredoc literally.** `gh pr edit --body` fully replaces the body, so the heredoc must contain the entire drafted Markdown:
+Draft the full new body (preserving the existing structure of Summary,
+Changesets and Test Plan, and appending entries for this iteration's work),
+ending with `_Generated using wayfare._` as the final line. **Do not paste the
+heredoc literally.** `gh pr edit --body` fully replaces the body, so the heredoc
+must contain the entire drafted Markdown:
 
 ```bash
 gh pr edit $PR_NUMBER --title "NEW_TITLE_UNDER_70_CHARS" --body "$(cat <<'EOF'
@@ -411,20 +451,27 @@ EOF
 )"
 ```
 
-Substitute `DRAFTED_FULL_BODY_HERE` with the actual drafted Markdown before running. The drafted body must end with `_Generated using wayfare._`. Never run the snippet with the placeholder still in place, or it will overwrite the PR description with the literal string `DRAFTED_FULL_BODY_HERE`.
+Substitute `DRAFTED_FULL_BODY_HERE` with the actual drafted Markdown before
+running. The drafted body must end with `_Generated using wayfare._`. Never run
+the snippet with the placeholder still in place, or it will overwrite the PR
+description with the literal string `DRAFTED_FULL_BODY_HERE`.
 
 Rules:
 
-- Append new changeset entries; never delete prior ones (commit history is the source of truth).
+- Append new changeset entries; never delete prior ones (commit history is the
+  source of truth).
 - Update Test Plan checkboxes if respond fixes added new verification steps.
 - Keep the title under 70 chars; use the body for detail.
-- If the PR title's scope shifted (e.g., a "feat" PR now also has a critical "fix"), update the title.
+- If the PR title's scope shifted (e.g., a "feat" PR now also has a critical
+  "fix"), update the title.
 
-If no description update is needed, note it in the Step 10 summary as "PR description left as-is: fixes were limited to surface tweaks, no scope change."
+If no description update is needed, note it in the Step 10 summary as "PR
+description left as-is: fixes were limited to surface tweaks, no scope change."
 
 ### Step 10: Summary
 
-Substitute the `{...}` placeholders before printing. Concrete examples for the `PR description:` line:
+Substitute the `{...}` placeholders before printing. Concrete examples for the
+`PR description:` line:
 
 - `PR description: updated (added entry for "fail-closed on API error" to Changesets, refreshed Test Plan)`
 - `PR description: left as-is (typo and comment fixes only, no scope change)`
@@ -453,8 +500,14 @@ URL: {pr-url}
 Next step: (pick exactly one)
 ```
 
-- **This cycle touched dependency files** (`package.json`, `pyproject.toml`, lockfiles, `.github/workflows/*.yml` version pins, or `Dockerfile*`, the same definition as `wayfare-push-pr`'s equivalent bullet): `Next step: wayfare:wayfare-sync-plan, whose harden stage audits the new dependency surface and writes any fix as a security item` (print only).
-- **Otherwise**: `Next step: wayfare:wayfare-ship-pr, which posts @auto-approve, merges, and resets to the default branch (it blocks if any threads remain unresolved)` (offer to auto-run: ask "Run it now? [y/N]", invoke via Skill tool on yes).
+- **This cycle touched dependency files** (`package.json`, `pyproject.toml`,
+  lockfiles, `.github/workflows/*.yml` version pins, or `Dockerfile*`, the same
+  definition as `wayfare-push-pr`'s equivalent bullet):
+  `Next step: wayfare:wayfare-sync-plan, whose harden stage audits the new dependency surface and writes any fix as a security item`
+  (print only).
+- **Otherwise**:
+  `Next step: wayfare:wayfare-ship-pr, which posts @auto-approve, merges, and resets to the default branch (it blocks if any threads remain unresolved)`
+  (offer to auto-run: ask "Run it now? [y/N]", invoke via Skill tool on yes).
 
 **If changes were stashed in Step 2, remind the user:**
 
@@ -465,7 +518,9 @@ To restore: git checkout {original-branch} && git stash pop
 
 ### Step 11: Review Loop (when Code Review Agent is configured)
 
-After completing the initial respond cycle (Steps 3-10), check if `HERO.md` has a **Code Review Agent** configured (agent is not `none`). If so, and the user passed `--loop` or confirms they want to loop, enter the iterative review loop.
+After completing the initial respond cycle (Steps 3-10), check if `HERO.md` has
+a **Code Review Agent** configured (agent is not `none`). If so, and the user
+passed `--loop` or confirms they want to loop, enter the iterative review loop.
 
 **Skip this step entirely if:**
 
@@ -534,7 +589,8 @@ Poll every 30 seconds based on configured `poll-method`:
     --jq '.workflow_runs[] | select(.name | contains("AGENT_NAME")) | {status: .status, conclusion: .conclusion}'
   ```
 
-**Timeout:** If no result after 5 minutes of polling, report timeout and ask user whether to retry or exit the loop.
+**Timeout:** If no result after 5 minutes of polling, report timeout and ask
+user whether to retry or exit the loop.
 
 **11c. Parse results**
 
@@ -564,9 +620,11 @@ gh api graphql -f query='
 ' -f owner="$OWNER" -f repo="$REPO" -F pr=$PR_NUMBER
 ```
 
-Filter for threads authored by the review agent bot that are unresolved. Count them.
+Filter for threads authored by the review agent bot that are unresolved. Count
+them.
 
-If the agent provides a confidence score (e.g., `5/5` in PR description or comment), extract it.
+If the agent provides a confidence score (e.g., `5/5` in PR description or
+comment), extract it.
 
 **11d. Check exit conditions**
 
@@ -586,7 +644,9 @@ Manual review may be needed for the remaining items.
 
 **11e. Fix, commit, push, resolve**
 
-If not exiting, repeat the respond cycle for the new comments. The mandatory improvements comment and PR-description decision apply on **every** iteration. Silently skipping them inside the loop would defeat the always-post contract.
+If not exiting, repeat the respond cycle for the new comments. The mandatory
+improvements comment and PR-description decision apply on **every** iteration.
+Silently skipping them inside the loop would defeat the always-post contract.
 
 1. Categorize the agent's new comments (same as Step 4)
 2. Present to user for confirmation
@@ -596,7 +656,8 @@ If not exiting, repeat the respond cycle for the new comments. The mandatory imp
 6. Push (same as Step 8)
 7. Reply to and resolve addressed threads (same as Step 9)
 8. Post the consolidated improvements comment (same as Step 9a)
-9. Update PR title/body if the iteration's fixes shifted scope or behavior (same as Step 9b)
+9. Update PR title/body if the iteration's fixes shifted scope or behavior (same
+   as Step 9b)
 
 Increment iteration counter and loop back to 11a.
 
@@ -623,9 +684,11 @@ URL: PR_URL
 
 ## Notes
 
-- Always ask the user before making changes. Do not blindly follow every review comment
+- Always ask the user before making changes. Do not blindly follow every review
+  comment
 - Some comments may conflict with each other; flag these to the user
-- If a reviewer's suggestion would introduce a bug or regression, explain why to the user
+- If a reviewer's suggestion would introduce a bug or regression, explain why to
+  the user
 - Never force-push unless the user explicitly requests it
 - Reply to comments before resolving them so reviewers see what changed
 - If the PR has many comments, work through them file-by-file for efficiency

@@ -65,6 +65,25 @@ repos:
         args: [--fix]
 
   # ===========================================================================
+  # Markdown line wrapping
+  # ===========================================================================
+  # The formatter owns line breaks so no agent spends an edit re-wrapping a
+  # paragraph by hand. --number keeps `1. 2. 3.` lists as written (mdformat
+  # rewrites them all to `1.` otherwise); --compact-tables stops it padding
+  # every table cell, which would make each one-cell edit a whole-table diff.
+  # 0.7.22, not 1.0: mdformat-tables has no release that installs beside 1.0.
+  - repo: https://github.com/hukkin/mdformat
+    rev: 0.7.22
+    hooks:
+      - id: mdformat
+        args: [--wrap, "80", --number, --compact-tables]
+        additional_dependencies:
+          - mdformat-gfm==1.0.0
+          - mdformat-frontmatter==2.1.2
+          - mdformat-tables==1.0.0
+        exclude: ^(analysis|memory|docs/superpowers)/
+
+  # ===========================================================================
   # Typo detection
   # ===========================================================================
   - repo: https://github.com/codespell-project/codespell
@@ -164,9 +183,13 @@ repos:
       # Glob, don't enumerate. Naming each suite meant a newly added
       # scripts/*.test.sh ran nowhere — it matched neither the entry nor the
       # trigger below — so the suite silently guaranteed nothing.
+      # Unset what git exports to a hook first. From a linked worktree that
+      # includes GIT_DIR, and a suite's fixture `git init` or `git config` then
+      # lands in the real repo: it set core.bare=true here and wrote a `t`
+      # identity into .git/config.
       - id: shell-unit-tests
         name: "Shell library unit tests"
-        entry: bash -c 'for t in scripts/*.test.sh; do echo "-- $t"; bash "$t" || exit 1; done'
+        entry: bash -c 'unset $(git rev-parse --local-env-vars); for t in scripts/*.test.sh; do echo "-- $t"; bash "$t" || exit 1; done'
         language: system
         pass_filenames: false
         # docs/AGENTS-MD.md is the spec check-agents-md.test.sh reads its R5/R6
@@ -186,11 +209,13 @@ repos:
         language: script
         stages: [commit-msg]
 
-      - id: audit
-        name: "Audit: check plugin quality"
-        entry: ./scripts/hero-meta-precommit.sh
-        language: script
+      # Deterministic, so it replaces the model call that used to review
+      # every staged skill diff. What still needs judgment is
+      # wayfare-audit-plugin's, run on demand, not on every commit.
+      - id: check-docs
+        name: "Docs: frontmatter, steps, prose, chains, counts, links"
+        entry: scripts/check_docs.py
+        language: python
+        additional_dependencies: [pyyaml==6.0.3]
         pass_filenames: false
         always_run: true
-        stages: [pre-commit]
-        verbose: true

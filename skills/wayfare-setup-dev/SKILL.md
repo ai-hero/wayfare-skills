@@ -8,11 +8,14 @@ disable-model-invocation: true
 
 # Setup: get a developer's machine ready
 
-Guide an individual developer through setting up their local environment based on the team's `HERO.md` configuration. This skill handles everything that is per-developer and should NOT be committed to the repo.
+Guide an individual developer through setting up their local environment based
+on the team's `HERO.md` configuration. This skill handles everything that is
+per-developer and should NOT be committed to the repo.
 
 ## Arguments
 
-- `recalibrate` - Tune the `HERO.md` fields this skill reads, then stop (see below). Matched before every other form.
+- `recalibrate` - Tune the `HERO.md` fields this skill reads, then stop (see
+  below). Matched before every other form.
 - `$ARGUMENTS`:
   - (none) - Full guided setup
   - `--check` - Only verify the current setup and report what is missing
@@ -27,14 +30,13 @@ No HERO.md found. Run wayfare:wayfare-init-repo first to configure the project.
 
 ## `recalibrate`
 
-`wayfare:wayfare-setup-dev recalibrate` tunes the config that drives this skill, and
-stops. It does not go on to run the skill. You want to see which field was
+`wayfare:wayfare-setup-dev recalibrate` tunes the config that drives this skill,
+and stops. It does not go on to run the skill. You want to see which field was
 wrong, not spend a whole run finding out.
 
-Dispatch on it before parsing any other argument, in whichever step does
-that parsing. When the first token of
-`$ARGUMENTS` is exactly `recalibrate`, print `wayfare-setup-dev: running recalibrate`,
-follow the four phases in
+Dispatch on it before parsing any other argument, in whichever step does that
+parsing. When the first token of `$ARGUMENTS` is exactly `recalibrate`, print
+`wayfare-setup-dev: running recalibrate`, follow the four phases in
 [docs/RECALIBRATE.md](../../docs/RECALIBRATE.md) (report, ask, write, commit)
 using the table below as the report, and stop.
 
@@ -51,7 +53,10 @@ wrong. A row that already holds the right value is not a question.
 
 ### Step 1: Read HERO.md
 
-**If the first token of `$ARGUMENTS` is exactly `recalibrate`, run the `recalibrate` section above and stop.** Do this before the missing-HERO.md check below, which would otherwise send the user to `wayfare-init-repo` for the very file the verb exists to fill in.
+**If the first token of `$ARGUMENTS` is exactly `recalibrate`, run the
+`recalibrate` section above and stop.** Do this before the missing-HERO.md check
+below, which would otherwise send the user to `wayfare-init-repo` for the very
+file the verb exists to fill in.
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -59,9 +64,12 @@ cat "$ROOT/HERO.md"
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow **At the fleet root** in `docs/FLEET-MD.md`.
+If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
+**At the fleet root** in `docs/FLEET-MD.md`.
 
-Parse the `## Developer Setup` section for required tools, recommended tools, and MCP servers. Also read other sections for implicit requirements (e.g., CI platform → `gh`, deployment platform → `kubectl`).
+Parse the `## Developer Setup` section for required tools, recommended tools,
+and MCP servers. Also read other sections for implicit requirements (e.g., CI
+platform → `gh`, deployment platform → `kubectl`).
 
 ### Step 2: Check Git Configuration
 
@@ -175,7 +183,9 @@ Only check auth for tools that are actually installed AND relevant to HERO.md.
 
 ### Step 5: Check Recommended Tools
 
-Same as Step 3 but for `## Developer Setup → Recommended Tools`. Use `[--]` instead of `[!!]` for missing recommended tools. They are nice to have, not blockers.
+Same as Step 3 but for `## Developer Setup → Recommended Tools`. Use `[--]`
+instead of `[!!]` for missing recommended tools. They are nice to have, not
+blockers.
 
 ```
 RECOMMENDED TOOLS
@@ -199,13 +209,15 @@ MCP SERVERS
      → Is the Slack MCP server configured in your Claude settings?
 ```
 
-MCP server setup happens in the client's settings, not on the command line. Tell the user what is expected and why.
+MCP server setup happens in the client's settings, not on the command line. Tell
+the user what is expected and why.
 
 ### Step 7: Summary & Next Steps
 
 **If `--check` was passed**, just show the summary and exit.
 
-**For full setup**, after each section offer to fix what's missing. Then show final summary:
+**For full setup**, after each section offer to fix what's missing. Then show
+final summary:
 
 ```
 SETUP SUMMARY
@@ -226,15 +238,23 @@ Run wayfare:wayfare-init-repo recalibrate if the project setup has changed.
 Next step: wayfare:wayfare-check-preflight — sanity-check tooling, .env, ports before starting (print only — model-invocation-restricted, cannot auto-run)
 ```
 
-Don't also print `wayfare:wayfare-build-task`; `wayfare-check-preflight`'s own next-steps lead there once it passes.
+Don't also print `wayfare:wayfare-build-task`; `wayfare-check-preflight`'s own
+next-steps lead there once it passes.
 
 ## Key Principles
 
-- **Never modify shared files.** This skill only touches local git config and suggests installs. It never writes to HERO.md, CLAUDE.md, or any committed file.
-- **Always ask before changing config.** Git identity, signing keys, and auth are personal. Confirm before setting any of them.
-- **Platform-aware.** Detect macOS vs Linux and suggest the right install commands.
-- **Idempotent.** Running `wayfare:wayfare-setup-dev` twice should be safe. Skip whatever is already done.
-- **Reference HERO.md.** Every check should tie back to why it's needed: "Required by HERO.md for wayfare:wayfare-push-pr" or "Used by CI (GitHub Actions)".
+- **Never modify shared files.** This skill only touches local git config and
+  suggests installs. It never writes to HERO.md, CLAUDE.md, or any committed
+  file.
+- **Always ask before changing config.** Git identity, signing keys, and auth
+  are personal. Confirm before setting any of them.
+- **Platform-aware.** Detect macOS vs Linux and suggest the right install
+  commands.
+- **Idempotent.** Running `wayfare:wayfare-setup-dev` twice should be safe. Skip
+  whatever is already done.
+- **Reference HERO.md.** Every check should tie back to why it's needed:
+  "Required by HERO.md for wayfare:wayfare-push-pr" or "Used by CI (GitHub
+  Actions)".
 
 ## Examples
 

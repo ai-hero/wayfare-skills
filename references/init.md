@@ -5,16 +5,21 @@ auto-detect its settings, confirm the findings with evidence-based questions,
 then write `HERO.md` and the plan object `.plans/PLAN.md`.
 
 This was `wayfare:wayfare-init-repo`. It is the same procedure; it is reached
-through wayfare now, because "configure the repo" and "plan the repo" were
-never two decisions a person should have to sequence themselves.
+through wayfare now, because "configure the repo" and "plan the repo" were never
+two decisions a person should have to sequence themselves.
 
 ## Step 1: Establish AGENTS.md as the Agent Instructions File
 
-**House standard: `AGENTS.md` is the real file; `CLAUDE.md` is a symlink to it.**
+**House standard: `AGENTS.md` is the real file; `CLAUDE.md` is a symlink to
+it.**
 
-`AGENTS.md` is the cross-agent open standard (agents.md), which Cursor, Copilot, and others read. Claude Code reads `CLAUDE.md`. A symlink means one file serves every agent with zero duplication and no drift between them. **Always write content to `AGENTS.md`, never to `CLAUDE.md`.**
+`AGENTS.md` is the cross-agent open standard (agents.md), which Cursor, Copilot,
+and others read. Claude Code reads `CLAUDE.md`. A symlink means one file serves
+every agent with zero duplication and no drift between them. **Always write
+content to `AGENTS.md`, never to `CLAUDE.md`.**
 
-Detect the current state. Note that `-L` must be tested *before* `-f`, since `-f` is true for a symlink pointing at an existing file:
+Detect the current state. Note that `-L` must be tested *before* `-f`, since
+`-f` is true for a symlink pointing at an existing file:
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -34,10 +39,11 @@ else
 fi
 ```
 
-Act on the state. **Never delete a `CLAUDE.md` whose content is not already preserved in `AGENTS.md`.**
+Act on the state. **Never delete a `CLAUDE.md` whose content is not already
+preserved in `AGENTS.md`.**
 
 | State | Action |
-| --- | --- |
+| -- | -- |
 | `CORRECT` | Nothing to do. Edit `AGENTS.md` in Step 5. |
 | `NEITHER` | Create `AGENTS.md` with the scaffold below, then `ln -s AGENTS.md CLAUDE.md`. |
 | `AGENTS_ONLY` | Create the symlink: `ln -s AGENTS.md CLAUDE.md`. |
@@ -45,7 +51,8 @@ Act on the state. **Never delete a `CLAUDE.md` whose content is not already pres
 | `BOTH_REGULAR_FILES` | **Stop and ask the user.** Two independent files exist. Show a diff, propose merging `CLAUDE.md`'s unique content into `AGENTS.md`, and only replace `CLAUDE.md` with a symlink once the user confirms the merge. Never silently discard either file. |
 | `SYMLINK_WRONG_TARGET` | Report it and ask. Do not repoint a symlink the user aimed somewhere deliberately. |
 
-For `CLAUDE_ONLY`, use `git mv` when the file is tracked so history follows the rename; fall back to plain `mv` if git reports it is untracked.
+For `CLAUDE_ONLY`, use `git mv` when the file is tracked so history follows the
+rename; fall back to plain `mv` if git reports it is untracked.
 
 Scaffold for a new `AGENTS.md` (content is filled in during Step 5):
 
@@ -69,15 +76,24 @@ See [HERO.md](./HERO.md) for coding conventions detected from the codebase.
 
 **If `AGENTS.md` already has content:**
 
-- Read it and check for `## Tech Stack`, `## Best Practices`, and `## Coding Conventions`.
+- Read it and check for `## Tech Stack`, `## Best Practices`, and
+  `## Coding Conventions`.
 - If a section is **missing**, append it.
 - If a section exists but does **not** reference `HERO.md`, add:
   `See [HERO.md](./HERO.md) for details managed by wayfare:wayfare-init-repo.`
-- **Do not** remove or overwrite content the user wrote. Only add the pointer if it is absent.
+- **Do not** remove or overwrite content the user wrote. Only add the pointer if
+  it is absent.
 
-**Windows note:** symlinks need Developer Mode or elevated privileges. If `ln -s` fails, fall back to a regular `CLAUDE.md` containing the single line `See [AGENTS.md](./AGENTS.md).` and tell the user why.
+**Windows note:** symlinks need Developer Mode or elevated privileges. If
+`ln -s` fails, fall back to a regular `CLAUDE.md` containing the single line
+`See [AGENTS.md](./AGENTS.md).` and tell the user why.
 
-**Why this matters:** `AGENTS.md`/`CLAUDE.md` is loaded into context at conversation start. Without a HERO.md reference, Claude won't consult HERO.md for tech stack decisions (OpenTofu vs Terraform) or coding conventions (snake_case, structured logging, no DB mocks). The pointer ensures the agent reads HERO.md for authoritative configuration, and it survives a context compaction, which loaded skills may not.
+**Why this matters:** `AGENTS.md`/`CLAUDE.md` is loaded into context at
+conversation start. Without a HERO.md reference, Claude won't consult HERO.md
+for tech stack decisions (OpenTofu vs Terraform) or coding conventions
+(snake_case, structured logging, no DB mocks). The pointer ensures the agent
+reads HERO.md for authoritative configuration, and it survives a context
+compaction, which loaded skills may not.
 
 ## Step 2: Check for Existing HERO.md Configuration
 
@@ -86,17 +102,23 @@ ls "$ROOT/HERO.md" 2>/dev/null && echo "EXISTS" || echo "NEW"
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow **At the fleet root** in `docs/FLEET-MD.md`.
+If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
+**At the fleet root** in `docs/FLEET-MD.md`.
 
-If `HERO.md` exists and `recalibrate` was not passed, show current config and ask if user wants to update it. If `recalibrate`, read the existing file to compare against new findings.
+If `HERO.md` exists and `recalibrate` was not passed, show current config and
+ask if user wants to update it. If `recalibrate`, read the existing file to
+compare against new findings.
 
 ## Step 3: Deep Investigation
 
-Launch a thorough investigation of the repository. Use an Explore subagent or do it yourself. The goal is to gather **evidence** for every configuration decision.
+Launch a thorough investigation of the repository. Use an Explore subagent or do
+it yourself. The goal is to gather **evidence** for every configuration
+decision.
 
 ### 3a: Coding Agent & AI Tooling
 
-Detect which AI coding agent(s) the team uses. This must come first, because it determines which hooks, configs, and integrations are possible.
+Detect which AI coding agent(s) the team uses. This must come first, because it
+determines which hooks, configs, and integrations are possible.
 
 ```bash
 # Claude Code
@@ -124,16 +146,19 @@ grep -r "claude\|cursor\|copilot\|windsurf\|aider" .pre-commit-config.yaml 2>/de
 
 **What to look for:**
 
-- `.claude/` directory or `AGENTS.md`/`CLAUDE.md` → Claude Code user, so hooks, skills, and MCP servers are available
+- `.claude/` directory or `AGENTS.md`/`CLAUDE.md` → Claude Code user, so hooks,
+  skills, and MCP servers are available
 - `.cursorrules` or `.cursor/rules/` → Cursor user: rules files, no hook system
 - `.github/copilot-instructions.md` → Copilot user: instructions file
 - `.windsurfrules` → Windsurf user: rules file
 - Multiple signals → the team uses different agents, so note all of them
-- Pre-commit hooks referencing AI tools → existing self-review or lint integration
+- Pre-commit hooks referencing AI tools → existing self-review or lint
+  integration
 
-**If no coding agent detected**, ask:
-*"What AI coding agent does your team use? (Claude Code, Cursor, Windsurf, Copilot, other)"*
-This determines what hooks and integrations hero skills can set up (e.g., pre-commit self-review, agent-specific rules files).
+**If no coding agent detected**, ask: *"What AI coding agent does your team use?
+(Claude Code, Cursor, Windsurf, Copilot, other)"* This determines what hooks and
+integrations hero skills can set up (e.g., pre-commit self-review,
+agent-specific rules files).
 
 ### 3b: Code Review Agent
 
@@ -156,13 +181,17 @@ gh api "/repos/{owner}/{repo}/installation" --jq '{app_slug, app_name}' 2>/dev/n
 
 **What to look for:**
 
-- `.coderabbit.yaml` → CodeRabbit. Trigger: auto on push, poll-method: comments, bot-username: `coderabbitai`
-- `.greptile/` or `.greptile.yaml` → Greptile. Trigger: `@greptile review` comment, poll-method: check-runs, bot-username: `greptile-bot`
+- `.coderabbit.yaml` → CodeRabbit. Trigger: auto on push, poll-method: comments,
+  bot-username: `coderabbitai`
+- `.greptile/` or `.greptile.yaml` → Greptile. Trigger: `@greptile review`
+  comment, poll-method: check-runs, bot-username: `greptile-bot`
 - Bot usernames in recent PR comments → identifies active review agent
-- GitHub Copilot code review enabled → trigger: auto on push, poll-method: comments, bot-username: `copilot`
+- GitHub Copilot code review enabled → trigger: auto on push, poll-method:
+  comments, bot-username: `copilot`
 
-**If no review agent detected**, set `agent: none`. Optionally ask:
-*"Does your team use an automated code review bot (Greptile, CodeRabbit, Copilot review, etc.)?"*
+**If no review agent detected**, set `agent: none`. Optionally ask: *"Does your
+team use an automated code review bot (Greptile, CodeRabbit, Copilot review,
+etc.)?"*
 
 ### 3b-2: Design System & UI Registry
 
@@ -195,11 +224,17 @@ grep -rlE '#[0-9a-fA-F]{3,6}\b' --include="*.tsx" src/ 2>/dev/null | wc -l
 
 **What to look for:**
 
-- `registry.json` + `registry-dist/` + a `shadcn build` script → this repo is a **producer**. Set `role: producer` on the `design-system` connection so `wayfare:wayfare-recomponentize-ui` refuses to run here. A registry repo's pipeline is mockup → design system; consuming its own output would invert it.
-- `components.json` with a `registries` block → already a consumer; read the namespace and URL from it rather than asking.
-- `components.json` whose `"ui"` alias points at an internal atomic dir (e.g. `@/components/atoms`) rather than `@/components/ui` → another producer signal.
+- `registry.json` + `registry-dist/` + a `shadcn build` script → this repo is a
+  **producer**. Set `role: producer` on the `design-system` connection so
+  `wayfare:wayfare-recomponentize-ui` refuses to run here. A registry repo's
+  pipeline is mockup → design system; consuming its own output would invert it.
+- `components.json` with a `registries` block → already a consumer; read the
+  namespace and URL from it rather than asking.
+- `components.json` whose `"ui"` alias points at an internal atomic dir (e.g.
+  `@/components/atoms`) rather than `@/components/ui` → another producer signal.
 - A frontend with no `components.json` → candidate consumer. Ask (see Group 6).
-- Existing MUI/Chakra/Mantine/Ant → note it. **Never propose migrating UI libraries during init.** That is a project, not a config decision.
+- Existing MUI/Chakra/Mantine/Ant → note it. **Never propose migrating UI
+  libraries during init.** That is a project, not a config decision.
 - Atomic dirs already present → record `atomic-layers: true`.
 
 ### 3c: Repository & Collaboration Model
@@ -228,21 +263,28 @@ gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,del
 
 **What to look for:**
 
-- Remote URL → hosting platform: `github.com` → GitHub (`gh`), `gitlab.com` → GitLab (`glab`), `bitbucket.org` → Bitbucket
+- Remote URL → hosting platform: `github.com` → GitHub (`gh`), `gitlab.com` →
+  GitLab (`glab`), `bitbucket.org` → Bitbucket
 - Multiple contributors in git log → team project with shared conventions
 - LICENSE + CONTRIBUTING.md → open-source, may need DCO sign-off
 - CODEOWNERS → enforced code review ownership
 - PR templates → structured PR process
-- Branch naming patterns in `git branch -r` → extract the **branch template** (e.g., `feature/PROJ-123-DESC`, `fix/DESC`, `PREFIX/ISSUE_ID-DESC`)
+- Branch naming patterns in `git branch -r` → extract the **branch template**
+  (e.g., `feature/PROJ-123-DESC`, `fix/DESC`, `PREFIX/ISSUE_ID-DESC`)
 - Commit message patterns in `git log` (e.g., `feat:`, `fix:`, `PROJ-123:`)
-- Allowed merge methods → `merge-method` field. Prefer `squash` when allowed; otherwise `rebase`; otherwise `merge`. If multiple are allowed, ask the user once to pin the team's choice.
-- `deleteBranchOnMerge` → `auto-delete-branches` field. If true, GitHub already deletes merged branches and `wayfare:wayfare-ship-pr` will skip cleanup. If false, the skill will delete the remote and local branch after a successful merge unless `auto-delete-branches: false` overrides it in HERO.md.
+- Allowed merge methods → `merge-method` field. Prefer `squash` when allowed;
+  otherwise `rebase`; otherwise `merge`. If multiple are allowed, ask the user
+  once to pin the team's choice.
+- `deleteBranchOnMerge` → `auto-delete-branches` field. If true, GitHub already
+  deletes merged branches and `wayfare:wayfare-ship-pr` will skip cleanup. If
+  false, the skill will delete the remote and local branch after a successful
+  merge unless `auto-delete-branches: false` overrides it in HERO.md.
 
 ### 3c-2: The other connections
 
-The remaining kinds in `## Connections` (docs/CONNECTIONS.md). Each is cheap
-to probe and expensive to guess, and the answer that matters most is which of
-the three states it is in: unset, `type: none`, or set.
+The remaining kinds in `## Connections` (docs/CONNECTIONS.md). Each is cheap to
+probe and expensive to guess, and the answer that matters most is which of the
+three states it is in: unset, `type: none`, or set.
 
 ```bash
 # reference — the template this repo was cloned from
@@ -263,9 +305,9 @@ grep -n '^### ' ../FLEET.md 2>/dev/null | head -20
   `architecture` is `type: self`. A separate docs repo → `type: repo` and the
   row name.
 - IaC directories **here** → `type: self`. Not `none`: the infrastructure
-  exists, it just is not somewhere else, and `none` would say this system has
-  no IaC at all. A sibling holding the manifests → `type: terraform`/
-  `kubernetes` and its row.
+  exists, it just is not somewhere else, and `none` would say this system has no
+  IaC at all. A sibling holding the manifests → `type: terraform`/ `kubernetes`
+  and its row.
 - No template, no IaC repo, no external architecture record → write
   `type: none`, which is the answer "looked, there is none". Write nothing at
   all only when you genuinely did not look; an empty block and a `none` block
@@ -294,8 +336,8 @@ grep -r "linear\|jira\|asana\|shortcut" .github/ 2>/dev/null | head -5
   `issue-prefix` on the `issues` connection
 - Linear/Jira mentions in templates → the connection's `type`, and `reach` is
   the MCP server or CLI that reads it
-- GitHub issue references (`#123`, `Fixes #123`) → `type: github`, `at` the
-  repo slug, `reach: gh`
+- GitHub issue references (`#123`, `Fixes #123`) → `type: github`, `at` the repo
+  slug, `reach: gh`
 
 ### 3e: CI/CD Platform & Workflows
 
@@ -320,7 +362,8 @@ grep -l "test\|lint\|build\|deploy\|release" .github/workflows/*.yml 2>/dev/null
 - Which workflows exist and what they do (test, lint, build images, deploy)
 - Whether CI runs on PR, push to main, or both
 - Required status checks (signals what must pass before merge)
-- Whether `.github/workflows/auto-approve.yaml` (or `.yml`) already exists, which `wayfare:wayfare-ship-pr` needs
+- Whether `.github/workflows/auto-approve.yaml` (or `.yml`) already exists,
+  which `wayfare:wayfare-ship-pr` needs
 
 ```bash
 # Check whether the shared auto-approve workflow is installed
@@ -349,14 +392,14 @@ else
 fi
 ```
 
-**`AUTO_APPROVE_STALE` means auto-approve is broken here, right now.** Say
-that plainly rather than filing it as a migration to get to: the `uses:`
-names a repo that no longer answers, so every `@auto-approve` on this repo
-fails at startup. Run the installer; it writes a `.new` beside the existing
-file and exits 2 rather than overwriting, so the swap is the user's to make
-and the diff is worth showing. Separately, and for a different reason, nobody
-should ever create a repo at the old name: a consumer still pointed there
-would hand it `ANTHROPIC_API_KEY` and an approve-capable token.
+**`AUTO_APPROVE_STALE` means auto-approve is broken here, right now.** Say that
+plainly rather than filing it as a migration to get to: the `uses:` names a repo
+that no longer answers, so every `@auto-approve` on this repo fails at startup.
+Run the installer; it writes a `.new` beside the existing file and exits 2
+rather than overwriting, so the swap is the user's to make and the diff is worth
+showing. Separately, and for a different reason, nobody should ever create a
+repo at the old name: a consumer still pointed there would hand it
+`ANTHROPIC_API_KEY` and an approve-capable token.
 
 ```bash
 # And whether it has been merged to the default branch — issue_comment
@@ -416,10 +459,13 @@ which pre-commit 2>/dev/null && pre-commit --version
 
 **What to look for:**
 
-- Which tools the project actually requires (cross-reference with deps, CI, Dockerfiles, Makefiles)
-- Distinguish between **required** (project won't build/run without it) vs. **recommended** (nice to have)
+- Which tools the project actually requires (cross-reference with deps, CI,
+  Dockerfiles, Makefiles)
+- Distinguish between **required** (project won't build/run without it) vs.
+  **recommended** (nice to have)
 - Note minimum versions if the project depends on specific features
-- These go into HERO.md `## Developer Setup` as team-shared requirements. Individual installation and auth are handled by `wayfare:wayfare-setup-dev`
+- These go into HERO.md `## Developer Setup` as team-shared requirements.
+  Individual installation and auth are handled by `wayfare:wayfare-setup-dev`
 
 ### 3g: Deployment & Infrastructure
 
@@ -531,19 +577,30 @@ grep -E "port\|PORT\|:3000\|:8000\|:8080\|:5173\|:4000" pyproject.toml package.j
 **What to look for:**
 
 - Language and framework from dependency files
-- Monorepo structure (nx, turborepo, `workspaces` in `package.json`, multiple `pyproject.toml`): one repo with many packages. A folder of sibling checkouts is a **fleet**, mapped by `FLEET.md` (`wayfare:wayfare-sync-fleet`), and is not a monorepo
-- **Dependency file** per project (pyproject.toml, package.json, go.mod, and so on), needed by `wayfare:wayfare-audit-security` and `wayfare:wayfare-push-pr`'s test phase
-- **Lock file** → identifies the package manager (pnpm-lock.yaml → pnpm, yarn.lock → yarn, etc.)
-- **Install command** (for example `uv sync` or `pnpm install`), needed by `wayfare:wayfare-push-pr`'s test phase before running
-- **Task runner** (Makefile, justfile, Taskfile). If present, prefer its targets as canonical commands (e.g., `make test` over `uv run pytest`)
-- **Exact lint/format/typecheck commands**: not just tool names; `wayfare:wayfare-push-pr`'s test phase needs runnable commands for verification
+- Monorepo structure (nx, turborepo, `workspaces` in `package.json`, multiple
+  `pyproject.toml`): one repo with many packages. A folder of sibling checkouts
+  is a **fleet**, mapped by `FLEET.md` (`wayfare:wayfare-sync-fleet`), and is
+  not a monorepo
+- **Dependency file** per project (pyproject.toml, package.json, go.mod, and so
+  on), needed by `wayfare:wayfare-audit-security` and
+  `wayfare:wayfare-push-pr`'s test phase
+- **Lock file** → identifies the package manager (pnpm-lock.yaml → pnpm,
+  yarn.lock → yarn, etc.)
+- **Install command** (for example `uv sync` or `pnpm install`), needed by
+  `wayfare:wayfare-push-pr`'s test phase before running
+- **Task runner** (Makefile, justfile, Taskfile). If present, prefer its targets
+  as canonical commands (e.g., `make test` over `uv run pytest`)
+- **Exact lint/format/typecheck commands**: not just tool names;
+  `wayfare:wayfare-push-pr`'s test phase needs runnable commands for
+  verification
 - Test commands from scripts section or config files
 - Dev server commands and default ports
 - Entry points for CLIs
 
 ### 3j: Coding Conventions & Team Patterns
 
-Investigate the codebase for established conventions the team follows. These are critical, because the agent must follow the same patterns the team uses.
+Investigate the codebase for established conventions the team follows. These are
+critical, because the agent must follow the same patterns the team uses.
 
 ```bash
 # Existing style guides or contributing docs
@@ -623,26 +680,37 @@ For **Rust** projects:
 - API response shape conventions (envelope pattern, error format)
 - Logging approach: structured vs unstructured, which library
 - Config management: env vars, config files, secrets handling
-- Test organization: co-located vs separate directory, naming patterns (`test_*`, `*.test.ts`, `*_test.go`)
+- Test organization: co-located vs separate directory, naming patterns
+  (`test_*`, `*.test.ts`, `*_test.go`)
 
 **Rationale detection: when to ask "why"**
 
-Most conventions are self-evident (snake_case in Python, PascalCase classes), so do not ask why for those. But flag and ask about anything that is:
+Most conventions are self-evident (snake_case in Python, PascalCase classes), so
+do not ask why for those. But flag and ask about anything that is:
 
-- **An exception to the language/framework default** (e.g., no default exports in TS, relative imports in a flat Python project)
+- **An exception to the language/framework default** (e.g., no default exports
+  in TS, relative imports in a flat Python project)
 - **A deliberate avoidance** (e.g., no ORM, no mocks, no barrel files)
-- **A tool choice that has a common alternative** (e.g., OpenTofu over Terraform, pnpm over npm, Bun over Node)
+- **A tool choice that has a common alternative** (e.g., OpenTofu over
+  Terraform, pnpm over npm, Bun over Node)
 - **A pattern that would surprise a new team member or Claude**
 
-For these, ask the user: *"I noticed you use X instead of Y. Is there a specific reason? This helps Claude avoid suggesting Y in the future."*
+For these, ask the user: *"I noticed you use X instead of Y. Is there a specific
+reason? This helps Claude avoid suggesting Y in the future."*
 
-Keep rationale brief for mild preferences, elaborate for hard-won lessons (e.g., "mocks hid a migration bug").
+Keep rationale brief for mild preferences, elaborate for hard-won lessons (e.g.,
+"mocks hid a migration bug").
 
 ## Step 4: Synthesize Findings into Smart Questions
 
-Based on your investigation, present findings grouped by **what the hero skills need**. Do NOT ask generic questionnaire questions. Instead, present evidence-based confirmations.
+Based on your investigation, present findings grouped by **what the hero skills
+need**. Do NOT ask generic questionnaire questions. Instead, present
+evidence-based confirmations.
 
-**IMPORTANT: When asking clarifying questions, switch to plan mode or present ALL questions in a single numbered list (1. 2. 3. ...) so the user can answer them efficiently in one go. Never ask questions in freeform prose scattered across the output.**
+**IMPORTANT: When asking clarifying questions, switch to plan mode or present
+ALL questions in a single numbered list (1. 2. 3. ...) so the user can answer
+them efficiently in one go. Never ask questions in freeform prose scattered
+across the output.**
 
 **Format for each finding:**
 
@@ -669,16 +737,26 @@ Based on your investigation, present findings grouped by **what the hero skills 
 - Coding agent (Claude Code, Cursor, Windsurf, etc.)
 - Whether hooks/pre-commit integration is possible
 
-Do NOT offer to install a pre-commit hook for `wayfare:wayfare-init-repo recalibrate`. Skills surface a stale-HERO.md hint on demand instead; see `scripts/check-hero-staleness.sh`.
+Do NOT offer to install a pre-commit hook for
+`wayfare:wayfare-init-repo recalibrate`. Skills surface a stale-HERO.md hint on
+demand instead; see `scripts/check-hero-staleness.sh`.
 
 ### Group 1: "For committing and pushing code" (`wayfare:wayfare-push-pr`, `wayfare:wayfare-ship-pr`)
 
 - Hosting platform (GitHub, GitLab, Bitbucket), read from the remote URL
 - Commit convention (evidence from git log patterns)
-- Branch naming convention and branch template (evidence from branch -r patterns)
+- Branch naming convention and branch template (evidence from branch -r
+  patterns)
 - Default branch
-- Merge method for PRs: squash, rebase, or merge. Detect with `gh repo view --json squashMergeAllowed,rebaseMergeAllowed,mergeCommitAllowed`; pick the **first allowed in this preference order: squash → rebase → merge**. If multiple are allowed, confirm with the user once and write the choice to `merge-method` in HERO.md.
-- Whether GitHub auto-deletes merged head branches, via `gh repo view --json deleteBranchOnMerge`. If false, `wayfare:wayfare-ship-pr` will clean up the remote + local branch after merge. Record as `auto-delete-branches` in HERO.md.
+- Merge method for PRs: squash, rebase, or merge. Detect with
+  `gh repo view --json squashMergeAllowed,rebaseMergeAllowed,mergeCommitAllowed`;
+  pick the **first allowed in this preference order: squash → rebase → merge**.
+  If multiple are allowed, confirm with the user once and write the choice to
+  `merge-method` in HERO.md.
+- Whether GitHub auto-deletes merged head branches, via
+  `gh repo view --json deleteBranchOnMerge`. If false, `wayfare:wayfare-ship-pr`
+  will clean up the remote + local branch after merge. Record as
+  `auto-delete-branches` in HERO.md.
 - Pre-commit hooks and what they run
 - Linters, formatters
 - Task runner (if Makefile/justfile provides commit/push/lint targets)
@@ -692,7 +770,8 @@ Do NOT offer to install a pre-commit hook for `wayfare:wayfare-init-repo recalib
 ### Group 3: "For testing and verification" (`wayfare:wayfare-push-pr` test phase)
 
 - Per-project: language, framework, dependency file, install command
-- Per-project: test, lint, format, typecheck commands (prefer task runner targets if available)
+- Per-project: test, lint, format, typecheck commands (prefer task runner
+  targets if available)
 - Per-project: dev command, port
 - Type checkers
 - Task runner (Makefile, justfile, etc.) and its available targets
@@ -705,21 +784,38 @@ Do NOT offer to install a pre-commit hook for `wayfare:wayfare-init-repo recalib
 - Container registry
 - ArgoCD / GitOps
 - Namespaces / environments
-- Whether to install `.github/workflows/auto-approve.yaml` for `wayfare:wayfare-ship-pr`. If it is absent, ask:
-  *"`wayfare:wayfare-ship-pr` lets you comment `@auto-approve` on a PR to get a Claude-verified approval (gated by self-review, no unresolved threads, and PR-metadata checks). Install `.github/workflows/auto-approve.yaml`? It also requires an `ANTHROPIC_API_KEY` repo secret."*
+- Whether to install `.github/workflows/auto-approve.yaml` for
+  `wayfare:wayfare-ship-pr`. If it is absent, ask: *"`wayfare:wayfare-ship-pr`
+  lets you comment `@auto-approve` on a PR to get a Claude-verified approval
+  (gated by self-review, no unresolved threads, and PR-metadata checks). Install
+  `.github/workflows/auto-approve.yaml`? It also requires an `ANTHROPIC_API_KEY`
+  repo secret."*
   - If the user says yes, run the install in Step 6a below.
-  - If the workflow exists locally but is not on the default branch yet, remind the user that `@auto-approve` will be a no-op until that file lands on the default branch.
+  - If the workflow exists locally but is not on the default branch yet, remind
+    the user that `@auto-approve` will be a no-op until that file lands on the
+    default branch.
 
 ### Group 6: "For UI work" (`wayfare:wayfare-recomponentize-ui`)
 
 Skip this group entirely for projects with no frontend.
 
-- **Producer detected** (`registry.json` / `registry-dist/` / `shadcn build`): do not ask whether to adopt a design system. Confirm instead:
-  *"This repo publishes a design system. I'll set `role: producer` so `wayfare:wayfare-recomponentize-ui` refuses to run here, because it would try to consume this repo's own output. Correct?"*
-- **Consumer already wired** (`registries` block present): confirm the namespace and URL read from `components.json`; no question needed.
-- **Frontend, no registry**: ask once.
-  *"Use the AI Hero design system (`@aihero`, <https://design.aihero.studio>) for UI in this project? It needs a `REGISTRY_TOKEN` in `.env`, a Personal Access Token from auth.aihero.studio/profile. Choosing no keeps stock shadcn / your current UI library; `wayfare:wayfare-recomponentize-ui` still does the atomic refactor either way."*
-- If yes, also ask: *"Install the enforcement layer (`.claude/rules/design-system.md` + a PostToolUse token check)? It is what makes the constraints apply reliably rather than only when a skill happens to trigger."* If the user agrees, run the install in Step 6b.
+- **Producer detected** (`registry.json` / `registry-dist/` / `shadcn build`):
+  do not ask whether to adopt a design system. Confirm instead: *"This repo
+  publishes a design system. I'll set `role: producer` so
+  `wayfare:wayfare-recomponentize-ui` refuses to run here, because it would try
+  to consume this repo's own output. Correct?"*
+- **Consumer already wired** (`registries` block present): confirm the namespace
+  and URL read from `components.json`; no question needed.
+- **Frontend, no registry**: ask once. *"Use the AI Hero design system
+  (`@aihero`, <https://design.aihero.studio>) for UI in this project? It needs a
+  `REGISTRY_TOKEN` in `.env`, a Personal Access Token from
+  auth.aihero.studio/profile. Choosing no keeps stock shadcn / your current UI
+  library; `wayfare:wayfare-recomponentize-ui` still does the atomic refactor
+  either way."*
+- If yes, also ask: *"Install the enforcement layer
+  (`.claude/rules/design-system.md` + a PostToolUse token check)? It is what
+  makes the constraints apply reliably rather than only when a skill happens to
+  trigger."* If the user agrees, run the install in Step 6b.
 - **Never** propose migrating off an existing UI library here.
 
 ### Group 5: "Coding conventions for consistent code" (all skills that write code)
@@ -732,7 +828,8 @@ Skip this group entirely for projects with no frontend.
 - API patterns (if applicable)
 - Any other strong patterns detected in the codebase
 
-Present ALL findings at once, clearly marking what's confirmed vs. what needs input. Ask the user to confirm or correct.
+Present ALL findings at once, clearly marking what's confirmed vs. what needs
+input. Ask the user to confirm or correct.
 
 **Example output:**
 
@@ -840,7 +937,8 @@ Everything marked [OK] will be used as-is unless you say otherwise.
 
 ## Step 5: Incorporate Answers & Generate HERO.md
 
-After the user responds, merge confirmed findings + user answers and write `HERO.md`:
+After the user responds, merge confirmed findings + user answers and write
+`HERO.md`:
 
 ```markdown
 # Hero Configuration
@@ -1090,9 +1188,14 @@ After the user responds, merge confirmed findings + user answers and write `HERO
 - port: DETECTED_OR_CONFIRMED
 ```
 
-**Only include sections that are relevant.** If there's no CI/CD, no deployment, etc., omit those sections entirely rather than filling them with "none". Keep it clean.
+**Only include sections that are relevant.** If there's no CI/CD, no deployment,
+etc., omit those sections entirely rather than filling them with "none". Keep it
+clean.
 
-**Also update `AGENTS.md` Tech Stack and Best Practices sections** (never write to `CLAUDE.md`, which is a symlink) with a human-readable summary of the key findings. This ensures Claude has immediate context without needing to parse HERO.md. Example:
+**Also update `AGENTS.md` Tech Stack and Best Practices sections** (never write
+to `CLAUDE.md`, which is a symlink) with a human-readable summary of the key
+findings. This ensures Claude has immediate context without needing to parse
+HERO.md. Example:
 
 ```markdown
 ## Tech Stack
@@ -1123,7 +1226,9 @@ See [HERO.md](./HERO.md) for the full tech stack configuration.
 See [HERO.md](./HERO.md) for full coding conventions.
 ```
 
-Tailor the bullet points to what was actually detected. Include anything that Claude might otherwise get wrong (e.g., "OpenTofu NOT Terraform", "pnpm NOT npm", "Bun NOT Node").
+Tailor the bullet points to what was actually detected. Include anything that
+Claude might otherwise get wrong (e.g., "OpenTofu NOT Terraform", "pnpm NOT
+npm", "Bun NOT Node").
 
 ## Step 6: Validate & Confirm
 
@@ -1155,7 +1260,11 @@ Run wayfare:wayfare-setup-dev to configure your local dev environment
 
 ## Step 6a: Optionally Install Auto-Approve Workflow
 
-If the user agreed to install `.github/workflows/auto-approve.yaml` (Group 4 confirmation), copy it into their repo using the bundled installer. The installer's exit code is the contract, so capture it and branch on it explicitly so an existing customized workflow is never silently overwritten or treated as "installed":
+If the user agreed to install `.github/workflows/auto-approve.yaml` (Group 4
+confirmation), copy it into their repo using the bundled installer. The
+installer's exit code is the contract, so capture it and branch on it explicitly
+so an existing customized workflow is never silently overwritten or treated as
+"installed":
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
@@ -1220,10 +1329,15 @@ case "$INSTALL_RC" in
 esac
 ```
 
-Reminders shown only when the workflow was newly created this run (`INSTALL_FRESH_WRITE=true`). For an already-up-to-date repo (`INSTALL_OK=true` but `INSTALL_FRESH_WRITE=false`), skip the "installed at..." text, which would be misleading.
+Reminders shown only when the workflow was newly created this run
+(`INSTALL_FRESH_WRITE=true`). For an already-up-to-date repo (`INSTALL_OK=true`
+but `INSTALL_FRESH_WRITE=false`), skip the "installed at..." text, which would
+be misleading.
 
-1. **Merge the workflow to the default branch.** GitHub only honors `issue_comment` workflows that already exist on the default branch.
-2. **Add an `ANTHROPIC_API_KEY` repo secret.** The workflow uses it for Claude verification.
+1. **Merge the workflow to the default branch.** GitHub only honors
+   `issue_comment` workflows that already exist on the default branch.
+2. **Add an `ANTHROPIC_API_KEY` repo secret.** The workflow uses it for Claude
+   verification.
 
 ```
 Auto-approve installed at .github/workflows/auto-approve.yaml.
@@ -1236,7 +1350,8 @@ Next steps before wayfare:wayfare-ship-pr will work:
 
 ## Step 6b: Optionally Install Design-System Enforcement
 
-If the user opted in during Group 6, install the rule + hook. Same exit-code contract as Step 6a: branch on it explicitly rather than assuming success:
+If the user opted in during Group 6, install the rule + hook. Same exit-code
+contract as Step 6a: branch on it explicitly rather than assuming success:
 
 ```bash
 DS_RC=255
@@ -1263,7 +1378,8 @@ case "$DS_RC" in
 esac
 ```
 
-`$PLUGIN_ROOT` is resolved in Step 6a, so run that lookup first if Step 6a was skipped.
+`$PLUGIN_ROOT` is resolved in Step 6a, so run that lookup first if Step 6a was
+skipped.
 
 Remind the user only when the install succeeded:
 
@@ -1278,11 +1394,20 @@ wayfare:wayfare-recomponentize-ui to migrate the UI.
 
 ## Step 7: Commit HERO.md
 
-Always commit `HERO.md` to the repo. Do NOT ask whether to commit or whether to add it to `.gitignore`. Stage and commit it immediately after user confirmation in Step 6 (and Step 6a if the workflow was installed).
+Always commit `HERO.md` to the repo. Do NOT ask whether to commit or whether to
+add it to `.gitignore`. Stage and commit it immediately after user confirmation
+in Step 6 (and Step 6a if the workflow was installed).
 
-Only stage the workflow file when Step 6a reported the file is in sync with the plugin (`INSTALL_OK=true`, covering both the fresh-install and already-up-to-date paths). When the installer returned exit 2 (`EXISTS`, drift detected), the working file is still the user's original, and committing it now would falsely claim `wayfare:wayfare-init-repo` installed the new version.
+Only stage the workflow file when Step 6a reported the file is in sync with the
+plugin (`INSTALL_OK=true`, covering both the fresh-install and
+already-up-to-date paths). When the installer returned exit 2 (`EXISTS`, drift
+detected), the working file is still the user's original, and committing it now
+would falsely claim `wayfare:wayfare-init-repo` installed the new version.
 
-**Stage `AGENTS.md`, not just `CLAUDE.md`.** `CLAUDE.md` is a symlink, so staging it alone commits the link and silently drops every content change, because those live in `AGENTS.md`. Stage both: the symlink itself needs committing the first time it is created.
+**Stage `AGENTS.md`, not just `CLAUDE.md`.** `CLAUDE.md` is a symlink, so
+staging it alone commits the link and silently drops every content change,
+because those live in `AGENTS.md`. Stage both: the symlink itself needs
+committing the first time it is created.
 
 ```bash
 FILES_TO_ADD=("HERO.md" "AGENTS.md" "CLAUDE.md")
@@ -1301,15 +1426,18 @@ git add "${FILES_TO_ADD[@]}"
 git commit -m "chore: initialize HERO.md and update AGENTS.md via wayfare:wayfare-init-repo"
 ```
 
-Never stage `.env`. If Group 6 added a `REGISTRY_TOKEN`, confirm `.gitignore` covers `.env` before committing anything.
+Never stage `.env`. If Group 6 added a `REGISTRY_TOKEN`, confirm `.gitignore`
+covers `.env` before committing anything.
 
 ## `recalibrate` Mode
 
 When `recalibrate` is passed:
 
-1. Read existing `HERO.md` and `AGENTS.md`, and re-check the CLAUDE.md symlink state from Step 1
+1. Read existing `HERO.md` and `AGENTS.md`, and re-check the CLAUDE.md symlink
+   state from Step 1
 2. Re-run full investigation (Step 3, all sub-steps)
-3. Compare findings against the current config, flagging what changed, what is new, and what was removed
+3. Compare findings against the current config, flagging what changed, what is
+   new, and what was removed
 4. Show only deltas: `[CHANGED]`, `[NEW]`, `[REMOVED]` markers
 5. Ask user to confirm updates
 6. Preserve any custom content or comments the user added to both files
@@ -1321,29 +1449,31 @@ When `recalibrate` is passed:
 - **Show your evidence.** Every finding should cite what file/pattern you found.
 - **Ask smart questions.** "I see X, does that mean Y?" not "What is your Z?"
 - **Be purpose-driven.** Frame everything as "skill X needs this to work."
-- **Omit irrelevant sections.** If no deployment, don't include a Deployment section.
-- **One round of questions.** Present all findings at once with a single numbered list of questions (1. 2. 3. ...), get all answers at once. Use plan mode or a numbered format, never freeform prose questions.
+- **Omit irrelevant sections.** If no deployment, don't include a Deployment
+  section.
+- **One round of questions.** Present all findings at once with a single
+  numbered list of questions (1. 2. 3. ...), get all answers at once. Use plan
+  mode or a numbered format, never freeform prose questions.
 
 ## The plan object
 
 `HERO.md` is only half of what `init` writes. The other half is
 `.plans/PLAN.md`, the plan object (`docs/PLAN.md`), and without it
-`hero_ready_items` refuses the store outright — it cannot tell an empty
-roadmap from an unreadable one, so it declines to guess.
+`hero_ready_items` refuses the store outright: it cannot tell an empty roadmap
+from an unreadable one, so it declines to guess.
 
 Three cases, decided by what is already on disk:
 
 1. **No `.plans/` at all** → create the store and write `PLAN.md`: `schema: 1`,
    the repo slug, the default branch, today's date, `next_id: 1`, the
-   `source.root` and `source.head` this run resolved, and a `target:` block
-   only when the `design` connection's `at` is a project id rather than
-   `none`. Fill
+   `source.root` and `source.head` this run resolved, and a `target:` block only
+   when the `design` connection's `at` is a project id rather than `none`. Fill
    `## Scope` from the investigation: one paragraph on what this repo is and
-   what the plan over it is for. Every planning round reads it as the frame
-   its proposals have to fit, so "TODO" there is a round planning against
-   nothing.
-2. **A `.plans/` holding items but no `PLAN.md` with `schema:`** → an
-   unmigrated store from the nine-kind schema. Run the migrator and say so:
+   what the plan over it is for. Every planning round reads it as the frame its
+   proposals have to fit, so "TODO" there is a round planning against nothing.
+
+2. **A `.plans/` holding items but no `PLAN.md` with `schema:`** → an unmigrated
+   store from the nine-kind schema. Run the migrator and say so:
 
    ```bash
    WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
@@ -1353,9 +1483,10 @@ Three cases, decided by what is already on disk:
    Report its warnings rather than swallowing them; an unrecognized `kind`
    migrates as `task`/`story` and wants a human look. Then fill `## Scope`,
    which the migrator cannot know.
+
 3. **A `PLAN.md` already at `schema: 1`** → converge it, do not rewrite it.
-   Refresh `source.head` and `target.head`; leave `next_id` alone unless it
-   is behind the highest id in `items/`; never touch `## Log`.
+   Refresh `source.head` and `target.head`; leave `next_id` alone unless it is
+   behind the highest id in `items/`; never touch `## Log`.
 
 **Never write `PLAN.md` into a directory that is not a git repo.**
 `hero_work_store` refuses to create a store it cannot add to

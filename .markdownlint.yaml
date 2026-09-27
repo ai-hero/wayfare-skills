@@ -17,3 +17,7 @@ MD040: false
 
 # First line heading — frontmatter comes first.
 MD041: false
+
+# Table pipe spacing is mdformat's (--compact-tables); two formatters owning
+# one thing fight, and an empty header cell comes out as `|  |`.
+MD060: false

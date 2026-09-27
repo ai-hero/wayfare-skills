@@ -48,13 +48,18 @@ SKILL_TITLE="$(echo "${SKILL_NAME:0:1}" | tr '[:lower:]' '[:upper:]')${SKILL_NAM
 
 # ─── Create skill ─────────────────────────────────────────────────
 
+# Quoted, because a description routinely contains ": ", which ends an
+# unquoted YAML scalar and makes the whole frontmatter fail to parse.
+DESCRIPTION_YAML=${DESCRIPTION//\\/\\\\}
+DESCRIPTION_YAML=${DESCRIPTION_YAML//\"/\\\"}
+
 mkdir -p "$SKILLS_DIR/$SKILL_NAME"
 
 cat > "$SKILLS_DIR/$SKILL_NAME/SKILL.md" << EOF
 ---
 name: $SKILL_NAME
 # prettier-ignore
-description: $DESCRIPTION
+description: "$DESCRIPTION_YAML"
 argument-hint: [args]
 # Omit the next line for skills meant to be model-invocable / chained by an
 # orchestrator like wayfare-build-task (a user-only skill cannot be called via the Skill tool).

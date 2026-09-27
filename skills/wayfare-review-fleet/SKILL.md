@@ -7,11 +7,11 @@ argument-hint: ""
 
 # Review the fleet: what the map claims against what is there
 
-`FLEET.md` at the top of a fleet folder says which sibling checkouts are
-family and which host port each dev stack claims. Every fan-out reads it, so
-a stale map sends work to the wrong repos or lets two stacks fight over one
-port. This skill reports the difference and changes nothing; `wayfare-sync-fleet`
-is what writes. The standard is [docs/FLEET-MD.md](../../docs/FLEET-MD.md).
+`FLEET.md` at the top of a fleet folder says which sibling checkouts are family
+and which host port each dev stack claims. Every fan-out reads it, so a stale
+map sends work to the wrong repos or lets two stacks fight over one port. This
+skill reports the difference and changes nothing; `wayfare-sync-fleet` is what
+writes. The standard is [docs/FLEET-MD.md](../../docs/FLEET-MD.md).
 
 ## Instructions
 
@@ -35,11 +35,12 @@ else
 fi
 ```
 
-> Each bash block below runs in a fresh shell, so re-source `hero-lib.sh` at the top of any block that calls a `hero_*` function.
+> Each bash block below runs in a fresh shell, so re-source `hero-lib.sh` at the
+> top of any block that calls a `hero_*` function.
 
 `NO_FLEET` → STOP. There is no map to review; say so and offer
 `wayfare:wayfare-sync-fleet`, which bootstraps one. Do not guess a candidate
-folder here — choosing one is a write decision and belongs to `sync`.
+folder here: choosing one is a write decision and belongs to `sync`.
 
 ### Report the drift
 
@@ -48,15 +49,16 @@ folder here — choosing one is a write decision and belongs to `sync`.
 ```
 
 Print each finding with its meaning from the standard and the repo it names.
-Exit 1 means there is something to fix; say which of `wayfare:wayfare-sync-fleet`
-or a repo-side skill fixes it. Write nothing: not `FLEET.md`, not a repo.
+Exit 1 means there is something to fix; say which of
+`wayfare:wayfare-sync-fleet` or a repo-side skill fixes it. Write nothing: not
+`FLEET.md`, not a repo.
 
 ## Anti-patterns
 
-- **Fixing what you found.** A drift report that also edits is a `sync` with
-  no confirmation step. Report it and name the skill that fixes it.
-- **Reporting "holds" on a missing map.** `NO_FLEET` is a finding, not a
-  clean bill; an absent file must never produce the healthy verdict.
+- **Fixing what you found.** A drift report that also edits is a `sync` with no
+  confirmation step. Report it and name the skill that fixes it.
+- **Reporting "holds" on a missing map.** `NO_FLEET` is a finding, not a clean
+  bill; an absent file must never produce the healthy verdict.
 
 ## Next steps
 

@@ -4,9 +4,9 @@ Run by `wayfare:wayfare-init-repo` when there is no repo yet, or when adding a
 subproject to a monorepo. Scaffold the project, then fall through to
 `references/init.md`, which writes `HERO.md` and the plan object.
 
-This was `wayfare:wayfare-init-repo`. Same procedure, same templates; it is
-the empty-directory case of one verb rather than a second entry point, so
-nobody has to decide which of the two to run.
+This was `wayfare:wayfare-init-repo`. Same procedure, same templates; it is the
+empty-directory case of one verb rather than a second entry point, so nobody has
+to decide which of the two to run.
 
 ## Step 0: Load Configuration
 
@@ -16,13 +16,18 @@ cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow **At the fleet root** in `docs/FLEET-MD.md`.
+If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
+**At the fleet root** in `docs/FLEET-MD.md`.
 
-Read `HERO.md` for repo type (single vs monorepo), code quality tools, and coding conventions. If missing, suggest `wayfare:wayfare-init-repo` and proceed with defaults.
+Read `HERO.md` for repo type (single vs monorepo), code quality tools, and
+coding conventions. If missing, suggest `wayfare:wayfare-init-repo` and proceed
+with defaults.
 
 ## Step 1: Parse Arguments
 
-- `recalibrate` as the first word is the verb, not a project name. Run wayfare's own `recalibrate` (`SKILL.md`, *`recalibrate`*) and stop. A project genuinely named `recalibrate` has to be created by hand.
+- `recalibrate` as the first word is the verb, not a project name. Run wayfare's
+  own `recalibrate` (`SKILL.md`, *`recalibrate`*) and stop. A project genuinely
+  named `recalibrate` has to be created by hand.
 - **Project name** (required): First word. Ask if missing.
 - **Description** (optional): Remaining text.
 
@@ -36,7 +41,7 @@ ls */pyproject.toml */package.json 2>/dev/null | head -5
 Ask based on context:
 
 | Context | Question |
-| --- | --- |
+| -- | -- |
 | Not in a repo | Create standalone repo, or add to an existing one? |
 | In a repo with siblings | Add as a new subproject? |
 | Empty repo | Initialize this repo with the new project? |
@@ -149,8 +154,9 @@ npx tsc --init
 
 ## Step 5: Create AGENTS.md (+ CLAUDE.md symlink)
 
-House standard: `AGENTS.md` is the real file and `CLAUDE.md` symlinks to it, so one
-file serves Claude Code, Cursor, and Copilot without drift. Write `AGENTS.md`, then:
+House standard: `AGENTS.md` is the real file and `CLAUDE.md` symlinks to it, so
+one file serves Claude Code, Cursor, and Copilot without drift. Write
+`AGENTS.md`, then:
 
 ```bash
 ln -s AGENTS.md CLAUDE.md
@@ -202,7 +208,8 @@ EOF
 
 ## Step 7: Chain to wayfare-setup-dev → config → first-commit
 
-The init-project pipeline does not stop at scaffolding. After Step 6, render the DAG:
+The init-project pipeline does not stop at scaffolding. After Step 6, render the
+DAG:
 
 ```
 [2/4] (✓) scaffold → (▶) wayfare-setup-dev → ( ) config → ( ) first-commit
@@ -210,7 +217,8 @@ The init-project pipeline does not stop at scaffolding. After Step 6, render the
 Now running: wayfare-setup-dev
 ```
 
-Then run `wayfare:wayfare-setup-dev` to install required CLIs and authenticate. After that completes, render:
+Then run `wayfare:wayfare-setup-dev` to install required CLIs and authenticate.
+After that completes, render:
 
 ```
 [3/4] (✓) scaffold → (✓) wayfare-setup-dev → (▶) config → ( ) first-commit
@@ -218,7 +226,8 @@ Then run `wayfare:wayfare-setup-dev` to install required CLIs and authenticate. 
 Now running: the config pass (references/init.md)
 ```
 
-Run `wayfare:wayfare-init-repo` to investigate the freshly scaffolded project and write `HERO.md`. (Pipeline 3 runs as a nested DAG inside this step.)
+Run `wayfare:wayfare-init-repo` to investigate the freshly scaffolded project
+and write `HERO.md`. (Pipeline 3 runs as a nested DAG inside this step.)
 
 Finally render:
 
@@ -228,7 +237,9 @@ Finally render:
 Now running: first-commit
 ```
 
-If the repo was initialized standalone in Step 6 with an initial commit, the `first-commit` step folds HERO.md and AGENTS.md (written by the config pass) into a follow-up commit:
+If the repo was initialized standalone in Step 6 with an initial commit, the
+`first-commit` step folds HERO.md and AGENTS.md (written by the config pass)
+into a follow-up commit:
 
 ```bash
 git add HERO.md AGENTS.md CLAUDE.md
@@ -240,7 +251,8 @@ EOF
 )"
 ```
 
-If the project was added to an existing repo, defer the commit to `wayfare:wayfare-push-pr` (the user's normal flow).
+If the project was added to an existing repo, defer the commit to
+`wayfare:wayfare-push-pr` (the user's normal flow).
 
 ## Step 8: Summary
 
@@ -265,10 +277,14 @@ Run first: cd PROJECT_NAME
 Next step: wayfare:wayfare-check-preflight — Step 0.3, sanity-check tooling, .env, ports (print only — model-invocation-restricted, cannot auto-run)
 ```
 
-Don't also print `wayfare:wayfare-build-task`; `wayfare-check-preflight`'s own next-steps lead there once it passes.
+Don't also print `wayfare:wayfare-build-task`; `wayfare-check-preflight`'s own
+next-steps lead there once it passes.
 
 ## Notes
 
-- Always creates AGENTS.md with a CLAUDE.md symlink. Uses uv for all Python projects.
-- Frontend UI comes from the design-system registry in HERO.md when one is configured, else stock shadcn. Run `wayfare:wayfare-recomponentize-ui` after scaffolding to establish the atomic component layers.
+- Always creates AGENTS.md with a CLAUDE.md symlink. Uses uv for all Python
+  projects.
+- Frontend UI comes from the design-system registry in HERO.md when one is
+  configured, else stock shadcn. Run `wayfare:wayfare-recomponentize-ui` after
+  scaffolding to establish the atomic component layers.
 - Does not push or create remote repos. Local scaffolding only.

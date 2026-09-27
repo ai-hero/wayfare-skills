@@ -48,10 +48,12 @@ roadmap, and wayfare owns only the contract it fills:
   `## Definition of Done` checklist (**what must be observably true** when it
   ships: behavior in place, tests green, target design satisfied for the task's
   `target` paths, docs updated, verifiable statements, never restatements of
-  subtasks). At least one DoD line must assert the **user-visible story working
-  end to end**: a DoD whose every line is about one layer describes a layer, not
-  a slice. `anchors.target` is refreshed to the head planned against. In
-  self-review mode there is no target head to refresh it to, so it stays absent.
+  subtasks, and never test cases: each line must answer "how would you test
+  this?", but the answer is the build's to write, per `testing.md`). At least
+  one DoD line must assert the **user-visible story working end to end**: a DoD
+  whose every line is about one layer describes a layer, not a slice.
+  `anchors.target` is refreshed to the head planned against. In self-review mode
+  there is no target head to refresh it to, so it stays absent.
 - The task is the unit of work, with no separate work-items. Subtasks are
   checklist lines, and wayfare-build-task works through them in order (PR
   granularity is wayfare-build-task's call, per its Step 2).

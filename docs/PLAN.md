@@ -148,12 +148,15 @@ Definition of Done has to assert, and how that assertion is verified.
 
 | `shape` | Slice rule | The DoD asserts | Verified by |
 | -- | -- | -- | -- |
-| `story` | **applies** | a user-visible outcome, working end to end | rendering the surface and looking |
+| `story` | **applies** | a user-visible outcome, working end to end | a test through the real layers, and rendering the surface |
 | `structural` | exempt | a structural property: a dependency direction, an invariant at a boundary | reading the code |
 | `visual` | exempt | measured values at named viewports | rendering at those viewports and measuring |
 | `defect` | exempt | the repro no longer reproduces, pinned by a test | running the test |
 | `dependency` | exempt | the bump merged, the alert closed, the deploy healthy | the PR and the platform |
 | `docs` | exempt | prose that describes code now describes what the code does, or is gone | reading the prose against the code it describes |
+
+*Verified by* is the kind of evidence, not a test plan. The build designs the
+tests itself (`references/testing.md`).
 
 **The slice rule** (`references/shaping.md`, *Slices, not layers*) is that a
 `story` task is Simple, Lovable and Complete: a vertical cut through every layer

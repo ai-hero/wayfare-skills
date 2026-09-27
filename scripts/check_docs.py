@@ -241,7 +241,7 @@ def check_attribution(rel, text):
     # Read raw, fences included: the templates this guards live in code blocks.
     # A model name copied into a template is stale the next time a model ships.
     for n, line in enumerate(text.splitlines(), 1):
-        if re.search(r"Co-Authored-By:\s*Claude\s+\w+\s+\d", line, re.I):
+        if re.search(r"Co-Authored-By:\s*Claude\s+[\w .-]*\d", line, re.I):
             error(rel, n, "attribution",
                   "model name in a Co-Authored-By template; say to use the harness's trailer")
 
@@ -347,9 +347,10 @@ def check_links(root, rel, text):
         return
     base = (root / rel).parent
     for n, line in prose_lines(text):
-        targets = re.findall(r"\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)", line)
-        targets += re.findall(r"^\s{0,3}\[[^\]]+\]:\s+(\S+)", line)
-        for target in targets:
+        # `<...>` wraps a target that may hold spaces; `[^1]:` is a footnote.
+        found = re.findall(r"\]\((?:<([^>]+)>|([^)\s]+))(?:\s+\"[^\"]*\")?\)", line)
+        found += re.findall(r"^\s{0,3}\[(?!\^)[^\]]+\]:\s+(?:<([^>]+)>|(\S+))", line)
+        for target in (a or b for a, b in found):
             if re.match(r"[a-z]+:|#|/", target):
                 continue
             path = target.split("#", 1)[0].split("?", 1)[0]

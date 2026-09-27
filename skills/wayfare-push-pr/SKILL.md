@@ -909,8 +909,9 @@ Group logically related changes:
 
 #### 3f: Commit Each Changeset
 
-End the message with the attribution trailer your harness specifies, if it
-specifies one; never a model name copied from an example, which goes stale.
+End the message with the attribution trailer your harness specifies. If it
+specifies none, end with `Co-Authored-By: Claude <noreply@anthropic.com>`, which
+names no model and so cannot go stale.
 
 ```bash
 git add file1 file2 ...

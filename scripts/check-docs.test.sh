@@ -200,6 +200,30 @@ check "reference-style link that does not resolve" "link" "$(checks_of)"
 fixture; printf '\nSee [the plan](docs/MISSING.md "Plan").\n' >> "$R/README.md"
 check "titled link that does not resolve" "link" "$(checks_of)"
 
+fixture; printf -- '---\nname: wayfare-demo\ndescription: "%s Use when testing."\n---\n' "$(printf 'word %.0s' {1..70})" > "$(SK)"
+check "description over 350 characters" "frontmatter" "$(checks_of)"
+
+fixture; printf '\n```\nCo-Authored-By: Claude 3.5 Sonnet <noreply@anthropic.com>\n```\n' >> "$(SK)"
+check "a model name written version-first" "attribution" "$(checks_of)"
+
+fixture; printf '\n```\nCo-Authored-By: Claude <noreply@anthropic.com>\n```\n' >> "$(SK)"
+check "the model-free fallback trailer passes" "" "$(run)"
+
+fixture; mkdir -p "$R/docs"; printf '# Old plan\n\n```\nCo-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>\n```\n' > "$R/docs/old.md"
+check "attribution is only checked where templates live" "" "$(run)"
+
+fixture; printf '\nA claim.[^1]\n\n[^1]: The study measured it.\n' >> "$R/README.md"
+check "a footnote is not a link" "" "$(run)"
+
+fixture; mkdir -p "$R/docs"; printf 'x\n' > "$R/docs/My Plan.md"; printf '\nSee [p](<docs/My Plan.md>) and [q][q].\n\n[q]: <docs/My Plan.md>\n' >> "$R/README.md"
+check "angle-bracket targets with spaces resolve" "" "$(run)"
+
+fixture; git -C "$R" add -A; git -C "$R" -c user.email=t@t -c user.name=t commit -qm base
+git -C "$R" checkout -qb side; printf '\nside \xe2\x80\x94 one\n' >> "$R/README.md"; git -C "$R" -c user.email=t@t -c user.name=t commit -qam side
+git -C "$R" checkout -q -; printf '\nmain two\n' >> "$R/README.md"; git -C "$R" -c user.email=t@t -c user.name=t commit -qam main
+git -C "$R" merge -q side >/dev/null 2>&1
+check "a conflicted file is read once, not once per stage" "1" "$(python3 "$SCRIPT" --root "$R" 2>/dev/null | grep -c '^README.md:.*em dash')"
+
 # The banned list is a copy of docs/AGENTS-MD.md R6 (as check-agents-md.sh's
 # is); read the doc so the two cannot drift apart without this failing.
 DOC="$(cd "$(dirname "$0")/.." && pwd)/docs/AGENTS-MD.md"

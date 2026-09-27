@@ -193,8 +193,9 @@ DESCRIPTION
 
 ## Step 6: Initialize Git (if standalone)
 
-End the message with the attribution trailer your harness specifies, if it
-specifies one; never a model name copied from an example, which goes stale.
+End the message with the attribution trailer your harness specifies. If it
+specifies none, end with `Co-Authored-By: Claude <noreply@anthropic.com>`, which
+names no model and so cannot go stale.
 
 ```bash
 git init
@@ -240,7 +241,7 @@ Now running: first-commit
 
 If the repo was initialized standalone in Step 6 with an initial commit, the
 `first-commit` step folds HERO.md and AGENTS.md (written by the config pass)
-into a follow-up commit:
+into a follow-up commit, ending with the same trailer as Step 6:
 
 ```bash
 git add HERO.md AGENTS.md CLAUDE.md

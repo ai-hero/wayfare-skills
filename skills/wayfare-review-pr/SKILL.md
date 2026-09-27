@@ -346,8 +346,9 @@ Fix any pre-commit failures before continuing.
 
 ### Step 6: Commit and Push Fixes
 
-End the message with the attribution trailer your harness specifies, if it
-specifies one; never a model name copied from an example, which goes stale.
+End the message with the attribution trailer your harness specifies. If it
+specifies none, end with `Co-Authored-By: Claude <noreply@anthropic.com>`, which
+names no model and so cannot go stale.
 
 ```bash
 git add "${CHANGED_FILES[@]}"

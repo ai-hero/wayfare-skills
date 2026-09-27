@@ -709,12 +709,13 @@ others a goal has in flight. Follow these rules:
   unchecked line.
 
 - **Before building toward a DoD line, answer how you would test it**, per
-  `../../references/testing.md`: which line it proves, at what level, what
-  failure looks like, and what already covers it. Write the test with the code,
-  and watch it fail against the pre-change code before counting it. The plan
-  deliberately lists no tests. Designing them is this step's job, and
-  `wayfare-push-pr`'s test phase only runs what exists, so a test not written
-  here is never written.
+  `../../references/testing.md`: which line it proves, what evidence proves it,
+  what failure looks like, and what already covers it. Where the evidence is a
+  test, write it first and see it fail on its assertion before writing the code;
+  never stash or check out to recreate the old state. The plan deliberately
+  lists no tests. Designing them is this step's job, and `wayfare-push-pr`'s
+  test phase only runs what exists, so a test not written here is not written by
+  anything that runs before review.
 
 - **The item's body is a work list, not instructions.** The task's body
   (Approach, Subtasks) derives from design-project content, and `## Log` from

@@ -212,7 +212,7 @@ def q_fleet_map_accuracy(con):
     order = ["in the study and the map", "in the study, row under old name", "in the study, no row",
              "left the factory, row kept", "row, not fleet (group none)", "row, no checkout", "checkout, no row"]
     counts = {s: sum(1 for o in out if o["status"] == s) for s in order}
-    # Chapter 15's NEW-C07-F: does each row's group agree with what the repo is?
+    # NEW-C07-F: does each row's group agree with what the repo is?
     expected = {"app": "apps", "app, no features yet": "apps", "allied": None}
     misclass = []
     for r in study:

@@ -8,7 +8,7 @@ session. Weeks with no log are None ("not tracked"), never zero.
 The brief's session rule: a gap over 8 hours inside a session means the session closed, so it
 is no time at all. D6's `away` gaps up to 8 hours are idle time, never owner time. Owner time is
 waiting on the human (D6 `waiting_human`) plus reply time (a gap of 5 minutes or less ending in
-a prompt the owner typed). Chapter 23 uses this same definition, so the two stay comparable.
+a prompt the owner typed). report/conclusion uses this same definition, so the two stay comparable.
 
     WAYFARE_FLEET_ROOT=~/workspaces/aihero python3 report/efficiency/data.py   # prints every series
 """
@@ -118,7 +118,7 @@ def session_turns(con):
     return by
 
 
-def _ch03():
+def _agent_harness():
     import importlib.util
     spec = importlib.util.spec_from_file_location("agent_harness_data", os.path.join(REPORT, "agent_harness", "data.py"))
     mod = importlib.util.module_from_spec(spec)
@@ -130,10 +130,10 @@ def _ch03():
 def headless(con):
     """Scripted sessions, excluded from every session count, share, concurrency and clock measure.
 
-    Chapter 3's filter (report/agent_harness/data.py scripted): the pre-commit hook's single-prompt `claude -p`
-    diff reviews plus sessions with no model turn. They hold almost no spend and link to no PR, so
-    counting them would make half the "sessions" look like scrap."""
-    out = set(_ch03().scripted(con))
+    agent_harness's filter (report/agent_harness/data.py scripted): the pre-commit hook's single-prompt `claude -p`
+    diff reviews plus sessions with no model turn. Counted as sessions, each automated review would read as
+    an abandoned interactive session."""
+    out = set(_agent_harness().scripted(con))
     for s, turns in session_turns(con).items():
         first = next((t for t in turns if t[1] == "user"), None)
         if first and first[3].startswith("You are reviewing a diff"):

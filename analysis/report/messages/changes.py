@@ -6,7 +6,7 @@ blob id, from messages.sqlite `blobs`, see gitscan.py) or carry the same normali
 merge that would stretch a group past 45 days is refused: without that guard, commits that
 touch several shared files chain unrelated sweeps into one group spanning months.
 
-Excluded: a repo's first 3 days (a clone copying the template is inheritance, Chapter 16),
+Excluded: a repo's first 3 days (a clone copying the template is inheritance, report/compliance's),
 commits touching more than 150 files, the empty blob, and subjects under 3 tokens.
 """
 import os

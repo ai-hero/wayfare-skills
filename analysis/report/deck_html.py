@@ -407,9 +407,9 @@ FIG_RE = re.compile(r"^\[\[(.+?)\]\]$")
 NUM_RE = re.compile(r"\$?\d[\d,]*(?:\.\d+)?%?")
 # Numbers a reader can check without the data: question and chapter numbers, dates, years, URLs, model versions,
 # and names that are digits (8090 is a company).
-FREE_RE = re.compile(r"https?://\S+|\bQ\s[a-z][a-z0-9]*(?:-[a-z0-9]+)+\b|\b(?:Chapters?|Ch|Part|Figures?)\s+\d+(?:\.\d+)?(?!,\d)(?:\s*(?:,|and|to|–|-)\s*\d+(?:\.\d+)?(?!,?\d))*"
+FREE_RE = re.compile(r"https?://\S+|\bQ\s(?i:[a-z][a-z0-9]*(?:-[a-z0-9]+)+)\b|\b(?:Chapters?|Ch|Part|Figures?)\s+\d+(?:\.\d+)?(?!,\d)(?:\s*(?:,|and|to|–|-)\s*\d+(?:\.\d+)?(?!,?\d))*"
                      r"|\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\b"
-                     r"|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}\b|\b(?:1[89]|20)\d\ds?\b"
+                     r"|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}\b|\b(?:19|20)\d\ds?\b"
                      r"|\b(?:Opus|Sonnet|Haiku|Fable|Mythos)\s+\d(?:\.\d)?\b|\bClaude\s+\d(?:\.\d)?(?=\s+(?:Opus|Sonnet|Haiku))|\b8090(?:\.ai)?\b")
 
 
@@ -494,3 +494,7 @@ def haystack(sections):
             for st in b["statements"]:
                 parts += [st["headline"], st["notes"], *st["body"]]
     return {bare(n) for n in NUM_RE.findall(" ".join(parts))}
+
+
+if __name__ == "__main__":
+    sys.exit("deck_html.py is a library now; render the book with report/book_pages.py --out DIR")

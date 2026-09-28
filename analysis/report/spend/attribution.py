@@ -2,8 +2,8 @@
 
     from report.spend.attribution import spend_rows, spend_by_session, spend_by_pr, spend_by_changeset
 
-Session-level attribution does not work here: most dollars sit in sessions that touched
-several branches (detectors.session_spend puts them in `multi_branch`). Every assistant turn
+Session-level attribution does not work: a session that touched several branches
+(detectors.session_spend puts it in `multi_branch`) has no one PR to charge. Every assistant turn
 carries the branch it ran on, so the session's reported cost is split over its pieces:
 
 1. Pieces are the session's main-loop assistant turns and its subagent runs. Each gets a

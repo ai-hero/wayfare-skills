@@ -1,7 +1,7 @@
-"""Extra tabs for a chapter's HTML page, kept out of the .pptx deck.
+"""Extra tabs for a question's HTML figure, kept out of the .pptx deck.
 
-A chapter's views.py computes a view per question and saves them; deck_html.py merges each
-one into its question as another tab ("Commits", "Change sets"):
+A topic's views.py computes a view per question and saves them; book_pages.load_decks merges
+each one into its question as another tab ("Commits", "Change sets"):
 
     v = Views("method")
     v.add("Q counting-units-compared", "Change sets", title, points,

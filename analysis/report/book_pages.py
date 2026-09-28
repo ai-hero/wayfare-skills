@@ -27,6 +27,7 @@ def load_decks(folder, lessons=None):
     """Every deck's question blocks by id and its diagrams by tag, plus each deck's numbers: the prose
     slides and notes are where a chapter's sources and dates are checked."""
     questions, diagrams, known = {}, [], {}
+    lesson_hits = 0
     # A view is attached by its question id wherever the question is built, whichever views file saved it.
     views, attached = {}, set()
     for f in sorted(glob.glob(os.path.join(html_views.VIEWS_DIR, "*.json"))):
@@ -44,7 +45,7 @@ def load_decks(folder, lessons=None):
                     b["views"] += [v for v in views[k] if v["label"].lower() not in have]
                     attached.add(k)
         if lessons:
-            D.attach_lessons(sections, lessons)
+            lesson_hits += D.attach_lessons(sections, lessons)
         known[deck] = D.haystack(sections)
         for s in sections:
             for b in s["blocks"]:
@@ -59,6 +60,8 @@ def load_decks(folder, lessons=None):
                     diagrams.append({"block": b, "deck": deck})
     for k in sorted(set(views) - attached):
         D.warn(f"views for {k} match no question in any deck; they are dropped")
+    if lessons and not lesson_hits:
+        D.warn("--lessons matched no question in any deck; no lessons were attached")
     return questions, diagrams, known
 
 
@@ -66,10 +69,12 @@ def merge(questions, merged):
     """Fold each merged question into the one kept: its views become tabs of the kept card, named by the merge,
     and its question and lessons go with them, so nothing it showed is lost."""
     for m, spec in merged.items():
-        mq, kq = questions.pop(f"Q {m}", None), questions.get(f"Q {spec['into']}")
+        mq, kq = questions.get(f"Q {m}"), questions.get(f"Q {spec['into']}")
         if mq is None or kq is None:
-            D.warn(f"merge of Q {m} into Q {spec['into']}: one of them is in no deck")
+            missing = [f"Q {x}" for x, q in ((m, mq), (spec["into"], kq)) if q is None]
+            D.warn(f"merge of Q {m} into Q {spec['into']}: {' and '.join(missing)} in no deck")
             continue
+        questions.pop(f"Q {m}")
         kb, mb = kq["block"], mq["block"]
         for v in mb["views"]:
             own = v.get("label") or ""
@@ -118,37 +123,49 @@ def build(ch, text, questions, diagrams, deck_known):
     for deck in decks:
         known |= deck_known.get(deck, set())
     sections = [{"blocks": list(own.values())}]
+
+    def resolve(ref):
+        b, v = D.find_view(sections, ref)
+        if v is not None:
+            return b, v, None
+        # A chart from a card another chapter shows: drawn here as a figure, the card stays there.
+        k = D.qkey(ref)
+        if k in questions:
+            b, v = D.find_view([{"blocks": [questions[k]["block"]]}], ref)
+            if v is not None:
+                return b, v, questions[k]["deck"]
+        d, v = find_diagram(diagrams, ref, decks)
+        if v is not None:
+            return d["block"], v, d["deck"]
+        return None, None, None
+
     book = D.parse_book(text)
-    drawn = {D.qkey(blk["ref"]) for s in book for blk in s["blocks"] if blk["kind"] == "figure"}
+    figures = [blk["ref"] for s in book for blk in s["blocks"] if blk["kind"] == "figure"]
+    resolved = {ref: resolve(ref) for ref in figures}
+    # Only a figure that resolves defers a card: one that fails must not keep its question off the page.
+    drawn = {D.qkey(b["key"]) for b, v, _ in resolved.values() if v is not None}
+    failed = {D.qkey(ref) for ref, (_, v, _) in resolved.items() if v is None}
     fig, placed, out = 0, set(), []
     for s in book:
         blocks = []
         for blk in s["blocks"]:
             if blk["kind"] == "figure":
-                b, v = D.find_view(sections, blk["ref"])
-                if v is None:
-                    # A chart from a card another chapter shows: drawn here as a figure, the card stays there.
-                    k = D.qkey(blk["ref"])
-                    if k in questions:
-                        b, v = D.find_view([{"blocks": [questions[k]["block"]]}], blk["ref"])
-                        if v is not None:
-                            known |= deck_known.get(questions[k]["deck"], set())
-                if v is None:
-                    d, v = find_diagram(diagrams, blk["ref"], decks)
-                    if v is not None:
-                        b = d["block"]
-                        known |= deck_known.get(d["deck"], set())
+                b, v, deck = resolved[blk["ref"]]
                 if v is None:
                     D.warn(f"{name}: book figure [[{blk['ref']}]] matches no view in any deck")
                     continue
+                if deck:
+                    known |= deck_known.get(deck, set())
                 fig += 1
-                if D.qkey(b["key"]) in own:
-                    placed.add(D.qkey(b["key"]))
+                k = D.qkey(b["key"])
+                if k in own and k not in placed:
+                    placed.add(k)
                     blk = card(b, f"{ch['n']}.{fig}", blk["caption"], v)
                 else:
                     blk.update({"number": f"{ch['n']}.{fig}", "key": b["key"], "view": v,
                                 "caption": blk["caption"] or v["title"]})
             t = blk.get("text") or blk.get("caption", "")
+            # Counts up to ten are ordinary prose ("two reasons", "3 repos"), not findings.
             for num in D.NUM_RE.findall(D.FREE_RE.sub(" ", t)):
                 if D.bare(num) not in known and not (D.bare(num).isdigit() and int(D.bare(num)) <= 10):
                     D.warn(f"{name}: book number {num!r} is not in the chapter's data: {t[:80]}…")
@@ -164,7 +181,7 @@ def build(ch, text, questions, diagrams, deck_known):
             out.append({**s, "blocks": blocks})
     # A question the prose never cites is left off the page, not appended: the warning is the
     # prompt to write the sentence that earns it a place.
-    rest = [k for k in own if k not in placed]
+    rest = [k for k in own if k not in placed and k not in failed]
     if rest:
         D.warn(f"{name}: {len(rest)} question(s) the text never cites, left off the page: {', '.join(rest)}")
     return out, sections
@@ -218,13 +235,31 @@ def main(argv):
     ap.add_argument("--lessons")
     ap.add_argument("--only", type=int, action="append", help="render just these chapter numbers")
     args = ap.parse_args(argv)
+    if not os.path.exists(D.VIEWER):
+        sys.exit(f"no viewer build at {D.VIEWER}: run `npm run build` in its folder first")
     with open(D.VIEWER, encoding="utf-8") as f:
         template = f.read()
     with open(os.path.join(args.book, "chapters.json"), encoding="utf-8") as f:
         toc = json.load(f)
-    questions, diagrams, deck_known = load_decks(args.decks, D.read_lessons(args.lessons) if args.lessons else None)
+    if args.only:
+        unknown = sorted(set(args.only) - {ch["n"] for ch in toc["chapters"]})
+        if unknown:
+            sys.exit(f"--only {', '.join(map(str, unknown))}: no such chapter in chapters.json")
+    os.makedirs(args.out, exist_ok=True)
+    lessons = None
+    if args.lessons:
+        lessons = D.read_lessons(args.lessons)
+        if not lessons:
+            D.warn(f"--lessons {args.lessons}: no insight or hypothesis read from it")
+    questions, diagrams, deck_known = load_decks(args.decks, lessons)
     merge(questions, toc.get("merged", {}))
-    shown = {f"Q {q}" for ch in toc["chapters"] for q in ch["questions"]}
+    seen = {}
+    for ch in toc["chapters"]:
+        for q in ch["questions"]:
+            if q in seen:
+                D.warn(f"Q {q} is listed in chapters {seen[q]} and {ch['n']}; the page link goes to the last")
+            seen[q] = ch["n"]
+    shown = {f"Q {q}" for q in seen}
     for k in sorted(set(questions) - shown):
         D.warn(f"{k} is in a deck but no chapter shows it")
     for ch in toc["chapters"]:
@@ -232,7 +267,7 @@ def main(argv):
             print(render(ch, template, questions, diagrams, deck_known, toc, args.book, args.out))
     render_index(args.out, toc, template)
     if D.WARNINGS:
-        print(f"{len(D.WARNINGS)} warning(s) above", file=sys.stderr)
+        print(f"{len(D.WARNINGS)} book warning(s) above: fix each before sharing the pages", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -189,7 +189,7 @@ def q_mistake_records(con):
 @lru_cache(maxsize=None)
 def owner_corrections(con):
     """Typed prompts per week labelled correction or redirect. Uses the lead's detectors.prompt_intent when
-    present, else detectors.prompt_kind (Chapter 5 owns the correction rate itself)."""
+    present, else detectors.prompt_kind (report/owner owns the correction rate itself)."""
     from facts import has_table
     out = Counter()
     if has_table(con, "detectors", "prompt_intent"):
@@ -269,7 +269,7 @@ def q_in_pr_fix_share_fixups(con):
         if len(ks) >= 20:
             by_stage[s] = (round(sum(1 for k in ks if has_fix.get(k)) / len(ks), 3), len(ks))
     by_trigger = Counter(f["trigger"] for f in fx if f["fixup"])
-    # Chapter 2's Q where-rework-is-caught regex against the Haiku label, on the same commits.
+    # evolution.py's q_where_rework_is_caught regex against the Haiku label, on the same commits.
     agree = Counter((bool(FIXUP_RE_CH2.search(f["subject"])), bool(f["fixup"])) for f in fx)
     by_repo = defaultdict(lambda: defaultdict(lambda: [0, 0]))
     for k, v in prs.items():
@@ -309,7 +309,7 @@ def parse_ts(ts):
 
 @lru_cache(maxsize=None)
 def same_file_followups(con, days=7):
-    """Filtered D5, the same definition chapter 21 uses: non-bot PRs whose own files (lockfiles,
+    """Filtered D5, the same definition report/conclusion uses: non-bot PRs whose own files (lockfiles,
     manifests and bookkeeping excluded) a later non-bot commit from another PR touches by half or more
     within `days` of the merge."""
     prs = rows(con, "SELECT repo, number, merged_ts, author, author_is_bot FROM github.prs WHERE merged_ts IS NOT NULL")

@@ -1,4 +1,4 @@
-"""One row per change set and one per original commit, for the chapter 2 charts.
+"""One row per change set and one per original commit, for the method charts.
 
 Every row carries its repo's category (app, app with no features yet, allied)
 and the stage the repo had reached on that day (skills, work items, goals,

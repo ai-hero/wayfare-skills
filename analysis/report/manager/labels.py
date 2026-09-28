@@ -4,7 +4,7 @@ GIT_BROKEN = ("not a git repository", "cannot change to", "unknown revision", "b
 
 
 """Manager's thinking inputs that are not in the shared databases: the register's history read from
-git, and the Haiku labels this chapter needs. Everything lands in .analysis/data/manager.sqlite.
+git, and the Haiku labels this topic needs. Everything lands in .analysis/data/manager.sqlite.
 
     WAYFARE_FLEET_ROOT=~/workspaces/aihero python3 report/manager/labels.py [register|gate|ws|memory|all]
 

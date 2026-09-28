@@ -3,7 +3,7 @@
 The ingest sees the register only from 13 Sep. Before that it lived in hero-template, and
 every audit committed a generated CONSISTENCY.md: a check x repo matrix plus a "Was broken
 in" column (the repos failing a check when it was written). Those committed files are the
-audit series this chapter is built on:
+audit series this topic is built on:
 
     hero-template  CONTROLS.yaml / CHECKS.yaml / CONSISTENCY.md   17 Jul - 13 Sep
     .fleet         the same three files (local repo, no remote)    13 Sep - now

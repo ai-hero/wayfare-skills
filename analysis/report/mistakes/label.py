@@ -12,7 +12,7 @@ Three passes, each keyed by a hash of the text the model saw, so a re-run pays o
             distinct finding, which persona raised it, who else did, what happened to it.
                                                                                -> persona_findings
 
-mistake_labels is the chapter's stable output (Chapter 23 reads it); fix-up commits are copied
+mistake_labels is this topic's stable output (report/conclusion reads it); fix-up commits are copied
 into it with source='pr_commit' so one table holds every labelled mistake.
 """
 import hashlib

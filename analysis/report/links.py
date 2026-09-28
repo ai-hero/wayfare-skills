@@ -1,4 +1,4 @@
-"""Chart series for the chapter 2 Question -> Answer slides.
+"""Chart series for the method topic's Question -> Answer slides.
 
 Each function returns a dict with the numbers one answer slide needs. The
 question modules answer at a single point; these add the time axis the
@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cube.db import connect  # noqa: E402
 from ingest.fleet import BASELINE_CUTOFF, OUT_OF_SCOPE, REPO_ALIASES, category_of  # noqa: E402
+from record import STAGES, adoption, stage_of  # noqa: E402
 
 START_2026 = "2026-01-01"
 MONTHS_2026 = [f"2026-{m:02d}" for m in range(1, 10)]
@@ -72,28 +73,6 @@ def _items(con):
                 if m:
                     prs.add(int(m.group(1)))
         out.append({**r, "branch": fm.get("branch"), "prs": prs})
-    return out
-
-
-def adoption(con):
-    """Per repo: first commit, and first day it had skills, work items, goals, messages."""
-    first_file = lambda path: {r["repo"]: r["d"] for r in rows(con, """
-        SELECT c.repo, MIN(c.day) d FROM git.commit_files f JOIN git.commits c ON c.repo=f.repo AND c.sha=f.sha
-        WHERE f.path = ? GROUP BY c.repo""", (path,))}
-    hero = first_file("HERO.md")
-    items = {r["repo"]: r["d"] for r in rows(con, "SELECT repo, MIN(day) d FROM plans.plan_items "
-                                                  "WHERE type!='goal' AND day IS NOT NULL GROUP BY repo")}
-    goals = {r["repo"]: r["d"] for r in rows(con, "SELECT repo, MIN(day) d FROM plans.plan_items "
-                                                  "WHERE type='goal' AND day IS NOT NULL GROUP BY repo")}
-    msgs = {}
-    for r in rows(con, "SELECT from_repo, to_repo, SUBSTR(created_ts,1,10) d FROM plans.messages"):
-        for repo in (r["from_repo"], r["to_repo"]):
-            if repo and r["d"] and r["d"] < msgs.get(repo, "9999"):
-                msgs[repo] = r["d"]
-    out = []
-    for r in rows(con, "SELECT repo, MIN(day) first, MAX(day) last, COUNT(*) n FROM git.commits GROUP BY repo ORDER BY first"):
-        out.append({**r, "skills": hero.get(r["repo"]), "items": items.get(r["repo"]),
-                    "goals": goals.get(r["repo"]), "messages": msgs.get(r["repo"])})
     return out
 
 
@@ -183,18 +162,13 @@ def q_change_set_work_item_links(con):
 
 def q_repo_stage_at_work(con):
     """Weekly commits by what the repo had adopted when the commit landed."""
-    ad = {r["repo"]: r for r in adoption(con)}
-    cats = ["No skills yet", "Skills", "+ work items", "+ goals", "+ messages"]
+    cats = STAGES
     weekly = {c: defaultdict(int) for c in cats}
     for r in rows(con, f"SELECT repo, day, week FROM git.commits WHERE day >= ? AND {IN_SCOPE}", (START_2026,)):
-        a = ad[r["repo"]]
-        on = lambda k: a[k] is not None and a[k] <= r["day"]
-        cat = (cats[4] if on("messages") else cats[3] if on("goals") else cats[2] if on("items")
-               else cats[1] if on("skills") else cats[0])
-        weekly[cat][r["week"]] += 1
+        weekly[stage_of(con, r["repo"], r["day"])][r["week"]] += 1
     return {"weeks": WEEKS, "series": {c: [weekly[c].get(w, 0) for w in WEEKS] for c in cats},
             "totals": {c: sum(weekly[c].values()) for c in cats},
-            "adoption": [a for a in ad.values() if a["repo"] not in OUT_OF_SCOPE]}
+            "adoption": sorted(adoption(con).values(), key=lambda a: a["first"])}
 
 
 def q_active_repo_dates(con):

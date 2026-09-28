@@ -2,7 +2,7 @@
 
     WAYFARE_FLEET_ROOT=~/workspaces/aihero python3 report/manager/data.py      # prints every answer
 
-Labels this chapter made itself (register triggers, gate triggers, plugin-commit reasons, memory
+Labels this topic made itself (register triggers, gate triggers, plugin-commit reasons, memory
 purpose, commit origin) are in manager.sqlite, built by labels.py. Prompt intent is the lead's shared
 detectors.prompt_intent.
 """
@@ -187,13 +187,18 @@ def correction_routes():
     from datetime import datetime, timedelta
     ts = lambda t: datetime.fromisoformat(t.replace("Z", "+00:00"))
     sessions = defaultdict(list)
+    unparsed = 0
     for r in rows("SELECT repo, first_ts, last_ts, pr_links FROM harness.sessions WHERE first_ts IS NOT NULL"):
         links = []
         for link in json.loads(r["pr_links"] or "[]"):
             m = re.match(r"[^/]+/([^#]+)#(\d+)$", link)
             if m:
                 links.append((REPO_ALIASES.get(m.group(1), m.group(1)), int(m.group(2))))
+            else:
+                unparsed += 1
         sessions[r["repo"]].append((ts(r["first_ts"]), ts(r["last_ts"]), links))
+    if not sessions:
+        return {"unavailable": "harness.sessions has no timed sessions"}
     opened = {(r["repo"], r["number"]): ts(r["created_ts"])
               for r in rows("SELECT repo, number, created_ts FROM github.prs WHERE merged_ts IS NOT NULL")}
     rule_prs = set()
@@ -201,12 +206,16 @@ def correction_routes():
         if any(RULE_PATH.search(p["path"]) for p in json.loads(r["files_json"] or "[]")):
             rule_prs.add((r["repo"], r["pr_number"]))
     lab = labels("mem_purpose")
-    corr_mem = defaultdict(list)
+    corr_mem, unlabelled_mem = defaultdict(list), defaultdict(list)
     for m in rows("SELECT repo, file, created_ts FROM harness.memories WHERE file != 'MEMORY.md'"):
-        if MEM_PURPOSE.get(lab.get(f"{m['repo']}:{m['file']}", {}).get("purpose")) == "Records a correction or mistake":
+        purpose = MEM_PURPOSE.get(lab.get(f"{m['repo']}:{m['file']}", {}).get("purpose"))
+        if purpose is None:
+            unlabelled_mem[m["repo"]].append(ts(m["created_ts"]))
+        elif purpose == "Records a correction or mistake":
             corr_mem[m["repo"]].append(ts(m["created_ts"]))
     first = min(f for v in sessions.values() for f, _, _ in v)
     out = []
+    memory_unlabelled = 0
     for c in corrections():
         t = ts(c["ts"])
         if t < first:
@@ -214,16 +223,24 @@ def correction_routes():
         prs = {p for f, l, links in sessions.get(c["repo"], []) if f <= t <= l for p in links}
         rule = any(p in rule_prs and p in opened and opened[p] >= t for p in prs)
         memory = any(t <= m <= t + timedelta(days=1) for m in corr_mem.get(c["repo"], []))
+        if not rule and not memory and any(t <= m <= t + timedelta(days=1) for m in unlabelled_mem.get(c["repo"], [])):
+            memory_unlabelled += 1
+            continue
         out.append((c["day"], ROUTES[0] if rule else ROUTES[1] if memory else ROUTES[2]))
-    return out
+    return {"routes": out, "unparsed_pr_links": unparsed, "memory_unlabelled": memory_unlabelled}
 
 
 def q_corrections_to_memory_memory():
     lab = labels("mem_purpose")
-    mem = rows("SELECT repo, file, created_ts FROM harness.memories WHERE file != 'MEMORY.md'")
+    if not lab:
+        return {"unavailable": "no mem_purpose labels: run report/manager/labels.py"}
+    purpose = lambda m: MEM_PURPOSE.get(lab.get(f"{m['repo']}:{m['file']}", {}).get("purpose"))
+    all_mem = rows("SELECT repo, file, created_ts FROM harness.memories WHERE file != 'MEMORY.md'")
+    mem = [m for m in all_mem if purpose(m)]
+    if not mem:
+        return {"unavailable": "no labelled memories"}
     cats = list(dict.fromkeys(MEM_PURPOSE.values()))
-    items = [(m["created_ts"][:10], MEM_PURPOSE.get(lab.get(f"{m['repo']}:{m['file']}", {}).get("purpose"),
-                                                    "Project fact")) for m in mem]
+    items = [(m["created_ts"][:10], purpose(m)) for m in mem]
     weekly = per_week(items, None, cats)
     counts = Counter(c for _, c in items)
     from datetime import datetime
@@ -236,19 +253,24 @@ def q_corrections_to_memory_memory():
     buckets = ["Within an hour", "Same day", "Within a week", "Later", "No earlier correction"]
     lat = {True: Counter(), False: Counter()}
     for m in mem:
-        is_corr = MEM_PURPOSE.get(lab.get(f"{m['repo']}:{m['file']}", {}).get("purpose")) == cats[0]
+        is_corr = purpose(m) == cats[0]
         t = ts(m["created_ts"])
         prev = [c for c in corr.get(m["repo"], []) if c <= t]
         h = (t - prev[-1]).total_seconds() / 3600 if prev else None
         lat[is_corr][buckets[4] if h is None else buckets[0] if h < 1 else buckets[1] if h < 24 else
                      buckets[2] if h < 168 else buckets[3]] += 1
-    first_mem = min(m["created_ts"][:10] for m in mem)
+    first_mem = min(m["created_ts"][:10] for m in all_mem)
     n_corr_since = sum(1 for r in corrections() if r["day"] >= first_mem)
-    routes = correction_routes()
-    return {"weekly": weekly, "counts": counts, "n": len(mem), "latency": lat, "buckets": buckets,
-            "corrections_since_first_memory": n_corr_since, "first_memory": first_mem,
-            "routes": Counter(r for _, r in routes), "routes_weekly": per_week(routes, None, ROUTES),
-            "routes_from": min(d for d, _ in routes) if routes else None}
+    cr = correction_routes()
+    out = {"weekly": weekly, "counts": counts, "n": len(mem), "unlabelled": len(all_mem) - len(mem),
+           "latency": lat, "buckets": buckets, "corrections_since_first_memory": n_corr_since,
+           "first_memory": first_mem}
+    if "unavailable" in cr:
+        return {**out, "routes": cr}
+    routes = cr["routes"]
+    return {**out, "routes": Counter(r for _, r in routes), "routes_weekly": per_week(routes, None, ROUTES),
+            "routes_from": min(d for d, _ in routes) if routes else None,
+            "unparsed_pr_links": cr["unparsed_pr_links"], "routes_memory_unlabelled": cr["memory_unlabelled"]}
 
 
 # ------------------------------------------------------------------ Q auto-approve-changes the auto-approve gate

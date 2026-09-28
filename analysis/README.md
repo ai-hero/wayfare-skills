@@ -42,15 +42,16 @@ analysis/
   bank/questions.csv     the question bank
   bank/coverage.py        how much of the bank has a questions/*.py implementation
   ingest/<source>.py      reads one source once -> .analysis/data/<source>.sqlite
-  cube/db.py               connect(): ATTACHes every .analysis/data/*.sqlite + cube/views.sql
+  cube/db.py               connect(): ATTACHes the shared .analysis/data/*.sqlite, named label caches + cube/views.sql
   cube/views.sql            shared views over the attached sources
   detectors/d*.py          the ten shared detectors (D1-D10 from the plan); output -> detectors.sqlite
   questions/RQ_*.py        one file per answered question; questions/runner.py runs them
-  report/deck_html.py      a chapter deck (.pptx) -> one interactive HTML page beside it
-  report/html_views.py     extra HTML-only tabs a chapter saves to .analysis/data/views/
+  report/book_pages.py     the book: one HTML page per chapter of chapters.json (--out DIR, --only N, --lessons TALK)
+  report/deck_html.py      the page library: reads a topic deck (.pptx) back and fills the viewer
+  report/html_views.py     extra HTML-only tabs a topic saves to .analysis/data/views/
 ```
 
-`deck_html.py` injects the deck into a prebuilt viewer (`.analysis/viewer/dist/index.html`,
+`book_pages.py` injects each page, through `deck_html.py`, into a prebuilt viewer (`.analysis/viewer/dist/index.html`,
 built with `npm run build` there). The viewer uses the private design system's components,
 so it stays in the gitignored `.analysis/` with the data; this repo holds only the Python half.
 

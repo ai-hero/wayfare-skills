@@ -2,7 +2,7 @@
 
     WAYFARE_FLEET_ROOT=~/workspaces/aihero python3 report/skills/data.py [q_skill_set_history q_factory_work_per_week ...]
 
-Each qNN(con) returns what that question's answer slide (and breakdown slide) plots.
+Each q_<slug>(con) returns what that question's answer slide (and breakdown slide) plots.
 Weeks run 2026-W01..W39; the plugin's history comes from its own git log (gitwalk),
 invocations from harness.prompts (typed, Nov 2025 →) and harness.tool_calls (agent, 9 Aug →).
 """

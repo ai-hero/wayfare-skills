@@ -1,4 +1,4 @@
-"""Chapter 2 series that evolve over time: weekly from 1 Jan, per repo by month.
+"""Method series that evolve over time: weekly from 1 Jan, per repo by month.
 
 Every function returns what one answer slide (and, where useful, its per-repo
 breakdown slide) plots. Weeks and months run from 1 Jan 2026 to the latest
@@ -14,7 +14,9 @@ import sys
 from collections import defaultdict
 from datetime import date, timedelta
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from ingest.fleet import REPO_ALIASES  # noqa: E402
 from record import (CATEGORIES, STAGES, adoption, changeset_facts, commit_facts,  # noqa: E402
                        rows, week_of, weekly)
 
@@ -217,8 +219,8 @@ def q_grouping_rater_agreement(con):
     try:
         rs = rows(con, "SELECT * FROM detectors.cs_agreement")
     except sqlite3.OperationalError as e:
-        print(f"ch2: {e}; Q grouping-rater-agreement agreement unavailable", file=sys.stderr)
-        return {"months": MONTHS, "exact": [None] * len(MONTHS), "pairs": [None] * len(MONTHS), "n": 0}
+        print(f"evolution: {e}; Q grouping-rater-agreement unavailable", file=sys.stderr)
+        return {"unavailable": str(e)}
     by = defaultdict(list)
     for r in rs:
         by[r["month"]].append(r)
@@ -271,8 +273,9 @@ def q_reviewer_disagreement(con):
         tags = rows(con, "SELECT t.*, p.week FROM detectors.review_topics t JOIN github.prs p "
                          "ON p.repo=t.repo AND p.number=t.number")
     except sqlite3.OperationalError as e:
-        print(f"ch2: {e}; review-topic shares unavailable", file=sys.stderr)
-        tags = []
+        print(f"evolution: {e}; review-topic shares unavailable", file=sys.stderr)
+        return {"weeks": WEEKS, "disagree": disagree, "review_topics": {"unavailable": str(e)},
+                "disagree_all": round(sum(sum(v) for v in wk.values()) / max(1, sum(len(v) for v in wk.values())), 3)}
     tw = defaultdict(list)
     for t in tags:
         tw[t["week"]].append(t)
@@ -344,8 +347,8 @@ def q_counting_units_compared_counts(con):
 # ---------------------------------------------------------------- Q reviewer-by-stage
 
 def q_reviewer_by_stage(con):
-    """Merged PRs by who reviewed them. A review under the owner's account is often an agent's;
-    Chapter 5's actors.human_reviews tells a person's review from an agent's."""
+    """Merged PRs by who reviewed them. A review under the owner's account may be an agent's;
+    owner/actors.py human_reviews tells a person's review from an agent's."""
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "owner_actors", os.path.join(os.path.dirname(os.path.abspath(__file__)), "owner", "actors.py"))
@@ -412,7 +415,7 @@ def q_observable_work_share(con):
         for link in json.loads(r["pr_links"]):
             m = re.match(r"[^/]+/([^#]+)#(\d+)$", link)
             if m:
-                session_prs.add((m.group(1).replace("hero-skills", "wayfare-skills"), int(m.group(2))))
+                session_prs.add((REPO_ALIASES.get(m.group(1), m.group(1)), int(m.group(2))))
     cats = ["Planned: a work item", "One-shot, session logged", "One-shot, no record", "Pushed to main", "Dependabot"]
 
     def kind(f):
@@ -447,7 +450,7 @@ def q_crediting_factory_changes(con):
         for r in repos:
             y, w0, _ = date.fromisoformat(ad[r][piece]).isocalendar()
             for k in rel:
-                d = date.fromisocalendar(2026, w0, 1) + timedelta(weeks=k)
+                d = date.fromisocalendar(y, w0, 1) + timedelta(weeks=k)
                 if ad[r]["first"] <= d.isoformat() <= ad[r]["last"]:
                     y2, w2, _ = d.isocalendar()
                     vals[k].append(per.get((r, f"{y2}-W{w2:02d}"), 0))
@@ -497,8 +500,8 @@ FIXUP_RE = re.compile(r"\b(address|review|self-review|copilot|lint|format|nit|fi
 
 
 def q_where_rework_is_caught(con):
-    """Per 100 change sets per week: fix-up commits inside the PR (Chapter 10's labels), catches by a
-    gate, and PRs whose lines a later fix repaired within 7 days of merge (Chapter 10's SZZ trace)."""
+    """Per 100 change sets per week: fix-up commits inside the PR (report/mistakes labels), catches by a
+    gate, and PRs whose lines a later fix repaired within 7 days of merge (report/mistakes/szz.py)."""
     cs = [f for f in changeset_facts(con) if not f["dependabot"]]
     sets_wk = per_week(cs, lambda f: 1)
     ad = adoption(con)

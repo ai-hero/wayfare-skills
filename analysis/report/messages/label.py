@@ -1,4 +1,4 @@
-"""Haiku labels for Chapter 15, cached in messages.sqlite by a hash of the text the model saw.
+"""Haiku labels for the messages topic, cached in messages.sqlite by a hash of the text the model saw.
 
     cd analysis && WAYFARE_FLEET_ROOT=~/workspaces/aihero python3 report/messages/label.py [needs|breaks|names|decisions]
 

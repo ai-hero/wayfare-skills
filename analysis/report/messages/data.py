@@ -54,7 +54,7 @@ def con():
 
 @lru_cache(maxsize=None)
 def scripted_sessions():
-    """Chapter 3's filter: pre-commit `claude -p` diff reviews and sessions with no model turn are not interactive."""
+    """agent_harness's filter: pre-commit `claude -p` diff reviews and sessions with no model turn are not interactive."""
     import importlib.util
     spec = importlib.util.spec_from_file_location("agent_harness_data", os.path.join(os.path.dirname(HERE), "agent_harness", "data.py"))
     mod = importlib.util.module_from_spec(spec)
@@ -349,7 +349,7 @@ def q_sibling_awareness():
 
 
 def pr_links():
-    """PR links from interactive sessions only (Chapter 3's scripted filter)."""
+    """PR links from interactive sessions only (agent_harness's scripted filter)."""
     out = []
     skip = scripted_sessions()
     for r in rows(con(), "SELECT session_id_hash, repo, day, first_ts, last_ts, pr_links FROM harness.sessions"):
@@ -691,7 +691,7 @@ def q_upstream_breaks_breaks():
             continue
         ev.append(dict(day=f["day"], repo=f["repo"], upstream=v.get("upstream") or "unclear", via=v.get("via") or "other",
                        label=f["label"], pr=f["pr"]))
-    # CI-workflow breakage is Chapter 13's, third-party dependency fixes are not a fleet upstream, and the plugin's
+    # CI-workflow breakage belongs to report/deployment, third-party dependency fixes are not a fleet upstream, and the plugin's
     # auto-approve workflow is CI whatever the model called it.
     non_ci = [e for e in ev if e["via"] not in ("ci_workflow", "dependency") and e["upstream"] != "unclear"
               and not re.search(r"auto-approve", e["label"], re.I)]

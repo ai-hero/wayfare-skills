@@ -194,8 +194,10 @@ def model_spend():
     try:
         return round(ch_db().execute("SELECT COALESCE(SUM(cost), 0) FROM spend_log").fetchone()[0], 3)
     except sqlite3.OperationalError as e:
-        print(f"architecture: {e}; model spend reported as 0", file=sys.stderr)
-        return 0.0
+        if "no such table" not in str(e):
+            raise
+        print(f"architecture: {e}; model spend unavailable", file=sys.stderr)
+        return None
 
 
 # ---------------------------------------------------------------- Q design-record-adoption

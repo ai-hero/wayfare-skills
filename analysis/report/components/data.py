@@ -2,7 +2,7 @@
 
 One function per question (q_component_inventory ... q_recommended_adoption_order), each returning what its answer slide and
 breakdown slide plot. Reuses record (adoption, change sets, commit facts) and
-links.set_item_links; everything specific to this chapter lives here.
+links.set_item_links; everything specific to this topic lives here.
 
     WAYFARE_FLEET_ROOT=~/workspaces/aihero python3 report/components/data.py   # prints every answer's numbers
 """

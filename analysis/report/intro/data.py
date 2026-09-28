@@ -1,9 +1,9 @@
-"""Introduction series: the factory and the fleet, in the numbers every later chapter builds on.
+"""Introduction series: the factory and the fleet, in the numbers every later topic builds on.
 
     cd analysis && WAYFARE_FLEET_ROOT=~/workspaces/aihero python3 report/intro/data.py
 
 One function per question. The headline counts (change sets, spend, planned share) call
-Chapter 2's functions rather than recomputing them, so the two chapters print the same
+evolution.py's functions rather than recomputing them, so the two topics print the same
 numbers. Weeks run 2026-W01..W39 (evolution.WEEKS); pre-2026 history is folded into the
 starting value where a chart is cumulative and otherwise left out.
 """
@@ -142,7 +142,7 @@ def q_repos_in_motion(con):
 # ---------------------------------------------------------------- Q fleet-throughput
 
 def q_fleet_throughput_volume(con):
-    """Change sets per week (Chapter 2's q_weekly_change_sets_by_stage), plus the totals the title needs."""
+    """Change sets per week (evolution.q_weekly_change_sets_by_stage), plus the totals the title needs."""
     t = q_weekly_change_sets_by_stage(con)
     s = t["series"]
     total = sum(sum(v) for v in s.values())
@@ -284,7 +284,7 @@ IDLE_CAP_MIN = 8 * 60
 
 
 def q_weekly_factory_cost(con):
-    """Weekly spend (Chapter 2's q_cost_saving_changes), the owner's hours and the hours any session was working.
+    """Weekly spend (evolution.q_cost_saving_changes), the owner's hours and the hours any session was working.
 
     Owner time follows the brief's rule: minutes waiting on the owner (D6 waiting_human, gaps up
     to 8 h) plus the owner's reply time (a gap of 5 min or less that ends in a typed prompt).
@@ -338,24 +338,24 @@ def q_weekly_factory_cost(con):
 
 # ---------------------------------------------------------------- Q work-kind-mix and Q work-by-theme
 
-# The shared label (detectors.cs_worktype, built once by the lead for every chapter).
+# The shared label (detectors.cs_worktype, built once by the lead for every topic).
 WORK_GROUPS = {"feature": "Feature", "feat": "Feature", "design_ui": "Feature", "fix": "Fix", "security": "Security",
                "refactor": "Refactor, test, docs", "test": "Refactor, test, docs", "docs": "Refactor, test, docs",
                "factory": "Upkeep", "ci_build": "Upkeep", "dependency": "Upkeep", "chore": "Upkeep"}
 GROUPS = ["Feature", "Fix", "Security", "Refactor, test, docs", "Upkeep"]
 THEME_CHAPTER = {
-    "product": ("Ch 16", "Fleet scope and apps"), "fleet_apps": ("Ch 16", "Fleet scope and apps"),
-    "harness": ("Ch 3", "The harness"), "human_loop": ("Ch 5", "Human in the loop"),
-    "skills": ("Ch 4", "Skills and factory evolution"), "connectors": ("Ch 14", "Connectors"),
-    "knowledge": ("Ch 6", "Knowledge and memory"), "architecture": ("Ch 11", "Architecture and design records"),
-    "work_items": ("Ch 9", "Work items, flow and wall time"), "rework": ("Ch 10", "Agent mistakes and rework"),
-    "security": ("Ch 8", "Security"), "cross_repo": ("Ch 15", "Cross-repo context and messaging"),
-    "compliance": ("Ch 17", "Compliance and drift"), "deploy_infra": ("Ch 13", "Deployment and infrastructure"),
-    "spend": ("Ch 19", "Spend and cost"), "factory": ("Ch 3, 5", "The harness; skills"),
-    "dependencies": ("Ch 8, 14", "Security; compliance and drift"),
+    "product": ("fleet", "Fleet scope and apps"), "fleet_apps": ("fleet", "Fleet scope and apps"),
+    "harness": ("agent_harness", "The harness"), "human_loop": ("owner", "Human in the loop"),
+    "skills": ("skills", "Skills and factory evolution"), "connectors": ("connectors", "Connectors"),
+    "knowledge": ("memory", "Knowledge and memory"), "architecture": ("architecture", "Architecture and design records"),
+    "work_items": ("work_items", "Work items, flow and wall time"), "rework": ("mistakes", "Agent mistakes and rework"),
+    "security": ("security", "Security"), "cross_repo": ("messages", "Cross-repo context and messaging"),
+    "compliance": ("compliance", "Compliance and drift"), "deploy_infra": ("deployment", "Deployment and infrastructure"),
+    "spend": ("spend", "Spend and cost"), "factory": ("agent_harness, skills", "The harness; skills"),
+    "dependencies": ("security, compliance", "Security; compliance and drift"),
 }
 # The shared label sometimes answers with a work type where a theme belongs, and puts Dependabot
-# bumps under spend or harness; these fold both back into the chapter list.
+# bumps under spend or harness; these fold both back into the topic list.
 THEME_FIX = {"ci_build": "deploy_infra", "design_ui": "product", "dependency": "dependencies", "feat": "product"}
 THEME_NAME = {"product": "App features", "fleet_apps": "Fleet and apps", "harness": "Harness",
               "human_loop": "Human in the loop", "skills": "Skills", "connectors": "Connectors",
@@ -490,7 +490,7 @@ def _q109_levels(con):
 # ---------------------------------------------------------------- Q planned-in-writing
 
 def q_planned_in_writing_planned(con):
-    """Chapter 2's q_observable_work_share, with the shares the title needs."""
+    """evolution.q_observable_work_share, with the shares the title needs."""
     o = q_observable_work_share(con)
     s = o["series"]
     planned = s["Planned: a work item"]

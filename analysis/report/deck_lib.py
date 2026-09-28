@@ -1,10 +1,10 @@
-"""Shared slide builder for the research-findings decks (one deck per chapter).
+"""Shared slide builder for the research-findings decks (one deck per topic, TOPICS below).
 
-Every chapter deck is built with these functions so they read as one set:
+Every topic deck is built with these functions so they read as one set:
 
     prs = open_template()                               # A.I. Hero template, no slides
-    title_slide(prs, "Research setting, method and the baseline", "Chapter 2 · 22 questions")
-    section_slide(prs, "CHAPTER 2", "Research setting, method and the baseline")
+    title_slide(prs, "Research setting, method and the baseline", "Method · 22 questions")
+    section_slide(prs, "METHOD", "Research setting, method and the baseline")
     question_slide(prs, "Q commits-per-change-set", question, originally=..., how=..., notes=...)
     answer_slide(prs, "Q commits-per-change-set", title, points, chart=lambda box: timeline(...), source=..., notes=...)
     breakdown_slide(prs, "Q commits-per-change-set", title, points, chart=..., source=..., notes=...)

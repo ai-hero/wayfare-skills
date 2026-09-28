@@ -232,7 +232,7 @@ def q_rule_change_review_changes():
     paths = ["Reviewed PR · hero-template", "Reviewed PR · wayfare-skills baseline", "Direct commit · hero-template",
              "Direct commit · .fleet (no remote)"]
     weekly = {p: [sum(1 for c in ch if c["path"] == p and week_of(c["day"]) == w) for w in WEEKS] for p in paths}
-    # Was each PR approved by a review before merge? (Reviews post under the owner's account; Ch 5 tells agent from human.)
+    # Was each PR approved by a review before merge? (Reviews post under the owner's account; owner/actors.py tells agent from human.)
     reviewed = {}
     for c in ch:
         if c["pr"] and c["repo"] in ("hero-template", "wayfare-skills"):

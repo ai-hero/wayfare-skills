@@ -5,9 +5,9 @@ Every chapter deck is built with these functions so they read as one set:
     prs = open_template()                               # A.I. Hero template, no slides
     title_slide(prs, "Research setting, method and the baseline", "Chapter 2 · 22 questions")
     section_slide(prs, "CHAPTER 2", "Research setting, method and the baseline")
-    question_slide(prs, "Q 2.01", question, originally=..., how=..., notes=...)
-    answer_slide(prs, "Q 2.01", title, points, chart=lambda box: timeline(...), source=..., notes=...)
-    breakdown_slide(prs, "Q 2.01", title, points, chart=..., source=..., notes=...)
+    question_slide(prs, "Q commits-per-change-set", question, originally=..., how=..., notes=...)
+    answer_slide(prs, "Q commits-per-change-set", title, points, chart=lambda box: timeline(...), source=..., notes=...)
+    breakdown_slide(prs, "Q commits-per-change-set", title, points, chart=..., source=..., notes=...)
     prs.save(path)
 
 Layout of an answer slide: the chart fills the left two-thirds; the answer title sits top
@@ -58,6 +58,16 @@ MILESTONES = [
 ]
 WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
+
+
+# Each evidence deck's folder under report/ and the short name its charts give it, in deck order.
+TOPICS = {"intro": "Introduction", "method": "Research setting and method", "agent_harness": "The harness",
+          "owner": "Human in the loop", "skills": "Skills and factory evolution", "connectors": "Connectors",
+          "memory": "Knowledge and memory", "architecture": "Architecture records", "work_items": "Work items and flow",
+          "mistakes": "Mistakes and rework", "security": "Security", "fleet": "Fleet scope and apps",
+          "messages": "Cross-repo messaging", "compliance": "Compliance and drift", "deployment": "Deployment",
+          "spend": "Spend and cost", "efficiency": "Floor efficiency", "manager": "Manager's thinking",
+          "components": "Toward an architecture", "field": "The field", "conclusion": "Conclusion"}
 
 
 # ------------------------------------------------------------------ basics

@@ -1,13 +1,10 @@
 # This repo is public: the study's findings stay local. Only the pipeline and the
 # questions are published; anything that states a result is listed here.
 report/*/deck.py
-report/ch2_deck.py
 report/*/views.py
-report/ch2_views.py
 report/*/summary.md
 report/*/questions.md
 report/CHAPTER_BRIEF.md
-report/ch21/data.py
+report/conclusion/data.py
 report/*/*_hand.py
 bank/groundings.csv
-report/*/book.md

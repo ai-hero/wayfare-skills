@@ -29,26 +29,26 @@ QUESTIONS_DIR = os.path.join(ANALYSIS_ROOT, "questions")
 
 # Parsed once from the source deck's own "Section divider" slides
 # (Software Factory Research Questions (review).pptx) -- not re-derivable
-# from bank/questions.csv, which only carries the bare chapter number.
+# from bank/questions.csv, which only carries the topic.
 CHAPTER_INFO = {
-    "2": ("FRONT MATTER", "Research setting, method and the baseline"),
-    "3": ("PART I", "The harness"),
-    "4": ("PART I", "Human in the loop"),
-    "5": ("PART I", "Skills and factory evolution"),
-    "6": ("PART II", "Connectors"),
-    "7": ("PART II", "Knowledge and memory"),
-    "8": ("PART II", "Architecture and design records"),
-    "9": ("PART III", "Work items, flow and wall time"),
-    "10": ("PART III", "Agent mistakes and rework"),
-    "11": ("PART III", "Security"),
-    "12": ("PART IV", "Fleet scope and apps"),
-    "13": ("PART IV", "Cross-repo context and messaging"),
-    "14": ("PART IV", "Compliance and drift"),
-    "15": ("PART IV", "Deployment and infrastructure"),
-    "16": ("PART V", "Spend and cost"),
-    "17": ("PART V", "Factory floor efficiency"),
-    "18": ("PART V", "The factory manager's thinking"),
-    "20": ("PART VI", "The field, and what generalizes"),
+    "method": ("FRONT MATTER", "Research setting, method and the baseline"),
+    "agent_harness": ("PART I", "The harness"),
+    "owner": ("PART I", "Human in the loop"),
+    "skills": ("PART I", "Skills and factory evolution"),
+    "connectors": ("PART II", "Connectors"),
+    "memory": ("PART II", "Knowledge and memory"),
+    "architecture": ("PART II", "Architecture and design records"),
+    "work_items": ("PART III", "Work items, flow and wall time"),
+    "mistakes": ("PART III", "Agent mistakes and rework"),
+    "security": ("PART III", "Security"),
+    "fleet": ("PART IV", "Fleet scope and apps"),
+    "messages": ("PART IV", "Cross-repo context and messaging"),
+    "compliance": ("PART IV", "Compliance and drift"),
+    "deployment": ("PART IV", "Deployment and infrastructure"),
+    "spend": ("PART V", "Spend and cost"),
+    "efficiency": ("PART V", "Factory floor efficiency"),
+    "manager": ("PART V", "The factory manager's thinking"),
+    "field": ("PART VI", "The field, and what generalizes"),
 }
 
 
@@ -115,7 +115,7 @@ def ph(slide, idx):
 
 
 def tag_line(row):
-    return f"CH {row['chapter']} · {row['rq_id']} · {row['method'].upper()} · {row['status'].upper()}"
+    return f"{row['chapter'].upper()} · {row['rq_id']} · {row['method'].upper()} · {row['status'].upper()}"
 
 
 def run_answer(mod, con):
@@ -203,9 +203,9 @@ def add_findings_slide(prs, layouts, row, rows, err):
 
 
 def add_section_divider(prs, layouts, chapter, questions_in_chapter):
-    part, name = CHAPTER_INFO.get(chapter, ("", f"Chapter {chapter}"))
+    part, name = CHAPTER_INFO.get(chapter, ("", chapter))
     slide = prs.slides.add_slide(layouts["Section divider"])
-    set_text(ph(slide, 10), f"CHAPTER {chapter} · {part} · {questions_in_chapter} QUESTIONS", max_chars=90)
+    set_text(ph(slide, 10), f"{name.upper()} · {part} · {questions_in_chapter} QUESTIONS", max_chars=90)
     set_text(ph(slide, 0), name, max_chars=90)
     return slide
 

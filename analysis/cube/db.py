@@ -13,14 +13,18 @@ def _warn(msg):
         print(f"cube: {msg}", file=sys.stderr)
 
 
-def connect(*chapters):
-    """chapters: per-chapter databases to attach as well (e.g. connect("ch05", "ch10")). They are
-    left out by default because SQLite attaches at most 10 databases to one connection."""
+# The ingest and detector databases every query can use. Any other *.sqlite is one topic's label
+# cache, attached only when named: SQLite attaches at most 10 databases to one connection.
+SHARED = ("detectors", "git", "github", "harness", "knowledge", "plans", "pr_commits")
+
+
+def connect(*topics):
+    """topics: label caches to attach as well, e.g. connect("skills", "mistakes")."""
     con = sqlite3.connect(":memory:")
     con.row_factory = sqlite3.Row
     for p in sorted(glob.glob(os.path.join(DATA, "*.sqlite"))):
         stem = os.path.basename(p)[:-7]
-        if re.fullmatch(r"ch\d\d", stem) and stem not in chapters:
+        if stem not in SHARED and stem not in topics:
             continue
         # A mistyped `sqlite3 "<db> <table>.sqlite"` creates a stray file whose name is not an
         # identifier; attaching it would break every connect(), so it is skipped.
@@ -30,8 +34,8 @@ def connect(*chapters):
         con.execute("ATTACH DATABASE ? AS " + stem, (p,))
     views = os.path.join(HERE, "cube", "views.sql")
     attached = {r[1] for r in con.execute("PRAGMA database_list")}
-    # Warn, never raise: some chapters ask for a database they never write, or read it before labelling creates it.
-    for ch in chapters:
+    # Warn, never raise: some topics ask for a database they never write, or read it before labelling creates it.
+    for ch in topics:
         if ch not in attached:
             _warn(f"chapter database {ch}.sqlite not found in {DATA}; queries on {ch}.* will fail")
     # a view over a source that isn't ingested yet would fail the whole script, so each view names its sources

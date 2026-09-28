@@ -1,0 +1,239 @@
+"""Render the book: one page per chapter of a table of contents, not one per deck.
+
+    python report/book_pages.py [--book .analysis/book] [--decks .analysis/decks] --out FOLDER [--lessons TALK]
+
+Decks hold the evidence by topic; the book arranges it by argument. `chapters.json` in the book
+folder lists each chapter and the questions it shows, by id (Q work-sources). Every deck is read
+once, a figure resolves from whichever deck holds it, and each question a chapter shows is placed
+as a card in its prose, where the text first draws or cites it.
+"""
+import argparse
+import glob
+import json
+import os
+import re
+import sys
+
+import deck_html as D
+import html_views
+from pptx import Presentation
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BOOK = os.path.join(ROOT, ".analysis", "book")
+DECKS = os.path.join(ROOT, ".analysis", "decks")
+
+
+def load_decks(folder, lessons=None):
+    """Every deck's question blocks by id and its diagrams by tag, plus each deck's numbers: the prose
+    slides and notes are where a chapter's sources and dates are checked."""
+    questions, diagrams, known = {}, [], {}
+    # A view is attached by its question id wherever the question is built, whichever views file saved it.
+    views, attached = {}, set()
+    for f in sorted(glob.glob(os.path.join(html_views.VIEWS_DIR, "*.json"))):
+        for k, v in html_views.load(os.path.splitext(os.path.basename(f))[0]).items():
+            views.setdefault(D.qkey(k) or k, []).extend(v)
+    for path in sorted(glob.glob(os.path.join(folder, "*.pptx"))):
+        deck = os.path.splitext(os.path.basename(path))[0]
+        _, sections = D.group([D.classify(D.read_slide(s, f"{deck}, slide {i}"))
+                               for i, s in enumerate(Presentation(path).slides, 1)])
+        for s in sections:
+            for b in s["blocks"]:
+                k = D.qkey(b["key"])
+                if k in views:
+                    have = {v["label"].lower() for v in b["views"]}
+                    b["views"] += [v for v in views[k] if v["label"].lower() not in have]
+                    attached.add(k)
+        if lessons:
+            D.attach_lessons(sections, lessons)
+        known[deck] = D.haystack(sections)
+        for s in sections:
+            for b in s["blocks"]:
+                k = D.qkey(b["key"])
+                if k:
+                    if k in questions:
+                        D.warn(f"{k} is built in two decks; the page uses the first")
+                        continue
+                    b["key"] = k
+                    questions[k] = {"block": b, "deck": deck}
+                elif b["views"]:
+                    diagrams.append({"block": b, "deck": deck})
+    for k in sorted(set(views) - attached):
+        D.warn(f"views for {k} match no question in any deck; they are dropped")
+    return questions, diagrams, known
+
+
+def merge(questions, merged):
+    """Fold each merged question into the one kept: its views become tabs of the kept card, named by the merge,
+    and its question and lessons go with them, so nothing it showed is lost."""
+    for m, spec in merged.items():
+        mq, kq = questions.pop(f"Q {m}", None), questions.get(f"Q {spec['into']}")
+        if mq is None or kq is None:
+            D.warn(f"merge of Q {m} into Q {spec['into']}: one of them is in no deck")
+            continue
+        kb, mb = kq["block"], mq["block"]
+        for v in mb["views"]:
+            own = v.get("label") or ""
+            kb["views"].append({**v, "label": spec["label"] if own.upper() == "ANSWER" else f"{spec['label']} · {own.title()}"})
+        q, k = mb.get("question") or {}, kb.get("question")
+        if k is not None and q.get("question"):
+            k["notes"] = (k.get("notes") or "") + f"\n\nAlso answers what was Q {m}: {q['question']}"
+        if mb.get("lessons"):
+            kl = kb.setdefault("lessons", {"insights": [], "hypotheses": []})
+            kl["insights"] += mb["lessons"]["insights"]
+            kl["hypotheses"] += mb["lessons"]["hypotheses"]
+
+
+def find_diagram(diagrams, ref, prefer=()):
+    """A diagram by its tag, from the decks this chapter's questions come from first: tags repeat across decks."""
+    for d in sorted(diagrams, key=lambda d: d["deck"] not in prefer):
+        _, v = D.find_view([{"blocks": [d["block"]]}], ref)
+        if v is not None:
+            return d, v
+    return None, None
+
+
+def card(b, number, caption="", view=None):
+    """A question's whole card, placed in the prose: every view, with the one the text drew first."""
+    views = list(b["views"])
+    if view is not None and view in views:
+        views.insert(0, views.pop(views.index(view)))
+    return {"kind": "card", "key": b["key"], "number": number, "caption": caption,
+            "block": {**b, "views": views}}
+
+
+def build(ch, text, questions, diagrams, deck_known):
+    """The chapter's prose with its evidence woven in: a question's card sits where the text first
+    draws it as a figure, or else right after the paragraph that first cites it. A question the
+    text never mentions stays off the page."""
+    name = f"ch{ch['n']:02d}"
+    own = {}
+    for q in ch["questions"]:
+        k = f"Q {q}"
+        if k in questions:
+            own[k] = questions[k]["block"]
+        else:
+            D.warn(f"{name}: {k} is in no deck")
+    decks = {questions[k]["deck"] for k in own}
+    known = set()
+    for deck in decks:
+        known |= deck_known.get(deck, set())
+    sections = [{"blocks": list(own.values())}]
+    book = D.parse_book(text)
+    drawn = {D.qkey(blk["ref"]) for s in book for blk in s["blocks"] if blk["kind"] == "figure"}
+    fig, placed, out = 0, set(), []
+    for s in book:
+        blocks = []
+        for blk in s["blocks"]:
+            if blk["kind"] == "figure":
+                b, v = D.find_view(sections, blk["ref"])
+                if v is None:
+                    # A chart from a card another chapter shows: drawn here as a figure, the card stays there.
+                    k = D.qkey(blk["ref"])
+                    if k in questions:
+                        b, v = D.find_view([{"blocks": [questions[k]["block"]]}], blk["ref"])
+                        if v is not None:
+                            known |= deck_known.get(questions[k]["deck"], set())
+                if v is None:
+                    d, v = find_diagram(diagrams, blk["ref"], decks)
+                    if v is not None:
+                        b = d["block"]
+                        known |= deck_known.get(d["deck"], set())
+                if v is None:
+                    D.warn(f"{name}: book figure [[{blk['ref']}]] matches no view in any deck")
+                    continue
+                fig += 1
+                if D.qkey(b["key"]) in own:
+                    placed.add(D.qkey(b["key"]))
+                    blk = card(b, f"{ch['n']}.{fig}", blk["caption"], v)
+                else:
+                    blk.update({"number": f"{ch['n']}.{fig}", "key": b["key"], "view": v,
+                                "caption": blk["caption"] or v["title"]})
+            t = blk.get("text") or blk.get("caption", "")
+            for num in D.NUM_RE.findall(D.FREE_RE.sub(" ", t)):
+                if D.bare(num) not in known and not (D.bare(num).isdigit() and int(D.bare(num)) <= 10):
+                    D.warn(f"{name}: book number {num!r} is not in the chapter's data: {t[:80]}…")
+            blocks.append(blk)
+            if blk["kind"] in ("p", "quote"):
+                for m in D.Q_RE.finditer(blk["text"]):
+                    k = D.qkey(m.group(0))
+                    if k in own and k not in placed and k not in drawn:
+                        placed.add(k)
+                        fig += 1
+                        blocks.append(card(own[k], f"{ch['n']}.{fig}"))
+        if blocks or s["title"]:
+            out.append({**s, "blocks": blocks})
+    # A question the prose never cites is left off the page, not appended: the warning is the
+    # prompt to write the sentence that earns it a place.
+    rest = [k for k in own if k not in placed]
+    if rest:
+        D.warn(f"{name}: {len(rest)} question(s) the text never cites, left off the page: {', '.join(rest)}")
+    return out, sections
+
+
+def page_name(ch):
+    return f"Ch {ch['n']:02d} - {re.sub(r'[?/:]', '', ch['title'])}.html"
+
+
+def render(ch, template, questions, diagrams, deck_known, toc, book_dir, out_dir, index_href="index.html"):
+    with open(os.path.join(book_dir, ch["book"]), encoding="utf-8") as f:
+        text = f.read()
+    book, sections = build(ch, text, questions, diagrams, deck_known)
+    h1 = re.search(r"^# (.+)$", text, re.M)
+    title = h1.group(1).strip() if h1 else ch["title"]
+    head = {"kind": "title", "title": title,
+            "subtitle": f"Chapter {ch['n']}" + (f" · {ch['group']}" if ch.get("group") else ""), "notes": ""}
+    out = os.path.join(out_dir, page_name(ch))
+    # slim() edits the chart dicts in place, and the cards in `book` share them.
+    D.slim(sections)
+    pages = {str(c["n"]): page_name(c) for c in toc["chapters"]}
+    owners = {q: c["n"] for c in toc["chapters"] for q in c["questions"]}
+    payload = {"head": head, "sections": [], "index": index_href, "book": book, "chapter": ch["n"],
+               "pages": pages, "owners": owners}
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(D.fill(template, title, payload))
+    return out
+
+
+def render_index(out_dir, toc, template):
+    groups = []
+    for ch in toc["chapters"]:
+        g = ch.get("group") or ("Opening" if ch["n"] <= 2 else "Closing")
+        if not groups or groups[-1]["title"] != g:
+            groups.append({"kicker": "Chapters", "title": g, "notes": "", "blocks": []})
+        groups[-1]["blocks"].append({"key": f"Ch {ch['n']:02d}", "question": {"question": ch["title"], "how": "",
+                                     "originally": "", "notes": ""}, "views": [], "statements": [],
+                                     "href": page_name(ch)})
+    payload = {"head": {"title": "Architecting a Software Factory",
+                        "subtitle": "One page per chapter: the argument first, then the evidence behind it."},
+               "sections": groups, "index": None}
+    with open(os.path.join(out_dir, "index.html"), "w", encoding="utf-8") as f:
+        f.write(D.fill(template, "Research findings", payload))
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--book", default=BOOK)
+    ap.add_argument("--decks", default=DECKS)
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--lessons")
+    ap.add_argument("--only", type=int, action="append", help="render just these chapter numbers")
+    args = ap.parse_args(argv)
+    with open(D.VIEWER, encoding="utf-8") as f:
+        template = f.read()
+    with open(os.path.join(args.book, "chapters.json"), encoding="utf-8") as f:
+        toc = json.load(f)
+    questions, diagrams, deck_known = load_decks(args.decks, D.read_lessons(args.lessons) if args.lessons else None)
+    merge(questions, toc.get("merged", {}))
+    shown = {f"Q {q}" for ch in toc["chapters"] for q in ch["questions"]}
+    for k in sorted(set(questions) - shown):
+        D.warn(f"{k} is in a deck but no chapter shows it")
+    for ch in toc["chapters"]:
+        if not args.only or ch["n"] in args.only:
+            print(render(ch, template, questions, diagrams, deck_known, toc, args.book, args.out))
+    render_index(args.out, toc, template)
+    if D.WARNINGS:
+        print(f"{len(D.WARNINGS)} warning(s) above", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

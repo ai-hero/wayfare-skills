@@ -120,7 +120,7 @@ auto-invalidate the cache; delete rows to force relabeling.
   control, though the parse raised no error. This blocked the
   whole controls/checks/compliance family of questions (title-less, kind-
   less, unlinked to any control). Fixed to allow leading whitespace.
-- `report/ch2_facts.py`'s `commit_facts` had three faults, and every chapter
+- `report/record.py`'s `commit_facts` had three faults, and every chapter
   that counts work in commits inherited them. It listed a commit once per PR
   that carried it (stacked PRs), so those commits counted twice. It only read
   a PR's own commits for `pr` change-set units, so `pr-squash` PRs (Dependabot

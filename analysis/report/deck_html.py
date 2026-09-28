@@ -1,25 +1,14 @@
-"""Render a findings deck (.pptx) as one self-contained, interactive HTML page.
+"""Read a findings deck (.pptx) back into what it says, for the book's pages.
 
-The page is a prebuilt React viewer (shadcn charts on Recharts, the house design system)
-with the deck's content injected as JSON; building the viewer is the only step that needs node.
-
-    /tmp/pptxenv/bin/python3 report/deck_html.py <deck.pptx> [...]   # writes <deck>.html beside each
-    /tmp/pptxenv/bin/python3 report/deck_html.py --index <folder>     # every deck in it, plus index.html
-    ... --lessons <talk.pptx>   # pin the talk deck's insights and hypothesis verdicts to their questions
-    ... --out <folder>          # write the pages (and index.html) there instead of beside the decks
-
-The deck is the source: native chart data, the side text, milestone lines and speaker notes
-are read back out of the .pptx, so no chapter's deck.py changes to get a page. Slides that
-share a tag prefix ("Q 2.01 · Answer", "Q 2.01 · By repo", "Q 2.01 · Change sets") become
+The deck is the source: native chart data, the side text, milestone lines and speaker notes are
+read back out of the .pptx, so no deck.py changes to get a page. Slides that share a tag prefix
+("Q work-sources · Answer", "Q work-sources · By repo", "Q work-sources · Change sets") become
 tabs of one question, so a deck adds a view by adding a slide with the same prefix.
 
-A chapter with a `chNN/book.md` reads as a book: its prose, with the charts it cites placed
-inline as figures, then every question as an evidence appendix. The deck's own prose slides
-are left out of that page, since the book replaces them.
+book_pages.py renders the book with this; `fill` injects a page's content, as JSON, into the
+prebuilt React viewer (shadcn charts on Recharts), whose build is the only step that needs node.
 """
-import argparse
 import base64
-import glob
 import html
 import json
 import os
@@ -29,7 +18,6 @@ from datetime import date, timedelta
 
 from pptx import Presentation
 
-import html_views
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 EMU = 914400
@@ -320,13 +308,14 @@ def group(slides):
 
 # ------------------------------------------------------------------ lessons
 
-Q_RE = re.compile(r"\bQ\s?(\d{1,2})\.(\d{2})\b")
+# Deck eyebrows are set in capitals (Q WORK-SOURCES · QUESTION), so an id matches in any case.
+Q_RE = re.compile(r"\bQ\s((?i:[a-z][a-z0-9]*(?:-[a-z0-9]+)+))\b")
 VERDICT_RE = re.compile(r"^([A-Z][A-Z', ]+?)\s{2}·\s{2}(.*)$", re.S)
 
 
 def qkey(v):
     m = Q_RE.search(v or "")
-    return f"Q {int(m.group(1))}.{m.group(2)}" if m else None
+    return f"Q {m.group(1).lower()}" if m else None
 
 
 def tone(verdict):
@@ -341,7 +330,7 @@ def tone(verdict):
 
 
 def read_lessons(path):
-    """{"Q 9.03": {"insights": [...], "hypotheses": [...]}} from the evidence-edition talk deck."""
+    """{"Q work-sources": {"insights": [...], "hypotheses": [...]}} from the evidence-edition talk deck."""
     out = {}
     def at(k):
         return out.setdefault(k, {"insights": [], "hypotheses": []})
@@ -357,7 +346,7 @@ def read_lessons(path):
                     continue
                 theme = t.split("\n", 1)[1].strip().title() if "\n" in t else ""
                 evidence = re.split(r"\s+·\s+(?=Ch \d)", m.group(2).split("  ·  ")[0])[0].strip()
-                refs = sorted({f"Q {int(a)}.{b}" for a, b in Q_RE.findall(m.group(2))})
+                refs = sorted({qkey(r.group(0)) for r in Q_RE.finditer(m.group(2))})
                 h = {"statement": " ".join(paras[:-1]), "verdict": m.group(1).strip(), "tone": tone(m.group(1)),
                      "evidence": evidence, "refs": refs, "theme": theme}
                 for r in refs:
@@ -412,27 +401,16 @@ def fill(template, title, payload):
     return template.replace("__DECK_TITLE__", esc(title), 1).replace("__DECK_DATA__", data, 1)
 
 
-def attach_views(sections, views, chapter):
-    """Tabs a chapter's views.py saved: HTML-only views such as the other unit of work."""
-    blocks = {qkey(b["key"]): b for s in sections for b in s["blocks"] if qkey(b["key"])}
-    for key, extra in views.items():
-        b = blocks.get(qkey(key))
-        if b is None:
-            print(f"{chapter}: no question {key} on the page; its {len(extra)} view(s) are dropped", file=sys.stderr)
-            continue
-        have = {v["label"].lower() for v in b["views"]}
-        b["views"] += [v for v in extra if v["label"].lower() not in have]
-
-
 # ------------------------------------------------------------------ book
 
-BOOK_DIR = os.path.dirname(os.path.abspath(__file__))
 FIG_RE = re.compile(r"^\[\[(.+?)\]\]$")
 NUM_RE = re.compile(r"\$?\d[\d,]*(?:\.\d+)?%?")
-# Numbers a reader can check without the data: question and chapter numbers, dates, years, URLs.
-FREE_RE = re.compile(r"https?://\S+|\bQ\s?\d{1,2}\.\d{2}\b|\b(?:Chapters?|Ch|Part|Figures?)\s+\d+(?:\.\d+)?(?!,\d)(?:\s*(?:,|and|to|–|-)\s*\d+(?:\.\d+)?(?!,?\d))*"
+# Numbers a reader can check without the data: question and chapter numbers, dates, years, URLs, model versions,
+# and names that are digits (8090 is a company).
+FREE_RE = re.compile(r"https?://\S+|\bQ\s(?i:[a-z][a-z0-9]*(?:-[a-z0-9]+)+)\b|\b(?:Chapters?|Ch|Part|Figures?)\s+\d+(?:\.\d+)?(?!,\d)(?:\s*(?:,|and|to|–|-)\s*\d+(?:\.\d+)?(?!,?\d))*"
                      r"|\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\b"
-                     r"|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}\b|\b20\d\d\b")
+                     r"|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}\b|\b(?:19|20)\d\ds?\b"
+                     r"|\b(?:Opus|Sonnet|Haiku|Fable|Mythos)\s+\d(?:\.\d)?\b|\bClaude\s+\d(?:\.\d)?(?=\s+(?:Opus|Sonnet|Haiku))|\b8090(?:\.ai)?\b")
 
 
 WARNINGS = []
@@ -444,7 +422,7 @@ def warn(msg):
 
 
 def parse_book(text):
-    """book.md: `## ` sections, `### ` subheads, `> ` callouts, `[[Q 9.04 · By repo | caption]]` figures."""
+    """book.md: `## ` sections, `### ` subheads, `> ` callouts, `[[Q work-sources · By repo | caption]]` figures."""
     sections, para = [{"title": "", "blocks": []}], []
 
     def flush():
@@ -484,7 +462,7 @@ def parse_book(text):
 
 
 def find_view(sections, ref):
-    """`Q 9.04` is its first view; `Q 9.04 · By repo` the view with that label; a diagram by its tag or label."""
+    """`Q work-sources` is its first view; `Q work-sources · By repo` the view with that label; a diagram by its tag or label."""
     key, label = split_tag(ref)
     want = ref.upper()
     for s in sections:
@@ -518,99 +496,5 @@ def haystack(sections):
     return {bare(n) for n in NUM_RE.findall(" ".join(parts))}
 
 
-def build_book(book, sections, chapter):
-    """Resolve each figure to its view and warn on anything the chapter's own data doesn't carry."""
-    known, n, fig, out = haystack(sections), int(chapter[2:]), 0, []
-    for s in book:
-        blocks = []
-        for blk in s["blocks"]:
-            if blk["kind"] == "figure":
-                b, v = find_view(sections, blk["ref"])
-                if v is None:
-                    warn(f"{chapter}: book figure [[{blk['ref']}]] matches no view on the page")
-                    continue
-                fig += 1
-                blk.update({"number": f"{n}.{fig}", "key": b["key"], "view": v, "caption": blk["caption"] or v["title"]})
-            t = blk.get("text") or blk.get("caption", "")
-            for num in NUM_RE.findall(FREE_RE.sub(" ", t)):
-                # Counts up to ten are ordinary prose ("two reasons", "3 repos"), not findings.
-                if bare(num) not in known and not (bare(num).isdigit() and int(bare(num)) <= 10):
-                    warn(f"{chapter}: book number {num!r} is not in the chapter's data: {t[:80]}…")
-            blocks.append(blk)
-        if blocks or s["title"]:
-            out.append({**s, "blocks": blocks})
-    return out
-
-
-def evidence(sections):
-    """The appendix: every question, without the deck's prose and diagrams, which the book replaces."""
-    out = []
-    for s in sections:
-        blocks = [b for b in s["blocks"] if qkey(b["key"])]
-        if blocks:
-            out.append({**s, "blocks": blocks})
-    return out
-
-
-def render(path, template, index_href=None, lessons=None, out_dir=None):
-    prs = Presentation(path)
-    head, sections = group([classify(read_slide(s, f"{os.path.basename(path)}, slide {i}"))
-                            for i, s in enumerate(prs.slides, 1)])
-    m = re.match(r"Ch (\d+)", os.path.basename(path))
-    book = None
-    if m:
-        chapter = f"ch{int(m.group(1)):02d}"
-        attach_views(sections, html_views.load(chapter), chapter)
-        src = os.path.join(BOOK_DIR, chapter, "book.md")
-        if os.path.exists(src):
-            with open(src, encoding="utf-8") as f:
-                book = build_book(parse_book(f.read()), sections, chapter)
-            sections = evidence(sections)
-    if lessons:
-        attach_lessons(sections, lessons)
-    out = os.path.join(out_dir or os.path.dirname(path), os.path.splitext(os.path.basename(path))[0] + ".html")
-    payload = {"head": head, "sections": slim(sections), "index": index_href, "book": book}
-    with open(out, "w", encoding="utf-8") as f:
-        f.write(fill(template, head["title"], payload))
-    return out, head
-
-
-def render_index(folder, entries, template):
-    chapters = [{"key": os.path.basename(h)[:5], "question": {"question": t["title"], "how": t["subtitle"],
-                                                              "originally": "", "notes": ""},
-                 "views": [], "statements": [], "href": os.path.basename(h)} for h, t in entries]
-    payload = {"head": {"title": "Architecting a Software Factory", "subtitle": "One page per chapter: the argument first, then the evidence behind it."},
-               "sections": [{"kicker": "Research findings", "title": "Chapters", "notes": "", "blocks": chapters}],
-               "index": None}
-    with open(os.path.join(folder, "index.html"), "w", encoding="utf-8") as f:
-        f.write(fill(template, "Research findings", payload))
-
-
-def main(argv):
-    ap = argparse.ArgumentParser(description="Render findings decks as HTML pages.")
-    ap.add_argument("decks", nargs="*", help="deck .pptx files to render")
-    ap.add_argument("--index", metavar="FOLDER", help="render every 'Ch *.pptx' in FOLDER, plus index.html")
-    ap.add_argument("--lessons", metavar="TALK", help="talk deck whose insights and verdicts pin to questions")
-    ap.add_argument("--out", metavar="FOLDER", help="write the pages there instead of beside the decks")
-    args = ap.parse_args(argv)
-    if args.index and args.decks:
-        ap.error("pass --index FOLDER or deck files, not both")
-    if not os.path.exists(VIEWER):
-        sys.exit(f"no viewer build at {VIEWER}: run `npm run build` in its folder first")
-    with open(VIEWER, encoding="utf-8") as f:
-        template = f.read()
-    lessons = read_lessons(args.lessons) if args.lessons else None
-    if args.index:
-        entries = [render(p, template, "index.html", lessons, args.out)
-                   for p in sorted(glob.glob(os.path.join(args.index, "Ch *.pptx")))]
-        render_index(args.out or args.index, entries, template)
-        for out, _ in entries:
-            print(out)
-    for p in args.decks:
-        print(render(p, template, lessons=lessons, out_dir=args.out)[0])
-    if WARNINGS:
-        print(f"{len(WARNINGS)} book warning(s) above: fix each before sharing the pages", file=sys.stderr)
-
-
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    sys.exit("deck_html.py is a library now; render the book with report/book_pages.py --out DIR")

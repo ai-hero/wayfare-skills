@@ -1,13 +1,13 @@
-"""Extra tabs for a chapter's HTML page, kept out of the .pptx deck.
+"""Extra tabs for a question's HTML figure, kept out of the .pptx deck.
 
-A chapter's views.py computes a view per question and saves them; deck_html.py merges each
-one into its question as another tab ("Commits", "Change sets"):
+A topic's views.py computes a view per question and saves them; book_pages.load_decks merges
+each one into its question as another tab ("Commits", "Change sets"):
 
-    v = Views("ch02")
-    v.add("Q 2.02", "Change sets", title, points,
+    v = Views("method")
+    v.add("Q counting-units-compared", "Change sets", title, points,
           v.timeline(WEEKS, {"Skills": [...], ...}, [GREY, PINK], y_title="Change sets per week"),
           source="change sets (D1)", notes="How it's computed ...")
-    v.save()                                  # -> .analysis/data/views/ch02.json
+    v.save()                                  # -> .analysis/data/views/method.json
 
 Chart specs match what deck_html.py reads out of a deck's native charts, and timelines get
 the factory's milestones the way deck_lib draws them, so a view tab reads like the deck's own.
@@ -61,7 +61,7 @@ class Views:
         self.views = {}
 
     def add(self, question, label, title, points, charts, source="", notes="", tables=()):
-        """One tab on `question` ("Q 2.02"). charts: a spec or a list of specs, side by side."""
+        """One tab on `question` ("Q counting-units-compared"). charts: a spec or a list of specs, side by side."""
         charts = charts if isinstance(charts, list) else [charts]
         self.views.setdefault(question, []).append({
             "label": label, "title": title, "points": list(points), "source": source, "extra": [],

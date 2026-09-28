@@ -1,5 +1,5 @@
-"""Open the cube: one in-memory SQLite connection with every data/*.sqlite ATTACHed under its source name
-(git, github, plans, harness, knowledge, labels, graph) and cube/views.sql applied."""
+"""Open the cube: one in-memory SQLite connection with the shared data/*.sqlite ATTACHed under their source
+names (SHARED), any label caches the caller names, and cube/views.sql applied."""
 import glob, os, re, sqlite3, sys
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -13,14 +13,24 @@ def _warn(msg):
         print(f"cube: {msg}", file=sys.stderr)
 
 
-def connect(*chapters):
-    """chapters: per-chapter databases to attach as well (e.g. connect("ch05", "ch10")). They are
-    left out by default because SQLite attaches at most 10 databases to one connection."""
+# The ingest and detector databases every query can use. Any other *.sqlite is one topic's label
+# cache, attached only when named: SQLite attaches at most 10 databases to one connection.
+# A topic folder must never take a SHARED name (hence agent_harness, not harness): its label cache
+# would be the same file as the shared source, and writing labels would clobber the ingest.
+REPORT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "report")
+SHARED = ("detectors", "git", "github", "harness", "knowledge", "plans", "pr_commits")
+
+
+def connect(*topics):
+    """topics: label caches to attach as well, e.g. connect("skills", "mistakes")."""
     con = sqlite3.connect(":memory:")
     con.row_factory = sqlite3.Row
     for p in sorted(glob.glob(os.path.join(DATA, "*.sqlite"))):
         stem = os.path.basename(p)[:-7]
-        if re.fullmatch(r"ch\d\d", stem) and stem not in chapters:
+        if stem not in SHARED and stem not in topics:
+            # A topic's own cache is skipped on purpose; anything else is a source nobody listed in SHARED.
+            if not os.path.isdir(os.path.join(REPORT, stem)):
+                _warn(f"skipped {os.path.basename(p)}: neither in SHARED nor a topic's label cache")
             continue
         # A mistyped `sqlite3 "<db> <table>.sqlite"` creates a stray file whose name is not an
         # identifier; attaching it would break every connect(), so it is skipped.
@@ -30,10 +40,10 @@ def connect(*chapters):
         con.execute("ATTACH DATABASE ? AS " + stem, (p,))
     views = os.path.join(HERE, "cube", "views.sql")
     attached = {r[1] for r in con.execute("PRAGMA database_list")}
-    # Warn, never raise: some chapters ask for a database they never write, or read it before labelling creates it.
-    for ch in chapters:
-        if ch not in attached:
-            _warn(f"chapter database {ch}.sqlite not found in {DATA}; queries on {ch}.* will fail")
+    # Warn, never raise: some topics ask for a database they never write, or read it before labelling creates it.
+    for name in topics:
+        if name not in attached:
+            _warn(f"label cache {name}.sqlite not found in {DATA}; queries on {name}.* will fail")
     # a view over a source that isn't ingested yet would fail the whole script, so each view names its sources
     block, needs = [], set()
     for line in open(views):

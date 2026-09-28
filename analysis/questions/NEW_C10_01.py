@@ -1,4 +1,4 @@
-"""Chapter 5 preflight / NEW-C10-01 -- Does the factory package its
+"""Skills preflight / NEW-C10-01 -- Does the factory package its
 procedures as versioned skills?
 
 Yes/no + inventory: skill_versions has one row per commit that touched a

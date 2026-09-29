@@ -835,3 +835,163 @@ if __name__ == "__main__":
             "kinds", "kind_share", "kind_n", "lat_kinds", "lat_by_kind", "lat_n", "phases", "by_phase", "first4", "last4",
             "h1", "h2", "items_by_batch", "person_prs", "repo_opened", "repo_merged", "people")}
         print(k, json.dumps(brief, default=str)[:2500])
+
+
+# ---------------------------------------------------------------- Figure 2.2: direction against durable planning, one population
+
+INTENT_CATS = ["Goal the owner authorized", "Work item marked ready", "Work item, no ready-mark", "One-shot, session logged",
+               "One-shot, no record", "Pushed to main"]
+# Session logs hold one day of W32 (9 Aug) and nothing of W33-W34, so W35 is the first week whose one-shot
+# tasks can all be seen; earlier weeks would read every unlogged task as "no record".
+LOGGED_FROM = "2026-W35"
+
+
+def _intent_facts(con):
+    """Every non-Dependabot change set with its intent class and, for work items, when the item was written
+    relative to the change set's first commit."""
+    from evolution import q_observable_work_share  # noqa: F401  (same session-link rule, kept in one place)
+    links, _ = set_item_links(con)
+    meta = {(r["repo"], _norm(r["item_id"])): r for r in rows(con, "SELECT repo, item_id, goal_id, ready_ts, created_ts FROM plans.plan_items")}
+    in_goal = set()
+    for g in rows(con, "SELECT repo, members FROM plans.goals"):
+        for m in json.loads(g["members"] or "[]"):
+            in_goal.add((g["repo"], _norm(m)))
+    session_prs = set()
+    for r in rows(con, "SELECT pr_links FROM harness.sessions WHERE pr_links NOT IN ('', '[]') AND user_turns > 0"):
+        for link in json.loads(r["pr_links"]):
+            m = re.match(r"[^/]+/([^#]+)#(\d+)$", link)
+            if m:
+                session_prs.add((m.group(1), int(m.group(2))))
+    first_ts = {}
+    for r in rows(con, "SELECT repo, sha, ts FROM pr_commits.pr_commits WHERE is_merge = 0"):
+        first_ts[(r["repo"], r["sha"])] = r["ts"]
+    out = []
+    for f in changeset_facts(con):
+        if f["dependabot"]:
+            continue
+        ids = links.get((f["repo"], f["unit_kind"], f["unit_id"], f["set_idx"]), set())
+        items = [meta[(f["repo"], _norm(i))] for i in ids if (f["repo"], _norm(i)) in meta]
+        if any(i["goal_id"] or (f["repo"], _norm(i["item_id"])) in in_goal for i in items):
+            c = INTENT_CATS[0]
+        elif any(i["ready_ts"] for i in items):
+            c = INTENT_CATS[1]
+        elif items:
+            c = INTENT_CATS[2]
+        elif f["unit_kind"] == "push":
+            c = INTENT_CATS[5]
+        else:
+            c = INTENT_CATS[3] if (f["repo"], f["pr"]) in session_prs else INTENT_CATS[4]
+        written = None
+        if items:
+            starts = [first_ts[(f["repo"], s)][:10] for s in f["shas"] if (f["repo"], s) in first_ts]
+            created = min((i["created_ts"][:10] for i in items if i["created_ts"]), default=None)
+            if starts and created:
+                first = min(starts)
+                written = "before" if created < first else "same day" if created == first else "after"
+        out.append({**f, "intent": c, "written": written})
+    return out
+
+
+def fig_direction_vs_planning(con):
+    facts = _intent_facts(con)
+    logged = lambda w: w >= LOGGED_FROM and w not in NA_WEEKS
+    windows = {"since": [f for f in facts if logged(f["week"])],
+               "first": [f for f in facts if f["week"] == LOGGED_FROM],
+               "last4": [f for f in facts if f["week"] in WEEKS[-4:]]}
+    from figure_lib import wilson
+    MEASURES = ["Owner decision identifiable (goal, ready-mark or a logged one-shot)",
+                "Owner decision, counting unlogged one-shots as instructed",
+                "Written intent: a work item", "Work item written before the first commit's day",
+                "One-shot instruction, no saved plan"]
+
+    def measure(v, m):
+        k = {0: lambda f: f["intent"] in INTENT_CATS[:2] + [INTENT_CATS[3]],
+             1: lambda f: f["intent"] in INTENT_CATS[:2] + INTENT_CATS[3:5],
+             2: lambda f: f["intent"] in INTENT_CATS[:3],
+             3: lambda f: f["written"] == "before",
+             4: lambda f: f["intent"] in INTENT_CATS[3:5]}[m]
+        n = sum(1 for f in v if k(f))
+        lo, hi = wilson(n, len(v))
+        return {"k": n, "n": len(v), "share": round(n / len(v), 3), "lo": round(lo, 3), "hi": round(hi, 3)}
+    table = {w: [measure(v, i) for i in range(len(MEASURES))] for w, v in windows.items()}
+    comp = {w: {c: sum(1 for f in v if f["intent"] == c) for c in INTENT_CATS} for w, v in windows.items()}
+    wk = defaultdict(Counter)
+    for f in facts:
+        wk[f["intent"]][f["week"]] += 1
+    weekly = {c: [wk[c].get(w, 0) for w in WEEKS] for c in INTENT_CATS}
+    tot = [sum(weekly[c][i] for c in INTENT_CATS) for i in range(len(WEEKS))]
+    trend = {m: [None] * len(WEEKS) for m in MEASURES[:3]}
+    for i, w in enumerate(WEEKS):
+        if w < "2026-W30" or tot[i] < 10:
+            continue
+        v = [f for f in facts if f["week"] == w]
+        for j, m in enumerate(MEASURES[:3]):
+            if j == 0 and not logged(w):
+                continue
+            trend[m][i] = measure(v, j)["share"]
+    written = Counter(f["written"] for f in windows["since"] if f["written"])
+    return {"weeks": WEEKS, "cats": INTENT_CATS, "measures": MEASURES, "table": table, "composition": comp,
+            "weekly": weekly, "trend": trend, "n": {w: len(v) for w, v in windows.items()},
+            "written_when": dict(written), "logged_weeks": [w for w in WEEKS if logged(w)], "last4_weeks": WEEKS[-4:],
+            "since_w30_all": {c: sum(1 for f in facts if f["week"] >= "2026-W30" and f["intent"] == c) for c in INTENT_CATS}}
+
+
+# ---------------------------------------------------------------- Figure 2.5: review coverage, reviewer identity, independence
+
+IDENTITY = ["The owner (a person)", "Unclear: owner-account reply, no agent command near it", "An agent on the owner's account",
+            "Bots only (auto-approve, Copilot)", "No review"]
+INDEP = ["Independent human review (a person other than the author)", "Possibly a person (unclear owner-account replies)",
+         "A person wrote it; automated review only", "Agent-built; automated review only", "No review"]
+
+
+def fig_review_layers(con):
+    ra = actors.review_actors(con)
+    by_pr = defaultdict(set)
+    approved_by_ci = set()
+    for r in ra:
+        by_pr[(r["repo"], r["number"])].add(r["actor"])
+        if r["reviewer"] == "github-actions" and r["state"] == "APPROVED":
+            approved_by_ci.add((r["repo"], r["number"]))
+    files = defaultdict(list)
+    for r in con.execute("SELECT c.repo, c.pr_number, f.path FROM git.commits c JOIN git.commit_files f "
+                         "ON f.repo = c.repo AND f.sha = c.sha WHERE c.pr_number IS NOT NULL"):
+        files[(r[0], r[1])].append(r[2])
+    prs = [p for p in rows(con, "SELECT repo, number, title, author, merged_ts, head_ref FROM github.prs WHERE merged_ts IS NOT NULL")
+           if p["repo"] in adoption(con) and not (p["head_ref"] or "").startswith("dependabot/")]
+    is_bot = lambda a: (a or "").endswith("[bot]") or (a or "").startswith("app/")
+    out = []
+    for p in prs:
+        k = (p["repo"], p["number"])
+        a = by_pr.get(k, set())
+        human_author = p["author"] != OWNER and not is_bot(p["author"])
+        ident = (IDENTITY[0] if a & {"owner", "human"} else IDENTITY[1] if "unclear" in a else IDENTITY[2] if "agent" in a
+                 else IDENTITY[3] if "bot" in a else IDENTITY[4])
+        indep = (INDEP[0] if a & {"owner", "human"} else INDEP[1] if "unclear" in a else INDEP[4] if not a
+                 else INDEP[2] if human_author else INDEP[3])
+        oneway = (p["repo"] in INFRA or any(ONEWAY_PATH.search(f) for f in files.get(k, []))
+                  or bool(ONEWAY_TITLE.search(p["title"] or "")))
+        out.append({**p, "identity": ident, "indep": indep, "oneway": oneway, "reviewed": bool(a),
+                    "auto_approved": k in approved_by_ci, "human_author": human_author})
+    n = len(out)
+    from figure_lib import wilson
+    cov = {"Reviewed": sum(1 for p in out if p["reviewed"]), "No review": sum(1 for p in out if not p["reviewed"])}
+    ident = Counter(p["identity"] for p in out)
+    indep = Counter(p["indep"] for p in out)
+    side = {}
+    for name, sel in (("One-way door", True), ("Other PRs", False)):
+        v = [p for p in out if p["oneway"] == sel]
+        c = Counter(p["indep"] for p in v)
+        k_h = c[INDEP[0]]
+        lo, hi = wilson(k_h, len(v))
+        side[name] = {"n": len(v), "counts": {i: c[i] for i in INDEP}, "shares": {i: round(c[i] / len(v), 3) for i in INDEP},
+                      "human_lo": round(lo, 3), "human_hi": round(hi, 3),
+                      "person_involved": round(sum(c[i] for i in INDEP[:3]) / len(v), 3),
+                      "automated_or_none": round(sum(c[i] for i in INDEP[2:]) / len(v), 3),
+                      "auto_approve_no_person": round(sum(1 for p in v if p["auto_approved"] and p["indep"] == INDEP[3]) / len(v), 3)}
+    reviewed_since_jul = [p for p in out if p["merged_ts"] >= "2026-07-01"]
+    owner_acct = Counter(r["actor"] for r in ra if r["reviewer"] == OWNER)
+    return {"n": n, "coverage": cov, "identity": {i: ident[i] for i in IDENTITY}, "independence": {i: indep[i] for i in INDEP},
+            "identity_cats": IDENTITY, "indep_cats": INDEP, "side": side,
+            "reviewed_since_jul": round(sum(1 for p in reviewed_since_jul if p["reviewed"]) / len(reviewed_since_jul), 3),
+            "n_since_jul": len(reviewed_since_jul), "human_authored": sum(1 for p in out if p["human_author"]),
+            "owner_account_reviews": dict(owner_acct), "n_oneway": sum(1 for p in out if p["oneway"])}

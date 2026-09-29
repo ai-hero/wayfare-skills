@@ -29,6 +29,7 @@ MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
 NO_DATA_WEEKS = {"2026-W33", "2026-W34"}
 NO_DATA_EVENT = ("2026-08-10", "Session data not available")
 MISTAKE_LOG_EVENT = ("2026-09-19", "Mistake log (#104)")
+DATA_END = date(2026, 9, 25)     # last day in git.commits; a fix window is complete only if it ends by then
 ITEMS_FROM, SESSIONS_FROM = "2026-W30", "2026-W32"
 RENAMES = {"hero-skills": "wayfare-skills"}
 APPS = ("app", "app, no features yet")
@@ -381,11 +382,49 @@ def q_fix_forwards_fixforward(con):
     sff = same_file_followups(con)
     raw = rows(con, "SELECT COUNT(*) n FROM detectors.followups WHERE followup_within_7d_days IS NOT NULL")[0]["n"]
     n7 = sum(1 for k in prs if fixed_in.get(k, 1e9) <= 7)
+    # Figure 4.6: a PR is eligible for a window only when the data end lies at least that many days after its
+    # merge, so the last weeks stop reading as an improvement they have not had time to earn.
+    age = lambda k: (DATA_END - date.fromisoformat(prs[k]["day"])).days
+    windows = {}
+    for w in (3, 7, 14, 30):
+        elig = [k for k in prs if age(k) >= w]
+        windows[w] = {"eligible": len(elig), "fixed": sum(1 for k in elig if fixed_in.get(k, 1e9) <= w)}
+    elig7 = [k for k in prs if age(k) >= 7]
+    monthly = {}
+    for w in (7, 14, 30):
+        acc = defaultdict(lambda: [0, 0])
+        for k in prs:
+            if age(k) >= w:
+                acc[prs[k]["day"][:7]][1] += 1
+                acc[prs[k]["day"][:7]][0] += fixed_in.get(k, 1e9) <= w
+        monthly[w] = {m: tuple(v) for m, v in sorted(acc.items()) if m >= "2026-01"}
+    elig30 = [k for k in prs if age(k) >= 30]
+    lifetimes30 = sorted(fixed_in[k] for k in elig30 if fixed_in.get(k, 1e9) <= 30)
+    repo7 = defaultdict(lambda: [0, 0])
+    for k in elig7:
+        repo7[k[0]][1] += 1
+        repo7[k[0]][0] += fixed_in.get(k, 1e9) <= 7
+    cat7 = defaultdict(lambda: [0, 0])
+    for k in elig7:
+        cat7[prs[k]["category"]][1] += 1
+        cat7[prs[k]["category"]][0] += fixed_in.get(k, 1e9) <= 7
+    periods = {}
+    for name, lo, hi in (("Jan–Jun", "2026-01-01", "2026-06-30"), ("Jul", "2026-07-01", "2026-07-31"),
+                         ("Aug–18 Sep", "2026-08-01", "2026-09-18")):
+        ks = [k for k in elig7 if lo <= prs[k]["day"] <= hi]
+        periods[name] = (sum(1 for k in ks if fixed_in.get(k, 1e9) <= 7), len(ks))
     return {"weeks": WEEKS, "series": series, "by_cat": by_cat, "months": MONTHS, "by_repo": repo_series,
             "n_prs": len(prs), "n7": n7, "n3": sum(1 for k in prs if fixed_in.get(k, 1e9) <= 3),
             "same_file_7d": len(sff), "d5_raw_7d": raw,
             "early": mean_known(series["Fixed forward within 7 days"][:26]),
-            "recent": mean_known(series["Fixed forward within 7 days"][-8:])}
+            "recent": mean_known(series["Fixed forward within 7 days"][-8:]),
+            "data_end": DATA_END.isoformat(), "windows": windows, "monthly": monthly,
+            "u7_within_3": sum(1 for k in elig7 if fixed_in.get(k, 1e9) <= 3),
+            "u7_within_1": sum(1 for k in elig7 if fixed_in.get(k, 1e9) <= 1),
+            "n_elig30": len(elig30), "lifetimes30": lifetimes30,
+            "repo7": {r: tuple(v) for r, v in sorted(repo7.items(), key=lambda kv: -kv[1][1])},
+            "cat7": {c: tuple(v) for c, v in cat7.items()}, "periods": periods,
+            "n_traced_prs": len(fixed_in)}
 
 
 # ------------------------------------------------------------------ Q reverts-and-reopens
@@ -619,9 +658,49 @@ def q_done_not_done_overclaim(con):
               "Agent logged an overclaim": weekly_count(((m["week"], 1) for m in lm), start=ITEMS_FROM),
               "Fix-up of an unverified claim": weekly_count((f["week"], 1) for f in fx)}
     judged = rows(con, "SELECT COUNT(*) n FROM github.pr_reviews WHERE reviewer='github-actions' AND state IN ('APPROVED','CHANGES_REQUESTED')")[0]["n"]
+    # Figure 4.3 counts PRs, not verdicts: a PR sent back twice is one PR that did not survive checking.
+    verdicts = [r for r in rows(con, "SELECT repo, number, state FROM github.pr_reviews WHERE reviewer='github-actions' "
+                                     "AND state IN ('APPROVED','CHANGES_REQUESTED')") if repo_ok(con, r["repo"])]
+    prs_judged = {(r["repo"], r["number"]) for r in verdicts}
+    prs_back = {(r["repo"], r["number"]) for r in verdicts if r["state"] == "CHANGES_REQUESTED"}
+    all_lm = [m for m in logged_mistakes(con) if m["is_mistake"]]
+    # Overlap audit: an overclaim names its work item, never a PR; the item's recorded PR, branch or goal branch
+    # leads to the merged PR, and that PR is checked against the judge's send-backs.
+    ghprs = rows(con, "SELECT repo, number, head_ref FROM github.prs WHERE merged_ts IS NOT NULL")
+    by_head = defaultdict(set)
+    for r in ghprs:
+        by_head[(r["repo"], r["head_ref"])].add(r["number"])
+    items = {(r["repo"], r["item_id"]): r for r in rows(con, "SELECT repo, item_id, type, goal_id, raw_frontmatter_json j "
+                                                              "FROM plans.plan_items")}
+    goal_branch = {k: json.loads(v["j"] or "{}").get("branch") for k, v in items.items() if v["type"] == "goal"}
+
+    def item_prs(repo, iid):
+        it = items.get((repo, str(iid)))
+        if not it:
+            return set()
+        fm = json.loads(it["j"] or "{}")
+        got = set()
+        for k in ("pr", "merged_pr", "merged_prs"):
+            v = fm.get(k)
+            for x in (v if isinstance(v, list) else [v]):
+                m = re.search(r"(\d+)$", str(x)) if x is not None else None
+                if m:
+                    got.add(int(m.group(1)))
+        if fm.get("branch"):
+            got |= by_head.get((repo, fm["branch"]), set())
+        if it["goal_id"] and goal_branch.get((repo, it["goal_id"])):
+            got |= by_head.get((repo, goal_branch[(repo, it["goal_id"])]), set())
+        return got
+    linked = [m for m in lm if item_prs(m["repo"], m["item_id"])]
+    overlap = [m for m in linked if any((m["repo"], n) in prs_back for n in item_prs(m["repo"], m["item_id"]))]
+    themes = Counter(THEME_NAMES.get(m["theme"], m["theme"]) for m in lm)
     return {"weeks": WEEKS, "series": series, "reasons": dict(reasons.most_common()), "n_judge": len(judge), "judged": judged,
             "n_lm": len(lm), "n_fx": len(fx), "events": GUARD_EVENTS,
-            "examples": [m["summary"] for m in lm if m["summary"]][:8]}
+            "examples": [m["summary"] for m in lm if m["summary"]][:8],
+            "prs_judged": len(prs_judged), "prs_back": len(prs_back), "n_all_lm": len(all_lm),
+            "lm_first_day": min(m["day"] for m in all_lm) if all_lm else None,
+            "lm_linked": len(linked), "lm_overlap": len(overlap), "themes": dict(themes.most_common()),
+            "lm_caught_by": dict(Counter(CATCHER_NAMES.get(m["caught_by"], m["caught_by"]) for m in lm).most_common())}
 
 
 # ------------------------------------------------------------------ Q reviewer-and-judge-changes

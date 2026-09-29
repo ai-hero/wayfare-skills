@@ -47,6 +47,11 @@ analysis/
   detectors/d*.py          the ten shared detectors (D1-D10 from the plan); output -> detectors.sqlite
   questions/RQ_*.py        one file per answered question; questions/runner.py runs them
   report/book_pages.py     the book: one HTML page per chapter of chapters.json (--out DIR, --only N, --lessons TALK)
+  report/book_spec.py      the owner's figures brief (.analysis/book/_FIGURES_BRIEF.md) -> figures.json, anchors checked
+  report/book_place.py     puts each finished figure/diagram line after its anchor paragraph (--write, --check)
+  report/book_figures.py   the figures appendix: every card and diagram the decks hold, and what the brief placed
+  report/figure_lib.py     drawn chart forms (dot-whisker, dumbbell, heatmap, ECDF, lanes) for answer slides + summaries
+  report/diagrams/         the book's conceptual diagrams: svg_lib.py (one grammar), one d_NN_MM_*.py per diagram
   report/deck_html.py      the page library: reads a topic deck (.pptx) back and fills the viewer
   report/html_views.py     extra HTML-only tabs a topic saves to .analysis/data/views/
 ```

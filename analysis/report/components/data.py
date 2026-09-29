@@ -999,6 +999,7 @@ def all_data():
            "q_retired_components": q_retired_components_retired(), "q_component_traffic": q_component_traffic_reach(con), "q_output_after_adoption": q_output_after_adoption_output(con),
            "q_fixes_after_adoption": q_fixes_after_adoption_followups(con), "q_owner_share_after_adoption": q_owner_share_after_adoption_owner(con), "q_cost_by_architecture_depth": q_cost_by_architecture_depth_spend(con),
            "q_component_dependencies": q_component_dependencies_dependencies(con), "q_skipped_components": q_skipped_components_out_of_order(con), "q_template_vs_plugin_components": q_template_vs_plugin_components_channels(con),
+           "q_component_traffic_coverage": q_component_traffic_coverage(con), "q_cost_by_depth_units": q_cost_by_depth_units(con),
            }
     out["q_milestones_vs_releases"] = q_milestones_vs_releases_releases(con, out["q_output_after_adoption"]["control"])
     out["q_recommended_adoption_order"] = q_recommended_adoption_order_order(con, out)
@@ -1014,3 +1015,228 @@ if __name__ == "__main__":
             v = {kk: vv for kk, vv in v.items() if kk != "names"}
         print("=" * 20, k)
         pprint.pprint(v, width=160, compact=True)
+
+
+# ---------------------------------------------------------------- Book figures 7.1 and 7.2: one window, one population
+
+# Session logging resumes 25 Aug (the first skill invocation in the logs); change sets end 25 Sep.
+BOOK_WINDOW = ("2026-08-25", "2026-09-25")
+# Skills that plan work in the session (a one-shot PR from one of these was planned, but the plan was not saved).
+PLANNING_SKILLS = ("grill", "think-it-through", "plan-work", "sync-plan", "hero-skills:wayfare", "start-goal", "advance-item",
+                   "run-task", "build-task", "one-shot")
+GOAL_SKILLS = ("start-goal", "advance-item")
+
+
+@lru_cache(maxsize=None)
+def pr_sessions(con):
+    """(repo, pr) -> {'sessions', 'skill', 'plan', 'goal_skill'}: what the session logs naming the PR ran."""
+    skills = defaultdict(set)
+    for r in rows(con, "SELECT session_id_hash s, skill_name k FROM harness.tool_calls "
+                       "WHERE skill_name LIKE 'hero-skills:%' OR skill_name LIKE 'wayfare:%'"):
+        skills[r["s"]].add(r["k"])
+    out = {}
+    for r in rows(con, "SELECT session_id_hash s, pr_links FROM harness.sessions WHERE pr_links NOT IN ('', '[]')"):
+        for link in json.loads(r["pr_links"]):
+            m = re.match(r"[^/]+/([^#]+)#(\d+)$", link)
+            if not m:
+                continue
+            key = (m.group(1).replace("hero-skills", "wayfare-skills"), int(m.group(2)))
+            d = out.setdefault(key, {"sessions": 0, "skill": False, "plan": False, "goal_skill": False})
+            ks = skills.get(r["s"], set())
+            d["sessions"] += 1
+            d["skill"] |= bool(ks)
+            d["plan"] |= any(p in k for k in ks for p in PLANNING_SKILLS)
+            d["goal_skill"] |= any(p in k for k in ks for p in GOAL_SKILLS)
+    return out
+
+
+def book_sets(con, cats=APPS):
+    lo, hi = BOOK_WINDOW
+    ps = pr_sessions(con)
+    out = []
+    for s in set_paths(con):
+        if s["category"] not in cats or not (lo <= s["day"] <= hi):
+            continue
+        d = ps.get((s["repo"], s["pr"])) if s["pr"] is not None else None
+        out.append({**s, "named": d is not None, "skill": bool(d and d["skill"]), "plan": bool(d and d["plan"]),
+                    "goal_skill": bool(d and d["goal_skill"])})
+    return out
+
+
+STRATA = ["Passed through", "Did not pass through", "Planned in the session, not saved", "Cannot tell: no session names the PR"]
+
+
+def q_component_traffic_coverage(con):
+    """Figure 7.1: for each component, the share of app change sets that passed through it, did not, were planned in a
+    session that saved nothing, or cannot be told (no PR, or no session log names the PR); and how the four overlap."""
+    import figure_lib as F
+    sp = book_sets(con)
+    n = len(sp)
+    def strata(k):
+        through = [s for s in sp if s[k]]
+        rest = [s for s in sp if not s[k]]
+        if k == "judge":
+            unknown = [s for s in rest if s["pr"] is None]
+            planned = []
+        else:
+            unknown = [s for s in rest if s["pr"] is None or not s["named"]]
+            planned = [s for s in rest if s["named"] and (s["goal_skill"] if k == "goal" else s["plan"])] if k in ("item", "goal") else []
+        not_through = [s for s in rest if s not in unknown and s not in planned]
+        lo, hi = F.wilson(len(through), n)
+        return {"through": len(through), "not": len(not_through), "planned": len(planned), "unknown": len(unknown),
+                "share": round(len(through) / n, 3), "lo": round(lo, 3), "hi": round(hi, 3),
+                "share_known": round(len(through) / (n - len(unknown)), 3) if n > len(unknown) else None}
+    comps = [("judge", "Auto-approve judge"), ("skill", "Shared skill session"), ("item", "Work item"), ("goal", "Goal")]
+    table = [{"component": name, "key": k, **strata(k)} for k, name in comps]
+    known = [s for s in sp if s["pr"] is not None and s["named"]]
+    combos = Counter(tuple(k for k, _ in comps if s[k]) for s in known)
+    names = dict(comps)
+    combo_rows = [{"combo": " + ".join(names[k] for k in c) if c else "None of the four", "n": v, "share_known": round(v / len(known), 3)}
+                  for c, v in combos.most_common()]
+    none_known = combos.get((), 0)
+    repos = sorted({s["repo"] for s in sp}, key=lambda r: -sum(1 for s in sp if s["repo"] == r))
+    by_repo = {name: [round(sum(1 for s in sp if s["repo"] == r and s[k]) / sum(1 for s in sp if s["repo"] == r), 3) for r in repos]
+               for k, name in comps}
+    repo_n = [sum(1 for s in sp if s["repo"] == r) for r in repos]
+    return {"window": BOOK_WINDOW, "n": n, "table": table, "combos": combo_rows, "n_known": len(known), "none_known": none_known,
+            "repos": repos, "repo_n": repo_n, "by_repo": by_repo,
+            "no_pr": sum(1 for s in sp if s["pr"] is None), "unnamed": sum(1 for s in sp if s["pr"] is not None and not s["named"]),
+            "judge_only_no_review": sum(1 for s in sp if s["pr"] is not None and not s["judge"] and not s["reviewed"])}
+
+
+# ---------------------------------------------------------------- Figure 7.2
+
+DEPTHS = ["Inside a goal", "Work item only", "No saved plan"]
+UPKEEP = {"chore", "ci_build", "dependency", "docs", "refactor", "test", "factory"}
+
+
+def _depth(s):
+    return DEPTHS[0] if s["goal"] else DEPTHS[1] if s["item"] else DEPTHS[2]
+
+
+def _usd_by_set(con, targets, spread=None):
+    """Per change-set spend on the shared attribution (report/spend/attribution.py), restricted to the given piece
+    targets; `spread` adds the window's unreached spend evenly over the change sets of the same repo and week."""
+    from spend.attribution import spend_rows
+    lo, hi = BOOK_WINDOW
+    by_pr = defaultdict(float)
+    unreached = defaultdict(float)
+    for r in spend_rows(con):
+        if r["target"] in targets and r["pr"] is not None:
+            by_pr[(r["pr_repo"], r["pr"])] += r["usd"]
+        elif spread and r["target"] in spread and lo <= r["day"] <= hi:
+            unreached[(r["repo"], r["week"])] += r["usd"]
+    sets = defaultdict(list)
+    for f in changeset_facts(con):
+        if f["pr"] is not None and not f["dependabot"]:
+            sets[(f["repo"], f["pr"])].append(f)
+    out = {}
+    for key, usd in by_pr.items():
+        fs = sets.get(key)
+        if not fs:
+            continue
+        w = [f["lines"] + 20 for f in fs]
+        for f, wi in zip(fs, w):
+            out[(f["repo"], f["unit_kind"], f["unit_id"], f["set_idx"])] = usd * wi / sum(w)
+    if spread:
+        per_rw = Counter((f["repo"], f["week"]) for f in changeset_facts(con) if f["pr"] is not None and not f["dependabot"]
+                         and lo <= f["day"] <= hi)
+        for f in changeset_facts(con):
+            k = (f["repo"], f["unit_kind"], f["unit_id"], f["set_idx"])
+            rw = (f["repo"], f["week"])
+            if k in out and rw in unreached:
+                out[k] += unreached[rw] / per_rw[rw]
+    return out
+
+
+def _dist(vals, n_all):
+    import figure_lib as F
+    vals = [v for v in vals if v is not None]
+    if not vals:
+        return {"n": 0, "n_all": n_all, "coverage": None}
+    q1, med, q3 = F.quantiles(vals)
+    lo, hi = F.bootstrap_median(vals)
+    return {"n": len(vals), "n_all": n_all, "coverage": round(len(vals) / n_all, 3), "median": round(med, 2), "q1": round(q1, 2),
+            "q3": round(q3, 2), "median_lo": round(lo, 2) if lo is not None else None, "median_hi": round(hi, 2) if hi is not None else None,
+            "mean": round(sum(vals) / len(vals), 2)}
+
+
+def _adjusted(sets, usd):
+    """OLS of log cost on depth with repo, work type, model family and log lines held fixed: the ratio of each depth's
+    cost to 'no saved plan' with a 95% interval. Pure numpy; returns None when a stratum is too thin."""
+    import math
+    import numpy as np
+    xs = [s for s in sets if usd.get(s["k"]) and usd[s["k"]] > 0]
+    if len(xs) < 50:
+        return None
+    levels = {"repo": sorted({s["repo"] for s in xs}), "worktype": sorted({s["worktype"] for s in xs}), "family": sorted({s["family"] for s in xs})}
+    cols, names = [], []
+    for d in DEPTHS[:2]:
+        cols.append([1.0 if _depth(s) == d else 0.0 for s in xs]); names.append(d)
+    for key, lv in levels.items():
+        for v in lv[1:]:
+            cols.append([1.0 if s[key] == v else 0.0 for s in xs]); names.append(f"{key}={v}")
+    cols.append([math.log(s["lines"] + 1) for s in xs]); names.append("log lines")
+    X = np.column_stack([np.ones(len(xs))] + [np.array(c) for c in cols])
+    y = np.array([math.log(usd[s["k"]]) for s in xs])
+    beta, *_ = np.linalg.lstsq(X, y, rcond=None)
+    resid = y - X @ beta
+    dof = len(xs) - X.shape[1]
+    sigma2 = float(resid @ resid) / dof
+    cov = sigma2 * np.linalg.pinv(X.T @ X)
+    out = {}
+    for i, d in enumerate(DEPTHS[:2]):
+        b, se = beta[1 + i], math.sqrt(cov[1 + i, 1 + i])
+        out[d] = {"ratio": round(math.exp(b), 3), "lo": round(math.exp(b - 1.96 * se), 3), "hi": round(math.exp(b + 1.96 * se), 3)}
+    raw = {}
+    for d in DEPTHS[:2]:
+        a = [math.log(usd[s["k"]]) for s in xs if _depth(s) == d]
+        b0 = [math.log(usd[s["k"]]) for s in xs if _depth(s) == DEPTHS[2]]
+        raw[d] = round(math.exp(sum(a) / len(a) - sum(b0) / len(b0)), 3) if a and b0 else None
+    return {"n": len(xs), "adjusted": out, "unadjusted_geomean_ratio": raw, "covariates": "repo, work type, model family, log lines",
+            "r2": round(1 - float(resid @ resid) / float(((y - y.mean()) ** 2).sum()), 3)}
+
+
+def q_cost_by_depth_units(con):
+    """Figure 7.2: reported list-price-equivalent cost per change set by depth of saved plan, on the shared attribution,
+    with n, coverage, intervals, strata by repo, work type and category, sensitivity to unattributed spend, and an
+    adjusted ratio."""
+    from spend.attribution import spend_by_changeset
+    sp = book_sets(con, cats=("app", "app, no features yet", "allied"))
+    sp = [s for s in sp if s["pr"] is not None]
+    wt = {(r["repo"], r["unit_kind"], r["unit_id"], r["set_idx"]): r["work_type"] for r in rows(con, "SELECT * FROM detectors.cs_worktype")}
+    fam = {(f["repo"], f["unit_kind"], f["unit_id"], f["set_idx"]): f["family"] for f in spend_by_changeset(con)}
+    for s in sp:
+        s["k"] = (s["repo"], s["unit_kind"], s["unit_id"], s["set_idx"])
+        w = wt.get(s["k"], "unknown")
+        s["worktype"] = "upkeep" if w in UPKEEP else w
+        s["family"] = fam.get(s["k"], "none")
+    variants = {"baseline": _usd_by_set(con, ("pr", "pr_linked")),
+                "branch only": _usd_by_set(con, ("pr",)),
+                "unreached spread": _usd_by_set(con, ("pr", "pr_linked"), spread=("default", "no_pr", "unmerged"))}
+    usd = variants["baseline"]
+    def table_for(u, sets):
+        return [{"depth": d, **_dist([u.get(s["k"]) for s in sets if _depth(s) == d], sum(1 for s in sets if _depth(s) == d))} for d in DEPTHS]
+    table = table_for(usd, sp)
+    # The no-plan stratum split by whether a session log shows planning that was not saved.
+    none = [s for s in sp if _depth(s) == DEPTHS[2]]
+    split = [{"depth": "No saved plan: a planning skill ran", **_dist([usd.get(s["k"]) for s in none if s["plan"]], sum(1 for s in none if s["plan"]))},
+             {"depth": "No saved plan: none seen", **_dist([usd.get(s["k"]) for s in none if not s["plan"]], sum(1 for s in none if not s["plan"]))}]
+    apps = [s for s in sp if s["category"] in APPS]
+    strata = {"category": {"Apps": table_for(usd, apps), "Allied repos": table_for(usd, [s for s in sp if s["category"] == "allied"])}}
+    repos = sorted({s["repo"] for s in sp}, key=lambda r: -sum(1 for s in sp if s["repo"] == r))
+    strata["repo"] = {r: table_for(usd, [s for s in sp if s["repo"] == r]) for r in repos if sum(1 for s in sp if s["repo"] == r) >= 20}
+    wts = ["feature", "fix", "security", "upkeep"]
+    strata["worktype"] = {w: table_for(usd, [s for s in sp if s["worktype"] == w]) for w in wts}
+    sensitivity = {name: table_for(u, sp) for name, u in variants.items()}
+    lines = {d: F_median([s["lines"] for s in sp if _depth(s) == d]) for d in DEPTHS}
+    return {"window": BOOK_WINDOW, "n": len(sp), "table": table, "no_plan_split": split, "strata": strata, "sensitivity": sensitivity,
+            "adjusted": _adjusted(sp, usd), "lines_median": lines,
+            "spend_reached": round(sum(usd.get(s["k"]) or 0 for s in sp)),
+            "families": Counter(s["family"] for s in sp).most_common(),
+            "worktypes": Counter(s["worktype"] for s in sp).most_common()}
+
+
+def F_median(v):
+    import figure_lib as F
+    return F.quantiles(v, (0.5,))[0]

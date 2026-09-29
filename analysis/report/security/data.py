@@ -914,7 +914,8 @@ def all_data(con=None):
         ("q_scanner_coverage", q_scanner_coverage_gates), ("q_supply_chain_pins", q_supply_chain_pins_pins), ("q_security_work_share", q_security_work_share_volume), ("q_security_finders", q_security_finders_finders), ("q_review_security_flags", q_review_security_flags_reviews),
         ("q_agent_security_defects", q_agent_security_defects_exposure), ("q_security_fix_time", q_security_fix_time_backlog), ("q_dependency_fix_lag", q_dependency_fix_lag_deps), ("q_sibling_hardening_lag", q_sibling_hardening_lag_siblings), ("q_dependency_bump_upkeep", q_dependency_bump_upkeep_dependabot),
         ("q_scanner_mistakes", q_scanner_mistakes_scanners), ("q_judge_attack_tests", q_judge_attack_tests_judge), ("q_plugin_security_fixes", q_plugin_security_fixes_plugin), ("q_unmet_security_criteria", q_unmet_security_criteria_done), ("q_false_security_claims", q_false_security_claims_claims),
-        ("q_infra_security_risks", q_infra_security_risks_infra), ("q_committed_secrets", q_committed_secrets_secrets)]}
+        ("q_infra_security_risks", q_infra_security_risks_infra), ("q_committed_secrets", q_committed_secrets_secrets),
+        ("fig_flaw_lifetimes", fig_flaw_lifetimes), ("fig_item_closure", fig_item_closure)]}
 
 
 if __name__ == "__main__":
@@ -933,3 +934,68 @@ if __name__ == "__main__":
             else:
                 s = str(v)
                 print(f"  {k}: {s[:400]}")
+
+
+# ---------------------------------------------------------------- book figures 5.3 and 5.4
+
+END = "2026-09-24"  # last day the plan and CI ingests cover; open items are censored here
+AUTHOR_GROUPS = ["Written by an agent in this repo", "Inherited with the clone's first commit", "Written by a person"]
+
+
+def author_group(r):
+    if r.get("inherited"):
+        return AUTHOR_GROUPS[1]
+    return AUTHOR_GROUPS[0] if r["agent"] else AUTHOR_GROUPS[2]
+
+
+def fig_flaw_lifetimes(con):
+    """5.3: days from the introducing commit to the merged fix for every traceable security flaw, by who wrote it,
+    with production exposure and, where the fix's work item is linked, the detection date in between."""
+    x = q_agent_security_defects_exposure(con)
+    traced = [dict(r, group=author_group(r)) for r in x["rows"] if r["traced"]]
+    pi = pr_item(con)
+    for r in traced:
+        i = pi.get((r["repo"], r["pr"]))
+        r["detected"] = i["created_ts"][:10] if i else None
+        r["finder"] = i["finder_final"] if i else None
+        r["intro_to_detect"] = ddays(r["intro_day"], r["detected"]) if i else None
+        r["detect_to_fix"] = ddays(r["detected"], r["fix_day"]) if i else None
+    exposure = lambda r: ("Deployed from main before the fix" if r["shipped"] else
+                          "On main, no deploy in between" if r["ci_tracked"] else "On main, deploys not tracked")
+    EXPO = ["Deployed from main before the fix", "On main, no deploy in between", "On main, deploys not tracked"]
+    groups = {g: sorted(r["days"] for r in traced if r["group"] == g) for g in AUTHOR_GROUPS}
+    linked = [r for r in traced if r["detected"]]
+    return {"rows": traced, "n_fixes": x["n"], "n_traced": len(traced), "untraceable": x["n"] - len(traced),
+            "groups": groups, "median": {g: median(v) for g, v in groups.items()},
+            "exposure": {g: {e: sum(1 for r in traced if r["group"] == g and exposure(r) == e) for e in EXPO} for g in AUTHOR_GROUPS},
+            "expo_names": EXPO, "shipped": sum(1 for r in traced if r["shipped"]),
+            "over30": sum(1 for r in traced if r["days"] > 30), "max_days": max(r["days"] for r in traced),
+            "linked": len(linked), "intro_to_detect": sorted(r["intro_to_detect"] for r in linked),
+            "detect_to_fix": sorted(r["detect_to_fix"] for r in linked),
+            "severity_recorded": 0, "fix_window": (min(r["fix_day"] for r in traced), max(r["fix_day"] for r in traced))}
+
+
+def fig_item_closure(con):
+    """5.4: days from a security work item's creation to its close, open items censored at END, dropped ones apart."""
+    it = [i for i in items(con).values() if (i["security"] == 1 or i["type"] == "security") and i["created_ts"]]
+    done, open_, dropped = [], [], []
+    for i in it:
+        closed = (i["done_ts"] or i["updated_ts"] or "")[:10] if i["status"] in CLOSED else None
+        rec = {"repo": i["repo"], "item": i["item_id"], "status": i["status"], "created": i["created_ts"][:10],
+               "closed": closed, "finder": i["finder_final"], "title": (i["title"] or "")[:80]}
+        if i["status"] == "dropped":
+            dropped.append(rec)
+        elif closed:
+            rec["days"] = ddays(i["created_ts"], closed)
+            done.append(rec)
+        else:
+            rec["age"] = ddays(i["created_ts"], END)
+            open_.append(rec)
+    days = sorted(r["days"] for r in done)
+    q = lambda p: days[min(len(days) - 1, int(p * len(days)))]
+    return {"done": done, "open": open_, "dropped": dropped, "n": len(it), "n_done": len(done), "n_open": len(open_),
+            "n_dropped": len(dropped), "days": days, "same_day": sum(1 for d in days if d <= 0),
+            "within_3": sum(1 for d in days if d <= 3), "median": median(days), "p90": q(0.9), "max": max(days),
+            "open_ages": sorted(r["age"] for r in open_), "open_by_status": Counter(r["status"] for r in open_),
+            "accepted": sum(1 for r in done if r["status"] == "accepted"), "duplicates_marked": 0,
+            "first": min(r["created"] for r in done + open_ + dropped), "end": END}

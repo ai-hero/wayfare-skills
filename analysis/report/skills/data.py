@@ -1085,7 +1085,7 @@ QUESTIONS = {k: v for k, v in globals().items()
 
 def all_data(con=None):
     con = con or con_()
-    return {k: f(con) for k, f in sorted(QUESTIONS.items())}
+    return {k: f(con) for k, f in sorted(QUESTIONS.items())} | {"fig_rename_timeline": fig_rename_timeline(con)}
 
 
 if __name__ == "__main__":
@@ -1095,3 +1095,59 @@ if __name__ == "__main__":
         d = QUESTIONS[k](con)
         print(f"== {k}")
         print(json.dumps(d, default=str)[:3000])
+
+
+# ---------------------------------------------------------------- book figure 5.5: the rename, run by run
+
+RENAME_T0 = "2026-09-21T20:00:00"
+RENAME_T1 = "2026-09-22T06:00:00"
+RENAME_MERGED = "2026-09-22T00:07:48"  # wayfare-skills #108, the rename PR
+REPAIR_TITLES = {"caller re-pointed": "chore: hero-skills is wayfare, and the caller points at the renamed repo",
+                 "caller re-vendored": "ci(auto-approve): re-vendor the caller"}
+
+
+def fig_rename_timeline(con):
+    """Every auto-approve run in each consumer from the evening before the rename to full recovery, with the two
+    repair PRs each repo merged. Times are UTC."""
+    x = q_plugin_uptake_and_rename(con)
+    consumers = [r for r in x["consumers"] if r in x["per_repo"]]
+    runs = defaultdict(list)
+    for r in rows(con, """SELECT repo, created_ts, conclusion, workflow_name, duration_s FROM github.ci_runs
+                          WHERE lower(workflow_name) LIKE '%approve%' AND repo != 'wayfare-skills'
+                          AND created_ts BETWEEN ? AND ? ORDER BY created_ts""", (RENAME_T0, RENAME_T1)):
+        runs[r["repo"]].append({"ts": r["created_ts"][:19], "conclusion": r["conclusion"],
+                                "startup_failure": r["conclusion"] == "failure" and r["workflow_name"].startswith(".github/")})
+    repairs = defaultdict(dict)
+    for r in rows(con, "SELECT repo, number, title, merged_ts FROM github.prs WHERE merged_ts BETWEEN ? AND ?", (RENAME_T0, RENAME_T1)):
+        for kind, title in REPAIR_TITLES.items():
+            if r["title"] == title:
+                repairs[r["repo"]][kind] = {"pr": r["number"], "merged": r["merged_ts"][:19]}
+    lanes = []
+    for repo in consumers:
+        rr = runs.get(repo, [])
+        fails = [r["ts"] for r in rr if r["conclusion"] == "failure"]
+        oks = [r["ts"] for r in rr if r["conclusion"] == "success"]
+        first_fail = min(fails) if fails else None
+        last_fail = max(fails) if fails else None
+        recovered = min((t for t in oks if last_fail and t > last_fail), default=None)
+        lanes.append({"repo": repo, "state_before": x["per_repo"][repo][-2], "runs": rr, "failed_runs": len(fails),
+                      "startup_failures": sum(1 for r in rr if r["startup_failure"]),
+                      "first_fail": first_fail, "last_fail": last_fail, "recovered": recovered,
+                      "last_ok_before": max((t for t in oks if first_fail and t < first_fail), default=None),
+                      **{k: v for k, v in repairs.get(repo, {}).items()}})
+    ff = [l["first_fail"] for l in lanes if l["first_fail"]]
+    lf = [l["last_fail"] for l in lanes if l["last_fail"]]
+    from datetime import datetime
+    mins = lambda a, b: round((datetime.fromisoformat(b) - datetime.fromisoformat(a)).total_seconds() / 60)
+    t0 = min(ff)
+    repointed = sorted(l["caller re-pointed"]["merged"] for l in lanes if "caller re-pointed" in l)
+    return {"lanes": lanes, "n_consumers": len(consumers), "minutes_after_rename_merge": mins(RENAME_MERGED, t0), "at_main_before": sum(1 for l in lanes if l["state_before"] == METHODS[2]),
+            "n_broken": len(ff), "first_fail": t0, "spread_s": (datetime.fromisoformat(max(ff)) - datetime.fromisoformat(t0)).seconds,
+            "failed_runs": sum(l["failed_runs"] for l in lanes), "last_fail": max(lf), "minutes_to_last_fail": mins(t0, max(lf)),
+            "repointed_within_60": sum(1 for t in repointed if mins(t0, t) <= 60), "repointed_first": repointed[0], "repointed_last": repointed[-1],
+            "minutes_to_13th_repoint": mins(t0, repointed[12]) if len(repointed) >= 13 else None,
+            "minutes_to_last_repoint": mins(t0, repointed[-1]),
+            "revendored": sorted(l["caller re-vendored"]["merged"] for l in lanes if "caller re-vendored" in l),
+            "recovered_last": max(l["recovered"] for l in lanes if l["recovered"]),
+            "repos_failing_after_repoint": [l["repo"] for l in lanes if "caller re-pointed" in l and l["last_fail"] > l["caller re-pointed"]["merged"]],
+            "t0": RENAME_T0, "t1": RENAME_T1}

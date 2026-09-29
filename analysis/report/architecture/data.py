@@ -14,7 +14,7 @@ import sqlite3
 import statistics
 import subprocess
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import date, timedelta
 from difflib import SequenceMatcher
 from functools import lru_cache
@@ -796,6 +796,128 @@ def q_decision_in_same_change_trace(con):
             "examples": {c: [f"{d['repo']} #{d.get('pr')}: {d['heading']}" for d in out if d["cls"] == c][:4]
                          for c in TRACE_CATS}}
 
+
+
+# ---------------------------------------------------------------- Q decision-in-same-change, timing
+
+TIMING = ["With the code", "Record-only change", "Before the code", "Unknown"]
+DOOR = ["One-way door (item says so)", "Not a one-way door (item says so)", "Item without the flag", "No linked item"]
+LINK_RE = re.compile(r"\.plans/items?/(\d+)|\bitem (\d+)\b|#(\d+)\b")
+
+
+def _items_by_pr(con):
+    """{(repo, pr): [items]} from each item's `pr` ledger or its `branch` (the PR's head), plus {(repo, id): item}."""
+    by_pr, by_branch, by_id = defaultdict(list), defaultdict(list), {}
+    for it in rows(con, "SELECT repo, item_id, title, done_ts, raw_frontmatter_json j FROM plans.plan_items WHERE type != 'goal'"):
+        fm = json.loads(it["j"] or "{}")
+        rec = dict(it, one_way=fm.get("one_way_door"), shape=fm.get("shape"))
+        by_id[(it["repo"], str(it["item_id"]).lstrip("0"))] = rec
+        prs = fm.get("pr") or []
+        for u in ([prs] if isinstance(prs, str) else prs):
+            m = re.search(r"/pull/(\d+)", str(u))
+            if m:
+                by_pr[(it["repo"], int(m.group(1)))].append(rec)
+        if isinstance(fm.get("branch"), str):
+            by_branch[(it["repo"], fm["branch"])].append(rec)
+    for r in rows(con, "SELECT repo, number, head_ref FROM github.prs WHERE head_ref IS NOT NULL"):
+        for rec in by_branch.get((r["repo"], r["head_ref"]), []):
+            if rec not in by_pr[(r["repo"], r["number"])]:
+                by_pr[(r["repo"], r["number"])].append(rec)
+    return by_pr, by_id
+
+
+def q_decision_in_same_change_timing(con):
+    """Every own decision with its PR, files and timing class; the one-way-door flag comes from the work item that
+    ledgers the PR, or the decision text itself."""
+    idx = decision_index(con)
+    origin = copy_labels(con)
+    own = [d for k, d in idx.items() if k not in origin]
+    pr_of = {(r["repo"], r["sha"]): r["pr_number"] for r in rows(con, "SELECT repo, sha, pr_number FROM git.commits")}
+    merged = {(r["repo"], r["pr_number"]): r["day"] for r in rows(con, "SELECT repo, pr_number, day FROM git.commits WHERE pr_number IS NOT NULL")}
+    fo = files_of(con)
+    sets_by_pr = defaultdict(list)
+    for f in changeset_facts(con):
+        if f["pr"]:
+            sets_by_pr[(f["repo"], f["pr"])].append(f)
+    pr_commits = defaultdict(list)
+    for r in rows(con, "SELECT repo, pr_number, sha, idx FROM pr_commits.pr_commits WHERE is_merge=0 ORDER BY idx"):
+        pr_commits[(r["repo"], r["pr_number"])].append(r["sha"])
+    by_pr, by_id = _items_by_pr(con)
+    out = []
+    for d in own:
+        row = dict(repo=d["repo"], heading=d["heading"], first_day=d["first_day"], dated=d["date"], pr=None, trace=None,
+                   timing=None, door=DOOR[3], item=None, names=None, named_merged=None,
+                   backfilled=bool(d["date"]) and d["date"] < d["first_day"])
+        if d["bootstrap"]:
+            row.update(trace=TRACE_CATS[0], timing=TIMING[3])
+            out.append(row)
+            continue
+        pr = pr_of.get((d["repo"], d["first_sha"]))
+        if not pr:
+            row.update(trace=TRACE_CATS[4], timing=TIMING[3])
+            out.append(row)
+            continue
+        row["pr"] = pr
+        sets = sets_by_pr.get((d["repo"], pr), [])
+        adder = None
+        for sha in pr_commits.get((d["repo"], pr), []):
+            if not fo.get((d["repo"], sha), set()) & set(R.RECORD_PATHS):
+                continue
+            txt = R.git(d["repo"], "show", f"{sha}:DESIGN.md") or R.git(d["repo"], "show", f"{sha}:ARCHITECTURE.md") or ""
+            if d["heading"] in txt:
+                adder = sha
+                break
+        pr_files = set().union(*(fo.get((d["repo"], s), set()) for s in pr_commits.get((d["repo"], pr), [d["first_sha"]])))
+        if not any(not is_doc(p) for p in pr_files):
+            row["trace"] = TRACE_CATS[3]
+            # a record-only decision that names a PR or item: before the code if that landed after the record
+            names = [next(g for g in m.groups() if g) for m in LINK_RE.finditer(d["heading"] + " " + d["body"])]
+            later = []
+            for n in names:
+                day = merged.get((d["repo"], int(n)))
+                it = by_id.get((d["repo"], n.lstrip("0")))
+                if day is None and it and it["done_ts"]:
+                    day = it["done_ts"][:10]
+                if day:
+                    later.append(day > d["first_day"])
+            row.update(names=names, named_merged=later,
+                       timing=TIMING[2] if later and any(later) else TIMING[1])
+        else:
+            home = next((s for s in sets if adder and adder in s["shas"]), None)
+            if home is None and len(sets) == 1:
+                home = sets[0]
+            if home is None:
+                row["trace"] = TRACE_CATS[2]
+            else:
+                set_files = set().union(*(fo.get((d["repo"], s), set()) for s in home["shas"]))
+                row["trace"] = TRACE_CATS[1] if any(not is_doc(p) for p in set_files) else TRACE_CATS[2]
+            row["timing"] = TIMING[0]
+        items = by_pr.get((d["repo"], pr), [])
+        if items:
+            row["item"] = ", ".join(str(i["item_id"]) for i in items)
+            flags = [i["one_way"] for i in items]
+            row["door"] = DOOR[0] if any(f is True for f in flags) else DOOR[1] if any(f is False for f in flags) else DOOR[2]
+        if re.search(r"one-way door|one way door", d["body"], re.I):
+            row["door"] = DOOR[0]
+        out.append(row)
+    later = [r for r in out if r["timing"] != TIMING[3]]
+    def shares(rs):
+        n = len(rs)
+        return {t: sum(1 for r in rs if r["timing"] == t) for t in TIMING} | {"n": n}
+    groups = {"All own decisions": out} | {g: [r for r in out if r["door"] == g] for g in DOOR}
+    by_repo = defaultdict(lambda: Counter())
+    for r in out:
+        by_repo[r["repo"]][r["timing"]] += 1
+    order = sorted(by_repo, key=lambda k: -sum(by_repo[k].values()))
+    record_only = [r for r in out if r["timing"] == TIMING[1]]
+    return {"rows": out, "timing": TIMING, "door": DOOR, "n": len(out), "n_known": len(later),
+            "totals": shares(out), "known": shares(later), "groups": {g: shares(rs) for g, rs in groups.items()},
+            "trace": Counter(r["trace"] for r in out), "n_record_only": len(record_only),
+            "backfilled": sum(1 for r in record_only if r["backfilled"]),
+            "record_only_prs": Counter((r["repo"], r["pr"]) for r in record_only).most_common(3),
+            "n_linked": sum(1 for r in out if r["item"]),
+            "by_repo": {k: [by_repo[k][t] for t in TIMING] for k in order},
+            "examples": {t: [f"{r['repo']} #{r['pr']}: {r['heading']}" for r in out if r["timing"] == t][:4] for t in TIMING}}
 
 # ---------------------------------------------------------------- Q work-items-cite-design
 

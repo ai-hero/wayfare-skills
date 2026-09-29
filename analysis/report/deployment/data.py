@@ -19,7 +19,7 @@ import statistics
 import subprocess
 import sys
 from collections import Counter, defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -349,6 +349,118 @@ def q_deploy_failures_failures(con):
             "infra_fix": [(p["day"], p["pr"], p["title"]) for p in infra_fix],
             "median_hours": median([f["hours"] for f in fails if f["hours"] is not None])}
 
+
+
+# ---------------------------------------------------------------- Q deploy-failures, per deployment
+
+DEPLOY_WF = (".github/workflows/deploy.yaml", ".github/workflows/deploy.yml", ".github/workflows/deploy-beta.yaml",
+             ".github/workflows/deploy-beta.yml", ".github/workflows/deploy-astrum.yml")
+FIXES = ["Retry of the same commit", "App's deploy workflow fixed", "Shared deploy workflow fixed",
+         "Later app commit (fix forward)", "Rollback (revert)", "Unresolved"]
+
+
+@lru_cache(maxsize=None)
+def deploy_workflow_commits(repo):
+    """[(iso ts, sha)] of default-branch commits that changed the app's own deploy workflow."""
+    out = git(repo, "log", "--first-parent", "--format=%cI %H", "HEAD", "--", *DEPLOY_WF)
+    # git prints the committer's own offset; ci_runs is UTC, so compare in UTC or a same-day fix sorts wrong
+    return [(datetime.fromisoformat(ts).astimezone(timezone.utc).isoformat(), sha)
+            for ts, sha in (l.split() for l in out.splitlines() if l.strip())]
+
+
+def q_deploy_failures_recovery(con):
+    """Deployments (one per commit on main), their attempts, what cleared each failure and how long it took."""
+    runs = [r for r in deploy_runs(con) if r["conclusion"] in ("success", "failure", "startup_failure", "cancelled")]
+    by_sha = defaultdict(list)
+    for r in runs:
+        by_sha[(r["repo"], r["head_sha"])].append(r)
+    infra_fix = [p for p in infra_prs(con) if p["repo"] == "infrastructure-environments"
+                 and any("deploy-swarm" in f for f in p["paths"])]
+    reverts = rows(con, "SELECT repo, day, sha, subject FROM git.commits WHERE is_revert = 1")
+    deployments = []
+    for (repo, sha), atts in by_sha.items():
+        atts.sort(key=lambda r: r["created_ts"])
+        concl = [a["conclusion"] for a in atts]
+        failed = [a for a in atts if a["conclusion"] in ("failure", "startup_failure")]
+        tried = [a for a in atts if a["conclusion"] != "cancelled"]
+        # a deployment failed when its first real attempt did; a re-run that fails after the commit already
+        # shipped is a repeat attempt, not a failed deployment
+        if not tried:
+            outcome = "Cancelled only"
+        elif tried[0]["conclusion"] == "success":
+            outcome = "Succeeded" + (", a later re-run failed" if failed else "")
+        elif atts[-1]["conclusion"] == "success":
+            outcome = "Failed, then succeeded on retry"
+        else:
+            outcome = "Failed"
+        deployments.append(dict(repo=repo, sha=sha, first=atts[0]["created_ts"], attempts=len(atts),
+                                failed_attempts=len(failed), failed=bool(tried) and tried[0]["conclusion"] != "success",
+                                repeat_failures=sum(1 for a in failed if a is not tried[0]),
+                                outcome=outcome, week=atts[0]["week"], month=atts[0]["month"], event=atts[0]["event"]))
+    deployments.sort(key=lambda d: d["first"])
+    # what cleared each failed deployment: the app's next successful deploy run and what landed in between
+    succ = [r for r in runs if r["conclusion"] == "success"]
+    for d in deployments:
+        if not d["failed"]:
+            d["fix"], d["hours"] = None, None
+            continue
+        t0 = next(a["created_ts"] for a in by_sha[(d["repo"], d["sha"])] if a["conclusion"] in ("failure", "startup_failure"))
+        nxt = next((r for r in succ if r["repo"] == d["repo"] and r["created_ts"] > t0), None)
+        if nxt is None:
+            d["fix"], d["hours"] = FIXES[5], None
+            continue
+        t1 = nxt["created_ts"]
+        d["hours"] = round(hours(t0, t1), 1)
+        if any(r["repo"] == d["repo"] and t0[:10] <= r["day"] <= t1[:10] for r in reverts):
+            d["fix"] = FIXES[4]
+        elif nxt["head_sha"] == d["sha"]:
+            d["fix"] = FIXES[0]
+        elif any(t0 <= ts <= t1 for ts, _sha in deploy_workflow_commits(d["repo"])):
+            d["fix"] = FIXES[1]
+        elif any(t0[:10] <= p["day"] <= t1[:10] for p in infra_fix):
+            d["fix"] = FIXES[2]
+        else:
+            d["fix"] = FIXES[3]
+    # episodes: consecutive failed deployments of one app until it is green again
+    episodes = []
+    for repo in DEPLOYED_APPS:
+        cur = None
+        for d in [x for x in deployments if x["repo"] == repo and x["outcome"] != "Cancelled only"]:
+            if d["failed"]:
+                if cur is None:
+                    cur = dict(repo=repo, start=d["first"], n=0, hours=d["hours"], fix=d["fix"])
+                cur["n"] += 1
+            elif cur:
+                episodes.append(cur)
+                cur = None
+        if cur:
+            episodes.append(cur)
+    per_app = {}
+    for a in DEPLOYED_APPS:
+        ds = [d for d in deployments if d["repo"] == a and d["outcome"] != "Cancelled only"]
+        k = sum(1 for d in ds if d["failed"])
+        att = [r for r in runs if r["repo"] == a and r["conclusion"] != "cancelled"]
+        per_app[a] = dict(deployments=len(ds), failed=k, attempts=len(att),
+                          failed_attempts=sum(1 for r in att if r["conclusion"] != "success"),
+                          repeat_failures=sum(d["repeat_failures"] for d in ds),
+                          hours=sorted(d["hours"] for d in ds if d["hours"] is not None),
+                          fixes=Counter(d["fix"] for d in ds if d["fix"]),
+                          by_month=Counter(d["month"] for d in ds if d["failed"]),
+                          cancelled=sum(1 for d in deployments if d["repo"] == a and d["outcome"] == "Cancelled only"))
+    failed = [d for d in deployments if d["failed"]]
+    live = [d for d in deployments if d["outcome"] != "Cancelled only"]
+    wk = weekly_list([r for r in runs if r["conclusion"] != "cancelled"])
+    share = [round(sum(r["conclusion"] != "success" for r in wk[w]) / len(wk[w]), 3) if wk.get(w) else None for w in WEEKS]
+    return {"weeks": WEEKS, "series": {"Failed share of deploy attempts": share}, "deployments": deployments,
+            "episodes": episodes, "per_app": per_app, "fixes": FIXES,
+            "n_deployments": len(live), "n_failed": len(failed), "n_attempts": sum(1 for r in runs if r["conclusion"] != "cancelled"),
+            "n_failed_attempts": sum(1 for r in runs if r["conclusion"] in ("failure", "startup_failure")),
+            "n_repeat": sum(d["repeat_failures"] for d in deployments), "n_cancelled": sum(1 for d in deployments if d["outcome"] == "Cancelled only"),
+            "how": Counter(d["fix"] for d in failed), "hours": sorted(d["hours"] for d in failed if d["hours"] is not None),
+            "median_hours": median([d["hours"] for d in failed if d["hours"] is not None]),
+            "episode_hours": sorted(e["hours"] for e in episodes if e["hours"] is not None),
+            "reverts": [r for r in reverts if r["repo"] in DEPLOYED_APPS],
+            "infra_fix": [(p["day"], p["pr"], p["title"]) for p in infra_fix]}
 
 # ---------------------------------------------------------------- Q production-uptime production health
 
@@ -712,7 +824,7 @@ def all_data():
     from cube.db import connect
     con = connect("deployment")
     return {"con": con, "ci_start": ci_start(con), "hung": hung_gate_runs(con), "q_platform_history": q_platform_history_platform(con), "q_app_to_infra_time": q_app_to_infra_time_onboarding(con),
-            "q_deploy_on_merge": q_deploy_on_merge_deploying(con), "q_merge_to_production": q_merge_to_production_lag(con), "q_deploy_failures": q_deploy_failures_failures(con), "q_production_uptime": q_production_uptime_health(con),
+            "q_deploy_on_merge": q_deploy_on_merge_deploying(con), "q_merge_to_production": q_merge_to_production_lag(con), "q_deploy_failures": q_deploy_failures_failures(con), "q_deploy_failures_recovery": q_deploy_failures_recovery(con), "q_production_uptime": q_production_uptime_health(con),
             "q_ci_red_rate": q_ci_red_rate_red(con), "q_ci_red_to_green": q_ci_red_to_green_green(con), "q_flaky_checks": q_flaky_checks_flaky(con), "q_never_failed_checks": q_never_failed_checks_never(con),
             "q_shared_workflow_breaks": q_shared_workflow_breaks_shared(con), "q_action_pin_spread": q_action_pin_spread_pins(con), "q_infra_built_like_apps": q_infra_built_like_apps_infra_authors(con)}
 

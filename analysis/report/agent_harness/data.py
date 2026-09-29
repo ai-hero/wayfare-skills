@@ -688,6 +688,148 @@ def q_feature_uptake_lag(con):
             "fork_last": fork[1], "worktree_calls": wt, "fork_after_ban": fork_after_ban}
 
 
+
+# ---------------------------------------------------------------- book figures 3.1, 3.2, 3.8
+
+def _share_row(label, sel, key="fixed_days"):
+    k, n = sum(p[key] is not None for p in sel), len(sel)
+    lo, hi = wilson(k, n)
+    return {"label": label, "n": n, "k": k, "rate": round(k / n, 4) if n else None, "lo": lo, "hi": hi}
+
+
+def fig31_fixes(con, min_n=10, min_cut=30):
+    """Figure 3.1: merged PRs with an agent trailer and a complete 14-day window, the share fixed within it, by
+    model, repository and change type (the work type of most of the PR's change sets), with Wilson intervals."""
+    wt = {(r["repo"], r["unit_kind"], r["unit_id"], r["set_idx"]): r["work_type"]
+          for r in rows(con, "SELECT * FROM detectors.cs_worktype")}
+    types = defaultdict(Counter)
+    for s in set_models(con):
+        if s["pr"]:
+            types[(s["repo"], s["pr"])][wt.get((s["repo"], s["unit_kind"], s["unit_id"], s["set_idx"])) or "unlabelled"] += 1
+    ps = [dict(p) for p in pr_models(con) if p["complete"] and p["model"] != NONE]
+    for p in ps:
+        p["type"] = types[(p["repo"], p["pr"])].most_common(1)[0][0]
+    counts = Counter(p["model"] for p in ps)
+    models = [_share_row(m, [p for p in ps if p["model"] == m]) for m in MODELS if counts[m] >= min_n]
+    few = {m: counts[m] for m in MODELS if 0 < counts[m] < min_n}
+    unnamed = _share_row(UNNAMED, [p for p in ps if p["model"] == UNNAMED])
+    overall = _share_row("All agent PRs", ps)
+    by_repo = [_share_row(r, [p for p in ps if p["repo"] == r]) for r, n in Counter(p["repo"] for p in ps).most_common()
+               if n >= min_cut]
+    small_repos = {r: n for r, n in Counter(p["repo"] for p in ps).items() if n < min_cut}
+    by_type = [_share_row(t, [p for p in ps if p["type"] == t]) for t, n in Counter(p["type"] for p in ps).most_common()
+               if n >= min_cut]
+    small_types = {t: n for t, n in Counter(p["type"] for p in ps).items() if n < min_cut}
+    cells = []
+    for t in [r["label"] for r in by_type]:
+        for m in [r["label"] for r in models]:
+            sel = [p for p in ps if p["type"] == t and p["model"] == m]
+            if len(sel) >= 20:
+                cells.append({**_share_row(f"{m} · {t}", sel), "model": m, "type": t})
+    covers = [r["label"] for r in models if r["lo"] <= overall["rate"] <= r["hi"]]
+    excluded = sum(1 for p in pr_models(con) if not p["complete"] and p["model"] != NONE)
+    fixed = [p for p in ps if p["fixed_days"] is not None]
+    return {"overall": overall, "models": models, "unnamed": unnamed, "few": few, "by_repo": by_repo,
+            "small_repos": small_repos, "by_type": by_type, "small_types": small_types, "cells": cells,
+            "covers": covers, "window_days": FIX_WINDOW_DAYS, "cutoff": FIX_CUTOFF, "excluded_open_window": excluded,
+            "first_merge": min(p["day"] for p in ps), "no_trailer": sum(1 for p in pr_models(con) if p["complete"] and p["model"] == NONE),
+            "median_days_to_fix": statistics.median(p["fixed_days"] for p in fixed) if fixed else None,
+            "fixed": [{"repo": p["repo"], "pr": p["pr"], "model": p["model"], "type": p["type"], "days": p["fixed_days"],
+                       "fix": p["fix_subject"]} for p in fixed]}
+
+
+RULE_DAY = EXPLORE_EVENTS[0][0]
+
+
+def _q(xs, qs=(0.25, 0.5, 0.75, 0.9)):
+    xs = sorted(xs)
+    return {f"p{int(q * 100)}": xs[min(len(xs) - 1, int(len(xs) * q))] for q in qs} if xs else {}
+
+
+def fig32_delegation(con, min_before=2, min_after=5):
+    """Figure 3.2: interactive sessions before and from the delegation rule (29 Aug): Explore runs per session,
+    the fleet and each repo with sessions in both periods; main-thread context per turn and per session; the
+    task mix of the two periods; and where the main thread's tokens sit (input, cache read, cache write)."""
+    ss = sessions(con)
+    calls = rows(con, f"SELECT session_id_hash s, ts, subagent_type, skill_name FROM harness.tool_calls WHERE ts >= '{LOG_START}'")
+    ex = Counter(c["s"] for c in calls if c["subagent_type"] == "Explore")
+    skilled = {c["s"] for c in calls if c["skill_name"]}
+    groups = {"before": [k for k, s in ss.items() if s["first_ts"][:10] < RULE_DAY],
+              "after": [k for k, s in ss.items() if s["first_ts"][:10] >= RULE_DAY]}
+    ctx_s = defaultdict(list)
+    for r in rows(con, """SELECT session_id_hash s, input_tokens + cache_read_tokens + cache_write_tokens c
+                          FROM harness.turns WHERE role='assistant' AND model LIKE 'claude-%'"""):
+        if r["s"] in ss:
+            ctx_s[r["s"]].append(r["c"])
+
+    def stats(keys):
+        xs = [ex.get(k, 0) for k in keys]
+        turns = [c for k in keys for c in ctx_s.get(k, [])]
+        sess_med = [statistics.median(ctx_s[k]) for k in keys if ctx_s.get(k)]
+        lo, hi = wilson(sum(1 for x in xs if x), len(xs))
+        return {"sessions": len(keys), "explore_runs": sum(xs), "per_session": round(sum(xs) / len(xs), 2),
+                "share_any": round(sum(1 for x in xs if x) / len(xs), 3), "share_any_ci": (lo, hi),
+                "turns": len(turns), "turn_q": _q(turns), "session_median_q": _q(sess_med),
+                "over_500k": round(sum(c > 500000 for c in turns) / len(turns), 3) if turns else None,
+                "median_tool_calls": statistics.median(ss[k]["tool_calls"] or 0 for k in keys),
+                "median_user_turns": statistics.median(ss[k]["user_turns"] or 0 for k in keys),
+                "skill_share": round(sum(1 for k in keys if k in skilled) / len(keys), 3),
+                "repos": Counter(ss[k]["repo"] for k in keys).most_common(6)}
+    fleet = {g: stats(keys) for g, keys in groups.items()}
+    per_repo = []
+    for repo in sorted({ss[k]["repo"] for k in ss} - {None}):
+        b = [k for k in groups["before"] if ss[k]["repo"] == repo]
+        a = [k for k in groups["after"] if ss[k]["repo"] == repo]
+        if len(b) >= min_before and len(a) >= min_after:
+            per_repo.append({"repo": repo, "n_before": len(b), "n_after": len(a),
+                             "before": round(sum(ex.get(k, 0) for k in b) / len(b), 2),
+                             "after": round(sum(ex.get(k, 0) for k in a) / len(a), 2)})
+    weekly = {w: Counter() for w in lweeks(con)}
+    for r in rows(con, """SELECT session_id_hash s, ts, input_tokens i, cache_read_tokens cr, cache_write_tokens cw
+                          FROM harness.turns WHERE role='assistant' AND model LIKE 'claude-%'"""):
+        if r["s"] in ss and week_of(r["ts"][:10]) in weekly:
+            w = weekly[week_of(r["ts"][:10])]
+            w["Fresh input"] += r["i"] or 0
+            w["Cache read"] += r["cr"] or 0
+            w["Cache write"] += r["cw"] or 0
+    sub = rows(con, f"SELECT SUM(input_tokens) i, SUM(output_tokens) o FROM harness.subagent_runs WHERE ts_start >= '{LOG_START}'")[0]
+    all_turns = [c for k in ss for c in ctx_s.get(k, [])]
+    turn_k = {g: [round(c / 1000) for k in keys for c in ctx_s.get(k, [])] for g, keys in groups.items()}
+    return {"rule_day": RULE_DAY, "fleet": fleet, "per_repo": per_repo, "weeks": lweeks(con), "turn_k": turn_k,
+            "weekly_tokens": {k: [weekly[w][k] for w in lweeks(con)] for k in ("Fresh input", "Cache read", "Cache write")},
+            "subagent_tokens": {"input": sub["i"], "output": sub["o"]},
+            "all_median_k": round(statistics.median(all_turns) / 1000), "log_start": LOG_START, "log_end": log_end(con)}
+
+
+def fig38_lags(con):
+    """Figure 3.8: days from public release to the fleet's first dated use, on one definition, for every model
+    release (its first change set naming it in a co-author trailer), the two model defaults Claude Code shipped,
+    and the workflow features. A first use on the day a record begins is a bound, not a date."""
+    named_from = con.execute("""SELECT MIN(substr(ts,1,10)) FROM pr_commits.pr_commits
+                                WHERE body_redacted LIKE '%Co-Authored-By: Claude Opus%'
+                                   OR body_redacted LIKE '%Co-Authored-By: Claude Sonnet%'""").fetchone()[0]
+    models = []
+    for l in q_model_share_over_time_models(con)["lag"]:
+        models.append({"label": l["model"], "group": "Model release", "release": l["release"], "first": l["first"],
+                       "lag": l["first_lag"], "bound": l["first"] <= named_from, "sets": l["n"], "top_lag": l["top_lag"],
+                       "where": "first change set with the model in its co-author trailer"})
+    feats = []
+    for f in q_feature_uptake_lag(con)["features"]:
+        grp = "Claude Code model default" if f["feature"].startswith("Opus") else "Workflow feature"
+        feats.append({"label": f["feature"], "group": grp, "release": f["release"], "first": f["first"], "lag": f["lag"],
+                      "bound": f["lower_bound"], "where": f["where"], "dropped": f["dropped"]})
+    today = log_end(con)
+    for f in feats:
+        if f["first"] is None:
+            f["waiting"] = (date.fromisoformat(today) - date.fromisoformat(f["release"])).days
+    work = [f["lag"] for f in feats if f["group"] == "Workflow feature" and f["lag"] is not None]
+    mods = [m["lag"] for m in models]
+    return {"models": models, "features": feats, "named_from": named_from, "today": today,
+            "median_model": statistics.median(mods), "median_work": statistics.median(work), "n_work": len(work),
+            "n_models": len(mods), "work_bounds": sum(1 for f in feats if f["group"] == "Workflow feature" and f["bound"]),
+            "never": [f["label"] for f in feats if f["first"] is None]}
+
+
 if __name__ == "__main__":
     from cube.db import connect
     con = connect("agent_harness")

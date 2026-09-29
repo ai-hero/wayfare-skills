@@ -8,6 +8,7 @@ import json
 import os
 import re
 import statistics
+from datetime import date
 import sys
 from collections import defaultdict
 
@@ -179,6 +180,79 @@ def q_cost_rollup_rollup(con):
             "kinds": kinds, "kind_median": [median(kusd[k]) for k in kinds], "kind_n": [len(kusd[k]) for k in kinds],
             "kind_share": [sum(kusd[k]) / sum(sum(v) for v in kusd.values()) for k in kinds],
             "kind_sets": [mean(ksets[k]) for k in kinds]}
+
+
+# Book figure 6.5: one window (session logging resumes 25 Aug; change sets end 25 Sep), one price basis.
+UNIT_WINDOW = ("2026-08-25", "2026-09-25")
+
+
+def q_cost_rollup_units(con):
+    """Per unit of work (change set, PR, work item, goal): median and IQR of the reported list-price-equivalent cost,
+    with the unit's coverage (share of the window's units that reached any attributed spend) and the window's
+    spend that reached no merged PR, reported rather than spread."""
+    import figure_lib as F
+    lo, hi = UNIT_WINDOW
+    in_win = lambda d: d is not None and lo <= d[:10] <= hi
+    facts = [f for f in changeset_facts(con) if not f["dependabot"] and in_win(f["day"])]
+    usd_of = {(f["repo"], f["unit_kind"], f["unit_id"], f["set_idx"]): f["usd"]
+              for f in spend_by_changeset(con) if not f["dependabot"] and in_win(f["day"])}
+    key = lambda f: (f["repo"], f["unit_kind"], f["unit_id"], f["set_idx"])
+    links, _ = set_item_links(con)
+    items = {(i["repo"], i["item_id"]): i for i in _items(con)}
+    goal_ids = {(r["repo"], r["item_id"]) for r in rows(con, "SELECT repo, item_id FROM plans.plan_items WHERE type='goal'")}
+    heads = {(r["repo"], r["number"]): r["head_ref"] or "" for r in rows(con, "SELECT repo, number, head_ref FROM github.prs")}
+    item_usd, item_seen, goal_usd, goal_seen = defaultdict(float), set(), defaultdict(float), set()
+    for f in facts:
+        usd = usd_of.get(key(f))
+        its = links.get(key(f)) or set()
+        gm = re.search(r"goal[-/](\d+)", heads.get((f["repo"], f["pr"]), ""))
+        goals = {(f["repo"], gm.group(1))} if gm and (f["repo"], gm.group(1)) in goal_ids else set()
+        for it in its:
+            item_seen.add((f["repo"], it))
+            g = (items.get((f["repo"], it)) or {}).get("goal_id")
+            if g:
+                goals.add((f["repo"], str(g)))
+            if usd is not None:
+                item_usd[(f["repo"], it)] += usd / len(its)
+        for g in goals:
+            goal_seen.add(g)
+            if usd is not None:
+                goal_usd[g] += usd / len(goals)
+    # Items closed in the window that no change set links to, in any window: a coverage gap, not a free item.
+    # (An item whose change sets merged before the window is counted in that window, not here.)
+    ever_linked = {(k[0], it) for k, v in links.items() for it in v}
+    done = {(r["repo"], r["item_id"]) for r in rows(con, "SELECT repo, item_id, done_ts FROM plans.plan_items WHERE type != 'goal' "
+                                                         "AND status IN ('done', 'delivered', 'accepted')")
+            if in_win(r["done_ts"])} - ever_linked
+    prs_all = [(r["repo"], r["number"]) for r in rows(con, "SELECT repo, number, merged_ts FROM github.prs WHERE author NOT LIKE '%dependabot%'")
+               if in_win(r["merged_ts"]) and category(con, r["repo"]) != "other"]
+    bp = spend_by_pr(con)
+    pr_vals = [bp[k]["usd"] for k in prs_all if k in bp]
+    set_vals = [usd_of[key(f)] for f in facts if key(f) in usd_of]
+    units = [("Change set", set_vals, len(facts)),
+             ("Pull request", pr_vals, len(prs_all)),
+             ("Work item", list(item_usd.values()), len(item_seen) + len(done)),
+             ("Goal", list(goal_usd.values()), len(goal_seen))]
+    table = []
+    for name, vals, n_all in units:
+        q1, med, q3 = F.quantiles(vals)
+        lo_m, hi_m = F.bootstrap_median(vals)
+        table.append({"unit": name, "n_costed": len(vals), "n_units": n_all, "coverage": round(len(vals) / n_all, 3) if n_all else None,
+                      "median": round(med, 2), "q1": round(q1, 2), "q3": round(q3, 2), "median_lo": round(lo_m, 2), "median_hi": round(hi_m, 2),
+                      "mean": round(sum(vals) / len(vals), 2), "total": round(sum(vals))})
+    # Where the window's spend went: what reached a merged PR, and what did not (never spread over units).
+    tgt = defaultdict(float)
+    for r in spend_rows(con):
+        if in_win(r["day"]):
+            tgt[r["target"]] += r["usd"]
+    total = sum(tgt.values())
+    unreached = {"unmerged": tgt["unmerged"], "no_pr": tgt["no_pr"], "default": tgt["default"]}
+    return {"window": UNIT_WINDOW, "table": table, "spend_total": round(total),
+            "spend_by_target": {k: round(v) for k, v in tgt.items()},
+            "unreached_usd": round(sum(unreached.values())), "unreached_share": round(sum(unreached.values()) / total, 3),
+            "unreached": {k: round(v) for k, v in unreached.items()},
+            "items_never_linked": len(done), "items_linked": len(item_seen),
+            "sets_no_pr": sum(1 for f in facts if f["pr"] is None)}
 
 
 # ---------------------------------------------------------------- Q paid-vs-reported-cost
@@ -364,7 +438,7 @@ CI_GROUPS = ["Build, test, checks", "Auto Approve", "Deploy", "Dependency update
 @__import__("functools").lru_cache(maxsize=None)
 def ci_runs(con):
     out = []
-    for r in rows(con, "SELECT repo, run_id, workflow_name, event, head_branch, head_sha, conclusion, created_ts, "
+    for r in rows(con, "SELECT repo, run_id, workflow_name, event, head_branch, head_sha, conclusion, created_ts, updated_ts, "
                        "duration_s FROM github.ci_runs WHERE created_ts >= '2026-01-01'"):
         r["min"] = (r["duration_s"] or 0) / 60
         r["hung"] = r["created_ts"][:10] == HUNG_DAY and r["min"] > 6 * 60 and r["conclusion"] == "cancelled"
@@ -405,6 +479,64 @@ def q_ci_minutes(con):
             "hung_workflows": {w: sum(1 for r in hung if r["workflow_name"] == w) for w in {r["workflow_name"] for r in hung}},
             "per_set": per_set, "runs": len(runs),
             "month_ex_hung": {m: round(sum(r["min"] for r in runs if r["month"] == m and not r["hung"])) for m in MONTHS}}
+
+
+# Book figure 6.6. The hang: every run created on 26 Aug that sat over six hours and ended cancelled; no run on
+# any other day of 2026 ran over an hour, so the rule isolates the incident. `FIX_DAY` is the first day the
+# auto-approve caller ran scripted gates before the model (wayfare-skills db701b7, 29 Aug).
+FIX_DAY = "2026-08-29"
+CUT_DAY = "2026-09-17"
+
+
+def q_ci_minutes_pareto(con):
+    """Wall-clock run minutes, normal runs against the hung ones: the Pareto of runs by minutes, the monthly split,
+    and the baseline after the fix. Billable minutes are not in the data (ci_jobs.billable_ms is 0 on every row and
+    only some runs have a job row), so the second measure is a per-run minute rounding: GitHub bills each job in
+    whole minutes rounded up, so with at least one job per run it is a lower bound on the bill."""
+    import math
+    runs = ci_runs(con)
+    wall = lambda rs: sum(r["min"] for r in rs)
+    billable_lb = lambda rs: sum(math.ceil(r["min"]) for r in rs if r["min"] > 0)
+    hung = [r for r in runs if r["hung"]]
+    normal = [r for r in runs if not r["hung"]]
+    ordered = sorted(runs, key=lambda r: -r["min"])
+    total = wall(runs)
+    cum, acc = [], 0.0
+    for r in ordered:
+        acc += r["min"]
+        cum.append(acc / total)
+    # Runs over an hour outside the hang day: the check that the rule does not catch ordinary runs.
+    long_other = [r for r in runs if not r["hung"] and r["min"] > 60]
+    months = {m: {"normal": round(wall([r for r in normal if r["month"] == m])),
+                  "hung": round(wall([r for r in hung if r["month"] == m])),
+                  "runs": sum(1 for r in runs if r["month"] == m)} for m in MONTHS}
+    def week_span(a, b):
+        rs = [r for r in normal if a <= r["day"] < b]
+        days = (date.fromisoformat(b) - date.fromisoformat(a)).days
+        return {"from": a, "to": b, "days": days, "runs": len(rs), "minutes": round(wall(rs)),
+                "per_week": round(wall(rs) / days * 7), "runs_per_week": round(len(rs) / days * 7)}
+    before = week_span("2026-07-29", HUNG_DAY)          # the four weeks before the hang
+    after_fix = week_span(FIX_DAY, CUT_DAY)             # from the fix to the deliberate cut
+    after_cut = week_span(CUT_DAY, "2026-09-25")        # after the cut, to the last full day
+    table = [{"group": "Normal runs", "runs": len(normal), "wall_min": round(wall(normal)), "billable_lb_min": billable_lb(normal),
+              "share_wall": round(wall(normal) / total, 3)},
+             {"group": "Hung runs (26 Aug, cancelled 28 Aug)", "runs": len(hung), "wall_min": round(wall(hung)),
+              "billable_lb_min": billable_lb(hung), "share_wall": round(wall(hung) / total, 3)}]
+    return {"table": table, "total_wall": round(total), "total_billable_lb": billable_lb(runs), "runs": len(runs),
+            "hung_n": len(hung), "hung_share_runs": round(len(hung) / len(runs), 4), "hung_share_wall": round(wall(hung) / total, 3),
+            "hung_hours": (round(min(r["min"] for r in hung) / 60), round(max(r["min"] for r in hung) / 60)),
+            "hung_cancelled": (min(r["updated_ts"] for r in hung)[:16], max(r["updated_ts"] for r in hung)[:16]),
+            "hung_workflows": dict(sorted(((w, sum(1 for r in hung if r["workflow_name"] == w)) for w in {r["workflow_name"] for r in hung}),
+                                          key=lambda kv: -kv[1])),
+            "hung_workflow_groups": {"Auto Approve": sum(1 for r in hung if r["workflow_name"] == "Auto Approve"),
+                                     "Dependabot": sum(1 for r in hung if r["event"] == "dynamic"),
+                                     "Build or deploy": sum(1 for r in hung if r["workflow_name"] != "Auto Approve" and r["event"] != "dynamic")},
+            "long_other": len(long_other), "cum": cum, "top_minutes": [round(r["min"]) for r in ordered[:60]],
+            "months": months, "before": before, "after_fix": after_fix, "after_cut": after_cut,
+            "weekly": {w: {"normal": round(wall([r for r in normal if r["week"] == w])),
+                           "hung": round(wall([r for r in hung if r["week"] == w]))} for w in WEEKS},
+            "fix_day": FIX_DAY, "cut_day": CUT_DAY,
+            "job_rows": list(con.execute("SELECT COUNT(*), SUM(billable_ms > 0) FROM github.ci_jobs").fetchone())}
 
 
 def q_wasted_ci_minutes(con):

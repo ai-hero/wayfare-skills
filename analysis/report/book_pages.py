@@ -3,11 +3,13 @@
     python report/book_pages.py [--book .analysis/book] [--decks .analysis/decks] --out FOLDER [--lessons TALK]
 
 Decks hold the evidence by topic; the book arranges it by argument. `chapters.json` in the book
-folder lists each chapter and the questions it shows, by id (Q work-sources). Every deck is read
+folder lists each chapter and the questions it shows, by id (Q work-sources), and the parts that
+group the chapters; a part's page is its introduction and shows no questions of its own. Every deck is read
 once, a figure resolves from whichever deck holds it, and each question a chapter shows is placed
 as a card in its prose, where the text first draws or cites it.
 """
 import argparse
+import base64
 import glob
 import json
 import os
@@ -65,6 +67,40 @@ def load_decks(folder, lessons=None):
     return questions, diagrams, known
 
 
+BOOK_ASSETS = os.path.join(ROOT, ".analysis", "diagrams", "book")
+
+
+def book_diagrams(folder=BOOK_ASSETS):
+    """The manuscript's own drawn diagrams and tables, one block each, keyed `Diagram 1.5` or `Table 7.T1`
+    from the sidecar `svg_lib.finish` writes beside every asset. A chapter draws one with `[[Diagram 1.5 |
+    caption]]`; the SVG goes in as the view's image, a table's Markdown as the view's table."""
+    out = []
+    for path in sorted(glob.glob(os.path.join(folder, "*.json"))):
+        with open(path, encoding="utf-8") as f:
+            meta = json.load(f)
+        if not meta.get("id") or not meta.get("name"):
+            continue
+        key = f"{meta.get('kind', 'diagram').capitalize()} {meta['id']}"
+        view = {"label": "", "title": meta.get("caption", ""), "points": [], "source": meta.get("source", ""),
+                "extra": [], "notes": meta.get("alt", ""), "charts": [], "tables": [], "images": []}
+        base = os.path.join(folder, meta["name"])
+        if os.path.exists(base + ".svg"):
+            with open(base + ".svg", "rb") as f:
+                src = "data:image/svg+xml;base64," + base64.b64encode(f.read()).decode()
+            view["images"].append({"src": src, "alt": meta.get("alt", "")})
+        if os.path.exists(base + ".md"):
+            with open(base + ".md", encoding="utf-8") as f:
+                rows = [l.strip().strip("|").split("|") for l in f if l.strip().startswith("|")]
+            rows = [[c.strip() for c in r] for r in rows if not re.fullmatch(r"[\s|:-]+", "|".join(r))]
+            if rows:
+                view["tables"].append(rows)
+        if not view["images"] and not view["tables"]:
+            D.warn(f"{key}: no .svg or .md beside {path}")
+            continue
+        out.append({"block": {"key": key, "question": None, "views": [view], "statements": []}, "deck": "book"})
+    return out
+
+
 def merge(questions, merged):
     """Fold each merged question into the one kept: its views become tabs of the kept card, named by the merge,
     and its question and lessons go with them, so nothing it showed is lost."""
@@ -110,7 +146,7 @@ def build(ch, text, questions, diagrams, deck_known):
     """The chapter's prose with its evidence woven in: a question's card sits where the text first
     draws it as a figure, or else right after the paragraph that first cites it. A question the
     text never mentions stays off the page."""
-    name = f"ch{ch['n']:02d}"
+    name, lab = (("appendix", "A") if ch.get("appendix") else (f"ch{ch['n']:02d}", str(ch["n"])))
     own = {}
     for q in ch["questions"]:
         k = f"Q {q}"
@@ -160,23 +196,25 @@ def build(ch, text, questions, diagrams, deck_known):
                 k = D.qkey(b["key"])
                 if k in own and k not in placed:
                     placed.add(k)
-                    blk = card(b, f"{ch['n']}.{fig}", blk["caption"], v)
+                    blk = card(b, f"{lab}.{fig}", blk["caption"], v)
                 else:
-                    blk.update({"number": f"{ch['n']}.{fig}", "key": b["key"], "view": v,
+                    blk.update({"number": f"{lab}.{fig}", "key": b["key"], "view": v,
                                 "caption": blk["caption"] or v["title"]})
-            t = blk.get("text") or blk.get("caption", "")
+            t = blk.get("text") or blk.get("caption", "") or " ".join(
+                c for r in blk.get("rows", []) for c in r) or " ".join(blk.get("items", []))
             # Counts up to ten are ordinary prose ("two reasons", "3 repos"), not findings.
             for num in D.NUM_RE.findall(D.FREE_RE.sub(" ", t)):
-                if D.bare(num) not in known and not (D.bare(num).isdigit() and int(D.bare(num)) <= 10):
+                if D.bare(num) not in known and not (D.bare(num).isdigit() and int(D.bare(num)) <= 10) \
+                        and not D.rounds_to(num, known):
                     D.warn(f"{name}: book number {num!r} is not in the chapter's data: {t[:80]}…")
             blocks.append(blk)
-            if blk["kind"] in ("p", "quote"):
-                for m in D.Q_RE.finditer(blk["text"]):
+            if blk["kind"] in ("p", "quote", "table", "ul", "ol"):
+                for m in D.Q_RE.finditer(t):
                     k = D.qkey(m.group(0))
                     if k in own and k not in placed and k not in drawn:
                         placed.add(k)
                         fig += 1
-                        blocks.append(card(own[k], f"{ch['n']}.{fig}"))
+                        blocks.append(card(own[k], f"{lab}.{fig}"))
         if blocks or s["title"]:
             out.append({**s, "blocks": blocks})
     # A question the prose never cites is left off the page, not appended: the warning is the
@@ -187,8 +225,67 @@ def build(ch, text, questions, diagrams, deck_known):
     return out, sections
 
 
+ONES = ("Zero One Two Three Four Five Six Seven Eight Nine Ten Eleven Twelve Thirteen Fourteen Fifteen "
+        "Sixteen Seventeen Eighteen Nineteen").split()
+TENS = {2: "Twenty", 3: "Thirty", 4: "Forty"}
+
+
+def spelled(n):
+    if n < 20:
+        return ONES[n]
+    return TENS[n // 10] + (f"-{ONES[n % 10]}" if n % 10 else "")
+
+
+APPENDIX = {"book": "_FIGURES_APPENDIX.md", "title": "Figures appendix"}
+
+
+def appendix_chapter(toc, questions):
+    """The figures appendix as a chapter that owns every card, so each figure line places its card.
+    It is not in `chapters.json`: the Q links keep pointing at the chapter that argues from the card."""
+    return {**APPENDIX, "n": max(c["n"] for c in toc["chapters"]) + 1, "label": "A", "group": None,
+            "appendix": True, "questions": sorted(k[2:] for k in questions)}
+
+
 def page_name(ch):
+    if ch.get("appendix"):
+        return "Appendix - Figures.html"
+    if "part" in ch:
+        return f"Part {ch['part']} - {re.sub(r'[?/:]', '', ch['title'])}.html"
     return f"Ch {ch['n']:02d} - {re.sub(r'[?/:]', '', ch['title'])}.html"
+
+
+def part_before(toc, ch):
+    """The part whose first chapter this is, so its page renders ahead of it."""
+    first = {}
+    for c in toc["chapters"]:
+        first.setdefault(c.get("group"), c["n"])
+    for part in toc.get("parts", []):
+        if first.get(part["title"]) == ch["n"]:
+            return part
+    return None
+
+
+def render_part(part, template, toc, book_dir, out_dir, index_href="index.html"):
+    """A part's introduction, parsed like a chapter's prose. A [[...]] figure here is an error, not a
+    card: the evidence belongs to the chapter that owns the question."""
+    with open(os.path.join(book_dir, part["book"]), encoding="utf-8") as f:
+        text = f.read()
+    book = D.parse_book(text)
+    for sec in book:
+        for b in [b for b in sec["blocks"] if b["kind"] == "figure"]:
+            D.warn(f"part {part['part']}: figure [[{b['ref']}]] dropped; parts show no evidence")
+        sec["blocks"] = [b for b in sec["blocks"] if b["kind"] != "figure"]
+    h1 = re.search(r"^# (.+)$", text, re.M)
+    title = h1.group(1).strip() if h1 else part["title"]
+    head = {"kind": "title", "title": title, "subtitle": f"Part {spelled(part['part'])}", "notes": ""}
+    pages = {str(c["n"]): page_name(c) for c in toc["chapters"]}
+    owners = {q: c["n"] for c in toc["chapters"] for q in c["questions"]}
+    # No "chapter": every Q link then resolves to the owning chapter's page.
+    payload = {"head": head, "sections": [], "index": index_href, "book": book, "pages": pages, "owners": owners}
+    out = os.path.join(out_dir, page_name(part))
+    with open(out, "w", encoding="utf-8") as f:
+        f.write(D.fill(template, title, payload))
+    return out
 
 
 def render(ch, template, questions, diagrams, deck_known, toc, book_dir, out_dir, index_href="index.html"):
@@ -197,8 +294,9 @@ def render(ch, template, questions, diagrams, deck_known, toc, book_dir, out_dir
     book, sections = build(ch, text, questions, diagrams, deck_known)
     h1 = re.search(r"^# (.+)$", text, re.M)
     title = h1.group(1).strip() if h1 else ch["title"]
+    subtitle = "Appendix" if ch.get("appendix") else f"Chapter {spelled(ch['n'])}"
     head = {"kind": "title", "title": title,
-            "subtitle": f"Chapter {ch['n']}" + (f" · {ch['group']}" if ch.get("group") else ""), "notes": ""}
+            "subtitle": subtitle + (f" · {ch['group']}" if ch.get("group") else ""), "notes": ""}
     out = os.path.join(out_dir, page_name(ch))
     # slim() edits the chart dicts in place, and the cards in `book` share them.
     D.slim(sections)
@@ -213,10 +311,17 @@ def render(ch, template, questions, diagrams, deck_known, toc, book_dir, out_dir
 
 def render_index(out_dir, toc, template):
     groups = []
+    parts = {p["title"]: p for p in toc.get("parts", [])}
     for ch in toc["chapters"]:
         g = ch.get("group") or ("Opening" if ch["n"] <= 2 else "Closing")
         if not groups or groups[-1]["title"] != g:
-            groups.append({"kicker": "Chapters", "title": g, "notes": "", "blocks": []})
+            part = parts.get(g)
+            groups.append({"kicker": f"Part {spelled(part['part'])}" if part else "Chapters", "title": g,
+                           "notes": "", "blocks": []})
+            if part:
+                groups[-1]["blocks"].append({"key": f"Part {part['part']}", "question": {
+                    "question": "Introduction", "how": "", "originally": "", "notes": ""},
+                    "views": [], "statements": [], "href": page_name(part)})
         groups[-1]["blocks"].append({"key": f"Ch {ch['n']:02d}", "question": {"question": ch["title"], "how": "",
                                      "originally": "", "notes": ""}, "views": [], "statements": [],
                                      "href": page_name(ch)})
@@ -252,6 +357,8 @@ def main(argv):
         if not lessons:
             D.warn(f"--lessons {args.lessons}: no insight or hypothesis read from it")
     questions, diagrams, deck_known = load_decks(args.decks, lessons)
+    # The book's own assets go first: a `Diagram N.M` ref must never fall through to a deck's tag.
+    diagrams = book_diagrams() + diagrams
     merge(questions, toc.get("merged", {}))
     seen = {}
     for ch in toc["chapters"]:
@@ -264,7 +371,13 @@ def main(argv):
         D.warn(f"{k} is in a deck but no chapter shows it")
     for ch in toc["chapters"]:
         if not args.only or ch["n"] in args.only:
+            part = part_before(toc, ch)
+            if part:
+                print(render_part(part, template, toc, args.book, args.out))
             print(render(ch, template, questions, diagrams, deck_known, toc, args.book, args.out))
+    if os.path.exists(os.path.join(args.book, APPENDIX["book"])) and not args.only:
+        print(render(appendix_chapter(toc, questions), template, questions, diagrams, deck_known, toc, args.book,
+                     args.out))
     render_index(args.out, toc, template)
     if D.WARNINGS:
         print(f"{len(D.WARNINGS)} book warning(s) above: fix each before sharing the pages", file=sys.stderr)

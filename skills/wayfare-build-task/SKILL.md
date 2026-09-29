@@ -1,7 +1,7 @@
 ---
 name: wayfare-build-task
 # prettier-ignore
-description: "Drive a task end to end: plan, implement, simplify, push (tests included), self-review, mark ready, await review, respond, ship. No args: resume the current goal (gated). Use for small, low-risk PRs only; larger work goes through wayfare:wayfare-sync-plan."
+description: "Drive a task end to end: plan, implement, simplify, push (tests included), self-review, mark ready, await review, respond, ship. No args: resume the current goal (gated). A bare description goes to wayfare:wayfare-one-shot. Use for small, low-risk PRs only; larger work goes through wayfare:wayfare-sync-plan."
 argument-hint: "[ISSUE_ID [additional-context] | DESCRIPTION | recalibrate]"
 ---
 
@@ -645,12 +645,20 @@ State the verdict explicitly before advancing, as in "verified outstanding:
 SUCCESS_CRITERION does not hold", so a wrong resolution is visible rather than
 assumed.
 
-#### 1d: Grill it (only when nothing resolved)
+#### 1d: Plan it (only when nothing resolved)
 
-Invoke `wayfare:wayfare-grill-idea` via the Skill tool, passing `$ARGUMENTS`. It
-grills the idea one question at a time and emits dependency-aware work-items
-into `.plans/`. It gates on the user confirming shared understanding, and
-wayfare-build-task does not bypass that gate.
+A bare description is size-routed, never planned inline. One small, clear,
+single-area change with no one-way door goes to
+`wayfare:wayfare-one-shot $ARGUMENTS`, which drafts the item, takes the person's
+yes as the ready-mark and calls this skill back with the item's id, so 1b
+resolves it as READY. Anything else is grilled. Under a goal turn's commit-only
+mode neither runs: the argument there is always an item, and a description is
+`stop: awaiting-human`.
+
+To grill, invoke `wayfare:wayfare-grill-idea` via the Skill tool, passing
+`$ARGUMENTS`. It grills the idea one question at a time and emits
+dependency-aware work-items into `.plans/`. It gates on the user confirming
+shared understanding, and wayfare-build-task does not bypass that gate.
 
 Skip the grill and plan inline only when the task is one wayfare-grill-idea
 itself calls out as not worth grilling (`wayfare-grill-idea`'s frontmatter

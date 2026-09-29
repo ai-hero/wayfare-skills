@@ -51,8 +51,8 @@ mid-loop, which leaves the checkout on the bot's branch under the next task.
    1. `active` task, mid-build: check out its branch if one exists (its
       `branch:` field names it, which is what `resume-state.sh` matches on;
       `## Log` records the PR from previous runs), then invoke
-      `wayfare:wayfare-build-task` (via the Skill tool); resume detection takes
-      over.
+      `wayfare:wayfare-build-task` through the active client's skill mechanism;
+      resume detection takes over.
    2. `review` task: its PR is recorded in `## Log` (wayfare-build-task appends
       the URL at PR-open). **Check the PR's state first**: open →
       `gh pr checkout` its branch, then invoke wayfare-build-task to resume;

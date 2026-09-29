@@ -152,62 +152,38 @@ echo ""
 
 bold "2b. Cross-Agent Manifests"
 
-CODEX_MANIFEST="$PLUGIN_ROOT/.codex-plugin/plugin.json"
-CODEX_MANIFEST_REL=".codex-plugin/plugin.json"
 AGENTS_MANIFEST="$PLUGIN_ROOT/.agents/plugins/marketplace.json"
 AGENTS_MANIFEST_REL=".agents/plugins/marketplace.json"
+PORTABLE_MANIFEST="$PLUGIN_ROOT/plugin.json"
+PORTABLE_MANIFEST_REL="plugin.json"
 
-CODEX_VERSION=""
-CODEX_NAME=""
-CODEX_SKILLS=""
-if [[ ! -f "$CODEX_MANIFEST" ]]; then
-  error "Missing Codex manifest" \
-    "$CODEX_MANIFEST_REL" \
-    "" \
-    "Create .codex-plugin/plugin.json mirroring .claude-plugin/plugin.json's name/description/version/author, plus \"skills\": \"./skills/\""
-elif ! jq empty "$CODEX_MANIFEST" 2>/dev/null; then
-  error "Invalid JSON syntax" \
-    "$CODEX_MANIFEST_REL" \
-    "" \
-    "Run: jq . $CODEX_MANIFEST_REL to see the parse error, then fix the JSON"
+if [[ ! -f "$PORTABLE_MANIFEST" ]]; then
+  error "Missing cross-agent plugin manifest" "$PORTABLE_MANIFEST_REL" "" \
+    "Create $PORTABLE_MANIFEST_REL so Agent Plugin hosts and Cursor can load this package"
+elif ! jq empty "$PORTABLE_MANIFEST" 2>/dev/null; then
+  error "Invalid JSON syntax" "$PORTABLE_MANIFEST_REL" "" \
+    "Run: jq . $PORTABLE_MANIFEST_REL to see the parse error, then fix the JSON"
 else
-  pass "$CODEX_MANIFEST_REL is valid JSON"
-  CODEX_VERSION=$(jq -r '.version // empty' "$CODEX_MANIFEST")
-  CODEX_NAME=$(jq -r '.name // empty' "$CODEX_MANIFEST")
-  CODEX_SKILLS=$(jq -r '.skills // empty' "$CODEX_MANIFEST")
+  pass "$PORTABLE_MANIFEST_REL is valid JSON"
 fi
 
-# name: all four manifests (this file, Codex's, and the .plugins[] entry each
-# marketplace-shaped manifest carries) must name the SAME plugin. version:
-# only .claude-plugin/plugin.json and .codex-plugin/plugin.json carry one —
-# neither marketplace file does, by design (the plugin's own manifests carry
-# version, marketplace entries just point at the plugin). skills path: both
-# plugin.json files must point at "./skills/".
-if [[ -n "$NAME" && -n "$CODEX_NAME" && "$NAME" != "$CODEX_NAME" ]]; then
-  error "Codex manifest name '$CODEX_NAME' disagrees with $MANIFEST_REL's '$NAME'" \
-    "$CODEX_MANIFEST_REL" "" "Set \"name\": \"$NAME\" in $CODEX_MANIFEST_REL"
-elif [[ -n "$CODEX_NAME" ]]; then
-  pass "$CODEX_MANIFEST_REL name agrees: $CODEX_NAME"
+if [[ -f "$PORTABLE_MANIFEST" ]] && jq empty "$PORTABLE_MANIFEST" 2>/dev/null; then
+  PORTABLE_SCHEMA=$(jq -r '.["$schema"] // empty' "$PORTABLE_MANIFEST")
+  [[ "$PORTABLE_SCHEMA" == "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json" ]] || \
+    error "Portable manifest has the wrong or missing Agent Plugins schema" \
+      "$PORTABLE_MANIFEST_REL" "" \
+      "Set \"\$schema\" to https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
 fi
 
-if [[ -z "$VERSION" || -z "$CODEX_VERSION" ]]; then
-  error "One or both manifests are missing a version, so agreement cannot be checked" \
-    "" \
-    "" \
-    "Set \"version\" in $MANIFEST_REL and $CODEX_MANIFEST_REL"
-elif [[ "$VERSION" != "$CODEX_VERSION" ]]; then
-  error "Manifest versions disagree ($MANIFEST_REL=$VERSION, $CODEX_MANIFEST_REL=$CODEX_VERSION)" \
-    "" \
-    "" \
-    "Bump both manifests to the same version — a second agent installing this repo must see one plugin version, not two"
-else
-  pass "manifest versions agree: $VERSION"
+if [[ -f "$PORTABLE_MANIFEST" ]] && jq empty "$PORTABLE_MANIFEST" 2>/dev/null; then
+  other_name=$(jq -r '.name // empty' "$PORTABLE_MANIFEST")
+  other_version=$(jq -r '.version // empty' "$PORTABLE_MANIFEST")
+  [[ "$other_name" == "$NAME" ]] || error "$PORTABLE_MANIFEST_REL name '$other_name' disagrees with '$NAME'" \
+    "$PORTABLE_MANIFEST_REL" "" "Set \"name\": \"$NAME\""
+  [[ "$other_version" == "$VERSION" ]] || error "$PORTABLE_MANIFEST_REL version '$other_version' disagrees with '$VERSION'" \
+    "$PORTABLE_MANIFEST_REL" "" "Set \"version\": \"$VERSION\""
 fi
 
-if [[ -n "$CODEX_SKILLS" && "$CODEX_SKILLS" != "./skills/" ]]; then
-  error "Codex manifest's \"skills\" is '$CODEX_SKILLS', not './skills/'" \
-    "$CODEX_MANIFEST_REL" "" "Set \"skills\": \"./skills/\" in $CODEX_MANIFEST_REL"
-fi
 CLAUDE_SKILLS=$(jq -r '.skills // empty' "$MANIFEST" 2>/dev/null)
 if [[ -n "$CLAUDE_SKILLS" && "$CLAUDE_SKILLS" != "./skills/" ]]; then
   error "Plugin manifest's \"skills\" is '$CLAUDE_SKILLS', not './skills/'" \
@@ -341,21 +317,11 @@ else
       pass "$SKILL_NAME: body content present"
     fi
 
-    # 6/7. Size budget, per skill.
-    #
-    # The wayfare-build-task pipeline's skills are executable specs, not prose guides:
-    # the procedure IS the content, and every guard sits inline with the step
-    # it constrains. Splitting one across files is how a step comes to be
-    # executed without its STOP. The list is the wayfare verbs plus build-task and the
-    # skills its DAG nodes delegate to. `wayfare-init-repo` writes the config
-    # they all read. Everything else keeps the 500/5000 guideline, where a
-    # breach really does mean reference material has leaked into the
-    # instructions: an oversized reference warns today and should.
-    PIPELINE_SKILLS=" wayfare-sync-plan wayfare-start-goal wayfare-init-repo wayfare-build-task wayfare-ship-pr wayfare-push-pr wayfare-review-pr wayfare-respond-pr "
+    # 6/7. Size budget, per activation entrypoint. Agent Skills loads all of
+    # SKILL.md on activation, so no pipeline gets a larger exception. Detailed
+    # executable specifications belong in skill-local resources and are loaded
+    # only when the entrypoint routes execution to them.
     LIMIT_LINES=500; LIMIT_WORDS=5000
-    case "$PIPELINE_SKILLS" in
-      *" $SKILL_NAME "*) LIMIT_LINES=3500; LIMIT_WORDS=35000 ;;
-    esac
 
     LINE_COUNT=$(wc -l < "$SKILL_FILE" | tr -d ' ')
     if [[ $LINE_COUNT -gt $LIMIT_LINES ]]; then
@@ -375,6 +341,51 @@ else
         "Large skills consume context window. Split into references/ loaded on demand, each linked from the body with a load condition"
     else
       pass "$SKILL_NAME: $WORD_COUNT words"
+    fi
+
+    # 7a. Wayfare skills depend on plugin-global scripts and references. Make
+    # that package boundary explicit with the standard compatibility field so
+    # a client does not mistake one directory for a standalone skill bundle.
+    FM_COMPAT=$(echo "$FRONTMATTER" | grep -E '^compatibility:' | sed 's/^compatibility:[[:space:]]*//' | head -1 || true)
+    if [[ -z "$FM_COMPAT" ]]; then
+      error "Frontmatter missing the Agent Skills compatibility field" \
+        "$SKILL_REL" "" \
+        "Describe the complete Wayfare plugin and any runtime tools this skill requires"
+    elif [[ ${#FM_COMPAT} -gt 502 ]]; then
+      # The shell reads the YAML representation, including a possible pair of
+      # quotes. Two extra characters preserve the specification's 500-character
+      # value limit without needing a second YAML parser here.
+      error "Compatibility value exceeds the Agent Skills 500-character limit" \
+        "$SKILL_REL" "" \
+        "Keep compatibility to the package and runtime requirements"
+    else
+      pass "$SKILL_NAME: compatibility declared"
+    fi
+
+    # A detailed executable specification is useful only when the activation
+    # entrypoint routes to it. An unlinked WORKFLOW.md silently preserves old
+    # prose while the active skill forgets the actual procedure.
+    if [[ -f "$skill_dir/WORKFLOW.md" ]]; then
+      if grep -qF '[WORKFLOW.md](WORKFLOW.md)' "$SKILL_FILE"; then
+        pass "$SKILL_NAME: executable specification is discoverable"
+      else
+        error "WORKFLOW.md exists but SKILL.md does not route to it" \
+          "$SKILL_REL" "" \
+          "Link [WORKFLOW.md](WORKFLOW.md) and state when it must be read"
+      fi
+    fi
+
+    # Activation entrypoints use capability language. Product names remain
+    # valid when they identify real infrastructure or client metadata, but
+    # portable operations must not assume another client's tool call syntax.
+    CLIENT_TOOL_HITS=$(grep -nE 'via (the )?Skill tool|Use (the )?(Read|Bash) tool|Agent\(subagent_type=' "$SKILL_FILE" || true)
+    if [[ -n "$CLIENT_TOOL_HITS" ]]; then
+      error "SKILL.md hard-codes client tool syntax" \
+        "$SKILL_REL" \
+        "$(printf '%s' "$CLIENT_TOOL_HITS" | head -1 | cut -d: -f1)" \
+        "Describe the capability and route through references/client-capabilities.md"
+    else
+      pass "$SKILL_NAME: activation language is client-neutral"
     fi
 
     # 8. `../../references/NAME` paths the body names must exist. This
@@ -755,8 +766,10 @@ for f in "$SKILLS_DIR"/*/SKILL.md; do
   case "$f" in */wayfare-audit-plugin/SKILL.md) continue ;; esac
   FLEET_FM=$(awk '/^---[[:space:]]*$/{n++; next} n==1{print} n>=2{exit}' "$f")
   grep -qE '^[[:space:]]*user-invocable:[[:space:]]*false' <<< "$FLEET_FM" && continue
-  grep -qE 'HERO\.md|hero_field|hero_md_field' "$f" || continue
-  grep -qE 'hero_at_fleet_root|hero_fleet_root|-f "\$(PWD|ROOT)/FLEET\.md" \]' "$f" && continue
+  SKILL_DIR=$(dirname "$f")
+  SKILL_CONTENT=$(find "$SKILL_DIR" -maxdepth 1 -type f \( -name 'SKILL.md' -o -name 'WORKFLOW.md' \) -exec cat {} +)
+  grep -qE 'HERO\.md|hero_field|hero_md_field' <<< "$SKILL_CONTENT" || continue
+  grep -qE 'hero_at_fleet_root|hero_fleet_root|-f "\$(PWD|ROOT)/FLEET\.md" \]' <<< "$SKILL_CONTENT" && continue
   FLEET_GATE_ERRORS=$((FLEET_GATE_ERRORS + 1))
   error "reads HERO.md but never tests for the fleet root" \
     "${f#"$PLUGIN_ROOT/"}" "" \
@@ -772,10 +785,10 @@ done
 # is ever edited away, the store silently becomes write-only: items pile up,
 # nothing marks them done, and wayfare-build-task goes back to planning from scratch
 # while ignoring the plate. Nothing else in this repo would catch that.
-ONE_SHOT="$SKILLS_DIR/wayfare-build-task/SKILL.md"
+ONE_SHOT="$SKILLS_DIR/wayfare-build-task/WORKFLOW.md"
 if [[ ! -f "$ONE_SHOT" ]]; then
-  error "skills/wayfare-build-task/SKILL.md is missing" "skills/wayfare-build-task/SKILL.md" "" \
-    "wayfare-build-task owns Pipeline 2; restore it or update this guard"
+  error "skills/wayfare-build-task/WORKFLOW.md is missing" "skills/wayfare-build-task/WORKFLOW.md" "" \
+    "wayfare-build-task owns Pipeline 2; restore its executable specification or update this guard"
 else
   # Strip HTML comments and fenced blocks before matching, and require the
   # reference in an ACTIVE position (an Invoke instruction or a table row).
@@ -793,7 +806,7 @@ else
     pass "wayfare-build-task's plan step delegates to wayfare-grill-idea"
   else
     error "wayfare-build-task no longer references wayfare-grill-idea — the plan step has drifted back to planning from scratch" \
-      "skills/wayfare-build-task/SKILL.md" \
+      "skills/wayfare-build-task/WORKFLOW.md" \
       "" \
       "wayfare-grill-idea is the planning skill; wayfare-build-task's Step 1 must resolve against .plans/ and delegate to it. See PIPELINES.md Pipeline 2"
   fi
@@ -804,7 +817,7 @@ else
     pass "wayfare-build-task reads the .plans/ store ($STORE_HITS references)"
   else
     error "wayfare-build-task does not read .plans/ — the work-item store has no consumer" \
-      "skills/wayfare-build-task/SKILL.md" \
+      "skills/wayfare-build-task/WORKFLOW.md" \
       "" \
       "wayfare-grill-idea, handoff, and harden all emit into .plans/; wayfare-build-task Step 1 must resolve against it and Step 9 must mark the merged item done"
   fi

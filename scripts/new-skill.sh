@@ -61,8 +61,10 @@ name: $SKILL_NAME
 # prettier-ignore
 description: "$DESCRIPTION_YAML"
 argument-hint: [args]
+compatibility: "Requires the complete Wayfare plugin. Replace this sentence with the actual runtime tools and network requirements."
 # Omit the next line for skills meant to be model-invocable / chained by an
-# orchestrator like wayfare-build-task (a user-only skill cannot be called via the Skill tool).
+# orchestrator like wayfare-build-task (a user-only skill cannot be called
+# through the active client's skill mechanism).
 disable-model-invocation: true
 ---
 
@@ -88,6 +90,11 @@ If \`FLEET_ROOT\` printed, this folder is a fleet, not a repo: stop and follow *
 
 Read \`HERO.md\` if it exists. This skill uses:
 - TODO: list which HERO.md sections this skill reads
+
+Use capability language rather than naming one client's file, shell, skill, or
+subagent tools. For client translation and authorization gates, read
+\`../../references/client-capabilities.md\` and
+\`../../references/authorization.md\` only when this workflow needs them.
 
 If \`HERO.md\` is missing, suggest \`wayfare:wayfare-init-repo\` but proceed with auto-detection.
 

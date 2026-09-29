@@ -3,6 +3,7 @@ name: wayfare-recomponentize-ui
 # prettier-ignore
 description: Refactor a project's UI into atomic components (atoms/molecules/organisms/templates), sourcing primitives from a design-system registry when one is configured (default @aihero) or stock shadcn otherwise, and codemod off-token styling. Use when asked to recomponentize, refactor UI, adopt a design system, or clean up component structure.
 argument-hint: "[--audit-only] [REGISTRY_NAMESPACE] | recalibrate"
+compatibility: "Requires the complete Wayfare plugin and the package manager, UI framework, and registry access used by the target project."
 ---
 
 # Recomponentize UI: atomic components, sourced from the design system
@@ -199,7 +200,7 @@ It writes, without overwriting customized files (exit 2 on drift, same contract
 as `install-auto-approve.sh`):
 
 - `.claude/rules/design-system.md`, path-scoped to `**/*.{tsx,jsx,css}`, so the
-  constraints load whenever Claude reads a UI file rather than when a
+  constraints load whenever an agent reads a UI file rather than when a
   description happens to match.
 - `.claude/hooks/check-design-tokens.sh` plus `PostToolUse` wiring, which flags
   raw hex, palette classes, and component-root margins on write.

@@ -237,7 +237,7 @@ for name in $("$FIELDS" --list); do
   if declares_verb "$PLUGIN_ROOT/skills/$name"; then
     case " $NO_INVOCATION " in
       *" $name "*) ;;
-      *) grep -qE "hero-fields.sh\" ($name|--all)\$" "$PLUGIN_ROOT/skills/$name/SKILL.md" ||
+      *) grep -qE "hero-fields.sh\" ($name|--all)\$" "$PLUGIN_ROOT/skills/$name/"{SKILL,WORKFLOW}.md 2>/dev/null ||
            WRONG_CALL="$WRONG_CALL $name" ;;
     esac
   fi

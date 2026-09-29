@@ -3,6 +3,7 @@ name: wayfare-sync-architecture
 # prettier-ignore
 description: "Converge DESIGN.md with the codebase: bootstrap it where it does not exist, and apply the drift rows a review found, writing only what the user confirms. Decisions are append-only. Use after wayfare-review-architecture reports rows, or to create the record for the first time."
 argument-hint: ""
+compatibility: "Requires the complete Wayfare plugin, git, and repository write access for DESIGN.md."
 user-invocable: false
 ---
 
@@ -127,10 +128,11 @@ has a surface) are `uncovered` rows like any other. Same rule as the legacy
 
 ## Update: the file exists
 
-**Invoke `wayfare:wayfare-review-architecture` via the Skill tool first.** It
-returns the findings table, and loads the Hard Rule and the file format this
-step writes against. Do not re-derive the rows here; a second investigation that
-disagrees with the reported one leaves the user arbitrating two answers.
+**Invoke `wayfare:wayfare-review-architecture` through the active client's skill
+mechanism first.** It returns the findings table, and loads the Hard Rule and
+the file format this step writes against. Do not re-derive the rows here; a
+second investigation that disagrees with the reported one leaves the user
+arbitrating two answers.
 
 1. **Confirm, then write.** Apply confirmed rows. **Decisions are append-only**:
    a stale decision gets a superseding entry, never an edit. Refresh

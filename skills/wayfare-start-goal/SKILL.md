@@ -3,6 +3,7 @@ name: wayfare-start-goal
 # prettier-ignore
 description: Authorize the next goal at a gate the person types, then run its first turn. The grant is in-session and never stored. Use when the roadmap is planned and you are ready to start building the next goal.
 argument-hint: ""
+compatibility: "Requires the complete Wayfare plugin, git, an interactive authorization gate, and a planned .plans store."
 ---
 
 # Authorize the next goal and run it

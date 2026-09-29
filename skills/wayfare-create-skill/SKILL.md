@@ -1,12 +1,13 @@
 ---
 name: wayfare-create-skill
 # prettier-ignore
-description: Create a new Claude Code skill, subagent, rule, or hook. Guides through trigger conditions, success criteria, and writes a well-structured SKILL.md. Use when extending Claude.
-argument-hint: "DESCRIPTION_OF_WHAT_YOU_WANT_CLAUDE_TO_DO | recalibrate"
+description: Create an Agent Skill or a supported client-specific agent, rule, or hook with clear triggers and success criteria. Use when extending an agent client or adding a reusable workflow.
+argument-hint: "DESCRIPTION_OF_THE_CAPABILITY | recalibrate"
+compatibility: "Requires the complete Wayfare plugin; client-specific components also require that client's plugin format and runtime."
 disable-model-invocation: true
 ---
 
-# Create Skill: build Claude Code components
+# Create Skill: build agent components
 
 A skill is a folder with a `SKILL.md` in it, following the open
 [Agent Skills](https://agentskills.io/specification) format. This skill writes
@@ -45,7 +46,7 @@ skill-name/
 ---
 name: verb-object
 # prettier-ignore
-description: What it does AND when to use it. Imperative, keyword-rich, pushy.
+description: What it does and when to use it, with discriminating task keywords.
 argument-hint: [args]
 # Omit for skills an orchestrator like wayfare-build-task needs to chain. Setting it
 # makes the skill user-only, so nothing can call it automatically.
@@ -63,7 +64,10 @@ wayfare: sync
 
 Only `name` and `description` are required by the spec. `argument-hint` and
 `disable-model-invocation` are Claude Code fields, and `wayfare` is this
-plugin's own; a skill meant to be portable carries neither.
+plugin's own; a standalone portable skill carries neither. A Wayfare skill is
+not standalone because it uses plugin-global scripts and references, so it also
+declares standard `compatibility` metadata naming that package boundary and any
+required tools or network access.
 
 - `name`: 1-64 chars, lowercase letters, digits and hyphens; no leading,
   trailing or doubled hyphen; must equal the folder name. Use verb-object.
@@ -89,6 +93,15 @@ the conversation for attention. Three rules:
 3. **Match specificity to fragility.** Prose where several approaches are fine;
    exact commands where the sequence matters. Give a default and mention
    alternatives briefly, never a menu.
+
+Use capability language such as "inspect the file", "run the command", or
+"invoke the named skill through the active client". Do not hard-code another
+client's Read, Bash, Skill, or subagent call syntax. Read
+`../../references/client-capabilities.md` when a workflow depends on chaining,
+delegation, progress channels, or client settings. Read
+`../../references/authorization.md` when the skill changes local or external
+state; preserve consequential gates without asking again for ordinary work the
+invocation already authorized.
 
 Patterns that earn their place: a **Gotchas** list (facts that defy reasonable
 assumptions), a **template** for any output that must have a shape, a

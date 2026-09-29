@@ -49,7 +49,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 BASE="$WORK/base"
-mkdir -p "$BASE/scripts" "$BASE/.claude-plugin" "$BASE/.codex-plugin" "$BASE/.agents/plugins" "$BASE/assets"
+mkdir -p "$BASE/scripts" "$BASE/.claude-plugin" "$BASE/.agents/plugins" "$BASE/assets"
 cp "$ROOT_REPO/scripts/validate.sh" "$BASE/scripts/validate.sh"
 cp -R "$ROOT_REPO/skills" "$BASE/skills"
 cp -R "$ROOT_REPO/references" "$BASE/references"
@@ -61,8 +61,8 @@ cp -R "$ROOT_REPO/assets/design-system" "$BASE/assets/design-system"
 cp -R "$ROOT_REPO/assets/fleet" "$BASE/assets/fleet"
 cp "$ROOT_REPO/.claude-plugin/plugin.json" "$BASE/.claude-plugin/plugin.json"
 cp "$ROOT_REPO/.claude-plugin/marketplace.json" "$BASE/.claude-plugin/marketplace.json"
-cp "$ROOT_REPO/.codex-plugin/plugin.json" "$BASE/.codex-plugin/plugin.json"
 cp "$ROOT_REPO/.agents/plugins/marketplace.json" "$BASE/.agents/plugins/marketplace.json"
+cp "$ROOT_REPO/plugin.json" "$BASE/plugin.json"
 
 fixture() { # NAME -> path; a fresh copy of BASE
   local d="$WORK/$1"
@@ -99,6 +99,28 @@ d=$(fixture clean)
 run_validate "$d"
 check "clean fixture: rc" "0" "$RC"
 check_contains "clean fixture: ALL CHECKS PASSED" "$OUT" "ALL CHECKS PASSED"
+
+# ---------- Agent Skills portability contract -----------------------------
+
+d=$(fixture missing-compatibility)
+sed '/^compatibility:/d' "$d/skills/wayfare-humanize-prose/SKILL.md" > "$d/skills/wayfare-humanize-prose/SKILL.md.tmp"
+mv "$d/skills/wayfare-humanize-prose/SKILL.md.tmp" "$d/skills/wayfare-humanize-prose/SKILL.md"
+run_validate "$d"
+check "missing compatibility: rc" "1" "$RC"
+check_contains "missing compatibility: reported" "$OUT" "missing the Agent Skills compatibility field"
+
+d=$(fixture client-tool-syntax)
+printf '\nUse the Read tool for the target file.\n' >> "$d/skills/wayfare-humanize-prose/SKILL.md"
+run_validate "$d"
+check "client tool syntax: rc" "1" "$RC"
+check_contains "client tool syntax: reported" "$OUT" "hard-codes client tool syntax"
+
+d=$(fixture unlinked-workflow)
+sed 's/\[WORKFLOW.md\](WORKFLOW.md)/the workflow resource/' "$d/skills/wayfare-push-pr/SKILL.md" > "$d/skills/wayfare-push-pr/SKILL.md.tmp"
+mv "$d/skills/wayfare-push-pr/SKILL.md.tmp" "$d/skills/wayfare-push-pr/SKILL.md"
+run_validate "$d"
+check "unlinked workflow: rc" "1" "$RC"
+check_contains "unlinked workflow: reported" "$OUT" "WORKFLOW.md exists but SKILL.md does not route to it"
 
 # ---------- sanctioned WAYFARE_ROOT line: fence variants --------------------
 
@@ -248,17 +270,11 @@ check_contains "goals.md grant hidden behind an earlier clean match: reported" "
 
 # ---------- cross-agent manifest agreement ----------------------------------
 
-d=$(fixture codex-version-mismatch)
-jq '.version = "9.9.9"' "$d/.codex-plugin/plugin.json" > "$d/.codex-plugin/plugin.json.tmp" && mv "$d/.codex-plugin/plugin.json.tmp" "$d/.codex-plugin/plugin.json"
+d=$(fixture portable-version-mismatch)
+jq '.version = "9.9.9"' "$d/plugin.json" > "$d/plugin.json.tmp" && mv "$d/plugin.json.tmp" "$d/plugin.json"
 run_validate "$d"
-check "codex version mismatch: rc" "1" "$RC"
-check_contains "codex version mismatch: reported" "$OUT" "Manifest versions disagree"
-
-d=$(fixture codex-skills-path-wrong)
-jq '.skills = "./other/"' "$d/.codex-plugin/plugin.json" > "$d/.codex-plugin/plugin.json.tmp" && mv "$d/.codex-plugin/plugin.json.tmp" "$d/.codex-plugin/plugin.json"
-run_validate "$d"
-check "codex skills path wrong: rc" "1" "$RC"
-check_contains "codex skills path wrong: reported" "$OUT" "not './skills/'"
+check "portable version mismatch: rc" "1" "$RC"
+check_contains "portable version mismatch: reported" "$OUT" "plugin.json version '9.9.9' disagrees"
 
 d=$(fixture agents-name-missing)
 jq '.plugins[0].name = "wrongname"' "$d/.agents/plugins/marketplace.json" > "$d/.agents/plugins/marketplace.json.tmp" && mv "$d/.agents/plugins/marketplace.json.tmp" "$d/.agents/plugins/marketplace.json"

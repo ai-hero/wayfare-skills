@@ -3,6 +3,7 @@ name: wayfare-grill-idea
 # prettier-ignore
 description: Brainstorm and grill an idea one question at a time into shared understanding, as dependency-aware work-items. Use when starting a feature, refactor or migration past a one-liner, when a task arrives vague, before an expensive-to-reverse decision, or before building on an unstated assumption. Skip it for typos, copy tweaks and dependency bumps.
 argument-hint: "[IDEA_OR_TASK]"
+compatibility: "Requires the complete Wayfare plugin and an interactive agent session for the decision interview."
 ---
 
 # Think It Through: brainstorm, grill to shared understanding, then write work items
@@ -113,12 +114,13 @@ none may be silently skipped. Skipping is how a two-week detour begins.
 
 **Mode dispatch:** a leading `arch` in `$ARGUMENTS` is the former Arch Mode,
 which moved to the architecture skills (one root `DESIGN.md` instead of a
-`specs/` tree). Say so in one line, then invoke via the Skill tool: `review`
-maps to `wayfare:wayfare-review-architecture`; `create`, `update`, `init` and
-any other former verb map to `wayfare:wayfare-sync-architecture`. A trailing
-`SPEC_NAME` becomes focus context for that run. Say explicitly that per-aspect
-spec files no longer exist; the one root file is what gets updated. Everything
-else is an idea or task to think through.
+`specs/` tree). Say so in one line, then invoke through the active client's
+skill mechanism: `review` maps to `wayfare:wayfare-review-architecture`;
+`create`, `update`, `init` and any other former verb map to
+`wayfare:wayfare-sync-architecture`. A trailing `SPEC_NAME` becomes focus
+context for that run. Say explicitly that per-aspect spec files no longer exist;
+the one root file is what gets updated. Everything else is an idea or task to
+think through.
 
 **Feature mode:** if `$ARGUMENTS` resolves to an existing `task` item in the
 store (id, filename slug, or title, per wayfare's roadmap), this run plans that

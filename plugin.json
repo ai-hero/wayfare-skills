@@ -1,0 +1,13 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "wayfare",
+  "version": "2.1.0",
+  "description": "Plan work and have agents execute it, in a repo and across a fleet of them",
+  "author": {
+    "name": "AI Hero Inc",
+    "url": "https://github.com/ai-hero"
+  },
+  "repository": "https://github.com/ai-hero/wayfare-skills",
+  "license": "MIT",
+  "keywords": ["agents", "planning", "code-review", "workflow", "fleet", "ai-hero"]
+}

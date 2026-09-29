@@ -3,6 +3,7 @@ name: wayfare-review-fleet
 # prettier-ignore
 description: Report drift between FLEET.md and the checkouts beside it, read-only. Names repos missing from the map, rows with no checkout, and port collisions between dev stacks. Writes nothing. Use from the folder that holds the repos, to check the map before trusting a fan-out.
 argument-hint: ""
+compatibility: "Requires the complete Wayfare plugin and a fleet folder containing sibling checkouts and FLEET.md."
 ---
 
 # Review the fleet: what the map claims against what is there

@@ -1605,7 +1605,7 @@ check "one comment cannot be both halves" "0" "$(PATH="$TMP/ghbin:$PATH" hero_se
 # The gate and the helpers must agree on the marker, or ship-pr green means
 # auto-approve red.
 check "workflow carries the fixes marker" "yes" "$(grep -q 'ai-hero:self-review-fixes' "$(dirname "$0")/../.github/workflows/auto-approve.yaml" && echo yes || echo no)"
-check "review-pr posts the fixes marker"  "yes" "$(grep -q 'ai-hero:self-review-fixes' "$(dirname "$0")/../skills/wayfare-review-pr/SKILL.md" && echo yes || echo no)"
+check "review-pr posts the fixes marker"  "yes" "$(grep -q 'ai-hero:self-review-fixes' "$(dirname "$0")/../skills/wayfare-review-pr/WORKFLOW.md" && echo yes || echo no)"
 
 # A review OF this gate quotes the strings the gate matches on. The legacy
 # fallback was unanchored and read this PR's own findings comment as the

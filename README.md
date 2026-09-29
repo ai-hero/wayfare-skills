@@ -245,16 +245,35 @@ The plugin is **wayfare**, so its skills are invoked as
 which is the default path in every skill's `WAYFARE_ROOT` line
 (`$HOME/.claude/plugins/wayfare-skills`).
 
-The same skills install into Codex and other agents from the same checkout:
-`.codex-plugin/plugin.json` and `.agents/plugins/marketplace.json` both point at
-`./skills/`, so no separate build or rewrite is needed. `CLAUDE_PLUGIN_ROOT` is
-a Claude Code harness variable, and it is not reliably set in a skill's Bash
+The same skills install into Codex, Cursor, and other Agent Plugin hosts from
+the same checkout. The root `plugin.json` is their shared portable Agent Plugin
+manifest; `.agents/plugins/` provides Codex marketplace metadata. Claude Code
+does not load the portable `plugin.json`; its separate adapter remains under
+`.claude-plugin/`. No separate build or rewrite is needed. `CLAUDE_PLUGIN_ROOT`
+is a Claude Code harness variable, and it is not reliably set in a skill's Bash
 calls, so every skill resolves its plugin root through one `WAYFARE_ROOT` line:
 `CLAUDE_PLUGIN_ROOT` when set, else an exported `WAYFARE_ROOT`, else the default
 clone path. An agent with neither exports `WAYFARE_ROOT` as
 `$(cd "$(dirname "$SKILL_MD")/../.." && pwd)` (the directory two levels above
 the `SKILL.md` it loaded) before running a skill (see
 [references/loading.md](./references/loading.md)).
+
+Every Wayfare skill declares this complete-plugin dependency in its Agent Skills
+`compatibility` metadata. Activation entrypoints stay below 500 lines. For the
+five long PR pipeline stages, `SKILL.md` holds discovery, routing, and
+invariants while a linked `WORKFLOW.md` preserves the executable specification.
+Portable instructions name capabilities rather than one client's tool-call
+syntax; [client capabilities](./references/client-capabilities.md) maps those
+operations to Codex, Claude Code, or a compatible client, and
+[authorization](./references/authorization.md) defines when a run continues,
+confirms, stops, or defers.
+
+For Cursor, import this repository from **Customize -> Plugins -> From GitHub
+Repository**, install `wayfare`, then reload the window. Cursor reads the root
+`plugin.json`. For local development, copy the complete checkout into
+`~/.cursor/plugins/local/wayfare`; Cursor does not follow a symlink whose target
+is outside that directory. Installing the complete plugin matters because the
+skills share root-level scripts, references, and assets.
 
 The repo was called `hero-skills` until 2026-09-21. If you vendored the
 auto-approve caller before then, it says

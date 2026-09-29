@@ -3,6 +3,7 @@ name: wayfare-init-repo
 # prettier-ignore
 description: "Configure a repo for wayfare: investigate it, write HERO.md, and create the plan object .plans/PLAN.md, migrating an older store on sight. Scaffolds first in an empty directory. Use on a repo that has no HERO.md or no .plans/PLAN.md."
 argument-hint: "[recalibrate]"
+compatibility: "Requires the complete Wayfare plugin, git, and optional network access for repository-host configuration."
 ---
 
 # Configure the repo and create its plan

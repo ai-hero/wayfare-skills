@@ -3,6 +3,7 @@ name: wayfare-audit-plugin
 # prettier-ignore
 description: Audit the wayfare plugin. Checks skill quality, consistency, DRY violations, HERO.md field coverage, and readability. Use before releasing changes to the plugin.
 argument-hint: [--fix]
+compatibility: "Requires the complete Wayfare plugin checkout and its validation dependencies."
 disable-model-invocation: true
 ---
 
@@ -162,7 +163,7 @@ or with no "Use when..." trigger. Check what it cannot:
 - **Trigger clarity**: does the trigger name the situation a person is in, not
   just the word "Use"?
 - **Specificity**: Vague descriptions like "helps with code" are useless for
-  Claude's skill matching. Name the user's intent, not the skill's mechanics.
+  skill matching. Name the user's intent, not the skill's mechanics.
 
 Report template:
 
@@ -177,6 +178,14 @@ DESCRIPTION QUALITY
 #### 2f: Organizational Checks
 
 - Are HERO.md sections in a logical order?
+- Does every skill declare the complete-plugin boundary and runtime needs in
+  `compatibility`?
+- Is every activation entrypoint under 500 lines and 5,000 words?
+- Does a skill-local `WORKFLOW.md` have a conditional link from `SKILL.md`?
+- Do portable operations use capability language instead of Read, Bash, Skill,
+  or subagent call syntax from one client?
+- Are confirmation prompts limited to consequential actions, material choices,
+  and missing authority under `references/authorization.md`?
 
 Frontmatter key order, step numbering, description length and the trigger phrase
 are `scripts/check_docs.py`'s, run on every commit and in CI; this audit reports
@@ -204,7 +213,7 @@ OBSERVATIONS_WITH_NO_ACTION_NEEDED
 
 Overall health: Good / Needs Attention / Critical
 
-Next step: wayfare:wayfare-push-pr — commit and push the plugin changes (offer to auto-run: ask "Run it now? [y/N]", invoke via Skill tool on yes)
+Next step: `wayfare:wayfare-push-pr` can commit and publish confirmed changes.
 ```
 
 ### Step 4: Auto-Fix (if `--fix`)

@@ -3,6 +3,7 @@ name: wayfare-one-shot
 # prettier-ignore
 description: "Take one small, clear change from a one-line description to a merged PR: draft one task, show it, and on the person's yes mark it ready and build it. Routes to wayfare-grill-idea when the description is several items, an anti-feature, or a one-way door. Use for a fix you already understand."
 argument-hint: "DESCRIPTION"
+compatibility: "Requires the complete Wayfare plugin, git, GitHub CLI, network access, and an interactive readiness gate."
 ---
 
 # One thing, described once, shipped
@@ -113,10 +114,11 @@ permissions line, not a file.
 - **No, or anything else:** leave the item at `planning`, print its path, and
   stop. Never flip it on a maybe.
 
-Invoke `wayfare:wayfare-build-task ID` via the Skill tool. Its Step 1b resolves
-the READY item, and everything from Step 2 to the merge and reset runs as it
-always does, with its own gates: mark-ready for the PR and the merge are still
-the person's. This skill adds no schema and waives no gate.
+Invoke `wayfare:wayfare-build-task ID` through the active client's skill
+mechanism. Its Step 1b resolves the READY item, and everything from Step 2 to
+the merge and reset runs as it always does, with its own gates: mark-ready for
+the PR and the merge are still the person's. This skill adds no schema and
+waives no gate.
 
 Print what came back: the merged SHA, or the step it stopped at and why. A
 stopped run leaves the item where `wayfare-build-task` left it.

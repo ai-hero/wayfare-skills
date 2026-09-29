@@ -317,7 +317,12 @@ def check_counts(root):
     kinds_text = (root / "docs/CONNECTIONS.md").read_text().split("## The kinds", 1)[-1]
     kinds_table = kinds_text.split("\n## ", 1)[0]
     facts = {
-        "recalibrate": sum("\n## `recalibrate`" in s.read_text() for s in skills),
+        "recalibrate": sum(
+            "\n## `recalibrate`" in "\n".join(
+                p.read_text() for p in (s, s.with_name("WORKFLOW.md")) if p.exists()
+            )
+            for s in skills
+        ),
         "stage-skills": sum("\nuser-invocable: false" in s.read_text() for s in skills),
         "kinds": len(re.findall(r"^\| `[\w-]+` \|", kinds_table, re.M)),
         "ship-pr-fields": len(re.findall(r"^wayfare-ship-pr\|",

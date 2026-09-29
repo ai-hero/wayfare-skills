@@ -1579,7 +1579,9 @@ EOF
 #
 # STATE is one of:
 #   READY    a task at `ready` whose every depends_on target is done
-#   blocked  not done, but a dependency is unmet or unresolvable
+#   blocked  not done, but a dependency is unmet or unresolvable, or
+#            `blocked_on:` names something outside the store (annotated
+#            `[on: TEXT, since DATE]`). Never READY, never a satisfied dependency
 #   backlog  a task at `accepted`: on the roadmap, not yet planned; annotated
 #            `[deps unmet]` when a dependency isn't done. Never READY: handing
 #            an unplanned task to wayfare-build-task would skip planning entirely
@@ -1634,7 +1636,7 @@ EOF
 # silently reroutes every later relative path.
 hero_ready_items() (
   local store items f d raw deps ready title id state itype row all_ids done_ids
-  local open_goals parent committed_ids committed missing awaiting since enum
+  local open_goals parent committed_ids committed missing awaiting blocked_on since enum
   local idea_ids shape channel resolution
   store="${1:-$(hero_work_store)}" || return 1
 
@@ -1804,6 +1806,22 @@ hero_ready_items() (
       since=$(hero_item_field "$f" suspended_at)
       echo "suspended $f — $title [awaiting $(printf '%s\n' "$awaiting" | wc -w | tr -d ' '): $awaiting${since:+ — since $since}]"
       continue
+    fi
+
+    # `blocked_on` is the same kind of flag for a wait that is not a sibling's
+    # reply (docs/PLAN.md). It sits after `awaiting` so a mailbox wait keeps its
+    # own row. Nothing clears it here: a stale one on a terminal item is
+    # warned about and ignored, never allowed to hold anything up.
+    blocked_on=$(hero_item_field "$f" blocked_on)
+    if [ -n "$blocked_on" ]; then
+      case "$state" in
+        done|dropped)
+          echo "hero_ready_items: $f is $state and still carries blocked_on '$blocked_on'; ignored. Delete the field" >&2 ;;
+        *)
+          since=$(hero_item_field "$f" blocked_since)
+          echo "blocked $f — $title [on: $blocked_on${since:+, since $since}]"
+          continue ;;
+      esac
     fi
 
     # A planned task outside every open goal is invisible to `wayfare-start-goal`,
@@ -2032,6 +2050,9 @@ MEMBERS
     fi
     if [ -n "$(hero_item_list_field "$f" awaiting)" ]; then
       echo "hero_goal_candidates: $id skipped: suspended, awaiting a message" >&2; continue
+    fi
+    if [ -n "$(hero_item_field "$f" blocked_on)" ]; then
+      echo "hero_goal_candidates: $id skipped: blocked_on $(hero_item_field "$f" blocked_on)" >&2; continue
     fi
     if [ -n "$(hero_item_field "$f" bot)" ]; then
       echo "hero_goal_candidates: $id skipped: a bot's PR, carried on its own" >&2; continue

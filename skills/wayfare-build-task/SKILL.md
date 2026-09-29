@@ -547,7 +547,7 @@ Rows are first-match, top to bottom.
 | `$ARGUMENTS` matches exactly one READY item (id, filename slug, or title) | That item is the plan → 1c |
 | `$ARGUMENTS` matches an open tracker issue but no `.plans/` item | Fetch the issue body; it is the plan → 1c |
 | `$ARGUMENTS` matches a **blocked** item whose only unmet dependencies are `[committed dep: ID]` ids, this invocation carries `commit only: goal GOAL_ID branch GOAL_BRANCH`, and every one of those ids is a member of goal GOAL_ID | That item is the plan → 1c. Those commits are already on GOAL_BRANCH, which is checked out, so the tree has what the item depends on. This row is above the general blocked row because a goal's tasks land in member order and the second one onward is routinely blocked this way; without it the goal would be told to wait for itself. An id outside that goal, or any other unmet dependency, falls through to the row below. |
-| `$ARGUMENTS` matches a **blocked** item | STOP: print the item's unmet `depends_on` ids and their titles. Do not implement past a dependency. A `[committed dep: ID]` annotation on the row names a dependency committed on a goal branch and not yet merged: building on it produces a change against a tree that lacks what it depends on, so name the goal that holds that id and wait for it to ship. |
+| `$ARGUMENTS` matches a **blocked** item | STOP: print the item's unmet `depends_on` ids and their titles. Do not implement past a dependency. A row annotated `[on: TEXT, since DATE]` is blocked on something outside the store (`blocked_on:`, docs/PLAN.md): print the text and date, say a person clears it through `wayfare-sync-plan`'s blocked lane, and never build around it. A `[committed dep: ID]` annotation on the row names a dependency committed on a goal branch and not yet merged: building on it produces a change against a tree that lacks what it depends on, so name the goal that holds that id and wait for it to ship. |
 | `$ARGUMENTS` matches a **suspended** item | STOP: it waits on a sibling repo's reply (`awaiting:`). Say which message and since when; `wayfare-sync-plan`'s inbox stage is what un-suspends it. |
 | `$ARGUMENTS` matches a **plan** (planning) item | STOP: the item awaits the user's ready-mark. Show its title and `success` criteria and ask whether to mark it ready; on yes, set `status: ready` + `ready_marked:` date and it is the plan → 1c. For a task, first confirm `## Approach`, `## Subtasks`, and `## Definition of Done` are non-empty. A planning run that died before writing them leaves a hollow plan; route that to wayfare-grill-idea instead of flipping it. Do NOT re-grill a filled item; that writes a duplicate. |
 | `$ARGUMENTS` matches a **new** item (`status: new`, or no status line) | STOP: the item was created and nobody has triaged it. Say so and ask whether to move it to `accepted`; never build or grill an untriaged item. The `new` default exists so a jotted-down item cannot reach here by accident. |
@@ -631,6 +631,14 @@ Before implementing, check the item's `success` criteria and its
 The last row exists because every other uncertain path here resolves toward
 implementing, which is the outcome this step exists to prevent. An empty result
 must never stand in for a negative one.
+
+When the unevaluable check is waiting on something outside the store (a
+credential, an answer, an upstream release), offer to write `blocked_on:` on the
+item with the reason and `blocked_since:` today, append a `note` line to its
+`## Log`, and stop. The item keeps its status and drops out of READY until a
+person clears the field. The offer is a question like the rest of this row;
+under a goal turn's commit-only mode it is `stop: awaiting-human` and nothing is
+written.
 
 State the verdict explicitly before advancing, as in "verified outstanding:
 SUCCESS_CRITERION does not hold", so a wrong resolution is visible rather than
@@ -912,6 +920,14 @@ Five rules that make a carve honest:
    branch stays. Note that the new blocker is `status: accepted`/`planning` and
    still needs planning *and* the user's ready-mark, so this is a hand-back, not
    a pause.
+
+   **A prerequisite that is not an item is a block, not a new item.** When what
+   this item needs is an answer, a decision, a credential or a release nobody
+   here can produce, do not invent an item to depend on. Write `blocked_on:`
+   with the reason and `blocked_since:` today on this item, append a dated
+   `note` line to its `## Log`, and stop the same way, leaving the tree as it
+   is. The item keeps its status and leaves READY until a person clears the
+   field in `wayfare-sync-plan`'s blocked lane.
 
    **The edge points one way only.** This case *replaces* the
    child-`depends_on`-parent default above; the two are mutually exclusive.

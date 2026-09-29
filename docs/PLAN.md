@@ -265,9 +265,25 @@ it left in `suspended_from` so the resume could put it back, a saved copy of a
 value that never needed to change. A suspended item is never READY and never
 satisfies a dependency, both of which read off `awaiting` being non-empty.
 
+**An outside block is a flag too.** `awaiting` covers one case, a sibling repo's
+reply through the mailbox. Anything else an item waits on that is not an item (a
+vendor's answer, a decision the owner has not made, a credential, an upstream
+release) is `blocked_on`: free text naming what, plus `blocked_since`, the date
+it started. Non-empty means blocked, whatever the status, on any non-terminal
+type. The item keeps the status it had, because a `blocked` status would need a
+`blocked_from` to restore, the saved copy the paragraph above describes. A
+blocked item is never READY and never satisfies a dependency, so its own
+dependents stay blocked. Nothing clears the field automatically: a person, in
+`wayfare-sync-plan`'s blocked lane, says the wait is over, and clearing deletes
+the field and appends a `note` line to `## Log`. On a `done` or `dropped` item
+the field is ignored and warned about on stderr, so a stale one cannot hold up
+anything.
+
 **Two derived flags, never stored:**
 
 - **blocked**: a `depends_on` id is not `done`, computed by `hero_ready_items`.
+  The stored `blocked_on` field is the other way to be blocked, and is not
+  derived.
 - **stale**: either head moved past the item's anchor: `anchors.source` past the
   plan's `source.head`, or `anchors.target` past `target.head`. Age is measured
   in commits, never in rounds.
@@ -302,6 +318,8 @@ anchors:
 awaiting: [] # message ids this item waits on; non-empty means suspended
 suspended_at: # date the wait started
 expires: # date the wait lapses
+blocked_on: # optional — free text: what a non-item wait is on; non-empty means blocked
+blocked_since: # date the block started
 ready_marked: 2026-07-24 # the date a person flipped it to ready; the record of the one act nothing else may perform
 one_way_door: false # optional — true when the change is expensive to reverse, so planning gave it extra scrutiny
 branch: feat/12-google-sign-in # written when work starts
@@ -532,6 +550,7 @@ local format looks the way it does.
 | `priority` | nullable enum column (`p0` to `p3`), valid on every type; null is unranked |
 | `status`, `resolution` | enum columns; `resolution` null until `done` |
 | `depends_on` | `item_dependencies` join table |
+| `blocked_on`, `blocked_since` | nullable text and date columns, valid on every non-terminal item; null is not blocked |
 | `parent`, `discovered_from` | self-referencing nullable FKs |
 | `source`, `target` | `item_paths` rows tagged `source` or `target` |
 | `anchors` | two columns on the item |

@@ -63,7 +63,8 @@ Progress:
 - [ ] 3. Reconciliation lanes: design, architecture, design system, hardening,
   comments, compliance, deps, unshipped
 - [ ] 4. Visual pass: the shipped screens, per `../../references/shaping.md`
-- [ ] 5. Store defects: dangling deps, orphaned members, missing anchors
+- [ ] 5. Store defects: dangling deps, orphaned members, missing anchors, and
+  the blocked lane, which asks per item whether its `blocked_on` has cleared
 - [ ] 6. Confirm the proposal table with the user, row by row, including each
   task's proposed `priority`
 - [ ] 7. Write the accepted items at `status: accepted` (`docs/PLAN.md` format)

@@ -1597,6 +1597,27 @@ check "suspended: a done item with stale awaiting still unblocks" "READY" "$(sta
 check "awaiting parser: block form"               "m-7f3a9c m-c0fbd5" "$(hero_item_awaiting "$W3/items/092-susp.md" | tr '\n' ' ' | sed 's/ $//')"
 check "suspended: a dependent stays blocked"      "blocked"   "$(state_of 093-dep.md "$OUT3")"
 
+# `blocked_on` is the flag for a wait that is not a sibling's reply. It keeps
+# the item's status, overrides the status row, and on a terminal item is
+# ignored with a warning rather than blocking anything.
+printf -- '---\nid: 160\ntype: task\ntitle: Needs the vendor key\nstatus: ready\nblocked_on: waiting on the vendor API key\nblocked_since: 2026-09-29\ndepends_on: []\n---\n' > "$W3/items/160-vendor.md"
+printf -- '---\nid: 161\ntype: task\ntitle: Mid-flight and blocked\nstatus: active\nblocked_on: owner decision on pricing\ndepends_on: []\n---\n' > "$W3/items/161-activeblk.md"
+printf -- '---\nid: 162\ntype: task\ntitle: Shipped with a stale block\nstatus: done\nblocked_on: old wait\ndepends_on: []\n---\n' > "$W3/items/162-doneblk.md"
+printf -- '---\nid: 163\ntype: task\ntitle: After the vendor\nstatus: ready\ndepends_on: [160]\n---\n' > "$W3/items/163-afterblk.md"
+printf -- '---\nid: 164\ntype: task\ntitle: Block cleared\nstatus: ready\nblocked_on:\ndepends_on: []\n---\n' > "$W3/items/164-cleared.md"
+OUT3B="$(hero_ready_items "$W3" 2>"$TMP/blk.err")"
+check "blocked_on: a ready task lists as blocked"        "blocked" "$(state_of 160-vendor.md "$OUT3B")"
+check "blocked_on: row carries the reason and date"      "yes"     "$(printf '%s' "$OUT3B" | grep -q 'on: waiting on the vendor API key, since 2026-09-29' && echo yes || echo no)"
+check "blocked_on: never in the READY tier"              "no"      "$(printf '%s' "$OUT3B" | grep '^READY' | grep -q 160-vendor && echo yes || echo no)"
+check "blocked_on: an active task lists as blocked"      "blocked" "$(state_of 161-activeblk.md "$OUT3B")"
+check "blocked_on: a done item is listed as done"        "done"    "$(state_of 162-doneblk.md "$OUT3B")"
+check "blocked_on: a done item is warned about"          "yes"     "$(grep -q '162-doneblk.md is done and still carries blocked_on' "$TMP/blk.err" && echo yes || echo no)"
+check "blocked_on: a dependent stays blocked"            "blocked" "$(state_of 163-afterblk.md "$OUT3B")"
+check "blocked_on: an empty field leaves the task READY" "READY"   "$(state_of 164-cleared.md "$OUT3B")"
+sed -i.bak '/^blocked_on:/d;/^blocked_since:/d' "$W3/items/160-vendor.md"; rm -f "$W3/items/160-vendor.md.bak"
+check "blocked_on: deleting the field returns it to READY" "READY" "$(state_of 160-vendor.md "$(hero_ready_items "$W3" 2>/dev/null)")"
+rm -f "$W3"/items/16[0-4]-*.md
+
 printf -- '---\nmsg_id: m-1\ntype: bug\nstatus: new\n---\n' > "$W3/inbox/m-1.md"
 printf -- '---\nmsg_id: m-2\ntype: ask\nstatus: answered\n---\n' > "$W3/inbox/m-2.md"
 printf -- '---\nmsg_id: m-3\ntype: ask\n---\n' > "$W3/inbox/m-3.md"

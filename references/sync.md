@@ -716,6 +716,16 @@ rather than reporting clean, the same rule the Upstream lane above follows):
   answered here instead. This finding is where expiry is evaluated; nothing
   sweeps the fleet. A wait nobody re-reads is a hang with a status.
 
+- **blocked items**: every non-terminal item with `blocked_on:` set, which
+  `hero_ready_items` lists as `blocked` with `[on: TEXT, since DATE]`. Print
+  each with its reason and age, and ask per item whether it has cleared. On yes,
+  delete `blocked_on` and `blocked_since` and append a dated `note` line to its
+  `## Log` saying what cleared it; the item keeps its status and is READY again
+  if nothing else holds it. On no, leave it, and say so if the age is long.
+  Nothing else clears the field: a block nobody re-reads is a hang with a
+  status, the same as a stale wait. A `done` or `dropped` item still carrying it
+  is not asked about: delete the field on confirmation.
+
 Apply only what the user confirms. **Applying stale rows** splits on whether the
 task's plan is already locked:
 

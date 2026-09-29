@@ -1036,7 +1036,7 @@ hero_item_status() {
   printf '%s' "${s:-new}"
 }
 
-# An item's TYPE: task, signal, goal, idea or anti-feature (docs/PLAN.md). Lowercased, because
+# An item's TYPE (the enum is in docs/PLAN.md). Lowercased, because
 # `Task` silently matching no arm of the listing table printed the item as
 # invalid, which reads as a malformed file rather than a capital letter.
 # Empty means the item was never migrated; the caller reports it, because
@@ -1050,6 +1050,12 @@ hero_item_type() {
 # so nothing in the listing reads it.
 hero_item_shape() {
   hero_item_field "$1" shape | tr '[:upper:]' '[:lower:]'
+}
+
+# An item's PRIORITY: p0 to p3, lowercased like the other accessors so `P1`
+# ranks as p1. Empty means unranked.
+hero_item_priority() {
+  hero_item_field "$1" priority | tr '[:upper:]' '[:lower:]'
 }
 
 # A signal's CHANNEL: design, design-system or architecture. Decides where
@@ -1565,7 +1571,7 @@ hero_sort_rows_by_priority() {
     read -r _ f _ <<EOF
 $row
 EOF
-    case "$(hero_item_field "$f" priority 2>/dev/null | tr '[:upper:]' '[:lower:]')" in
+    case "$(hero_item_priority "$f" 2>/dev/null)" in
       p0) key=0 ;; p1) key=1 ;; p2) key=2 ;; p3) key=3 ;; *) key=4 ;;
     esac
     printf '%s\t%s\n' "$key" "$row"
@@ -1790,7 +1796,7 @@ hero_ready_items() (
     # `priority` orders the listing and nothing else. An unrecognized value
     # sorts as unranked (hero_sort_rows_by_priority), so a typo can only lose
     # its rank, never claim p0; the warning keeps that from being silent.
-    case "$(hero_item_field "$f" priority | tr '[:upper:]' '[:lower:]')" in
+    case "$(hero_item_priority "$f")" in
       ''|p0|p1|p2|p3) ;;
       *) echo "hero_ready_items: $f has unrecognized priority '$(hero_item_field "$f" priority)'; expected p0, p1, p2 or p3. Sorting it as unranked" >&2 ;;
     esac
@@ -2001,7 +2007,7 @@ EOF
 # goal writes it after the gate. Deps are settled to a fixed point, so a
 # candidate whose dep was dropped is dropped too, and a cycle is dropped whole.
 hero_goal_candidates() ( # GOAL_ID [STORE]
-  local goal store f id itype state parent pinfo index gstate members mpaths
+  local goal store f id itype state parent pinfo index gstate members mpaths blocked_on
   local paths p bad deps dep dstate cands next changed out
   [ -n "$1" ] || { echo "hero_goal_candidates: empty GOAL_ID" >&2; return 2; }
   goal=$(hero_norm_id "$1")
@@ -2068,8 +2074,9 @@ MEMBERS
     if [ -n "$(hero_item_list_field "$f" awaiting)" ]; then
       echo "hero_goal_candidates: $id skipped: suspended, awaiting a message" >&2; continue
     fi
-    if [ -n "$(hero_item_field "$f" blocked_on)" ]; then
-      echo "hero_goal_candidates: $id skipped: blocked_on $(hero_item_field "$f" blocked_on)" >&2; continue
+    blocked_on=$(hero_item_field "$f" blocked_on)
+    if [ -n "$blocked_on" ]; then
+      echo "hero_goal_candidates: $id skipped: blocked_on $blocked_on" >&2; continue
     fi
     if [ -n "$(hero_item_field "$f" bot)" ]; then
       echo "hero_goal_candidates: $id skipped: a bot's PR, carried on its own" >&2; continue

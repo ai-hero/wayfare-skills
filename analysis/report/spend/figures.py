@@ -1,7 +1,7 @@
 """Drawn figures for the spend deck's book cards (6.5 cost per unit, 6.6 CI minutes), with their summaries.
 
-Each `fig_*` takes the dict its data.py function returns, draws the PNG into .analysis/diagrams/book/, writes the
-figure's summary table beside it and returns the PNG path for `F.picture` on the answer slide.
+Each `fig_*` takes what its data.py function returns, draws the PNG into .analysis/diagrams/book/, writes the
+figure's summary table under .analysis/data/figures/ and returns the PNG path for `F.picture` on the answer slide.
 """
 import os
 import sys

@@ -1163,7 +1163,7 @@ def _dist(vals, n_all):
 
 def _adjusted(sets, usd):
     """OLS of log cost on depth with repo, work type, model family and log lines held fixed: the ratio of each depth's
-    cost to 'no saved plan' with a 95% interval. Pure numpy; returns None when a stratum is too thin."""
+    cost to 'no saved plan' with a 95% interval. Pure numpy; returns None when the whole population is under 50 rows."""
     import math
     import numpy as np
     xs = [s for s in sets if usd.get(s["k"]) and usd[s["k"]] > 0]

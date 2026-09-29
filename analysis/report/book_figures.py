@@ -93,8 +93,8 @@ def tldr(q, refs_prev, b):
 
 
 def card_entry(k, entry, verdicts, refs_prev, refs_now, merged_into):
-    """Plain paragraphs, one per field: the page builder joins bullet lines into one paragraph and
-    renders no inline Markdown, so bullets and bold would reach the page as literal dashes and stars."""
+    """Plain paragraphs, one per field: the page builder renders no inline Markdown, so bold and code
+    spans would reach the page as literal stars and backticks."""
     b, q = entry["block"], k[2:]
     qq = b.get("question") or {}
     line = tldr(q, refs_prev, b)

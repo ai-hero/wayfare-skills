@@ -680,7 +680,7 @@ def fig33_standardisation(weeks_around=4):
     medians = {k: {"apps": med(apps, k), "all": med(rows_, k)}
                for k in ("start_before", "start_after", "start_now", "own_demand_before", "own_demand_after", "own_demand_now")}
     later = [r for r in ad if not exists_on(r, before)]
-    # Corrections: the owner's typed prompts labelled correction or redirect (shared intent labels), app repos.
+    # Corrections: the owner's typed prompts labelled correction or redirect (shared intent labels), every repo.
     con = _con()
     w0 = (date.fromisoformat(STANDARD_DAY) - timedelta(7 * weeks_around)).isoformat()
     w1 = (date.fromisoformat(STANDARD_DAY) + timedelta(7 * weeks_around)).isoformat()

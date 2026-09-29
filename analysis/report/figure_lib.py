@@ -206,8 +206,8 @@ def heatmap(ax, rows, cols, values, cmap=None, vmax=None, label_every=4, cbar_la
 
 
 def ecdf(ax, values, label=None, color=PINK, censored=None, xlabel=None, xmax=None):
-    """Cumulative share of observations at or below x; censored observations, if given, are drawn as a
-    rug at the right edge so the curve is read as a lower bound where they sit."""
+    """Cumulative share of observations at or below x; censored observations, if given, are drawn as ticks
+    at their own x, with their count at the right edge, so the curve is read as a lower bound where they sit."""
     xs = sorted(v for v in values if v is not None)
     n = len(xs) + (len(censored) if censored else 0)
     ys = [(i + 1) / n for i in range(len(xs))]

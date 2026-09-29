@@ -2,8 +2,8 @@
 table each leaves in .analysis/data/figures/<id>.json.
 
 Each `fig_*` returns the dict `deck.ask` expects (question, title, points, chart, source, note, breakdowns) so deck.py
-only wires it in. Charts that are bars or lines are native (deck_lib); the composition and the dumbbell are drawn
-with figure_lib and placed as a picture.
+only wires it in. Charts that are bars or lines are native (deck_lib); the rest are drawn with figure_lib and
+placed as a picture.
 """
 import os
 import sys

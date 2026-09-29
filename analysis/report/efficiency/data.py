@@ -927,8 +927,8 @@ def q_change_set_traceability_trace(con):
 
 # ------------------------------------------------------------------ 6.3 Q session-clock, explicit states
 
-# Book figure 6.3. Every gap between two logged turns of an interactive session gets exactly one state, in
-# this order of precedence. `turns` holds the main thread only: a tool result is not a turn and a subagent's
+# Book figure 6.3. Every gap between two logged turns of an interactive session gets exactly one state; the
+# classifier's if-chain below is the precedence, STATE_ORDER is only the display order. `turns` holds the main thread only: a tool result is not a turn and a subagent's
 # turns live in its own transcript, so a gap between two assistant turns is a tool call or a subagent still
 # running, not idleness. A gap that ends in a prompt the owner typed was the owner's: waiting on a question
 # the agent asked in prose when its last message reads as one, otherwise reading or away, which the logs
@@ -1048,7 +1048,8 @@ THRESHOLDS = (15, 30, 60)
 
 
 def _pr_items(con):
-    """(repo, PR) -> True when a work item or goal records the PR or its branch: durable authorization."""
+    """The set of (repo, PR) a work item records by URL or branch, plus every PR on a goal branch:
+    durable authorization."""
     from links import _items
     heads = {(r["repo"], r["head_ref"]): r["number"] for r in rows(con, "SELECT repo, number, head_ref FROM github.prs")}
     goal_heads = {(r["repo"], r["number"]) for r in rows(con, "SELECT repo, number FROM github.prs WHERE head_ref LIKE 'goal-%'")}

@@ -688,7 +688,7 @@ def q_design_system_release_reach_versions():
         since = registry_declared(r)
         if not since:
             continue
-        snaps = []  # (day, sha, {path: (first, superseded) | None}, kind)
+        snaps = []  # (day, sha, {path: (first, superseded) | None}, kind, newer_count)
         prev = None
         for day, sha, subj in consumer_pulls(r):
             inst = installed_at(r, sha)

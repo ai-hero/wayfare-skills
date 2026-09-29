@@ -1,5 +1,5 @@
 """Drawn figures for the security deck's book cards (5.3, 5.4): matplotlib through figure_lib, each saved as a PNG
-for the answer slide and a summary table beside it."""
+for the answer slide with a summary table under .analysis/data/figures/."""
 import os
 import sys
 

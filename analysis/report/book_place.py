@@ -1,6 +1,6 @@
 """Place each finished figure and diagram in the manuscript, right after the paragraph its brief names.
 
-    python report/book_place.py [--book .analysis/book] [--write] [--purge-old]
+    python report/book_place.py [--book .analysis/book] [--write] [--purge-old] [--check] [--only N ...]
 
 Reads `figures.json` (the manifest `book_spec.py` writes from the owner's brief) and the results each
 agent left: `.analysis/book/results/<id>.json` for an evidence figure ({"ref": "Q fixes-by-model",

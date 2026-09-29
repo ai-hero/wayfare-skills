@@ -1118,8 +1118,8 @@ FACTORY_CATS = ["Product work in an app", "Factory work inside an app repo", "Te
 
 
 def fig_apps_vs_factory(con):
-    """Monthly change sets in four classes; the factory share under the strict reading (the plugin), the broad one
-    (plus shared-benefit work) and with shared work allocated to the apps it serves."""
+    """Monthly change sets in four classes; the factory share under the strict reading (the plugin) and the broad
+    one (plus shared-benefit work)."""
     wt = {(r["repo"], r["unit_kind"], r["unit_id"], r["set_idx"]): (r["work_type"], r["theme"])
           for r in rows(con, "SELECT * FROM detectors.cs_worktype")}
 

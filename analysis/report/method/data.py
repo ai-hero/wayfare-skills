@@ -99,7 +99,7 @@ def _item_links(con):
 
 
 def q_counting_units(con):
-    """The same history since 1 Jul counted five ways: commits on main, original commits, change sets,
+    """The same history since 1 Jul counted six ways: commits on main, original commits, change sets,
     merged PRs, work items and goals, with Dependabot's part separate; and the grouping's agreement."""
     ad = adoption(con)
     links, via, items, goal_of = _item_links(con)
@@ -148,7 +148,7 @@ def q_counting_units(con):
 
 STAGES = ["Fixed by the builder inside the PR", "Fixed after review inside the PR", "Caught by a gate",
           "Fixed after merge (within 7 days)", "No rework observed"]
-# A fix-up commit's trigger (mistakes.commit_labels, Chapter 10's Haiku labels) names the stage that caught it.
+# A fix-up commit's trigger (mistakes.commit_labels, the mistakes deck's Haiku labels) names the stage that caught it.
 TRIGGER_STAGE = {"self": 0, "review_agent": 1, "copilot": 1, "judge": 1, "owner": 1, "ci": 2, "hook": 2}
 
 
@@ -224,7 +224,7 @@ PLAN_CATS = ["Goal", "Work item, no goal", "One-shot, session names the PR", "On
 
 
 def q_observable_plan(con):
-    """Every non-Dependabot change set that landed in the complete logging window (25 Aug to 24 Sep; W35 is
+    """Every non-Dependabot change set that landed in the complete logging window (25 Aug to the end of the data; W35 is
     its Tuesday to Sunday), by
     what records its plan; the uncertain link (a session on the PR's branch, not naming the PR) is its own
     category. Weekly rows and one row for the window."""

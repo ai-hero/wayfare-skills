@@ -22,7 +22,7 @@ The grammar, which every diagram keeps so the book reads as one set:
                Dashes mean "not yet", never a second kind of arrow; dotted is feedback.
 
 Type scale (px on a 1400-wide canvas, printed at 6.5 in): title 30, label 22, small 17, mono 15. At that
-width 22 px is about 10 pt in print, the floor the figures brief sets, so nothing goes smaller than SMALL.
+width 30 px is about 10 pt in print and 17 px about 6 pt, so nothing goes smaller than SMALL.
 PNG and PDF come from headless Chrome (the only SVG rasteriser on this machine); fonts are the installed
 Geist family, with a system sans fallback in the SVG for a machine without it.
 """

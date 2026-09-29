@@ -1,5 +1,5 @@
 """Drawn figures for the compliance deck's book cards (5.2, 5.6, 5.7, 5.8): matplotlib through figure_lib, each
-saved as a PNG for the answer slide and a summary table beside it."""
+saved as a PNG for the answer slide with a summary table under .analysis/data/figures/."""
 import os
 import sys
 from datetime import date, datetime

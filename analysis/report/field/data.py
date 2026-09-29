@@ -675,7 +675,8 @@ DEFINITIONS_81 = ["No non-bot GitHub account acted", "Approved by the gate, by n
 
 
 def pr_items(con):
-    """(repo, PR number) -> the work item whose frontmatter names that PR (pr URL) or its branch."""
+    """Two maps, (repo, PR number) and (repo, branch), each to {item, authorized} for the work item whose
+    frontmatter names that PR URL or branch."""
     out = {}
     branches = {}
     for r in rows(con, "SELECT repo, item_id, ready_ts, goal_id, raw_frontmatter_json fm FROM plans.plan_items WHERE type != 'goal'"):

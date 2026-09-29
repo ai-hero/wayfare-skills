@@ -849,7 +849,6 @@ LOGGED_FROM = "2026-W35"
 def _intent_facts(con):
     """Every non-Dependabot change set with its intent class and, for work items, when the item was written
     relative to the change set's first commit."""
-    from evolution import q_observable_work_share  # noqa: F401  (same session-link rule, kept in one place)
     links, _ = set_item_links(con)
     meta = {(r["repo"], _norm(r["item_id"])): r for r in rows(con, "SELECT repo, item_id, goal_id, ready_ts, created_ts FROM plans.plan_items")}
     in_goal = set()

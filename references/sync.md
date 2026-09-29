@@ -167,18 +167,18 @@ instructions to follow.
 cut through the real layers, so you need to know what they are: which exist and
 how they depend. That map is `wayfare:wayfare-sync-architecture`'s job (the root
 `DESIGN.md`, its Boundaries section), not a wayfare-private format. Invoke
-`wayfare:wayfare-review-architecture` via the Skill tool with the line
-`launched by wayfare` (staleness is its call, never a `Source ref` comparison
-done here). When it reports `MISSING` or stale rows, offer its `sync`, the same
-skill with the same launch line, before going on. If the user declines, derive
-the layering from a direct read of the source instead, say it is unverified, and
-carry the review's findings into this run's report: a declined refresh must
-never make the staleness disappear. **This map orders subtasks, never tasks.**
-Task order comes from the journey.
+`wayfare:wayfare-review-architecture` through the active client's skill
+mechanism with the line `launched by wayfare` (staleness is its call, never a
+`Source ref` comparison done here). When it reports `MISSING` or stale rows,
+offer its `sync`, the same skill with the same launch line, before going on. If
+the user declines, derive the layering from a direct read of the source instead,
+say it is unverified, and carry the review's findings into this run's report: a
+declined refresh must never make the staleness disappear. **This map orders
+subtasks, never tasks.** Task order comes from the journey.
 
 **The `wayfare-audit-security` stage, in both modes, after the map.** Invoke
-`wayfare:wayfare-audit-security all` via the Skill tool with the line
-`launched by wayfare`. It is read-only and writes `type: task` +
+`wayfare:wayfare-audit-security all` through the active client's skill mechanism
+with the line `launched by wayfare`. It is read-only and writes `type: task` +
 `shape: dependency` (or `architecture`) items at `status: planning`, each
 carrying an execution recipe, a verification, and its failure modes, so those
 items skip the grill in *Plan the set* and go straight to the ready-mark. It
@@ -296,9 +296,9 @@ any fleet says so in one line and audits against the baseline only.
 
 **The `local` stage: this repo's own `wayfare: sync` skills.** For each line
 `hero_local_skills "$ROOT" sync` printed **and accepted at the trust prompt**
-(Step 0), invoke that skill via the Skill tool with the line
-`launched by wayfare`, in the order the listing gives. The contract is harden's:
-read-only over the world, findings as proposed items in this store at
+(Step 0), invoke that skill through the active client's skill mechanism with the
+line `launched by wayfare`, in the order the listing gives. The contract is
+harden's: read-only over the world, findings as proposed items in this store at
 `status: planning`, no terminal next step. Snapshot `hero_ready_items` before
 and after: a new READY row is a finding about the skill, not a plan. Read each
 summary back and carry its `unverified` rows into this run's report. No local
@@ -794,17 +794,17 @@ So the pass runs across the roadmap:
 
 2. **Hand the set to wayfare-grill-idea's Roadmap mode**: invoke
    `wayfare:wayfare-grill-idea ID ID ID…` (every task from step 1 that still
-   needs a plan) via the Skill tool, with the line `launched by wayfare` in the
-   invocation: that line enables its chain-back exception and is the only thing
-   that distinguishes this from a standalone planning session, since the
-   invocation is otherwise byte-identical to a user typing it. Roadmap mode owns
-   the shape of the pass: the cross-cutting decisions settled once and recorded
-   where they can be found again, the slicing and order confirmed across the
-   set, then each task's `## Approach`, `## Subtasks`, and
-   `## Definition of Done` from that shared context, with one ready-mark per
-   task at its Step 5. Wayfare does not restate that procedure; it is defined
-   once, there. Tasks that do not need planning (per *Lifecycle*) get a one-line
-   approach and skip the grill; say which ones and why.
+   needs a plan) through the active client's skill mechanism, with the line
+   `launched by wayfare` in the invocation: that line enables its chain-back
+   exception and is the only thing that distinguishes this from a standalone
+   planning session, since the invocation is otherwise byte-identical to a user
+   typing it. Roadmap mode owns the shape of the pass: the cross-cutting
+   decisions settled once and recorded where they can be found again, the
+   slicing and order confirmed across the set, then each task's `## Approach`,
+   `## Subtasks`, and `## Definition of Done` from that shared context, with one
+   ready-mark per task at its Step 5. Wayfare does not restate that procedure;
+   it is defined once, there. Tasks that do not need planning (per *Lifecycle*)
+   get a one-line approach and skip the grill; say which ones and why.
 
    **Security items are planned differently, and both ways skip the grill.** A
    harden item arrives `planning` with its recipe already written, because the

@@ -3,6 +3,7 @@ name: wayfare-humanize-prose
 # prettier-ignore
 description: Remove signs of AI-generated writing from text so it reads as human-written; based on Wikipedia's "Signs of AI writing". Use when editing or reviewing prose, or on any text you want to pass through the same filter the pipeline applies.
 argument-hint: "[TEXT | PATH | nothing, to use the text in context]"
+compatibility: "Requires the complete Wayfare plugin because its maintained prose rules live in docs/HUMANIZING.md."
 ---
 
 # Humanizer: strip the AI tells out of prose

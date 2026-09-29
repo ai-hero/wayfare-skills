@@ -3,6 +3,7 @@ name: wayfare-audit-security
 # prettier-ignore
 description: "Run by wayfare-sync-plan. Audits the codebase read-only for hardening: dependency CVEs, container CVEs (Scout and Trivy), and code-level robustness. Emits execution-ready plans as .plans security items and never edits source."
 argument-hint: "[deps|docker|code|all]"
+compatibility: "Requires the complete Wayfare plugin; some audit modes require GitHub CLI, Docker, Scout, Trivy, and network access."
 user-invocable: false
 ---
 

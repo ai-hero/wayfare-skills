@@ -3,6 +3,7 @@ name: wayfare-sync-plan
 # prettier-ignore
 description: "Converge the roadmap with the world: the architecture record, the design snapshot, the hardening audit, prose gone false about the code, the compliance register, the dependency bots' PRs, branches built and never merged, and goals, into .plans. Proposes items and goals; writes only what the user confirms. Use to refresh what is worth doing."
 argument-hint: "[CONTEXT | ideas]"
+compatibility: "Requires the complete Wayfare plugin, git, and the optional issue, design, security, and fleet tools configured by HERO.md."
 ---
 
 # Converge the roadmap with the world

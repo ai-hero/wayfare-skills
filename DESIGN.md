@@ -38,7 +38,7 @@ owns Markdown line breaks, so nobody re-wraps a paragraph by hand.
 | `hooks/` | Claude Code hooks (`hooks.json`): a Stop hook, `check-deferrals.sh`, that blocks a stop once when deferred work was never filed in `.plans/`. Claude Code only; other hosts do not run it. |
 | `Justfile` | The gate recipes CI calls, one per step. |
 | `assets/` | Files installed **into** other repos, except `assets/compliance/`, the baseline register read in place. |
-| `.claude-plugin/`, `.codex-plugin/`, `.agents/` | One manifest per agent host, over the same skills. |
+| `plugin.json`, `.claude-plugin/`, `.agents/` | One portable manifest for Agent Plugin hosts, a separate Claude Code adapter, and marketplace metadata over the same skills. |
 | `.github/workflows/auto-approve.yaml` | The shared reusable workflow ~25 repos execute at `@main`. |
 | `.github/workflows/pr-check.yaml` | This repo's own gate. |
 

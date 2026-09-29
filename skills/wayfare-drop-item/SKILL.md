@@ -3,6 +3,7 @@ name: wayfare-drop-item
 # prettier-ignore
 description: Abandon any open item and write status dropped with a reason, so the roadmap stops claiming it. An item with an unmerged branch also gets the stash and switch, only with a named, confirmed stash; one with no branch touches no git state. Use when work is being given up rather than finished.
 argument-hint: "ID [REASON]"
+compatibility: "Requires the complete Wayfare plugin, git, and the repository's .plans store."
 ---
 
 # Abandon work, and say so on the roadmap

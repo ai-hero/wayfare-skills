@@ -3,6 +3,7 @@ name: wayfare-setup-dev
 # prettier-ignore
 description: Set up a developer's local environment. Reads HERO.md, checks required tools, guides through git config, CLI auth, and missing dependencies. Per-developer, and never modifies shared files. Use on a fresh machine or clone, or when a tool or login is missing.
 argument-hint: "[--check | recalibrate]"
+compatibility: "Requires the complete Wayfare plugin and access to the developer machine whose local tools and credentials are being checked."
 disable-model-invocation: true
 ---
 
@@ -203,10 +204,10 @@ If HERO.md lists MCP servers:
 MCP SERVERS
 ───────────
 [??] linear (mcp__linear): listed in HERO.md
-     → Is the Linear MCP server configured in your Claude settings?
+     → Is the Linear MCP server configured in the active client?
      → This is needed for wayfare:wayfare-build-task to fetch issues
 [??] slack (mcp__slack): listed in HERO.md
-     → Is the Slack MCP server configured in your Claude settings?
+     → Is the Slack MCP server configured in the active client?
 ```
 
 MCP server setup happens in the client's settings, not on the command line. Tell
@@ -230,7 +231,7 @@ MCP servers:    ? 1 to verify — linear
 
 Remaining action items:
   1. Run: aws sso login
-  2. Verify Linear MCP server is configured in Claude settings
+  2. Verify the Linear MCP server is configured in the active client
 
 Your environment is ready for development! 🎉
 Run wayfare:wayfare-init-repo recalibrate if the project setup has changed.

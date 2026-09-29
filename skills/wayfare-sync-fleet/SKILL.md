@@ -3,6 +3,7 @@ name: wayfare-sync-fleet
 # prettier-ignore
 description: Create and converge FLEET.md, the local unversioned map of sibling checkouts (group, port). Scans the folder, proposes rows, and writes only what the user confirms. Use from the folder that holds the repos, when adding a checkout or claiming a port. To report drift without writing, use wayfare-review-fleet.
 argument-hint: ""
+compatibility: "Requires the complete Wayfare plugin and a writable fleet folder containing sibling checkouts."
 ---
 
 # Fleet: the map of the checkouts beside you

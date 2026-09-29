@@ -3,6 +3,7 @@ name: wayfare-write-handoff
 # prettier-ignore
 description: Distill the current conversation into one self-contained work-item covering context, decisions, remaining work and acceptance criteria, for a downstream agent with zero context from this session. Use when stopping mid-task, handing work to someone else, or filing what was learned as a ticket.
 argument-hint: "[TITLE_OR_FOCUS] [--issue] [--repo OWNER/NAME] | recalibrate"
+compatibility: "Requires the complete Wayfare plugin and the target repository's .plans store; issue mode also requires GitHub CLI and network access."
 ---
 
 # Handoff: package this conversation for a downstream agent

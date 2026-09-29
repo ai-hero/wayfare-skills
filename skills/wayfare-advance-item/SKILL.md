@@ -3,6 +3,7 @@ name: wayfare-advance-item
 # prettier-ignore
 description: "Advance one item as far as its gates allow: a ready task through the build pipeline, a Dependabot PR to merged, or one turn of a goal. Never plans. Use to move a specific item forward by id."
 argument-hint: "ID"
+compatibility: "Requires the complete Wayfare plugin, git, and the repository configuration described by HERO.md."
 ---
 
 # Advance one item

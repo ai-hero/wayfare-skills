@@ -178,7 +178,7 @@ def run(kind, title, text):
 
 seen = 0
 for skill in ("wayfare-push-pr", "wayfare-review-pr", "wayfare-respond-pr"):
-    md = (root / "skills" / skill / "SKILL.md").read_text()
+    md = (root / "skills" / skill / "WORKFLOW.md").read_text()
     for m in BLOCK.finditer(md):
         var, text, _, kind, title = m.groups()
         if "\n```" in m.group(3):
@@ -198,7 +198,7 @@ check "every skill template passes once filled" "" "$(python3 "$TMP/templates.py
 # respond-pr posts only the quoted part of HERO.md's trigger field, which
 # init writes as `"@greptile review" comment` or with backticks. Run the
 # skill's own extraction line, so the test cannot drift from the skill.
-EXTRACT=$(grep -m1 "TEXT=\$(printf '%s' \"\$TRIGGER\"" "$HERE/../skills/wayfare-respond-pr/SKILL.md" | sed 's/^ *//')
+EXTRACT=$(grep -m1 "TEXT=\$(printf '%s' \"\$TRIGGER\"" "$HERE/../skills/wayfare-respond-pr/WORKFLOW.md" | sed 's/^ *//')
 check "trigger extraction line found in respond-pr" "yes" "$([ -n "$EXTRACT" ] && echo yes || echo no)"
 for form in '"@greptile review" comment' '`@greptile review` comment'; do
   got=$(TRIGGER="$form" bash -c "$EXTRACT"'; printf "%s" "$TEXT"')

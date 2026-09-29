@@ -409,7 +409,7 @@ between turns:
    a task that turned out to be a different size.
 
    Invoke wayfare:wayfare-build-task with task N's **store id** as the argument,
-   via the Skill tool, with the exact line
+   through the active client's skill mechanism, with the exact line
    `commit only: goal G branch GOAL_BRANCH` and no permissions line. It
    builds, runs the tests that cover this change, and commits one
    changeset. It does not run the full suite, simplify, push, open a PR,
@@ -755,7 +755,8 @@ between turns:
    wayfare-build-task once:
 
    ```
-   Invoke wayfare:wayfare-build-task via the Skill tool with NO item argument, on
+   Invoke wayfare:wayfare-build-task through the active client's skill
+   mechanism with NO item argument, on
    GOAL_BRANCH, carrying the permissions line.
    ```
 

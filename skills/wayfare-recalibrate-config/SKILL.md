@@ -3,6 +3,7 @@ name: wayfare-recalibrate-config
 # prettier-ignore
 description: "Report and tune the config every wayfare skill reads: the `## Connections` blocks and `## Wayfare` in HERO.md plus the fields the architecture and security stages read. Asks only about fields that are unset or wrong, then writes. Use when a run complained about config, or after the repo changed shape."
 argument-hint: ""
+compatibility: "Requires the complete Wayfare plugin, git, and an existing HERO.md."
 ---
 
 # Tune the config the route reads

@@ -271,7 +271,14 @@ if [ -n "$STORE" ] && [ -d "$STORE" ]; then
 invalid"*) fail_source "store-invalid-item" ;; esac
     MATCHED=""; LEGACY=""; LEGACY_N=0
     while read -r state f _; do
-      [ "$state" = active ] || continue
+      # A flag overrides the row word, so a build that wrote `blocked_on` or
+      # `awaiting` and stopped lists as blocked or suspended while its status
+      # is still `active`. Reading the row alone lost it on resume.
+      case "$state" in
+        active) ;;
+        blocked|suspended) [ "$(hero_item_status "$ITEMS/$f")" = active ] || continue ;;
+        *) continue ;;
+      esac
       # hero_ready_items owns the status enum; `active` is wayfare-build-task's mark
       # before its first edit. Only a task can be the item on this branch: a
       # goal at active is a set of tasks, and a signal at active is being

@@ -89,7 +89,7 @@ its own hardening instead: a self-review.
 ### The plan store
 
 `.plans/` is the system of record: one `PLAN.md` per repo and one file per item.
-Items come in four types, and a task's `shape` decides what its Definition of
+Items come in five types, and a task's `shape` decides what its Definition of
 Done has to assert.
 
 | Type | What it is | What happens to it |
@@ -98,6 +98,7 @@ Done has to assert.
 | `signal` | a finding delivered where this repo cannot write | delivered upstream |
 | `goal` | an ordered set of tasks with one Definition of Done | grouped and authorized |
 | `idea` | something worth doing eventually, not yet shaped into work | nothing, until you promote it |
+| `anti-feature` | a thing looked at and decided against | refused and cited |
 
 An **idea** is the parking lot: a thought worth keeping that nobody has
 committed to. It carries no plan, no paths and no Definition of Done. An idea
@@ -382,9 +383,15 @@ Each command reads your `HERO.md` config and adapts to your stack automatically.
 low-risk PR, without going through `wayfare:wayfare-sync-plan` first:
 
 ```
-wayfare:wayfare-build-task PROJ-123   # start a new ticket (or a plain-text description)
+wayfare:wayfare-build-task PROJ-123   # start a new ticket or a READY item id
 wayfare:wayfare-build-task            # resume the current goal to merged + reset branch
 ```
+
+For a small change you can only describe,
+`wayfare:wayfare-one-shot "DESCRIPTION"` is the front door: it drafts one task,
+shows it, and on your yes marks it ready and runs `wayfare-build-task` on it. A
+description that is several items, an anti-feature or a one-way door goes to
+`wayfare:wayfare-grill-idea` instead.
 
 It chains
 `plan → implement → simplify → push → self-review → mark-ready → await-review → respond → ship`
@@ -497,6 +504,7 @@ procedures:
 
 | Command | What it does |
 | -- | -- |
+| `wayfare:wayfare-one-shot` | Takes one small, clear change from a one-line description to a merged PR: drafts one task, shows it, and on your yes marks it ready and runs `wayfare-build-task` on it. Stops and routes to `wayfare-grill-idea` when the description is several items, touches an anti-feature, or is a one-way door. |
 | `wayfare:wayfare-build-task` | Drives a small task end-to-end: plan → implement → simplify → push → self-review → mark-ready → await-review → respond → ship, with the tests run inside push. Detects a resume point on re-invocation; with no arguments, drives the current goal to merged + reset branch. Explicit user gates at each destructive step. |
 | `wayfare:wayfare-init-repo` | Scaffolds a new project, then chains into wayfare-setup-dev → config → first-commit. |
 

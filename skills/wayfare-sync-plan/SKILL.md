@@ -61,10 +61,15 @@ Progress:
 - [ ] 1. Step 0 above
 - [ ] 2. Inbox: triage `.plans/inbox/`, resume what the replies unblock
 - [ ] 3. Reconciliation lanes: design, architecture, design system, hardening,
-  comments, compliance, deps, unshipped
+  comments, compliance, deps, unshipped; the `uncovered` lane lists ground an
+  anti-feature declines as `declined, see ID` and proposes nothing for it
 - [ ] 4. Visual pass: the shipped screens, per `../../references/shaping.md`
-- [ ] 5. Store defects: dangling deps, orphaned members, missing anchors
-- [ ] 6. Confirm the proposal table with the user, row by row
+- [ ] 5. Store defects: dangling deps, orphaned members, missing anchors, and
+  the blocked lane, which asks per item whether its `blocked_on` has cleared;
+  then the roundup of every `new` item, plus any `accepted` task the person no
+  longer wants, where each item is accepted or dropped with a reason
+- [ ] 6. Confirm the proposal table with the user, row by row, including each
+  task's proposed `priority`
 - [ ] 7. Write the accepted items at `status: accepted` (`docs/PLAN.md` format)
 - [ ] 8. Propose goals over what was planned; this skill writes them, never
   authorizes

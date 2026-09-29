@@ -113,12 +113,12 @@ stage below runs `wayfare:wayfare-review-architecture` and offers that skill. A
 file's presence is not configuration, so nothing about it is written to HERO.md.
 
 **Mode detection.** The roadmap exists iff `.plans/` holds at least one item
-whose **frontmatter** `type` is `task`, `signal` or `goal` (an `idea` alone is
-not a roadmap), read with `hero_item_field "$f" type` per `"$STORE"/items/*.md`,
-never a raw grep (a body mentioning `type: task` would trip it). First confirm
-the store lists (`ls "$STORE"` succeeds): a clean pass with no task item means
-bootstrap; a store that will not list is a failed check, so STOP and name the
-path.
+whose **frontmatter** `type` is `task`, `signal` or `goal` (an `idea` or an
+`anti-feature` alone is not a roadmap), read with `hero_item_field "$f" type`
+per `"$STORE"/items/*.md`, never a raw grep (a body mentioning `type: task`
+would trip it). First confirm the store lists (`ls "$STORE"` succeeds): a clean
+pass with no task item means bootstrap; a store that will not list is a failed
+check, so STOP and name the path.
 
 **The `inbox` stage: what the fleet sent, promoted or declined.** The mailbox is
 `$STORE/inbox/` (`docs/MESSAGES.md`); Step 0 printed the unread count. Read each
@@ -469,11 +469,16 @@ No branch besides the default → `(–)` and one line saying so.
    (`overlaps: item N`). It keeps its own lifecycle and is never edited or
    converted; a legacy plain item likewise.
 
-5. **Confirm, then write.** On the user's confirmation of the list (edits
-   welcome: drop rows, reword, re-scope), write each task in the format below:
-   `status: accepted`, `anchors.target` = the target head resolved in step 2
-   (self-review mode resolved no target head, so leave it absent). Ids continue
-   the store's single sequence (wayfare-grill-idea's numbering rules).
+5. **Confirm, then write.** Each task row carries a proposed `priority` (`p0` to
+   `p3`, `docs/PLAN.md`): propose one from the design's journey order and what
+   depends on it, and leave the cell `-` when nothing supports a guess. The
+   person confirms or changes it with the rest of the row, and a `-` is written
+   as an absent field, which lists last. On the user's confirmation of the list
+   (edits welcome: drop rows, reword, re-scope, re-rank), write each task in the
+   format below with its confirmed `priority`: `status: accepted`,
+   `anchors.target` = the target head resolved in step 2 (self-review mode
+   resolved no target head, so leave it absent). Ids continue the store's single
+   sequence (wayfare-grill-idea's numbering rules).
 
 6. **Plan the set: the postflight.** See *Plan the set* below. `sync` is not
    finished when the rows are written; it is finished when every task that needs
@@ -544,7 +549,12 @@ rather than reporting clean, the same rule the Upstream lane above follows):
 - **uncovered**: target ground no existing task addresses: propose new
   `accepted` tasks, slice-shaped per *Slices, not layers* and placed in the
   journey by the UX flow. "The design has a section nothing covers" is not by
-  itself a task. Find the story that section serves.
+  itself a task. Find the story that section serves. **Before proposing, match
+  each candidate against the `anti` rows** (an anti-feature's `source` paths and
+  its title): a match is listed as `declined, see ID` and proposes nothing,
+  because the ground is uncovered on purpose. It stays out of the proposal table
+  unless the target has changed since the decision, in which case say so in the
+  row and let the person reverse it through `wayfare:wayfare-grill-idea`.
 - **obsolete**: a task whose target paths the design dropped: propose closing it
   out.
 - **in-design-not-in-code**: a target screen with no route in the router. It is
@@ -631,32 +641,42 @@ rather than reporting clean, the same rule the Upstream lane above follows):
   `ready` or later task keeps its plan (the ready-mark bought it), so propose
   the re-slice for what remains instead.
 
-- **store defects**: `hero_ready_items` stderr warnings (dangling deps,
-  duplicate ids, unrecognized statuses; the script checks those and nothing
-  below); plus, checked by this finding itself since the listing never reads a
-  goal's body: every `type: goal` item's members (`hero_goal_members`) two ways:
-  each is a `task`, and no earlier member `depends_on` a later one (the order
-  the turn walks must not contradict the gate each task has); a goal's
-  `depends_on` entry that is not a `type: goal`, or that disagrees with the
-  derivation from its tasks' `depends_on`; a goal whose `## Permissions` is
-  missing, lacks a key, or holds a value outside `yes`/`no` (`verify`/`none` for
-  `deploy`), or whose `## Permissions` changed while `active`; a `budget_max`
-  that is absent or not a positive integer, or, on an `accepted` goal, below
-  `budget` (on an `active` goal, admissions raise `budget` between checkpoints,
-  so `budget` above `budget_max` there is a run in progress); a `concurrency`
-  key left over from the per-task-PR model, which nothing reads any more and
-  which plan removes; an `active` goal holding a member its `## Log` does not
-  account for; and a `committed` task that no open goal has as a member
-  (`hero_ready_items` warns on it). That is the residue of a goal whose branch
-  was abandoned: the item claims work the repo does not have, and nothing else
-  re-opens it, because only the goal's step 7 moves a task from `committed` to
-  `done`. Report it with the SHA from its `[goal-commit:]` marker and offer to
-  return the item to `ready`. **Do not test the SHA against the default
-  branch.** The default merge method is squash, so a task's commit is never an
-  ancestor of the default branch even when the goal shipped perfectly, and a
-  check built on ancestry reports every task of every completed goal and offers
-  to re-open finished work. A live `active` goal is likewise not a defect: its
-  tasks are committed and unmerged by design until its step 7.
+- **untriaged and unwanted items**: every `new` item, and any `accepted` task
+  the person says they no longer want, offered in the ordinary confirm flow with
+  two answers: accept (`new` becomes `accepted`) or drop. Drop calls the same
+  write as `wayfare-drop-item` (`references/drop.md`, *Marking the item*): ask
+  for the reason, set `status: dropped`, append
+  `- DATE (wayfare-sync-plan) decision: dropped: REASON`, keep the file. An item
+  with no branch touches no git state, so nothing here needs a checkout. A
+  `ready` or later item is out of this lane: it carries a plan the ready-mark
+  bought, and dropping it is the verb's call, not a roundup's.
+
+- **store defects**: every stderr line `hero_ready_items` prints (the script
+  checks those and nothing below); plus, checked by this finding itself since
+  the listing never reads a goal's body: every `type: goal` item's members
+  (`hero_goal_members`) two ways: each is a `task`, and no earlier member
+  `depends_on` a later one (the order the turn walks must not contradict the
+  gate each task has); a goal's `depends_on` entry that is not a `type: goal`,
+  or that disagrees with the derivation from its tasks' `depends_on`; a goal
+  whose `## Permissions` is missing, lacks a key, or holds a value outside
+  `yes`/`no` (`verify`/`none` for `deploy`), or whose `## Permissions` changed
+  while `active`; a `budget_max` that is absent or not a positive integer, or,
+  on an `accepted` goal, below `budget` (on an `active` goal, admissions raise
+  `budget` between checkpoints, so `budget` above `budget_max` there is a run in
+  progress); a `concurrency` key left over from the per-task-PR model, which
+  nothing reads any more and which plan removes; an `active` goal holding a
+  member its `## Log` does not account for; and a `committed` task that no open
+  goal has as a member (`hero_ready_items` warns on it). That is the residue of
+  a goal whose branch was abandoned: the item claims work the repo does not
+  have, and nothing else re-opens it, because only the goal's step 7 moves a
+  task from `committed` to `done`. Report it with the SHA from its
+  `[goal-commit:]` marker and offer to return the item to `ready`. **Do not test
+  the SHA against the default branch.** The default merge method is squash, so a
+  task's commit is never an ancestor of the default branch even when the goal
+  shipped perfectly, and a check built on ancestry reports every task of every
+  completed goal and offers to re-open finished work. A live `active` goal is
+  likewise not a defect: its tasks are committed and unmerged by design until
+  its step 7.
 
   **The goal's `## Log` is a ledger, and the check replays it.** The goals stage
   opens it with a `cut` line when it writes or re-cuts a goal,
@@ -710,6 +730,19 @@ rather than reporting clean, the same rule the Upstream lane above follows):
   id) or clearing `awaiting` with a `note` line saying the question is being
   answered here instead. This finding is where expiry is evaluated; nothing
   sweeps the fleet. A wait nobody re-reads is a hang with a status.
+
+- **blocked items**: every non-terminal item with `blocked_on:` set, which
+  `hero_ready_items` lists as `blocked` with `[on: TEXT, since DATE]`. Print
+  each with its reason and age, and ask per item whether it has cleared. On yes,
+  delete `blocked_on` and `blocked_since` and append a dated `note` line to its
+  `## Log` saying what cleared it; the item keeps its status and is READY again
+  if nothing else holds it. On no, leave it, and say so if the age is long.
+  Nothing else clears the field: a block nobody re-reads is a hang with a
+  status, the same as a stale wait. A `done` or `dropped` item still carrying it
+  is not asked about: delete the field on confirmation. A value that contains
+  `#` must be quoted (`blocked_on: "#42 upstream"`): unquoted, the `#` opens a
+  YAML comment, the item lists READY, and only a stderr warning says so; quote
+  it when you find one.
 
 Apply only what the user confirms. **Applying stale rows** splits on whether the
 task's plan is already locked:
@@ -977,3 +1010,9 @@ the ordinary confirm flow:
 **Never promote an idea unasked, and never count one as coverage.** An idea
 credited as coverage suppresses the `uncovered` finding for ground nobody has
 planned, which is the failure that lane exists to catch.
+
+**An anti-feature is neither coverage nor a proposal.** It is the recorded
+reason ground stays uncovered: the `uncovered` lane reads it, lists the match as
+declined, and proposes nothing for it. Sync never writes one on its own and
+never reverses one; a person files it (`type: anti-feature`, `docs/PLAN.md`) and
+a person reverses it.

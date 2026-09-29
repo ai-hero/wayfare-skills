@@ -68,14 +68,18 @@ commit one onward.
 plan → implement → simplify → push → self-review → mark-ready → await-review → respond → ship
 ```
 
-Owner: `wayfare:wayfare-build-task`. Invoked with an issue ID or description it
-starts at `plan`; invoked with no arguments it resumes the current goal
-(in-progress branch/diff/PR on the current branch, plus the in-flight item's
-`## Subtasks` checklist, the plan file is the state file, so a run that died
-mid-implement resumes at its first unchecked line) from the detected step and
-drives it, through the usual user gates, to merged + a reset checkout. Nine
-steps, each maps to a single skill (or `inline` when wayfare-build-task drives
-it directly without delegating):
+Owner: `wayfare:wayfare-build-task`. Invoked with an issue ID or an item id it
+starts at `plan`; a bare description reaches it through
+`wayfare:wayfare-one-shot`, the front door beside it, which drafts one task,
+takes the person's yes as the ready-mark and calls build-task back with the
+item's id (or routes to `wayfare-grill-idea` when the description is several
+items, an anti-feature or a one-way door); invoked with no arguments it resumes
+the current goal (in-progress branch/diff/PR on the current branch, plus the
+in-flight item's `## Subtasks` checklist, the plan file is the state file, so a
+run that died mid-implement resumes at its first unchecked line) from the
+detected step and drives it, through the usual user gates, to merged + a reset
+checkout. Nine steps, each maps to a single skill (or `inline` when
+wayfare-build-task drives it directly without delegating):
 
 | # | Step | Skill to run standalone | Notes |
 | -- | -- | -- | -- |
@@ -160,6 +164,10 @@ deliberately does *not* route through `wayfare:wayfare-write-handoff`: that
 skill distills the *current* conversation, which would both narrate the wrong
 session and carry this repo's branches and PR numbers into a third party's
 tracker. See `references/feedback-channels.md`.
+
+**wayfare-one-shot authors one item per run**, a task with
+`origin: wayfare-one-shot`, written at `planning` and flipped to `ready` only by
+the person's yes; it adds no type or shape.
 
 **wayfare-build-task authors only Step 2a items.** Step 2a pushes discovered or
 mis-scoped work out of the running item into its own `.plans/` item, a

@@ -92,7 +92,7 @@ mode**: `wayfare-sync-plan` reconciles the source against `DESIGN.md`, its own
 gaps and its own hardening audit, and no item carries a target anchor. The
 absence is not a defect and nothing reports it as one.
 
-## Four types
+## Five types
 
 | `type` | What it is | What an agent does with it | Terminal |
 | -- | -- | -- | -- |
@@ -100,15 +100,17 @@ absence is not a defect and nothing reports it as one.
 | `signal` | a finding delivered somewhere this repo cannot write | delivers it upstream | `done` |
 | `goal` | an ordered set of tasks with a Definition of Done spanning them | groups and authorizes | `done` |
 | `idea` | something worth doing eventually, not yet shaped into work | **nothing, until a person promotes it** | `done` |
+| `anti-feature` | a thing looked at and decided against | **refuses it and cites it** | `done` |
 
 That is the whole taxonomy. **A type is what an agent does with the item**, and
-nothing else; that column is the test a fifth type would have to pass. `task`
+nothing else; that column is the test a sixth type would have to pass. `task`
 and `signal` differ in *where the work lands*. Everything the old nine kinds
 distinguished beyond that is now a field.
 
-**Tasks are built. Signals are delivered. Goals and ideas are neither**: a goal
-is never handed out as READY because wayfare-build-task builds tasks, and an
-idea is not work at all yet.
+**Tasks are built. Signals are delivered. Goals, ideas and anti-features are
+neither**: a goal is never handed out as READY because wayfare-build-task builds
+tasks, an idea is not work at all yet, and an anti-feature is a decision that
+work is checked against.
 
 ### `idea`: the parking lot
 
@@ -140,9 +142,46 @@ Sync must not read an idea as coverage. Counting one would suppress the
 `uncovered` finding for ground nobody has planned, which is the whole failure
 the `uncovered` lane exists to catch.
 
+### `anti-feature`: a decision not to build
+
+An anti-feature records that the ask was looked at and declined: the ask, why
+not, and what to do instead. A dropped item says work stopped and a rejected
+signal says upstream said no; neither says "we chose not to have this", so the
+next sync round finds the same uncovered ground and proposes it again, and the
+next grill shapes it again from scratch.
+
+It is a type and not a `resolution` on `idea` because it passes the test above
+with an answer none of the other four has: an agent **checks against it**. Sync
+does not propose the ground it names, grill stops and cites it before the first
+question, and build refuses it by id. A field on an idea could not carry that,
+because of the lifecycle: a decision stays open at `accepted`, matched every
+round and reversible by promotion, whereas a `resolution` is set only at `done`,
+and done items are frozen and outside every lane.
+
+An anti-feature carries **no `shape`, and no `depends_on`**, and its body is
+`## Context` and `## Log` and nothing else. It may carry `source` paths, which
+are how sync matches it to uncovered ground.
+
+- **An anti-feature is never READY.** It lists as `anti` at `new` and
+  `accepted`, as `done` or `dropped` once closed, and any other status is a
+  store defect naming the enum.
+- **Nothing may `depends_on` an anti-feature**, and a dependency on one is a
+  store defect the listing reports. Building never marks a declined thing
+  `done`, so the dependent would wait forever.
+- **A person reverses one, and the reversal is written on it.** It goes `done`
+  with `resolution: promoted` when the decision became a task, which carries
+  `discovered_from: ANTI_FEATURE_ID`, or `resolution: obsolete` when the world
+  moved. It is `dropped` only from `new`, a proposed decision withdrawn before
+  anyone accepted it; an `accepted` one closes only by a person, `done` with
+  `promoted` or `obsolete`.
+
+Sync must not read an anti-feature as coverage either: it is the reason ground
+stays uncovered, so `uncovered` lists the match as "declined, see ID" and
+proposes nothing for it.
+
 ## Shape: what a task's Definition of Done must assert
 
-`shape` is required on a `task` and absent on the other three types. It decides
+`shape` is required on a `task` and absent on the other four types. It decides
 three things and nothing else: whether the slice rule applies, what the
 Definition of Done has to assert, and how that assertion is verified.
 
@@ -197,7 +236,7 @@ comment that no longer names a trap is noise, and noise outlives its accuracy.
 
 ## Channel: where a signal goes
 
-`channel` is required on a `signal` and absent on the other three types.
+`channel` is required on a `signal` and absent on the other four types.
 
 | `channel` | Goes to |
 | -- | -- |
@@ -227,16 +266,22 @@ new → accepted → planning → ready → active → committed → review → 
 | `committed` | committed on a goal's branch, absent from the default branch | wayfare-build-task's commit-only mode |
 | `review` | PR open, awaiting review and merge | wayfare-build-task when the PR opens |
 | `done` | finished; dependents are unblocked | wayfare-build-task at merge, or the goal's final turn |
-| `dropped` | abandoned; dependents stay blocked | `wayfare-drop-item` |
+| `dropped` | abandoned; dependents stay blocked | `wayfare-drop-item`, or `wayfare-sync-plan`'s roundup of `new` and `accepted` items, which calls the same write |
+
+`dropped` is reachable from any open state, with or without a branch, except an
+`accepted` anti-feature, which closes only `done` (see its section). The write
+always appends a dated `decision` line to `## Log` giving the reason.
 
 Not every item visits every state. A `signal` runs
 `new → accepted → ready → active → done` (no plan to write, no branch to commit
 to). A `goal` runs `new → accepted → active → done`. An `idea` runs
 `new → accepted → done`, where `new` is jotted down and `accepted` is "we mean
-to do this eventually", parked with intent. A task whose work is small,
-single-approach and single-area goes `accepted → ready` with a one-line approach
-and no planning run. **Say which way you went and why, in one line**, because a
-skipped planning run should be a visible decision and not an omission.
+to do this eventually", parked with intent. An `anti-feature` runs the same
+three states, where `new` is proposed as a decision and `accepted` is "we
+decided against this". A task whose work is small, single-approach and
+single-area goes `accepted → ready` with a one-line approach and no planning
+run. **Say which way you went and why, in one line**, because a skipped planning
+run should be a visible decision and not an omission.
 
 **`resolution` carries the ending, not the status.** It is set only at `done`:
 
@@ -245,7 +290,7 @@ skipped planning run should be a visible decision and not an omission.
 | `shipped` | task | merged, deploy verified |
 | `delivered` | signal | carried upstream and accepted |
 | `rejected` | signal | carried upstream and declined; the question is answered |
-| `promoted` | idea | became one or more real items, which carry `discovered_from` |
+| `promoted` | idea, anti-feature | became one or more real items, which carry `discovered_from` |
 | `obsolete` | any | the world moved; the item no longer describes anything |
 
 This is the field that deletes the two-enum problem. **A dependency is satisfied
@@ -265,9 +310,30 @@ it left in `suspended_from` so the resume could put it back, a saved copy of a
 value that never needed to change. A suspended item is never READY and never
 satisfies a dependency, both of which read off `awaiting` being non-empty.
 
+**An outside block is a flag too.** `awaiting` covers one case, a sibling repo's
+reply through the mailbox. Anything else an item waits on that is not an item (a
+vendor's answer, a decision the owner has not made, a credential, an upstream
+release) is `blocked_on`: free text naming what, plus `blocked_since`, the date
+it started. Non-empty means blocked at any non-terminal status, on a task,
+signal or goal; on an idea or anti-feature it is warned about and ignored. Quote
+a value that contains `#` (`blocked_on: "#42 upstream"`): unquoted, a leading
+`#` opens a YAML comment, the value reads as empty, and the item lists READY
+with a warning. The item keeps the status it had, because a `blocked` status
+would need a `blocked_from` to restore, the saved copy the paragraph above
+describes. A blocked item is never READY and never satisfies a dependency, so
+its own dependents stay blocked. Nothing clears the field automatically: a
+person, in `wayfare-sync-plan`'s blocked lane, says the wait is over, and
+clearing deletes the field and appends a `note` line to `## Log`. On a `done` or
+`dropped` item the field is ignored and warned about on stderr, so a stale one
+cannot hold up anything. When `awaiting` and `blocked_on` are both set,
+`awaiting` wins: the item lists as suspended, and the block shows once the
+message clears.
+
 **Two derived flags, never stored:**
 
 - **blocked**: a `depends_on` id is not `done`, computed by `hero_ready_items`.
+  The stored `blocked_on` field is the other way to be blocked, and is not
+  derived.
 - **stale**: either head moved past the item's anchor: `anchors.source` past the
   plan's `source.head`, or `anchors.target` past `target.head`. Age is measured
   in commits, never in rounds.
@@ -282,13 +348,14 @@ absent alike.
 ```markdown
 ---
 id: 12
-type: task # task | signal | goal | idea
+type: task # task | signal | goal | idea | anti-feature
 shape: story # TASK ONLY — story | structural | visual | defect | dependency | docs
 title: I can sign in with my Google account
 status: ready
 resolution: # set only at done — shipped | delivered | rejected | promoted | obsolete
 origin: wayfare # the producer that authored this item; never claimed for another
 severity: # optional — high | medium | low
+priority: # optional — p0 | p1 | p2 | p3; absent means unranked
 depends_on: [9] # ids that must reach `done` first; blockers only
 parent: 7 # GOAL membership: the goal this task belongs to
 rank: 2 # optional — order within the parent where depends_on leaves it free
@@ -301,12 +368,24 @@ anchors:
 awaiting: [] # message ids this item waits on; non-empty means suspended
 suspended_at: # date the wait started
 expires: # date the wait lapses
+blocked_on: # optional — free text: what a non-item wait is on; non-empty means blocked. Quote a value containing `#`
+blocked_since: # date the block started
 ready_marked: 2026-07-24 # the date a person flipped it to ready; the record of the one act nothing else may perform
 one_way_door: false # optional — true when the change is expensive to reverse, so planning gave it extra scrutiny
 branch: feat/12-google-sign-in # written when work starts
 pr: https://github.com/OWNER/REPO/pull/41
 success: "a signed-out user completes Google sign-in and lands on their dashboard"
 ---
+
+`priority` is what the owner wants first: `p0` is drop-everything, `p3` is
+whenever, and absent means unranked, which sorts after `p3`. It is a field on
+every type. `hero_ready_items` lists rows by priority, then id, so READY `p0`
+work comes before READY `p2` work whatever their ids. A value outside the enum
+warns on stderr and sorts as unranked, never as `p0`. It is not `severity`:
+severity is impact (does the defect block a story, degrade it, or only look
+wrong) and is read off the defect, while priority is the owner's call on when,
+so a low-severity docs fix can be `p0`. It is not `rank` either, which orders
+tasks inside one goal and means nothing between goals.
 
 ## Context
 
@@ -347,6 +426,31 @@ What must be observably true when this ships — every line verified before
 - 2026-07-25 (wayfare-build-task) signal: design/auth/sign-in.md orders consent before
   account linking; the code links first, because consent cannot be scoped
   until the account is known
+```
+
+### An anti-feature's whole format
+
+An anti-feature carries this and no more:
+
+```markdown
+---
+id: 45
+type: anti-feature
+title: Trips do not sync to a calendar
+status: accepted # new | accepted | done | dropped — dropped only from new; an accepted one closes done
+resolution: # promoted | obsolete — set at done
+origin: rahul
+source: [src/trips/] # optional: the paths sync matches it against
+---
+
+## Context
+
+The ask, why we chose not to, and what to do instead. One paragraph is the
+expected length.
+
+## Log
+
+- 2026-09-29 (rahul) note: declined after the calendar spike
 ```
 
 ### An idea's whole format
@@ -516,10 +620,13 @@ local format looks the way it does.
 | -- | -- |
 | `.plans/PLAN.md` frontmatter | one `plans` row per repo |
 | `.plans/items/NNN-slug.md` frontmatter | one `items` row; `id` is unique per plan, not global |
-| `type` | enum column: the discriminator, four values |
+| `type` | enum column: the discriminator, five values |
 | `shape`, `channel` | nullable enum columns, valid only for their type |
-| `status`, `resolution` | enum columns; `resolution` null until `done` |
+| `priority` | nullable enum column (`p0` to `p3`), valid on every type; null is unranked |
+| `status` | enum column |
+| `resolution` | enum column, valid per type (shipped task; delivered, rejected signal; promoted idea, anti-feature; obsolete any); null until `done` |
 | `depends_on` | `item_dependencies` join table |
+| `blocked_on`, `blocked_since` | nullable text and date columns, valid on a non-terminal task, signal or goal; null is not blocked. A check holds `blocked_since IS NULL OR blocked_on IS NOT NULL`, and migration strips `blocked_on` from terminal items |
 | `parent`, `discovered_from` | self-referencing nullable FKs |
 | `source`, `target` | `item_paths` rows tagged `source` or `target` |
 | `anchors` | two columns on the item |

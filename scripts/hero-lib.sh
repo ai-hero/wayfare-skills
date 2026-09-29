@@ -967,14 +967,45 @@ hero_work_store() {
 # `status: "done"` fail to equal `done`, which silently blocked every dependent
 # forever. hero_field already strips quotes, so the two readers in this file must
 # agree on the same syntax.
+#
+# A quoted value is taken whole, and an unquoted one loses a comment only at a
+# `#` that opens the value or follows whitespace, as YAML reads it. Stripping
+# from any `#` turned `blocked_on: "#42 upstream"` into an empty value, and an
+# empty `blocked_on` lists the item READY.
 hero_item_field() {
   awk -v k="$2" '
     /^---[[:space:]]*$/ { fence++; if (fence >= 2) exit; next }
     fence != 1 { next }
     index($0, k ":") == 1 {
-      v = $0; sub(/^[^:]*: */, "", v); sub(/ *#.*/, "", v)
+      v = $0; sub(/^[^:]*: */, "", v)
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
-      gsub(/^["'"'"']|["'"'"']$/, "", v)
+      q = substr(v, 1, 1)
+      e = (q == "\"" || q == "'"'"'") ? index(substr(v, 2), q) : 0
+      if (e > 0) {
+        v = substr(v, 2, e - 1)
+      } else {
+        if (substr(v, 1, 1) == "#") v = ""
+        sub(/[[:space:]]+#.*/, "", v)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
+        gsub(/^["'"'"']|["'"'"']$/, "", v)
+      }
+      print v
+      exit
+    }
+  ' "$1"
+}
+
+# Print a frontmatter line's text after the colon, trimmed and otherwise
+# unparsed, so a reader can tell a value the parser emptied from one never
+# written. Callers warn only on `#` then a non-space (`#42`): `# note` is the
+# comment the PLAN.md template itself writes after an empty field.
+hero_item_field_raw() {
+  awk -v k="$2" '
+    /^---[[:space:]]*$/ { fence++; if (fence >= 2) exit; next }
+    fence != 1 { next }
+    index($0, k ":") == 1 {
+      v = $0; sub(/^[^:]*:/, "", v)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", v)
       print v
       exit
     }
@@ -1036,7 +1067,7 @@ hero_item_status() {
   printf '%s' "${s:-new}"
 }
 
-# An item's TYPE: task, signal, goal or idea (docs/PLAN.md). Lowercased, because
+# An item's TYPE (the enum is in docs/PLAN.md). Lowercased, because
 # `Task` silently matching no arm of the listing table printed the item as
 # invalid, which reads as a malformed file rather than a capital letter.
 # Empty means the item was never migrated; the caller reports it, because
@@ -1050,6 +1081,12 @@ hero_item_type() {
 # so nothing in the listing reads it.
 hero_item_shape() {
   hero_item_field "$1" shape | tr '[:upper:]' '[:lower:]'
+}
+
+# An item's PRIORITY: p0 to p3, lowercased like the other accessors so `P1`
+# ranks as p1. Empty means unranked.
+hero_item_priority() {
+  hero_item_field "$1" priority | tr '[:upper:]' '[:lower:]'
 }
 
 # A signal's CHANNEL: design, design-system or architecture. Decides where
@@ -1554,6 +1591,30 @@ hero_norm_id() {
   esac
 }
 
+# Reorder listing rows (`WORD FILE — TITLE` on stdin) by priority, then by the
+# order they arrive in, which is filename and so id. Reads each row's file from
+# the current directory. The sort must stay stable (-s): without it the tie
+# between two p1 rows falls to comparing the whole line and id order is lost.
+# Absent and unrecognized both rank 4, after p3.
+hero_sort_rows_by_priority() {
+  local row f key p
+  while IFS= read -r row; do
+    read -r _ f _ <<EOF
+$row
+EOF
+    p=
+    if [ -r "$f" ]; then
+      p=$(hero_item_priority "$f")
+    else
+      echo "hero_sort_rows_by_priority: could not read $f for its priority; sorted as unranked" >&2
+    fi
+    case "$p" in
+      p0) key=0 ;; p1) key=1 ;; p2) key=2 ;; p3) key=3 ;; *) key=4 ;;
+    esac
+    printf '%s\t%s\n' "$key" "$row"
+  done | sort -s -t "$(printf '\t')" -k1,1n | cut -f2-
+}
+
 # Print one line per work-item:  STATE  file — title
 # A blocked row whose dependency does not exist anywhere in the store gets a
 # trailing ` [missing dep: ID…]` annotation, because that reference can NEVER be
@@ -1561,7 +1622,9 @@ hero_norm_id() {
 #
 # STATE is one of:
 #   READY    a task at `ready` whose every depends_on target is done
-#   blocked  not done, but a dependency is unmet or unresolvable
+#   blocked  not done, but a dependency is unmet or unresolvable, or
+#            `blocked_on:` names something outside the store (annotated
+#            `[on: TEXT, since DATE]`). Never READY, never a satisfied dependency
 #   backlog  a task at `accepted`: on the roadmap, not yet planned; annotated
 #            `[deps unmet]` when a dependency isn't done. Never READY: handing
 #            an unplanned task to wayfare-build-task would skip planning entirely
@@ -1582,6 +1645,8 @@ hero_norm_id() {
 #            is a container for tasks, and wayfare-build-task builds tasks.
 #            `wayfare-start-goal` selects goals by type instead
 #   idea     an idea at new or accepted: parked, never work until promoted
+#   anti     an anti-feature at new or accepted: a decision not to build, checked
+#            against and never work
 #   new      status is new (or absent): created, not yet triaged. Never READY,
 #            because nobody has decided this should be worked on
 #   done     finished; the only state that satisfies a dependency
@@ -1616,8 +1681,8 @@ hero_norm_id() {
 # silently reroutes every later relative path.
 hero_ready_items() (
   local store items f d raw deps ready title id state itype row all_ids done_ids
-  local open_goals parent committed_ids committed missing awaiting since enum
-  local idea_ids shape channel resolution
+  local open_goals parent committed_ids committed missing awaiting blocked_on since enum
+  local idea_ids anti_ids shape channel resolution
   store="${1:-$(hero_work_store)}" || return 1
 
   # An unmigrated store lists NOTHING rather than listing wrong. Every item in
@@ -1649,6 +1714,7 @@ hero_ready_items() (
   committed_ids=" "
   open_goals=" "
   idea_ids=" "
+  anti_ids=" "
   for f in *.md; do
     [ -e "$f" ] || continue
     id=$(hero_norm_id "$(hero_item_field "$f" id)")
@@ -1696,7 +1762,7 @@ hero_ready_items() (
     # Ideas are collected whatever their status: a dependency on one is a
     # defect even after it is promoted, because the dependent was written
     # against a parking-lot entry rather than against the work it became.
-    case "$itype" in idea) idea_ids="$idea_ids$id " ;; esac
+    case "$itype" in idea) idea_ids="$idea_ids$id " ;; anti-feature) anti_ids="$anti_ids$id " ;; esac
   done
 
   for f in *.md; do
@@ -1708,7 +1774,7 @@ hero_ready_items() (
     # by something that has not caught up. Never guessed: guessing `task` is
     # how a goal gets handed to wayfare-build-task to build.
     if [ -z "$itype" ]; then
-      echo "hero_ready_items: $f has no type; schema 1 requires task, signal, goal or idea (docs/PLAN.md)" >&2
+      echo "hero_ready_items: $f has no type; schema 1 requires task, signal, goal, idea or anti-feature (docs/PLAN.md)" >&2
       echo "invalid $f — $title"
       continue
     fi
@@ -1762,7 +1828,24 @@ hero_ready_items() (
     # status that was rolled back by hand without clearing it, or a `done`
     # someone meant and did not write. Either way the two fields disagree.
     resolution=$(hero_item_field "$f" resolution | tr '[:upper:]' '[:lower:]')
-    [ -z "$resolution" ] || [ "$state" = "done" ] || echo "hero_ready_items: $f carries resolution '$resolution' at status '$state'; resolution is set only at done" >&2
+    if [ -n "$resolution" ] && [ "$state" != "done" ]; then
+      echo "hero_ready_items: $f carries resolution '$resolution' at status '$state'; resolution is set only at done" >&2
+    elif [ "$state" = "done" ]; then
+      case "$itype:$resolution" in
+        task:shipped|signal:delivered|signal:rejected|idea:promoted|anti-feature:promoted|*:obsolete) ;;
+        idea:|anti-feature:) echo "hero_ready_items: $f is a done $itype with no resolution; expected promoted or obsolete" >&2 ;;
+        *:) ;;
+        *) echo "hero_ready_items: $f is a $itype with resolution '$resolution', which is not an ending a $itype has (docs/PLAN.md)" >&2 ;;
+      esac
+    fi
+
+    # `priority` orders the listing and nothing else. An unrecognized value
+    # sorts as unranked (hero_sort_rows_by_priority), so a typo can only lose
+    # its rank, never claim p0; the warning keeps that from being silent.
+    case "$(hero_item_priority "$f")" in
+      ''|p0|p1|p2|p3) ;;
+      *) echo "hero_ready_items: $f has unrecognized priority '$(hero_item_field "$f" priority)'; expected p0, p1, p2 or p3. Sorting it as unranked" >&2 ;;
+    esac
 
     # Suspension is a FLAG, not a status (docs/PLAN.md): the item keeps the
     # status it held and `awaiting` is what makes it suspended. Read before the
@@ -1778,6 +1861,38 @@ hero_ready_items() (
       since=$(hero_item_field "$f" suspended_at)
       echo "suspended $f — $title [awaiting $(printf '%s\n' "$awaiting" | wc -w | tr -d ' '): $awaiting${since:+ — since $since}]"
       continue
+    fi
+
+    # `blocked_on` is the same kind of flag for a wait that is not a sibling's
+    # reply (docs/PLAN.md). It sits after `awaiting` so a mailbox wait keeps its
+    # own row. Nothing clears it here: a stale one on a terminal item is
+    # warned about and ignored, never allowed to hold anything up. Only work
+    # can be blocked: on an idea or anti-feature it would hide the row that
+    # says what the item is.
+    blocked_on=$(hero_item_field "$f" blocked_on)
+    since=$(hero_item_field "$f" blocked_since)
+    if [ -z "$blocked_on" ]; then
+      case "$(hero_item_field_raw "$f" blocked_on)" in
+        '#'[![:space:]]*) echo "hero_ready_items: $f has a blocked_on line the parser read as empty (a leading '#' is a YAML comment); quote the value. Treated as not blocked" >&2 ;;
+      esac
+      [ -z "$since" ] || echo "hero_ready_items: $f carries blocked_since with no blocked_on; a date with no reason is a half-cleared block" >&2
+    elif [ "$itype" != task ] && [ "$itype" != signal ] && [ "$itype" != goal ]; then
+      echo "hero_ready_items: $f is an $itype and carries blocked_on; a parked thought or a decision waits on nothing. Ignored" >&2
+    else
+      case "$state" in
+        done|dropped)
+          echo "hero_ready_items: $f is $state and still carries blocked_on '$blocked_on'; ignored. Delete the field" >&2 ;;
+        *)
+          [ -n "$since" ] || echo "hero_ready_items: $f carries blocked_on with no blocked_since; the sync lane cannot say how long" >&2
+          case "$blocked_on" in
+            '|'|'>') echo "hero_ready_items: $f has blocked_on written as a block scalar, which the reader does not parse; put the reason on one line" >&2 ;;
+          esac
+          if printf '%s' "$blocked_on" | grep -Eq '^#?[0-9]+$'; then
+            echo "hero_ready_items: $f has blocked_on '$blocked_on', which looks like an item id; an item wait belongs in depends_on" >&2
+          fi
+          echo "blocked $f — $title [on: $blocked_on${since:+, since $since}]"
+          continue ;;
+      esac
     fi
 
     # A planned task outside every open goal is invisible to `wayfare-start-goal`,
@@ -1810,7 +1925,16 @@ hero_ready_items() (
       # as coverage. Its own row word at BOTH open statuses, so the roadmap
       # view can collapse the parking lot to one count instead of printing
       # forty rows between a reader and the READY set.
-      idea:new|idea:accepted) echo "idea    $f — $title"; continue ;;
+      idea:new|idea:accepted|anti-feature:new|anti-feature:accepted)
+        [ -z "$(hero_item_deps "$f")" ] || echo "hero_ready_items: $f is an $itype; an $itype depends on nothing. depends_on ignored" >&2
+        # Same reason for an anti-feature, and its own word: it is a
+        # decision, so `*:new` printing it as an untriaged item would invite
+        # a triage that promotes "we chose not to" into work.
+        case "$itype" in
+          idea) echo "idea    $f — $title" ;;
+          *)    echo "anti    $f — $title" ;;
+        esac
+        continue ;;
       *:new)       echo "new     $f — $title"; continue ;;
       # Terminal and frozen. A rejected signal is kept on purpose: "we raised
       # this and they said no" is the history that stops it being raised again
@@ -1853,8 +1977,8 @@ hero_ready_items() (
           task)   enum="new/accepted/planning/ready/active/committed/review/done/dropped" ;;
           signal) enum="new/accepted/ready/active/done/dropped" ;;
           goal)   enum="new/accepted/active/done/dropped" ;;
-          idea)   enum="new/accepted/done/dropped" ;;
-          *)      enum="a status of an unrecognized type '$itype'; expected task, signal, goal or idea" ;;
+          idea|anti-feature) enum="new/accepted/done/dropped" ;;
+          *)      enum="a status of an unrecognized type '$itype'; expected task, signal, goal, idea or anti-feature" ;;
         esac
         echo "hero_ready_items: $f has unrecognized status '$state', which is not one of $enum; not eligible for READY" >&2
         echo "invalid $f — $title"
@@ -1902,6 +2026,15 @@ hero_ready_items() (
           ready=0
           continue ;;
       esac
+      # A decision not to build is never satisfied by building, so a dependent
+      # would wait forever. Same defect as an idea, named the same way.
+      case "$anti_ids" in
+        *" $d "*)
+          echo "hero_ready_items: $f depends_on '$raw', which is an anti-feature; nothing builds a declined thing. Reverse the decision first, then depend on what it became" >&2
+          missing="$missing $raw"
+          ready=0
+          continue ;;
+      esac
       case "$done_ids" in *" $d "*) continue ;; esac
       ready=0
       case "$committed_ids" in *" $d "*) committed="$committed $d" ;; esac
@@ -1924,7 +2057,9 @@ EOF
     else
       echo "blocked $f — $title${missing:+ [missing dep:$missing]}${committed:+ [committed dep:$committed]}"
     fi
-  done
+  # No `return` inside the loop above: it is the left side of this pipe, so a
+  # return would exit only that subshell, never this function.
+  done | hero_sort_rows_by_priority
 )
 
 # Tasks no open goal holds that `wayfare-start-goal`'s gate may adopt into
@@ -1940,7 +2075,7 @@ EOF
 # goal writes it after the gate. Deps are settled to a fixed point, so a
 # candidate whose dep was dropped is dropped too, and a cycle is dropped whole.
 hero_goal_candidates() ( # GOAL_ID [STORE]
-  local goal store f id itype state parent pinfo index gstate members mpaths
+  local goal store f id itype state parent pinfo index gstate members mpaths blocked_on
   local paths p bad deps dep dstate cands next changed out
   [ -n "$1" ] || { echo "hero_goal_candidates: empty GOAL_ID" >&2; return 2; }
   goal=$(hero_norm_id "$1")
@@ -2006,6 +2141,16 @@ MEMBERS
     fi
     if [ -n "$(hero_item_list_field "$f" awaiting)" ]; then
       echo "hero_goal_candidates: $id skipped: suspended, awaiting a message" >&2; continue
+    fi
+    blocked_on=$(hero_item_field "$f" blocked_on)
+    if [ -z "$blocked_on" ]; then
+      case "$(hero_item_field_raw "$f" blocked_on)" in
+        '#'[![:space:]]*) echo "hero_goal_candidates: $f has a blocked_on line the parser read as empty (a leading '#' is a YAML comment); quote the value. Treated as not blocked" >&2 ;;
+      esac
+      [ -z "$(hero_item_field "$f" blocked_since)" ] || echo "hero_goal_candidates: $f carries blocked_since with no blocked_on; a date with no reason is a half-cleared block" >&2
+    else
+      [ -n "$(hero_item_field "$f" blocked_since)" ] || echo "hero_goal_candidates: $f carries blocked_on with no blocked_since; the sync lane cannot say how long" >&2
+      echo "hero_goal_candidates: $id skipped: blocked_on $blocked_on" >&2; continue
     fi
     if [ -n "$(hero_item_field "$f" bot)" ]; then
       echo "hero_goal_candidates: $id skipped: a bot's PR, carried on its own" >&2; continue

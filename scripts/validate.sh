@@ -526,9 +526,11 @@ fi
 # into the sibling's inbox.
 # `wayfare-audit-security` is here because re-adding `disable-model-invocation: true` would
 # break every sync at its harden stage.
+# `wayfare-one-shot` is here because build-task's Step 1d chains it, and
+# new-skill.sh scaffolds `disable-model-invocation: true` by default.
 # `wayfare-check-preflight` is intentionally absent, wayfare-build-task runs
 # it via scripts/preflight.sh, not the Skill tool, so it may stay user-only.
-CHAINED_SKILLS="wayfare-grill-idea wayfare-push-pr wayfare-review-pr wayfare-respond-pr wayfare-ship-pr wayfare-build-task wayfare-review-architecture wayfare-sync-architecture wayfare-audit-security"
+CHAINED_SKILLS="wayfare-grill-idea wayfare-push-pr wayfare-review-pr wayfare-respond-pr wayfare-ship-pr wayfare-build-task wayfare-review-architecture wayfare-sync-architecture wayfare-audit-security wayfare-one-shot"
 for chained in $CHAINED_SKILLS; do
   chained_file="$SKILLS_DIR/$chained/SKILL.md"
   # A missing chained skill silently breaks the calling pipeline at that step, so error

@@ -264,7 +264,7 @@ check "repo-ref: an existing local dir passes through" \
 
 # ---------- hero_ready_items -----------------------------------------------
 #
-# Schema 1 (docs/PLAN.md): four types, one lifecycle, `resolution` carrying
+# Schema 1 (docs/PLAN.md): five types, one lifecycle, `resolution` carrying
 # the ending. The cases below are the ones that were, or could again be,
 # WRONG SILENTLY.
 
@@ -867,6 +867,19 @@ printf '%s' "$PERR" | grep -q "002-p2.md.*priority"
 check "priority: a valid value does not warn" "1" "$?"
 check "priority: the listing keeps every row" "6" "$(hero_ready_items "$PR" 2>/dev/null | wc -l | tr -d ' ')"
 
+# Priority orders every row, not just tasks, and a block does not lose its
+# rank: a blocked p0 is still what the owner wants first.
+PR2="$TMP/prio2"
+mkdir -p "$PR2/items"
+plan "$PR2"
+printf -- '---\nid: 1\ntype: goal\ntitle: G\nstatus: accepted\npriority: p2\ndepends_on: []\n---\n' > "$PR2/items/001-goal.md"
+printf -- '---\nid: 2\ntype: idea\ntitle: I\nstatus: new\npriority: p0\n---\n' > "$PR2/items/002-idea.md"
+printf -- '---\nid: 3\ntype: task\nshape: story\ntitle: R\nstatus: ready\npriority: p1\ndepends_on: []\n---\n' > "$PR2/items/003-ready.md"
+printf -- '---\nid: 4\ntype: task\nshape: story\ntitle: B\nstatus: ready\npriority: p0\nblocked_on: vendor\nblocked_since: 2026-09-01\ndepends_on: []\n---\n' > "$PR2/items/004-blk.md"
+printf -- '---\nid: 5\ntype: task\nshape: story\ntitle: L\nstatus: ready\npriority: p3\ndepends_on: []\n---\n' > "$PR2/items/005-low.md"
+check "priority: goal and idea rows sort with tasks, a blocked p0 above a READY p1" \
+  "002-idea.md 004-blk.md 003-ready.md 001-goal.md 005-low.md " "$(hero_ready_items "$PR2" 2>/dev/null | awk '{print $2}' | tr '\n' ' ')"
+
 # ---------- planning gate ----------------------------------------------------
 #
 # `planning` is the human ready-mark gate: planned items sit there until a
@@ -1174,6 +1187,27 @@ check "anti-feature: the dependency is named on stderr" "0" "$?"
 printf '%s' "$ERRI" | grep -q "010-declined.md is .* and no open goal"
 check "anti-feature: never warned about as an uncovered task" "1" "$?"
 
+# Reversal does not satisfy a dependent: the dependency was written against the
+# decision, not against what it became.
+printf -- '---\nid: 16\ntype: anti-feature\ntitle: reversed\nstatus: done\nresolution: promoted\n---\n' > "$I/items/016-promanti.md"
+printf -- '---\nid: 17\ntype: task\nshape: story\ntitle: Depends on a promoted anti-feature\nstatus: ready\ndepends_on: [16]\n---\n' > "$I/items/017-depprom.md"
+# Endings are per type, and an idea or anti-feature must say how it ended.
+printf -- '---\nid: 18\ntype: task\nshape: story\ntitle: wrong ending\nstatus: done\nresolution: promoted\ndepends_on: []\n---\n' > "$I/items/018-badres.md"
+printf -- '---\nid: 19\ntype: idea\ntitle: depends on things\nstatus: new\ndepends_on: [1]\n---\n' > "$I/items/019-ideadeps.md"
+OUTI="$(hero_ready_items "$I" 2>/dev/null)"
+ERRI="$(hero_ready_items "$I" 2>&1 >/dev/null)"
+check "anti-feature: a dependent of a promoted one is still blocked" "blocked" "$(state_of 017-depprom.md "$OUTI")"
+printf '%s' "$ERRI" | grep -q "017-depprom.md depends_on '16', which is an anti-feature"
+check "anti-feature: a promoted one's dependency still warns" "0" "$?"
+printf '%s' "$ERRI" | grep -q "018-badres.md is a task with resolution 'promoted', which is not an ending a task has"
+check "resolution: an ending the type does not have warns" "0" "$?"
+printf '%s' "$ERRI" | grep -q "003-promoted.md is a done idea with no resolution"
+check "resolution: a done idea with no resolution warns" "0" "$?"
+check "idea: depends_on on an idea still lists idea" "idea" "$(state_of 019-ideadeps.md "$OUTI")"
+printf '%s' "$ERRI" | grep -q "019-ideadeps.md is an idea; an idea depends on nothing. depends_on ignored"
+check "idea: depends_on on an idea warns" "0" "$?"
+rm -f "$I"/items/01[6-9]-*.md
+
 # ---------- typed arms, self-deps, typeless done, channel, resolution --------
 
 OUTW="$(hero_ready_items "$W" 2>/dev/null)"
@@ -1315,6 +1349,7 @@ mkcand 023-running.md  23 ready    src/s     ""   53
 mkcand 024-nested.md   24 ready    apps/web/.claude
 mkcand 025-onnew.md    25 ready    src/t     13
 printf -- '---\ntype: task\nshape: story\ntitle: no id\nstatus: ready\ndepends_on: []\nsource: [src/u]\n---\n' > "$G/items/026-noid.md"
+mkcand 028-vendor.md   28 ready    src/a/v   ""   ""  "blocked_on: vendor key"
 
 # A declined ground inside the goal's paths must never be adopted as work.
 printf -- '---\nid: 27\ntype: anti-feature\ntitle: declined\nstatus: accepted\nsource: [src/a/x]\n---\n' > "$G/items/027-anti.md"
@@ -1334,6 +1369,7 @@ check "candidates: a forbidden SECOND path is skipped"    "yes" "$(skipped '15 s
 check "candidates: a nested bare .claude is skipped"      "yes" "$(skipped '24 skipped: touches apps/web/.claude')"
 check "candidates: a bot's PR is skipped"                 "yes" "$(skipped "8 skipped: a bot's PR")"
 check "candidates: a suspended task says so"              "yes" "$(skipped '12 skipped: suspended')"
+check "candidates: a blocked_on task inside the paths is skipped" "yes" "$(skipped '28 skipped: blocked_on vendor key')"
 check "candidates: unplanned outside the goal's paths"    "yes" "$(skipped '16 skipped: unplanned, and src/zzz')"
 check "candidates: a dep held by another open goal"       "yes" "$(skipped '11 skipped: depends on 4 (not done')"
 check "candidates: a dep no item has is named as missing" "yes" "$(skipped '17 skipped: depends on 99 (which no item has)')"
@@ -1647,6 +1683,34 @@ sed -i.bak '/^blocked_on:/d;/^blocked_since:/d' "$W3/items/160-vendor.md"; rm -f
 check "blocked_on: deleting the field returns it to READY" "READY" "$(state_of 160-vendor.md "$(hero_ready_items "$W3" 2>/dev/null)")"
 rm -f "$W3"/items/16[0-4]-*.md
 
+# A bare `#` opens a YAML comment, so an unquoted `#42` reads as empty and the
+# item would list READY in silence. Quoted, the whole value is the reason.
+printf -- '---\nid: 165\ntype: task\ntitle: Quoted hash\nstatus: ready\nblocked_on: "#42 upstream"\nblocked_since: 2026-09-29\ndepends_on: []\n---\n' > "$W3/items/165-quoted.md"
+printf -- '---\nid: 166\ntype: task\ntitle: Bare hash\nstatus: ready\nblocked_on: #42\ndepends_on: []\n---\n' > "$W3/items/166-bare.md"
+printf -- '---\nid: 167\ntype: anti-feature\ntitle: Declined, blocked\nstatus: accepted\nblocked_on: legal\n---\n' > "$W3/items/167-antiblk.md"
+printf -- '---\nid: 168\ntype: task\ntitle: Whitespace block\nstatus: ready\nblocked_on:    \ndepends_on: []\n---\n' > "$W3/items/168-blank.md"
+printf -- '---\nid: 169\ntype: task\ntitle: Both waits\nstatus: ready\nawaiting: [m-1]\nblocked_on: both\ndepends_on: []\n---\n' > "$W3/items/169-both.md"
+printf -- '---\nid: 170\ntype: task\ntitle: Date, no reason\nstatus: ready\nblocked_since: 2026-09-01\ndepends_on: []\n---\n' > "$W3/items/170-halfclear.md"
+printf -- '---\nid: 171\ntype: task\ntitle: Id as reason\nstatus: ready\nblocked_on: 42\nblocked_since: 2026-09-01\ndepends_on: []\n---\n' > "$W3/items/171-idwait.md"
+printf -- '---\nid: 172\ntype: task\ntitle: Template comment\nstatus: ready\nblocked_on: # optional note\ndepends_on: []\n---\n' > "$W3/items/172-tmplnote.md"
+OUT3C="$(hero_ready_items "$W3" 2>"$TMP/blk2.err")"
+check "blocked_on: a quoted '#' value lists blocked"      "blocked" "$(state_of 165-quoted.md "$OUT3C")"
+check "blocked_on: a quoted '#' value is the whole reason" "yes"   "$(printf '%s' "$OUT3C" | grep -q '165-quoted.md .*\[on: #42 upstream, since 2026-09-29\]' && echo yes || echo no)"
+check "blocked_on: an unquoted '#' value reads as empty"  "READY"   "$(state_of 166-bare.md "$OUT3C")"
+check "blocked_on: an unquoted '#' value warns"           "yes"     "$(grep -q "166-bare.md has a blocked_on line the parser read as empty (a leading '#' is a YAML comment); quote the value. Treated as not blocked" "$TMP/blk2.err" && echo yes || echo no)"
+check "blocked_on: an anti-feature keeps its anti row"    "anti"    "$(state_of 167-antiblk.md "$OUT3C")"
+check "blocked_on: an anti-feature's block warns"         "yes"     "$(grep -q '167-antiblk.md is an anti-feature and carries blocked_on' "$TMP/blk2.err" && echo yes || echo no)"
+check "blocked_on: whitespace only leaves the task READY" "READY"   "$(state_of 168-blank.md "$OUT3C")"
+check "blocked_on: a '# note' comment is not warned about" "no"     "$(grep -q '172-tmplnote.md has a blocked_on line' "$TMP/blk2.err" && echo yes || echo no)"
+check "blocked_on: a '# note' comment leaves the task READY" "READY" "$(state_of 172-tmplnote.md "$OUT3C")"
+check "blocked_on: awaiting wins over blocked_on"         "suspended" "$(state_of 169-both.md "$OUT3C")"
+check "blocked_on: a suspended row shows no [on:"         "no"      "$(printf '%s' "$OUT3C" | grep '169-both.md' | grep -q '\[on:' && echo yes || echo no)"
+check "blocked_on: blocked_since alone does not block"    "READY"   "$(state_of 170-halfclear.md "$OUT3C")"
+check "blocked_on: blocked_since alone warns"             "yes"     "$(grep -q '170-halfclear.md carries blocked_since with no blocked_on' "$TMP/blk2.err" && echo yes || echo no)"
+check "blocked_on: an id-shaped reason still blocks"      "blocked" "$(state_of 171-idwait.md "$OUT3C")"
+check "blocked_on: an id-shaped reason warns"             "yes"     "$(grep -q "171-idwait.md has blocked_on '42', which looks like an item id" "$TMP/blk2.err" && echo yes || echo no)"
+rm -f "$W3"/items/16[5-9]-*.md "$W3"/items/17[0-2]-*.md
+
 printf -- '---\nmsg_id: m-1\ntype: bug\nstatus: new\n---\n' > "$W3/inbox/m-1.md"
 printf -- '---\nmsg_id: m-2\ntype: ask\nstatus: answered\n---\n' > "$W3/inbox/m-2.md"
 printf -- '---\nmsg_id: m-3\ntype: ask\n---\n' > "$W3/inbox/m-3.md"
@@ -1888,7 +1952,7 @@ fi
 # floor with a hundred cases of slack protects nothing, which is how this
 # suite came to run 365 against a floor of 210. Raise it with every block you
 # add, and read the CI number rather than the local one when you do.
-MIN_CASES=381
+MIN_CASES=449
 if [ "$PASS" -lt "$MIN_CASES" ]; then
   echo "hero-lib: only $PASS cases ran, expected >= $MIN_CASES — a block stopped executing" >&2
   exit 1

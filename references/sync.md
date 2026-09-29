@@ -646,37 +646,37 @@ rather than reporting clean, the same rule the Upstream lane above follows):
   two answers: accept (`new` becomes `accepted`) or drop. Drop calls the same
   write as `wayfare-drop-item` (`references/drop.md`, *Marking the item*): ask
   for the reason, set `status: dropped`, append
-  `- DATE (wayfare-drop-item) decision: dropped: REASON`, keep the file. An item
+  `- DATE (wayfare-sync-plan) decision: dropped: REASON`, keep the file. An item
   with no branch touches no git state, so nothing here needs a checkout. A
   `ready` or later item is out of this lane: it carries a plan the ready-mark
   bought, and dropping it is the verb's call, not a roundup's.
 
-- **store defects**: `hero_ready_items` stderr warnings (dangling deps,
-  duplicate ids, unrecognized statuses; the script checks those and nothing
-  below); plus, checked by this finding itself since the listing never reads a
-  goal's body: every `type: goal` item's members (`hero_goal_members`) two ways:
-  each is a `task`, and no earlier member `depends_on` a later one (the order
-  the turn walks must not contradict the gate each task has); a goal's
-  `depends_on` entry that is not a `type: goal`, or that disagrees with the
-  derivation from its tasks' `depends_on`; a goal whose `## Permissions` is
-  missing, lacks a key, or holds a value outside `yes`/`no` (`verify`/`none` for
-  `deploy`), or whose `## Permissions` changed while `active`; a `budget_max`
-  that is absent or not a positive integer, or, on an `accepted` goal, below
-  `budget` (on an `active` goal, admissions raise `budget` between checkpoints,
-  so `budget` above `budget_max` there is a run in progress); a `concurrency`
-  key left over from the per-task-PR model, which nothing reads any more and
-  which plan removes; an `active` goal holding a member its `## Log` does not
-  account for; and a `committed` task that no open goal has as a member
-  (`hero_ready_items` warns on it). That is the residue of a goal whose branch
-  was abandoned: the item claims work the repo does not have, and nothing else
-  re-opens it, because only the goal's step 7 moves a task from `committed` to
-  `done`. Report it with the SHA from its `[goal-commit:]` marker and offer to
-  return the item to `ready`. **Do not test the SHA against the default
-  branch.** The default merge method is squash, so a task's commit is never an
-  ancestor of the default branch even when the goal shipped perfectly, and a
-  check built on ancestry reports every task of every completed goal and offers
-  to re-open finished work. A live `active` goal is likewise not a defect: its
-  tasks are committed and unmerged by design until its step 7.
+- **store defects**: every stderr line `hero_ready_items` prints (the script
+  checks those and nothing below); plus, checked by this finding itself since
+  the listing never reads a goal's body: every `type: goal` item's members
+  (`hero_goal_members`) two ways: each is a `task`, and no earlier member
+  `depends_on` a later one (the order the turn walks must not contradict the
+  gate each task has); a goal's `depends_on` entry that is not a `type: goal`,
+  or that disagrees with the derivation from its tasks' `depends_on`; a goal
+  whose `## Permissions` is missing, lacks a key, or holds a value outside
+  `yes`/`no` (`verify`/`none` for `deploy`), or whose `## Permissions` changed
+  while `active`; a `budget_max` that is absent or not a positive integer, or,
+  on an `accepted` goal, below `budget` (on an `active` goal, admissions raise
+  `budget` between checkpoints, so `budget` above `budget_max` there is a run in
+  progress); a `concurrency` key left over from the per-task-PR model, which
+  nothing reads any more and which plan removes; an `active` goal holding a
+  member its `## Log` does not account for; and a `committed` task that no open
+  goal has as a member (`hero_ready_items` warns on it). That is the residue of
+  a goal whose branch was abandoned: the item claims work the repo does not
+  have, and nothing else re-opens it, because only the goal's step 7 moves a
+  task from `committed` to `done`. Report it with the SHA from its
+  `[goal-commit:]` marker and offer to return the item to `ready`. **Do not test
+  the SHA against the default branch.** The default merge method is squash, so a
+  task's commit is never an ancestor of the default branch even when the goal
+  shipped perfectly, and a check built on ancestry reports every task of every
+  completed goal and offers to re-open finished work. A live `active` goal is
+  likewise not a defect: its tasks are committed and unmerged by design until
+  its step 7.
 
   **The goal's `## Log` is a ledger, and the check replays it.** The goals stage
   opens it with a `cut` line when it writes or re-cuts a goal,
@@ -739,7 +739,10 @@ rather than reporting clean, the same rule the Upstream lane above follows):
   if nothing else holds it. On no, leave it, and say so if the age is long.
   Nothing else clears the field: a block nobody re-reads is a hang with a
   status, the same as a stale wait. A `done` or `dropped` item still carrying it
-  is not asked about: delete the field on confirmation.
+  is not asked about: delete the field on confirmation. A value that contains
+  `#` must be quoted (`blocked_on: "#42 upstream"`): unquoted, the `#` opens a
+  YAML comment, the item lists READY, and only a stderr warning says so; quote
+  it when you find one.
 
 Apply only what the user confirms. **Applying stale rows** splits on whether the
 task's plan is already locked:

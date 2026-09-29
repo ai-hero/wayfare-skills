@@ -331,6 +331,17 @@ check "signal at active is not in flight" "1" "$(val ITEM_INFLIGHT)"
 check "signal at active never claims the branch" ".plans/items/003-foo.md" "$(val ITEM_FILE | sed 's|.*/\(\.plans/items/\)|\1|')"
 rm -rf "$REPO/.plans"
 
+# A build that wrote `blocked_on` and stopped lists as blocked while its status
+# is still active, and resume must still find it.
+mkdir -p "$REPO/.plans/items"
+printf -- '---\nschema: 1\ndefault_branch: main\nnext_id: 99\n---\n' > "$REPO/.plans/PLAN.md"
+printf -- '---\nid: 3\ntype: task\nstatus: active\nblocked_on: vendor key\nblocked_since: 2026-09-29\nbranch: %s\n---\n## Subtasks\n- [ ] a\n' "$(git -C "$REPO" branch --show-current)" > "$REPO/.plans/items/003-foo.md"
+printf -- '---\nid: 6\ntype: task\nstatus: ready\nblocked_on: vendor key\nblocked_since: 2026-09-29\n---\n' > "$REPO/.plans/items/006-rdy.md"
+OUT="$(run)"
+check "blocked active task is in flight"     "1" "$(val ITEM_INFLIGHT)"
+check "blocked active task is the branch item" ".plans/items/003-foo.md" "$(val ITEM_FILE | sed 's|.*/\(\.plans/items/\)|\1|')"
+rm -rf "$REPO/.plans"
+
 # ---------- the eval contract ----------------------------------------------
 
 # Output is consumed via `eval`, so a hostile branch name or config value must

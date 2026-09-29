@@ -59,19 +59,20 @@ understanding before it is an item.
   task whose Subtasks are separate stories a person could ship on their own.
   Name the split you found. `wayfare-build-task` drives one item to one PR, and
   a stack is exactly what its scope check refuses.
-- **An anti-feature.** Match the description against the listing's `anti` rows,
-  by title and by the paths in the row's `source`. A hit is a decision not to
-  build this: print the anti-feature's id, title and `## Context` as the
-  citation and stop. Reversing it is a person's, through `wayfare-grill-idea`,
-  and `wayfare-build-task` refuses the same row when handed its id. Never draft
-  past it.
+- **An anti-feature.** Match the description against every item whose file
+  carries `type: anti-feature`, whatever row word it lists under, by title and
+  by the paths in the file's `source` (the row does not carry them). Any
+  `hero_ready_items` stderr line naming an anti-feature is a hit too. A hit is a
+  decision not to build this: print the anti-feature's id, title and
+  `## Context` as the citation and stop. Reversing it is a person's, through
+  `wayfare-grill-idea`, and `wayfare-build-task` refuses the same row when
+  handed its id. Never draft past it.
 - **A one-way door.** The change is expensive to reverse: schema, public API,
   data model, money. Say which, and stop. `one_way_door: true` items do not
   belong in a run that asks one question.
 
-The drafts that pass are small, single-approach and single-area, which is the
-standard's own test for a task that goes to `ready` with a one-line approach and
-no planning run.
+The drafts that pass are small, single-approach and single-area: the same size
+test the standard uses for its no-planning-run path.
 
 ### Step 3: draft the one task
 
@@ -122,8 +123,10 @@ stopped run leaves the item where `wayfare-build-task` left it.
 
 ## Gotchas
 
-- The guard runs before anything is written. A stop after Step 3 would leave a
-  `planning` item behind that nobody asked for.
+- The guard runs before anything is written. A No at Step 4 leaves the drafted
+  `planning` item on purpose, for the person to edit, mark ready or drop. A run
+  that ends any other way between Step 3's write and Step 4's answer leaves an
+  item nobody chose to keep: print its path and offer `wayfare-drop-item` on it.
 - `origin: wayfare-one-shot` is the only marker. There is no new type or shape,
   so an item this skill wrote is an ordinary task to everything downstream.
 

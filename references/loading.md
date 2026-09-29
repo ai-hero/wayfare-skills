@@ -624,7 +624,7 @@ silently.
 backlog → plan → READY/blocked → active → review → committed → suspended → done
 → dropped, then goal, then feedback, then the `anti` rows (declined decisions,
 few and worth reading), then one line for the idea count (`hero_idea_count`)),
-each with:
+with `priority` ordering the rows within each group, each with:
 
 - its dependencies (and which are unmet, from the listing's blocked rows),
 - a `stale` flag when `anchors.target` is set and differs from the current

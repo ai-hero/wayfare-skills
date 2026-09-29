@@ -103,7 +103,7 @@ absence is not a defect and nothing reports it as one.
 | `anti-feature` | a thing looked at and decided against | **refuses it and cites it** | `done` |
 
 That is the whole taxonomy. **A type is what an agent does with the item**, and
-nothing else; that column is the test a fifth type would have to pass. `task`
+nothing else; that column is the test a sixth type would have to pass. `task`
 and `signal` differ in *where the work lands*. Everything the old nine kinds
 distinguished beyond that is now a field.
 
@@ -153,23 +153,27 @@ next grill shapes it again from scratch.
 It is a type and not a `resolution` on `idea` because it passes the test above
 with an answer none of the other four has: an agent **checks against it**. Sync
 does not propose the ground it names, grill stops and cites it before the first
-question, and build refuses it by id. A field on an idea could not change what
-those three do, and it would leave a decision sitting in the parking lot's
-count.
+question, and build refuses it by id. A field on an idea could not carry that,
+because of the lifecycle: a decision stays open at `accepted`, matched every
+round and reversible by promotion, whereas a `resolution` is set only at `done`,
+and done items are frozen and outside every lane.
 
 An anti-feature carries **no `shape`, and no `depends_on`**, and its body is
 `## Context` and `## Log` and nothing else. It may carry `source` paths, which
 are how sync matches it to uncovered ground.
 
 - **An anti-feature is never READY.** It lists as `anti` at `new` and
-  `accepted`, and any other status is a store defect naming the enum.
+  `accepted`, as `done` or `dropped` once closed, and any other status is a
+  store defect naming the enum.
 - **Nothing may `depends_on` an anti-feature**, and a dependency on one is a
   store defect the listing reports. Building never marks a declined thing
   `done`, so the dependent would wait forever.
 - **A person reverses one, and the reversal is written on it.** It goes `done`
   with `resolution: promoted` when the decision became a task, which carries
   `discovered_from: ANTI_FEATURE_ID`, or `resolution: obsolete` when the world
-  moved. Nothing else closes one.
+  moved. It is `dropped` only from `new`, a proposed decision withdrawn before
+  anyone accepted it; an `accepted` one closes only by a person, `done` with
+  `promoted` or `obsolete`.
 
 Sync must not read an anti-feature as coverage either: it is the reason ground
 stays uncovered, so `uncovered` lists the match as "declined, see ID" and
@@ -264,8 +268,9 @@ new → accepted → planning → ready → active → committed → review → 
 | `done` | finished; dependents are unblocked | wayfare-build-task at merge, or the goal's final turn |
 | `dropped` | abandoned; dependents stay blocked | `wayfare-drop-item`, or `wayfare-sync-plan`'s roundup of `new` and `accepted` items, which calls the same write |
 
-`dropped` is reachable from any open state, with or without a branch, and the
-write always appends a dated `decision` line to `## Log` giving the reason.
+`dropped` is reachable from any open state, with or without a branch, except an
+`accepted` anti-feature, which closes only `done` (see its section). The write
+always appends a dated `decision` line to `## Log` giving the reason.
 
 Not every item visits every state. A `signal` runs
 `new → accepted → ready → active → done` (no plan to write, no branch to commit
@@ -309,15 +314,20 @@ satisfies a dependency, both of which read off `awaiting` being non-empty.
 reply through the mailbox. Anything else an item waits on that is not an item (a
 vendor's answer, a decision the owner has not made, a credential, an upstream
 release) is `blocked_on`: free text naming what, plus `blocked_since`, the date
-it started. Non-empty means blocked, whatever the status, on any non-terminal
-type. The item keeps the status it had, because a `blocked` status would need a
-`blocked_from` to restore, the saved copy the paragraph above describes. A
-blocked item is never READY and never satisfies a dependency, so its own
-dependents stay blocked. Nothing clears the field automatically: a person, in
-`wayfare-sync-plan`'s blocked lane, says the wait is over, and clearing deletes
-the field and appends a `note` line to `## Log`. On a `done` or `dropped` item
-the field is ignored and warned about on stderr, so a stale one cannot hold up
-anything.
+it started. Non-empty means blocked at any non-terminal status, on a task,
+signal or goal; on an idea or anti-feature it is warned about and ignored. Quote
+a value that contains `#` (`blocked_on: "#42 upstream"`): unquoted, a leading
+`#` opens a YAML comment, the value reads as empty, and the item lists READY
+with a warning. The item keeps the status it had, because a `blocked` status
+would need a `blocked_from` to restore, the saved copy the paragraph above
+describes. A blocked item is never READY and never satisfies a dependency, so
+its own dependents stay blocked. Nothing clears the field automatically: a
+person, in `wayfare-sync-plan`'s blocked lane, says the wait is over, and
+clearing deletes the field and appends a `note` line to `## Log`. On a `done` or
+`dropped` item the field is ignored and warned about on stderr, so a stale one
+cannot hold up anything. When `awaiting` and `blocked_on` are both set,
+`awaiting` wins: the item lists as suspended, and the block shows once the
+message clears.
 
 **Two derived flags, never stored:**
 
@@ -358,7 +368,7 @@ anchors:
 awaiting: [] # message ids this item waits on; non-empty means suspended
 suspended_at: # date the wait started
 expires: # date the wait lapses
-blocked_on: # optional — free text: what a non-item wait is on; non-empty means blocked
+blocked_on: # optional — free text: what a non-item wait is on; non-empty means blocked. Quote a value containing `#`
 blocked_since: # date the block started
 ready_marked: 2026-07-24 # the date a person flipped it to ready; the record of the one act nothing else may perform
 one_way_door: false # optional — true when the change is expensive to reverse, so planning gave it extra scrutiny
@@ -427,7 +437,7 @@ An anti-feature carries this and no more:
 id: 45
 type: anti-feature
 title: Trips do not sync to a calendar
-status: accepted # new | accepted | done | dropped
+status: accepted # new | accepted | done | dropped — dropped only from new; an accepted one closes done
 resolution: # promoted | obsolete — set at done
 origin: rahul
 source: [src/trips/] # optional: the paths sync matches it against
@@ -613,9 +623,10 @@ local format looks the way it does.
 | `type` | enum column: the discriminator, five values |
 | `shape`, `channel` | nullable enum columns, valid only for their type |
 | `priority` | nullable enum column (`p0` to `p3`), valid on every type; null is unranked |
-| `status`, `resolution` | enum columns; `resolution` null until `done` |
+| `status` | enum column |
+| `resolution` | enum column, valid per type (shipped task; delivered, rejected signal; promoted idea, anti-feature; obsolete any); null until `done` |
 | `depends_on` | `item_dependencies` join table |
-| `blocked_on`, `blocked_since` | nullable text and date columns, valid on every non-terminal item; null is not blocked |
+| `blocked_on`, `blocked_since` | nullable text and date columns, valid on a non-terminal task, signal or goal; null is not blocked. A check holds `blocked_since IS NULL OR blocked_on IS NOT NULL`, and migration strips `blocked_on` from terminal items |
 | `parent`, `discovered_from` | self-referencing nullable FKs |
 | `source`, `target` | `item_paths` rows tagged `source` or `target` |
 | `anchors` | two columns on the item |

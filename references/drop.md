@@ -18,16 +18,29 @@ is not a drop, and the run says so rather than deleting it.
 
 ## Marking the item
 
-Resolve the id first, before touching the working tree, and branch on what it
-names:
+Resolve the id first, before touching the working tree, and branch on its status
+as well as its fields:
 
-- **A task with a `branch:` field** runs Steps 1 to 5 below, then the item
+- **A task with a `branch:` field** runs the branch path below, then the item
   write.
-- **Any other open item** (a `new`, `accepted` or `planning` task, an `idea`, an
-  `anti-feature`, a `signal`, a goal) has no branch and nothing in git to undo.
-  Skip Steps 1 to 5: touch no stash, no checkout and no pull, run the item write
-  and report. It does not need `HERO.md` for a default branch either, so skip
-  Step 0's read of it.
+- **An item at `active`, `review` or `committed` with no `branch:`** is refused
+  as a store defect, never treated as branchless:
+  `ID is mid-flight with no branch recorded; write branch: and re-run, or drop by hand.`
+  Its work is somewhere in git, and the branchless path would mark it dropped
+  while that work sits on a branch nobody switched away from.
+- **Any other open item with no `branch:`** has nothing in git to undo: a task
+  at `new`, `accepted`, `planning` or `ready`, an `idea`, an `anti-feature` at
+  `new`, a `signal`, a goal. It takes the branchless path: touch no stash, no
+  checkout and no pull, run the item write and report.
+- **An `anti-feature` at `accepted`** is refused:
+  `reverse it or mark it obsolete instead`. A decision someone accepted closes
+  only by a person, `done` with `resolution: promoted` or `obsolete`
+  (docs/PLAN.md); only a proposed one, at `new`, can be withdrawn by dropping
+  it.
+
+Step 0's fleet check and loading `hero-lib.sh` (the first lines of Step 2's
+block) run on both paths. Everything from Step 0's `HERO.md` read through Step 5
+is the branch path; the branchless path goes straight to the item write below.
 
 Both paths need a reason. If the invocation carried none, ask for one before
 writing anything; a drop with no reason is a file the next round cannot tell
@@ -39,9 +52,10 @@ branchless path):
 - Set `status: dropped` on the item. Leave `resolution` unset: `dropped` is its
   own terminal, not a flavour of `done`.
 - Append one `## Log` line saying what was abandoned and why, dated:
-  `- DATE (wayfare-drop-item) decision: dropped: REASON`. This is the only
-  record: `.plans/` is git-ignored, so there is no diff and no blame to recover
-  the reason from later.
+  `- DATE (wayfare-drop-item) decision: dropped: REASON`, where the actor is
+  whichever verb wrote the line (`wayfare-sync-plan` when its roundup calls this
+  write). This is the only record: `.plans/` is git-ignored, so there is no diff
+  and no blame to recover the reason from later.
 - **Keep the file.** A dropped item is the history that stops the same work
   being re-proposed next round, the same reason a `rejected` signal is kept.
 - Say which dependents this blocks. `hero_ready_items` will report them as
@@ -57,7 +71,10 @@ pointing at a parent that will never run, so list the members that are not
 `done` (`hero_goal_members`) and ask whether to drop the set. On yes, each open
 member gets the same item write with the same reason, and the goal is written
 last; a member with a `branch:` still needs its own branch steps, so run them
-per member. On no, drop nothing.
+per member. On no, drop nothing. If any member is refused along the way (its
+stash prompt is declined, its PR turns out to have merged, or it is refused by a
+rule above), stop there: do not write the goal, and print which members were
+already written dropped so the person can revert them.
 
 ## Step 0: Load Hero Configuration
 
@@ -70,8 +87,7 @@ cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
 If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
 **At the fleet root** in `docs/FLEET-MD.md`.
 
-This step and every step after it are the branch path; the branchless path skips
-them. Read `HERO.md` if it exists. This skill uses:
+Read `HERO.md` if it exists. This skill uses:
 
 - **Repository** → default-branch (to know which branch to switch back to)
 

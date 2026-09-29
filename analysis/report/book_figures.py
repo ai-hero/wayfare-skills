@@ -57,7 +57,7 @@ def scan_refs(book_dir, files):
                     continue
                 fig = re.match(r"^\[\[(Figure[^|\]]*?)(?:\s*\||\]\])", line)
                 label = fig.group(1).strip().rstrip(":") if fig else None
-                for m in re.finditer(r"\[\[Q ([a-z0-9-]+)(?: · [^|\]]+)?\s*(?:\|\s*([^\]]*))?\]\]", line):
+                for m in re.finditer(r"\[\[[QI] ([a-z0-9-]+)(?: · [^|\]]+)?\s*(?:\|\s*([^\]]*))?\]\]", line):
                     refs.setdefault(m.group(1), []).append((f, sec, label, (m.group(2) or "").strip()))
                 if fig or not line.startswith("[["):
                     for m in re.finditer(r"(?<!\[\[)\bQ ([a-z0-9-]+)", line):

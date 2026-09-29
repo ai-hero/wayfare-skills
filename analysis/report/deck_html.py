@@ -424,7 +424,8 @@ def warn(msg):
 
 def parse_book(text):
     """book.md: `## ` sections, `### ` subheads, `> ` callouts, `| a | b |` tables, `- ` and `1. ` lists,
-    `[[Q work-sources · By repo | caption]]` figures."""
+    `[[Q work-sources · By repo | caption]]` figures. `[[I work-sources | caption]]` is the same card in its
+    in-text form (question, finding, chart); `Q` places the whole card, which is what the appendix wants."""
     sections, para = [{"title": "", "blocks": []}], []
 
     def flush():
@@ -456,7 +457,9 @@ def parse_book(text):
         elif fig:
             flush()
             ref, _, caption = fig.group(1).partition("|")
-            sections[-1]["blocks"].append({"kind": "figure", "ref": ref.strip(), "caption": caption.strip()})
+            ref, inline = re.subn(r"^I\s+", "Q ", ref.strip())
+            sections[-1]["blocks"].append({"kind": "figure", "ref": ref, "caption": caption.strip(),
+                                           "inline": bool(inline)})
         elif line.startswith("|"):
             flush()
             cells = [c.strip() for c in line.strip("|").split("|")]

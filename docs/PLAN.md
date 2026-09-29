@@ -92,7 +92,7 @@ mode**: `wayfare-sync-plan` reconciles the source against `DESIGN.md`, its own
 gaps and its own hardening audit, and no item carries a target anchor. The
 absence is not a defect and nothing reports it as one.
 
-## Four types
+## Five types
 
 | `type` | What it is | What an agent does with it | Terminal |
 | -- | -- | -- | -- |
@@ -100,15 +100,17 @@ absence is not a defect and nothing reports it as one.
 | `signal` | a finding delivered somewhere this repo cannot write | delivers it upstream | `done` |
 | `goal` | an ordered set of tasks with a Definition of Done spanning them | groups and authorizes | `done` |
 | `idea` | something worth doing eventually, not yet shaped into work | **nothing, until a person promotes it** | `done` |
+| `anti-feature` | a thing looked at and decided against | **refuses it and cites it** | `done` |
 
 That is the whole taxonomy. **A type is what an agent does with the item**, and
 nothing else; that column is the test a fifth type would have to pass. `task`
 and `signal` differ in *where the work lands*. Everything the old nine kinds
 distinguished beyond that is now a field.
 
-**Tasks are built. Signals are delivered. Goals and ideas are neither**: a goal
-is never handed out as READY because wayfare-build-task builds tasks, and an
-idea is not work at all yet.
+**Tasks are built. Signals are delivered. Goals, ideas and anti-features are
+neither**: a goal is never handed out as READY because wayfare-build-task builds
+tasks, an idea is not work at all yet, and an anti-feature is a decision that
+work is checked against.
 
 ### `idea`: the parking lot
 
@@ -140,9 +142,42 @@ Sync must not read an idea as coverage. Counting one would suppress the
 `uncovered` finding for ground nobody has planned, which is the whole failure
 the `uncovered` lane exists to catch.
 
+### `anti-feature`: a decision not to build
+
+An anti-feature records that the ask was looked at and declined: the ask, why
+not, and what to do instead. A dropped item says work stopped and a rejected
+signal says upstream said no; neither says "we chose not to have this", so the
+next sync round finds the same uncovered ground and proposes it again, and the
+next grill shapes it again from scratch.
+
+It is a type and not a `resolution` on `idea` because it passes the test above
+with an answer none of the other four has: an agent **checks against it**. Sync
+does not propose the ground it names, grill stops and cites it before the first
+question, and build refuses it by id. A field on an idea could not change what
+those three do, and it would leave a decision sitting in the parking lot's
+count.
+
+An anti-feature carries **no `shape`, and no `depends_on`**, and its body is
+`## Context` and `## Log` and nothing else. It may carry `source` paths, which
+are how sync matches it to uncovered ground.
+
+- **An anti-feature is never READY.** It lists as `anti` at `new` and
+  `accepted`, and any other status is a store defect naming the enum.
+- **Nothing may `depends_on` an anti-feature**, and a dependency on one is a
+  store defect the listing reports. Building never marks a declined thing
+  `done`, so the dependent would wait forever.
+- **A person reverses one, and the reversal is written on it.** It goes `done`
+  with `resolution: promoted` when the decision became a task, which carries
+  `discovered_from: ANTI_FEATURE_ID`, or `resolution: obsolete` when the world
+  moved. Nothing else closes one.
+
+Sync must not read an anti-feature as coverage either: it is the reason ground
+stays uncovered, so `uncovered` lists the match as "declined, see ID" and
+proposes nothing for it.
+
 ## Shape: what a task's Definition of Done must assert
 
-`shape` is required on a `task` and absent on the other three types. It decides
+`shape` is required on a `task` and absent on the other four types. It decides
 three things and nothing else: whether the slice rule applies, what the
 Definition of Done has to assert, and how that assertion is verified.
 
@@ -197,7 +232,7 @@ comment that no longer names a trap is noise, and noise outlives its accuracy.
 
 ## Channel: where a signal goes
 
-`channel` is required on a `signal` and absent on the other three types.
+`channel` is required on a `signal` and absent on the other four types.
 
 | `channel` | Goes to |
 | -- | -- |
@@ -233,10 +268,12 @@ Not every item visits every state. A `signal` runs
 `new → accepted → ready → active → done` (no plan to write, no branch to commit
 to). A `goal` runs `new → accepted → active → done`. An `idea` runs
 `new → accepted → done`, where `new` is jotted down and `accepted` is "we mean
-to do this eventually", parked with intent. A task whose work is small,
-single-approach and single-area goes `accepted → ready` with a one-line approach
-and no planning run. **Say which way you went and why, in one line**, because a
-skipped planning run should be a visible decision and not an omission.
+to do this eventually", parked with intent. An `anti-feature` runs the same
+three states, where `new` is proposed as a decision and `accepted` is "we
+decided against this". A task whose work is small, single-approach and
+single-area goes `accepted → ready` with a one-line approach and no planning
+run. **Say which way you went and why, in one line**, because a skipped planning
+run should be a visible decision and not an omission.
 
 **`resolution` carries the ending, not the status.** It is set only at `done`:
 
@@ -245,7 +282,7 @@ skipped planning run should be a visible decision and not an omission.
 | `shipped` | task | merged, deploy verified |
 | `delivered` | signal | carried upstream and accepted |
 | `rejected` | signal | carried upstream and declined; the question is answered |
-| `promoted` | idea | became one or more real items, which carry `discovered_from` |
+| `promoted` | idea, anti-feature | became one or more real items, which carry `discovered_from` |
 | `obsolete` | any | the world moved; the item no longer describes anything |
 
 This is the field that deletes the two-enum problem. **A dependency is satisfied
@@ -298,7 +335,7 @@ absent alike.
 ```markdown
 ---
 id: 12
-type: task # task | signal | goal | idea
+type: task # task | signal | goal | idea | anti-feature
 shape: story # TASK ONLY — story | structural | visual | defect | dependency | docs
 title: I can sign in with my Google account
 status: ready
@@ -376,6 +413,31 @@ What must be observably true when this ships — every line verified before
 - 2026-07-25 (wayfare-build-task) signal: design/auth/sign-in.md orders consent before
   account linking; the code links first, because consent cannot be scoped
   until the account is known
+```
+
+### An anti-feature's whole format
+
+An anti-feature carries this and no more:
+
+```markdown
+---
+id: 45
+type: anti-feature
+title: Trips do not sync to a calendar
+status: accepted # new | accepted | done | dropped
+resolution: # promoted | obsolete — set at done
+origin: rahul
+source: [src/trips/] # optional: the paths sync matches it against
+---
+
+## Context
+
+The ask, why we chose not to, and what to do instead. One paragraph is the
+expected length.
+
+## Log
+
+- 2026-09-29 (rahul) note: declined after the calendar spike
 ```
 
 ### An idea's whole format
@@ -545,7 +607,7 @@ local format looks the way it does.
 | -- | -- |
 | `.plans/PLAN.md` frontmatter | one `plans` row per repo |
 | `.plans/items/NNN-slug.md` frontmatter | one `items` row; `id` is unique per plan, not global |
-| `type` | enum column: the discriminator, four values |
+| `type` | enum column: the discriminator, five values |
 | `shape`, `channel` | nullable enum columns, valid only for their type |
 | `priority` | nullable enum column (`p0` to `p3`), valid on every type; null is unranked |
 | `status`, `resolution` | enum columns; `resolution` null until `done` |

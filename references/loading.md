@@ -622,8 +622,9 @@ silently.
 **The roadmap view**, which is how every verb reports. Run
 `hero_ready_items "$STORE"` and print the items grouped by row state (new →
 backlog → plan → READY/blocked → active → review → committed → suspended → done
-→ dropped, then goal, then feedback, then one line for the idea count
-(`hero_idea_count`)), each with:
+→ dropped, then goal, then feedback, then the `anti` rows (declined decisions,
+few and worth reading), then one line for the idea count (`hero_idea_count`)),
+each with:
 
 - its dependencies (and which are unmet, from the listing's blocked rows),
 - a `stale` flag when `anchors.target` is set and differs from the current

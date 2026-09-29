@@ -1147,6 +1147,33 @@ check "idea: a dependent of a promoted idea is also blocked" "blocked" "$(state_
 printf '%s' "$ERRI" | grep -q "007-depdone.md depends_on '3', which is an idea"
 check "idea: a promoted idea's dependency still warns" "0" "$?"
 
+# ---------- anti-features: a decision not to build --------------------------
+#
+# An anti-feature is checked against, never built, so it must list as `anti`
+# (not `new`, and never READY), and a dependency on one is a store defect for
+# the same reason as on an idea.
+
+iitem 010-declined.md 10 accepted anti-feature
+iitem 011-newanti.md  11 new anti-feature
+iitem 012-reversed.md 12 "done" anti-feature
+iitem 013-actanti.md  13 active anti-feature
+iitem 014-readyanti.md 14 ready anti-feature
+printf -- '---\nid: 15\ntype: task\nshape: story\ntitle: Depends on an anti-feature\nstatus: ready\ndepends_on: [10]\n---\n' > "$I/items/015-depanti.md"
+OUTI="$(hero_ready_items "$I" 2>/dev/null)"
+ERRI="$(hero_ready_items "$I" 2>&1 >/dev/null)"
+check "anti-feature: accepted lists as anti"      "anti"    "$(state_of 010-declined.md "$OUTI")"
+check "anti-feature: new lists as anti, not new"  "anti"    "$(state_of 011-newanti.md "$OUTI")"
+check "anti-feature: done lists as done"          "done"    "$(state_of 012-reversed.md "$OUTI")"
+check "anti-feature: active is invalid"           "invalid" "$(state_of 013-actanti.md "$OUTI")"
+check "anti-feature: ready is invalid, never READY" "invalid" "$(state_of 014-readyanti.md "$OUTI")"
+printf '%s' "$ERRI" | grep -q "014-readyanti.md has unrecognized status 'ready', which is not one of new/accepted/done/dropped"
+check "anti-feature: bad status names the enum"   "0" "$?"
+check "anti-feature: a dependent is blocked"      "blocked" "$(state_of 015-depanti.md "$OUTI")"
+printf '%s' "$ERRI" | grep -q "015-depanti.md depends_on '10', which is an anti-feature"
+check "anti-feature: the dependency is named on stderr" "0" "$?"
+printf '%s' "$ERRI" | grep -q "010-declined.md is .* and no open goal"
+check "anti-feature: never warned about as an uncovered task" "1" "$?"
+
 # ---------- typed arms, self-deps, typeless done, channel, resolution --------
 
 OUTW="$(hero_ready_items "$W" 2>/dev/null)"
@@ -1289,6 +1316,8 @@ mkcand 024-nested.md   24 ready    apps/web/.claude
 mkcand 025-onnew.md    25 ready    src/t     13
 printf -- '---\ntype: task\nshape: story\ntitle: no id\nstatus: ready\ndepends_on: []\nsource: [src/u]\n---\n' > "$G/items/026-noid.md"
 
+# A declined ground inside the goal's paths must never be adopted as work.
+printf -- '---\nid: 27\ntype: anti-feature\ntitle: declined\nstatus: accepted\nsource: [src/a/x]\n---\n' > "$G/items/027-anti.md"
 OUTG="$(hero_goal_candidates 50 "$G" 2>/dev/null)"
 ERRG="$(hero_goal_candidates 50 "$G" 2>&1 >/dev/null)"
 # Silent exclusions ride on this exact match: a member (1), another open goal's

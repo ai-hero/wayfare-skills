@@ -263,6 +263,18 @@ say the count, name `wayfare:wayfare-sync-plan` as what triages it, and carry
 on. Promotion is that stage's, on the user's confirmation. Planning straight off
 an inbound message is a sibling writing this repo's roadmap.
 
+**Check the ask against the declined decisions before the first question.** The
+listing's `anti` rows are anti-features: things this repo looked at and chose
+not to build. Read each one's `title` and `## Context` against the ask. On an
+overlap, stop: print the item (id, title, its Context) and ask whether to
+reverse the decision. Only a yes continues, and the reversal is written on the
+anti-feature, not remembered: append a dated `note:` line to its `## Log` saying
+who reversed it and why, and set it `done` with `resolution: promoted` when Step
+4 writes what it became, which carries `discovered_from: ANTI_FEATURE_ID`. A no
+ends the run, with the item cited as the reason. Planning it anyway is how a
+decision made once gets re-litigated every quarter, and the store's only record
+of it goes on saying "declined" beside a task that builds it.
+
 ### Step 1: Frame the work
 
 Restate what you understand the user wants in one or two sentences and confirm

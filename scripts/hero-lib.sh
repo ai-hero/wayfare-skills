@@ -1036,7 +1036,7 @@ hero_item_status() {
   printf '%s' "${s:-new}"
 }
 
-# An item's TYPE: task, signal, goal or idea (docs/PLAN.md). Lowercased, because
+# An item's TYPE: task, signal, goal, idea or anti-feature (docs/PLAN.md). Lowercased, because
 # `Task` silently matching no arm of the listing table printed the item as
 # invalid, which reads as a malformed file rather than a capital letter.
 # Empty means the item was never migrated; the caller reports it, because
@@ -1602,6 +1602,8 @@ EOF
 #            is a container for tasks, and wayfare-build-task builds tasks.
 #            `wayfare-start-goal` selects goals by type instead
 #   idea     an idea at new or accepted: parked, never work until promoted
+#   anti     an anti-feature at new or accepted: a decision not to build, checked
+#            against and never work
 #   new      status is new (or absent): created, not yet triaged. Never READY,
 #            because nobody has decided this should be worked on
 #   done     finished; the only state that satisfies a dependency
@@ -1637,7 +1639,7 @@ EOF
 hero_ready_items() (
   local store items f d raw deps ready title id state itype row all_ids done_ids
   local open_goals parent committed_ids committed missing awaiting blocked_on since enum
-  local idea_ids shape channel resolution
+  local idea_ids anti_ids shape channel resolution
   store="${1:-$(hero_work_store)}" || return 1
 
   # An unmigrated store lists NOTHING rather than listing wrong. Every item in
@@ -1669,6 +1671,7 @@ hero_ready_items() (
   committed_ids=" "
   open_goals=" "
   idea_ids=" "
+  anti_ids=" "
   for f in *.md; do
     [ -e "$f" ] || continue
     id=$(hero_norm_id "$(hero_item_field "$f" id)")
@@ -1716,7 +1719,7 @@ hero_ready_items() (
     # Ideas are collected whatever their status: a dependency on one is a
     # defect even after it is promoted, because the dependent was written
     # against a parking-lot entry rather than against the work it became.
-    case "$itype" in idea) idea_ids="$idea_ids$id " ;; esac
+    case "$itype" in idea) idea_ids="$idea_ids$id " ;; anti-feature) anti_ids="$anti_ids$id " ;; esac
   done
 
   for f in *.md; do
@@ -1728,7 +1731,7 @@ hero_ready_items() (
     # by something that has not caught up. Never guessed: guessing `task` is
     # how a goal gets handed to wayfare-build-task to build.
     if [ -z "$itype" ]; then
-      echo "hero_ready_items: $f has no type; schema 1 requires task, signal, goal or idea (docs/PLAN.md)" >&2
+      echo "hero_ready_items: $f has no type; schema 1 requires task, signal, goal, idea or anti-feature (docs/PLAN.md)" >&2
       echo "invalid $f — $title"
       continue
     fi
@@ -1855,6 +1858,11 @@ hero_ready_items() (
       # view can collapse the parking lot to one count instead of printing
       # forty rows between a reader and the READY set.
       idea:new|idea:accepted) echo "idea    $f — $title"; continue ;;
+      # Same reason, and its own word: an anti-feature is a decision, so
+      # `*:new` printing it as an untriaged item would invite a triage that
+      # promotes "we chose not to" into work. Sync and grill match against
+      # the `anti` rows.
+      anti-feature:new|anti-feature:accepted) echo "anti    $f — $title"; continue ;;
       *:new)       echo "new     $f — $title"; continue ;;
       # Terminal and frozen. A rejected signal is kept on purpose: "we raised
       # this and they said no" is the history that stops it being raised again
@@ -1897,8 +1905,8 @@ hero_ready_items() (
           task)   enum="new/accepted/planning/ready/active/committed/review/done/dropped" ;;
           signal) enum="new/accepted/ready/active/done/dropped" ;;
           goal)   enum="new/accepted/active/done/dropped" ;;
-          idea)   enum="new/accepted/done/dropped" ;;
-          *)      enum="a status of an unrecognized type '$itype'; expected task, signal, goal or idea" ;;
+          idea|anti-feature) enum="new/accepted/done/dropped" ;;
+          *)      enum="a status of an unrecognized type '$itype'; expected task, signal, goal, idea or anti-feature" ;;
         esac
         echo "hero_ready_items: $f has unrecognized status '$state', which is not one of $enum; not eligible for READY" >&2
         echo "invalid $f — $title"
@@ -1942,6 +1950,15 @@ hero_ready_items() (
       case "$idea_ids" in
         *" $d "*)
           echo "hero_ready_items: $f depends_on '$raw', which is an idea; an idea is not work and nothing can build it. Promote it, then depend on what it became" >&2
+          missing="$missing $raw"
+          ready=0
+          continue ;;
+      esac
+      # A decision not to build is never satisfied by building, so a dependent
+      # would wait forever. Same defect as an idea, named the same way.
+      case "$anti_ids" in
+        *" $d "*)
+          echo "hero_ready_items: $f depends_on '$raw', which is an anti-feature; nothing builds a declined thing. Reverse the decision first, then depend on what it became" >&2
           missing="$missing $raw"
           ready=0
           continue ;;

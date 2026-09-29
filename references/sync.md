@@ -113,12 +113,12 @@ stage below runs `wayfare:wayfare-review-architecture` and offers that skill. A
 file's presence is not configuration, so nothing about it is written to HERO.md.
 
 **Mode detection.** The roadmap exists iff `.plans/` holds at least one item
-whose **frontmatter** `type` is `task`, `signal` or `goal` (an `idea` alone is
-not a roadmap), read with `hero_item_field "$f" type` per `"$STORE"/items/*.md`,
-never a raw grep (a body mentioning `type: task` would trip it). First confirm
-the store lists (`ls "$STORE"` succeeds): a clean pass with no task item means
-bootstrap; a store that will not list is a failed check, so STOP and name the
-path.
+whose **frontmatter** `type` is `task`, `signal` or `goal` (an `idea` or an
+`anti-feature` alone is not a roadmap), read with `hero_item_field "$f" type`
+per `"$STORE"/items/*.md`, never a raw grep (a body mentioning `type: task`
+would trip it). First confirm the store lists (`ls "$STORE"` succeeds): a clean
+pass with no task item means bootstrap; a store that will not list is a failed
+check, so STOP and name the path.
 
 **The `inbox` stage: what the fleet sent, promoted or declined.** The mailbox is
 `$STORE/inbox/` (`docs/MESSAGES.md`); Step 0 printed the unread count. Read each
@@ -549,7 +549,12 @@ rather than reporting clean, the same rule the Upstream lane above follows):
 - **uncovered**: target ground no existing task addresses: propose new
   `accepted` tasks, slice-shaped per *Slices, not layers* and placed in the
   journey by the UX flow. "The design has a section nothing covers" is not by
-  itself a task. Find the story that section serves.
+  itself a task. Find the story that section serves. **Before proposing, match
+  each candidate against the `anti` rows** (an anti-feature's `source` paths and
+  its title): a match is listed as `declined, see ID` and proposes nothing,
+  because the ground is uncovered on purpose. It stays out of the proposal table
+  unless the target has changed since the decision, in which case say so in the
+  row and let the person reverse it through `wayfare:wayfare-grill-idea`.
 - **obsolete**: a task whose target paths the design dropped: propose closing it
   out.
 - **in-design-not-in-code**: a target screen with no route in the router. It is
@@ -992,3 +997,9 @@ the ordinary confirm flow:
 **Never promote an idea unasked, and never count one as coverage.** An idea
 credited as coverage suppresses the `uncovered` finding for ground nobody has
 planned, which is the failure that lane exists to catch.
+
+**An anti-feature is neither coverage nor a proposal.** It is the recorded
+reason ground stays uncovered: the `uncovered` lane reads it, lists the match as
+declined, and proposes nothing for it. Sync never writes one on its own and
+never reverses one; a person files it (`type: anti-feature`, `docs/PLAN.md`) and
+a person reverses it.

@@ -89,7 +89,7 @@ its own hardening instead: a self-review.
 ### The plan store
 
 `.plans/` is the system of record: one `PLAN.md` per repo and one file per item.
-Items come in four types, and a task's `shape` decides what its Definition of
+Items come in five types, and a task's `shape` decides what its Definition of
 Done has to assert.
 
 | Type | What it is | What happens to it |
@@ -98,6 +98,7 @@ Done has to assert.
 | `signal` | a finding delivered where this repo cannot write | delivered upstream |
 | `goal` | an ordered set of tasks with one Definition of Done | grouped and authorized |
 | `idea` | something worth doing eventually, not yet shaped into work | nothing, until you promote it |
+| `anti-feature` | a thing looked at and decided against | refused and cited |
 
 An **idea** is the parking lot: a thought worth keeping that nobody has
 committed to. It carries no plan, no paths and no Definition of Done. An idea

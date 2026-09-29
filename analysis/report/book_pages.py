@@ -133,12 +133,14 @@ def find_diagram(diagrams, ref, prefer=()):
     return None, None
 
 
-def card(b, number, caption="", view=None):
-    """A question's whole card, placed in the prose: every view, with the one the text drew first."""
+def card(b, number, caption="", view=None, compact=False):
+    """A question's whole card, placed in the prose: every view, with the one the text drew first.
+    A chapter's card is `compact` (question, finding, chart, up to three views to switch between);
+    the appendix keeps the whole card, so every view still ships and the viewer decides what to show."""
     views = list(b["views"])
     if view is not None and view in views:
         views.insert(0, views.pop(views.index(view)))
-    return {"kind": "card", "key": b["key"], "number": number, "caption": caption,
+    return {"kind": "card", "key": b["key"], "number": number, "caption": caption, "compact": compact,
             "block": {**b, "views": views}}
 
 
@@ -147,6 +149,7 @@ def build(ch, text, questions, diagrams, deck_known):
     draws it as a figure, or else right after the paragraph that first cites it. A question the
     text never mentions stays off the page."""
     name, lab = (("appendix", "A") if ch.get("appendix") else (f"ch{ch['n']:02d}", str(ch["n"])))
+    compact = not ch.get("appendix")
     own = {}
     for q in ch["questions"]:
         k = f"Q {q}"
@@ -196,7 +199,7 @@ def build(ch, text, questions, diagrams, deck_known):
                 k = D.qkey(b["key"])
                 if k in own and k not in placed:
                     placed.add(k)
-                    blk = card(b, f"{lab}.{fig}", blk["caption"], v)
+                    blk = card(b, f"{lab}.{fig}", blk["caption"], v, compact)
                 else:
                     blk.update({"number": f"{lab}.{fig}", "key": b["key"], "view": v,
                                 "caption": blk["caption"] or v["title"]})
@@ -214,7 +217,7 @@ def build(ch, text, questions, diagrams, deck_known):
                     if k in own and k not in placed and k not in drawn:
                         placed.add(k)
                         fig += 1
-                        blocks.append(card(own[k], f"{lab}.{fig}"))
+                        blocks.append(card(own[k], f"{lab}.{fig}", compact=compact))
         if blocks or s["title"]:
             out.append({**s, "blocks": blocks})
     # A question the prose never cites is left off the page, not appended: the warning is the
@@ -302,8 +305,11 @@ def render(ch, template, questions, diagrams, deck_known, toc, book_dir, out_dir
     D.slim(sections)
     pages = {str(c["n"]): page_name(c) for c in toc["chapters"]}
     owners = {q: c["n"] for c in toc["chapters"] for q in c["questions"]}
+    # The compact cards link to their full card on the appendix page, so it is named only when it renders.
+    appendix = page_name({**APPENDIX, "appendix": True}) \
+        if os.path.exists(os.path.join(book_dir, APPENDIX["book"])) and not ch.get("appendix") else None
     payload = {"head": head, "sections": [], "index": index_href, "book": book, "chapter": ch["n"],
-               "pages": pages, "owners": owners}
+               "pages": pages, "owners": owners, "appendix": appendix}
     with open(out, "w", encoding="utf-8") as f:
         f.write(D.fill(template, title, payload))
     return out

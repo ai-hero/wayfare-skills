@@ -276,6 +276,18 @@ run_validate "$d"
 check "portable version mismatch: rc" "1" "$RC"
 check_contains "portable version mismatch: reported" "$OUT" "plugin.json version '9.9.9' disagrees"
 
+d=$(fixture portable-name-mismatch)
+jq '.name = "other"' "$d/plugin.json" > "$d/plugin.json.tmp" && mv "$d/plugin.json.tmp" "$d/plugin.json"
+run_validate "$d"
+check "portable name mismatch: rc" "1" "$RC"
+check_contains "portable name mismatch: reported" "$OUT" "plugin.json name 'other' disagrees"
+
+d=$(fixture portable-schema-missing)
+jq 'del(.["$schema"])' "$d/plugin.json" > "$d/plugin.json.tmp" && mv "$d/plugin.json.tmp" "$d/plugin.json"
+run_validate "$d"
+check "portable schema missing: rc" "1" "$RC"
+check_contains "portable schema missing: reported" "$OUT" "wrong or missing Agent Plugins schema"
+
 d=$(fixture agents-name-missing)
 jq '.plugins[0].name = "wrongname"' "$d/.agents/plugins/marketplace.json" > "$d/.agents/plugins/marketplace.json.tmp" && mv "$d/.agents/plugins/marketplace.json.tmp" "$d/.agents/plugins/marketplace.json"
 run_validate "$d"

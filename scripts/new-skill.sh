@@ -91,10 +91,10 @@ If \`FLEET_ROOT\` printed, this folder is a fleet, not a repo: stop and follow *
 Read \`HERO.md\` if it exists. This skill uses:
 - TODO: list which HERO.md sections this skill reads
 
-Use capability language rather than naming one client's file, shell, skill, or
-subagent tools. For client translation and authorization gates, read
-\`../../references/client-capabilities.md\` and
-\`../../references/authorization.md\` only when this workflow needs them.
+<!-- TODO (delete after reading): use capability language rather than naming
+one client's file, shell, skill, or subagent tools. For client translation and
+authorization gates, link \`../../references/client-capabilities.md\` and
+\`../../references/authorization.md\` only when this workflow needs them. -->
 
 If \`HERO.md\` is missing, suggest \`wayfare:wayfare-init-repo\` but proceed with auto-detection.
 

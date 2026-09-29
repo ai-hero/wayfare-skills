@@ -13,10 +13,10 @@ last-push, and rebase invariant.
 
 ## Load the workflow
 
-Read [WORKFLOW.md](WORKFLOW.md) in full before triggering approval or changing
-remote state. It defines preflight, rebase ordering, approval triggering,
-verdict interpretation, merge authorization, cleanup, and post-merge
-verification.
+Read [WORKFLOW.md](WORKFLOW.md) in full before running this skill, before
+triggering approval or changing remote state. It defines preflight, rebase
+ordering, approval triggering, verdict interpretation, merge authorization,
+cleanup, and post-merge verification.
 
 Use [the authorization model](../../references/authorization.md); merging is a
 consequential external mutation and retains an explicit gate. Use

@@ -219,15 +219,21 @@ Two rules keep the tiers honest:
 Say which tier you picked and why, in one line, before launching. A review that
 silently ran two agents reads identically to one that ran six and found nothing.
 
-Then launch the tier's agents simultaneously in a single message, each with the
-named type below and never `subagent_type: "fork"` (see *A fan-out subagent is
-never a fork* in `docs/PIPELINES.md`). For the full six, the five
-pr-review-toolkit agents plus the security agent:
+Then launch the tier's agents simultaneously in a single message, as fresh
+subagents scoped to the diff and never as forks of this session (see *A fan-out
+subagent is never a fork* in `docs/PIPELINES.md`). Delegate through the active
+client's subagent mechanism; if delegation is unavailable, run the same passes
+sequentially and disclose that limitation. The full six passes, with the agent
+that runs each one in Claude Code:
 
-Delegate independent passes for code correctness, silent failures, tests,
-comments, type design, and security through the active client's subagent
-mechanism. If delegation is unavailable, run the same passes sequentially and
-disclose that limitation.
+| Pass | Claude Code agent |
+| -- | -- |
+| code correctness and project conventions | `pr-review-toolkit:code-reviewer` |
+| silent failures and swallowed errors | `pr-review-toolkit:silent-failure-hunter` |
+| test coverage | `pr-review-toolkit:pr-test-analyzer` |
+| comment accuracy | `pr-review-toolkit:comment-analyzer` |
+| type and contract design | `pr-review-toolkit:type-design-analyzer` |
+| security (prompt spec below) | the client's general-purpose agent |
 
 **Security agent prompt spec.** Give the agent the PR diff scope (repo path,
 branch/PR number) and this brief: review ONLY for security vulnerabilities that

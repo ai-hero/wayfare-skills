@@ -14,6 +14,11 @@ local commit when the invoked mode explicitly includes committing.
 Do not turn a routine next step into an offer such as `Run it now?`. Continue
 while a safe, relevant step remains.
 
+A lease-guarded rebase of the PR branch onto its current base, through
+`hero_rebase_on_base`, is a routine step of review, respond and ship, not a
+history rewrite that needs confirmation: the lease refuses to overwrite work the
+run has not seen, and every verdict must be given on a head that can merge.
+
 ## Confirm
 
 Ask immediately before an action when at least one of these is true:
@@ -27,7 +32,8 @@ Ask immediately before an action when at least one of these is true:
 - It rewrites history, discards work, or is difficult to recover.
 
 Name the concrete action and consequence. Do not ask for permission that the
-person already gave in the current invocation.
+person already gave in the current invocation. In a headless run, every Confirm
+becomes a Defer.
 
 ## Stop
 

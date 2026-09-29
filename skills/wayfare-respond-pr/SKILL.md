@@ -12,10 +12,10 @@ the result, and resolve conversations whose concerns are actually addressed.
 
 ## Load the workflow
 
-Read [WORKFLOW.md](WORKFLOW.md) in full before changing code or remote review
-state. It defines PR discovery, branch checks, feedback retrieval,
-classification, fix and verification behavior, thread replies, summaries, and
-the review loop.
+Read [WORKFLOW.md](WORKFLOW.md) in full before running this skill, before
+changing code or remote review state. It defines PR discovery, branch checks,
+feedback retrieval, classification, fix and verification behavior, thread
+replies, summaries, and the review loop.
 
 Use [the authorization model](../../references/authorization.md) to avoid
 redundant prompts for ordinary fixes already requested while retaining gates for

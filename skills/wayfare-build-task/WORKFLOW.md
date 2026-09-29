@@ -1207,7 +1207,8 @@ plus `Stopped: bot feedback non-trivial, escalate to a human reviewer` per
 Render DAG with `ship` active. Run `wayfare:wayfare-ship-pr` through the active
 client's skill mechanism, forwarding the goal's permissions line verbatim when
 this run carries one. It owns the auto-approve gates, the verdict wait, the
-merge confirmation, and the branch cleanup. See its SKILL.md for what those are.
+merge confirmation, and the branch cleanup. See its WORKFLOW.md for what those
+are.
 
 **Step 9 is wayfare-ship-pr. Do not post `@auto-approve` or merge by hand.**
 Those are wayfare-ship-pr's calls, as `git commit` is wayfare-push-pr's. Posting

@@ -8,9 +8,11 @@ compatibility: "Requires the complete Wayfare plugin, git, GitHub CLI, network a
 # Push a pull request
 
 Verify the outstanding work, create a focused commit, push the feature branch,
-and open a draft PR by default. Never commit or push directly to the default
-branch. Treat tests and a clean understanding of the diff as prerequisites to
-publication.
+and open a draft PR by default. With a target branch as the argument it merges
+the pushed branch into that target instead of opening a PR, which bypasses the
+approval workflow, so that mode needs the person to have named the target
+themselves. Never commit or push directly to the default branch. Treat tests and
+a clean understanding of the diff as prerequisites to publication.
 
 ## Load the workflow
 

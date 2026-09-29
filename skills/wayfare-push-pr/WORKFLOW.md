@@ -399,7 +399,7 @@ rails sinatra laravel
    Treat as a UI project for smoke testing?
      [y] Yes, drive the dev server with Playwright MCP
      [n] No, skip it (recommended for non-UI frameworks)
-     [a] Add 'FRAMEWORK_VALUE' to the known-UI list in skills/wayfare-push-pr/SKILL.md and continue (asks once per session, not durable)
+     [a] Add 'FRAMEWORK_VALUE' to the known-UI list in skills/wayfare-push-pr/WORKFLOW.md and continue (asks once per session, not durable)
    ```
 
    Default to `n` if the user answers ambiguously. Silently smoking a backend

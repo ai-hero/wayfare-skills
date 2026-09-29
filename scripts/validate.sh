@@ -180,8 +180,15 @@ if [[ -f "$PORTABLE_MANIFEST" ]] && jq empty "$PORTABLE_MANIFEST" 2>/dev/null; t
   other_version=$(jq -r '.version // empty' "$PORTABLE_MANIFEST")
   [[ "$other_name" == "$NAME" ]] || error "$PORTABLE_MANIFEST_REL name '$other_name' disagrees with '$NAME'" \
     "$PORTABLE_MANIFEST_REL" "" "Set \"name\": \"$NAME\""
-  [[ "$other_version" == "$VERSION" ]] || error "$PORTABLE_MANIFEST_REL version '$other_version' disagrees with '$VERSION'" \
-    "$PORTABLE_MANIFEST_REL" "" "Set \"version\": \"$VERSION\""
+  if [[ -z "$other_version" || -z "$VERSION" ]]; then
+    error "$PORTABLE_MANIFEST_REL version '$other_version' cannot be compared with '$VERSION'" \
+      "$PORTABLE_MANIFEST_REL" "" "Set \"version\" in both manifests"
+  elif [[ "$other_version" != "$VERSION" ]]; then
+    error "$PORTABLE_MANIFEST_REL version '$other_version' disagrees with '$VERSION'" \
+      "$PORTABLE_MANIFEST_REL" "" "Set \"version\": \"$VERSION\""
+  else
+    pass "$PORTABLE_MANIFEST_REL agrees on name and version: $NAME $VERSION"
+  fi
 fi
 
 CLAUDE_SKILLS=$(jq -r '.skills // empty' "$MANIFEST" 2>/dev/null)
@@ -378,15 +385,22 @@ else
     # Activation entrypoints use capability language. Product names remain
     # valid when they identify real infrastructure or client metadata, but
     # portable operations must not assume another client's tool call syntax.
-    CLIENT_TOOL_HITS=$(grep -nE 'via (the )?Skill tool|Use (the )?(Read|Bash) tool|Agent\(subagent_type=' "$SKILL_FILE" || true)
-    if [[ -n "$CLIENT_TOOL_HITS" ]]; then
-      error "SKILL.md hard-codes client tool syntax" \
-        "$SKILL_REL" \
-        "$(printf '%s' "$CLIENT_TOOL_HITS" | head -1 | cut -d: -f1)" \
-        "Describe the capability and route through references/client-capabilities.md"
-    else
-      pass "$SKILL_NAME: activation language is client-neutral"
-    fi
+    # WORKFLOW.md is scanned with the same pattern: the procedure moved there,
+    # and a check that reads only the 40-line entrypoint passes on the stub
+    # while the moved body keeps the syntax.
+    for BODY_FILE in "$SKILL_FILE" "$skill_dir/WORKFLOW.md"; do
+      [[ -f "$BODY_FILE" ]] || continue
+      BODY_REL="${BODY_FILE#"$PLUGIN_ROOT/"}"
+      CLIENT_TOOL_HITS=$(grep -nE 'via (the )?Skill tool|Use (the )?(Read|Bash) tool|Agent\(subagent_type=|subagent_type: "fork"' "$BODY_FILE" || true)
+      if [[ -n "$CLIENT_TOOL_HITS" ]]; then
+        error "$(basename "$BODY_FILE") hard-codes client tool syntax" \
+          "$BODY_REL" \
+          "$(printf '%s' "$CLIENT_TOOL_HITS" | head -1 | cut -d: -f1)" \
+          "Describe the capability and route through references/client-capabilities.md"
+      else
+        pass "$SKILL_NAME: $(basename "$BODY_FILE") language is client-neutral"
+      fi
+    done
 
     # 8. `../../references/NAME` paths the body names must exist. This
     # matches the ../../ form deliberately: the earlier version keyed on a
@@ -396,19 +410,23 @@ else
     # because a dead guard and a passing guard print the same thing.
     # create-skill names bare `references/` paths as examples and ships
     # none; the ../../ prefix is what separates a real path from a sample.
-    REF_PATHS=$(grep -oE '\.\./\.\./references/[A-Za-z0-9._-]+\.md' "$SKILL_FILE" | sort -u || true)
-    while IFS= read -r ref; do
-      [[ -n "$ref" ]] || continue
-      if [[ ! -f "$PLUGIN_ROOT/${ref#../../}" ]]; then
-        REF_LINE=$(grep -nF "$ref" "$SKILL_FILE" | head -1 | cut -d: -f1 || true)
-        error "'$ref' is named in the body but does not exist" \
-          "$SKILL_REL" \
-          "$REF_LINE" \
-          "Create ${ref#../../} at the plugin root or fix the path in the body"
-      else
-        pass "$SKILL_NAME: $ref exists"
-      fi
-    done <<< "$REF_PATHS"
+    for BODY_FILE in "$SKILL_FILE" "$skill_dir/WORKFLOW.md"; do
+      [[ -f "$BODY_FILE" ]] || continue
+      BODY_REL="${BODY_FILE#"$PLUGIN_ROOT/"}"
+      REF_PATHS=$(grep -oE '\.\./\.\./references/[A-Za-z0-9._-]+\.md' "$BODY_FILE" | sort -u || true)
+      while IFS= read -r ref; do
+        [[ -n "$ref" ]] || continue
+        if [[ ! -f "$PLUGIN_ROOT/${ref#../../}" ]]; then
+          REF_LINE=$(grep -nF "$ref" "$BODY_FILE" | head -1 | cut -d: -f1 || true)
+          error "'$ref' is named in the body but does not exist" \
+            "$BODY_REL" \
+            "$REF_LINE" \
+            "Create ${ref#../../} at the plugin root or fix the path in the body"
+        else
+          pass "$SKILL_NAME: $ref exists"
+        fi
+      done <<< "$REF_PATHS"
+    done
 
     # 9. Empty subdirectories
     for subdir in references scripts examples assets; do
@@ -520,8 +538,8 @@ elif [[ $DOTDOT_ERRORS -eq 0 ]]; then
 fi
 
 # ── chained-skill invocability guard ───────────────────────────────
-# wayfare-build-task (skills/wayfare-build-task/SKILL.md) delegates its steps to child skills via
-# the Skill tool, and a wayfare goal turn chains into wayfare-grill-idea and
+# wayfare-build-task (skills/wayfare-build-task/WORKFLOW.md) delegates its steps to child skills
+# through the client's skill mechanism, and a wayfare goal turn chains into wayfare-grill-idea and
 # wayfare-build-task the same way. A chained skill carrying
 # `disable-model-invocation: true` cannot be invoked by the model, so the
 # calling pipeline breaks at that step (there is no per-caller allowlist).
@@ -540,7 +558,7 @@ fi
 # `wayfare-one-shot` is here because build-task's Step 1d chains it, and
 # new-skill.sh scaffolds `disable-model-invocation: true` by default.
 # `wayfare-check-preflight` is intentionally absent, wayfare-build-task runs
-# it via scripts/preflight.sh, not the Skill tool, so it may stay user-only.
+# it via scripts/preflight.sh, not through the skill mechanism, so it may stay user-only.
 CHAINED_SKILLS="wayfare-grill-idea wayfare-push-pr wayfare-review-pr wayfare-respond-pr wayfare-ship-pr wayfare-build-task wayfare-review-architecture wayfare-sync-architecture wayfare-audit-security wayfare-one-shot"
 for chained in $CHAINED_SKILLS; do
   chained_file="$SKILLS_DIR/$chained/SKILL.md"
@@ -568,7 +586,7 @@ for chained in $CHAINED_SKILLS; do
     error "'$chained' is chained by a hero pipeline but is user-only (disable-model-invocation: true)" \
       "skills/$chained/SKILL.md" \
       "$DMI_LINE" \
-      "Remove the 'disable-model-invocation: true' line — a hero pipeline invokes this skill via the Skill tool and cannot call a user-only skill"
+      "Remove the 'disable-model-invocation: true' line — a hero pipeline invokes this skill through the skill mechanism and cannot call a user-only skill"
   else
     pass "$chained: model-invocable (chainable by the hero pipelines)"
   fi

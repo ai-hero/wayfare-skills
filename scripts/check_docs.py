@@ -383,10 +383,11 @@ def main():
             continue
         if re.fullmatch(r"skills/[^/]+/SKILL\.md", rel):
             check_frontmatter(rel, text)
-            check_steps(rel, text)
         elif frontmatter(text)[0] is not None:
             check_yaml_only(rel, text)
-        if re.fullmatch(r"skills/[^/]+/SKILL\.md|references/.+\.md", rel):
+        if re.fullmatch(r"skills/[^/]+/(SKILL|WORKFLOW)\.md", rel):
+            check_steps(rel, text)
+        if re.fullmatch(r"skills/[^/]+/(SKILL|WORKFLOW)\.md|references/.+\.md", rel):
             check_skill_prose(rel, text)
         if rel.startswith(("skills/", "references/", "assets/")):
             check_attribution(rel, text)

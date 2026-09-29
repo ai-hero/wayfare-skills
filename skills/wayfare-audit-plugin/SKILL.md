@@ -69,8 +69,9 @@ STRUCTURE CONSISTENCY
 Flag skills that are too large or too small:
 
 - **Over 500 lines**: Move reference material to `references/`, each file linked
-  from the body with the condition under which to read it. Pipeline skills (see
-  `PIPELINE_SKILLS` in `scripts/validate.sh`) carry a larger budget on purpose
+  from the body with the condition under which to read it. A long executable
+  procedure goes in a skill-local `WORKFLOW.md` linked from `SKILL.md`; the
+  budget has no exceptions
 - **Over 5000 words**: Consuming too much context window
 - **Under 20 lines** (body only): Probably too thin to be useful
 - **Deep nesting** (h4+ headings beyond investigation sub-steps): May need

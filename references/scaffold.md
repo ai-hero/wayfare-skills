@@ -193,9 +193,9 @@ DESCRIPTION
 
 ## Step 6: Initialize Git (if standalone)
 
-End the message with the attribution trailer your harness specifies. If it
-specifies none, end with `Co-Authored-By: Claude <noreply@anthropic.com>`, which
-names no model and so cannot go stale.
+End the message with the attribution trailer the active client or repository
+specifies. If neither specifies one, add no generated co-author trailer. Never
+invent an agent or model identity.
 
 ```bash
 git init

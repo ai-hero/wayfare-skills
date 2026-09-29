@@ -247,15 +247,21 @@ which is the default path in every skill's `WAYFARE_ROOT` line
 
 The same skills install into Codex, Cursor, and other Agent Plugin hosts from
 the same checkout. The root `plugin.json` is their shared portable Agent Plugin
-manifest; `.agents/plugins/` provides Codex marketplace metadata. Claude Code
-does not load the portable `plugin.json`; its separate adapter remains under
-`.claude-plugin/`. No separate build or rewrite is needed. `CLAUDE_PLUGIN_ROOT`
-is a Claude Code harness variable, and it is not reliably set in a skill's Bash
-calls, so every skill resolves its plugin root through one `WAYFARE_ROOT` line:
-`CLAUDE_PLUGIN_ROOT` when set, else an exported `WAYFARE_ROOT`, else the default
-clone path. An agent with neither exports `WAYFARE_ROOT` as
-`$(cd "$(dirname "$SKILL_MD")/../.." && pwd)` (the directory two levels above
-the `SKILL.md` it loaded) before running a skill (see
+manifest; `.agents/plugins/marketplace.json` is the Codex marketplace that
+points at it. Measured on Codex CLI 0.159.1 on 2026-09-29: with the checkout
+added as a local marketplace, `codex plugin add wayfare@wayfare` installs
+version 2.1.0 from the root manifest alone and all 26 skills appear in the
+model-visible prompt. The marketplace entry's source is `local` with a path, the
+shape Codex's own bundled marketplace uses; the `url` form makes Codex
+`git clone` the checkout instead, which fails on a copy without `.git`. Claude
+Code does not load the portable `plugin.json`; its separate adapter remains
+under `.claude-plugin/`. No separate build or rewrite is needed.
+`CLAUDE_PLUGIN_ROOT` is a Claude Code harness variable, and it is not reliably
+set in a skill's Bash calls, so every skill resolves its plugin root through one
+`WAYFARE_ROOT` line: `CLAUDE_PLUGIN_ROOT` when set, else an exported
+`WAYFARE_ROOT`, else the default clone path. An agent with neither exports
+`WAYFARE_ROOT` as `$(cd "$(dirname "$SKILL_MD")/../.." && pwd)` (the directory
+two levels above the `SKILL.md` it loaded) before running a skill (see
 [references/loading.md](./references/loading.md)).
 
 Every Wayfare skill declares this complete-plugin dependency in its Agent Skills

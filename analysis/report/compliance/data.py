@@ -856,3 +856,191 @@ if __name__ == "__main__":
         r = f()
         print("=====", f.__name__)
         pprint.pprint({k: v for k, v in r.items() if k not in ("weeks",)}, width=160, compact=True)
+
+
+# ------------------------------------------------------------------ book figures 5.2, 5.6, 5.7, 5.8
+
+# The register's family: every repo an audit ever covered. saga and the deleted design repos were never in it.
+FAMILY_LEFT = {"hiro": "2026-08-21"}  # deprecated; audits after this day should not count it as alive
+
+
+def family_alive(day):
+    au = audit_days()
+    fam = {r for a in au for r in a["repos"]}
+    first = repo_first_day()
+    return {r for r in fam if first.get(r, "9999") <= day and not (r in FAMILY_LEFT and FAMILY_LEFT[r] <= day)}
+
+
+def fig_clone_drift():
+    """5.2: each clone's open failures at the last audit, split by whether the check predates the clone."""
+    from ingest.fleet import category_of
+    au = audit_days()
+    last = au[-1]
+    first_seen = {}
+    for a in au:
+        for r in a["rows"]:
+            first_seen.setdefault(r["check"], a["day"])
+    tmpl_fails = {r["check"] for r in last["rows"] if r["cells"].get("hero-template") == "fail"}
+    active = {r["repo"]: (r["last"], r["n30"]) for r in con().execute(
+        "SELECT repo, MAX(day) last, SUM(day >= date(?, '-30 days')) n30 FROM git.commits GROUP BY repo", (last["day"],))}
+    rows = []
+    for rp, born in sorted(CLONES.items(), key=lambda kv: kv[1]):
+        cells = {r["check"]: r["cells"].get(rp) for r in last["rows"]}
+        fails = [k for k, m in cells.items() if m == "fail"]
+        pre = [k for k in fails if first_seen[k] <= born]
+        post = [k for k in fails if first_seen[k] > born]
+        rows.append({"repo": rp, "cloned": born, "age_days": days(born, last["day"]), "category": category_of(rp),
+                     "applicable": sum(1 for m in cells.values() if m in ("pass", "fail")),
+                     "not_applicable": sum(1 for m in cells.values() if m == "na"),
+                     "manual": sum(1 for m in cells.values() if m == "manual"),
+                     "failed": len(fails), "pre_clone_rules": len(pre), "post_clone_rules": len(post),
+                     "template_fails_too": sum(1 for k in fails if k in tmpl_fails),
+                     "pre_clone_checks": sorted(pre), "post_clone_checks": sorted(post),
+                     "last_commit": active[rp][0], "commits_30d": active[rp][1],
+                     "active": active[rp][1] > 0, "exceptions": 0})
+    tmpl = {r["check"]: r["cells"].get("hero-template") for r in last["rows"]}
+    return {"rows": rows, "audit_day": last["day"], "template_failed": len(tmpl_fails),
+            "template_applicable": sum(1 for m in tmpl.values() if m in ("pass", "fail")),
+            "template_failed_checks": sorted(tmpl_fails), "total_failed": sum(r["failed"] for r in rows),
+            "total_post": sum(r["post_clone_rules"] for r in rows), "total_pre": sum(r["pre_clone_rules"] for r in rows),
+            "inactive": [r["repo"] for r in rows if not r["active"]],
+            "exceptions_recorded": sum(1 for b in R.register_versions()[-1]["controls"].values()
+                                       if re.search(r"(?m)^  (exceptions?|waivers?|exempt):", b))}
+
+
+# Origins read by hand from every control's `why` and the commit that introduced it (28 Sep 2026). More than one
+# origin is allowed. bug = a failure or unsafe state observed in a fleet repo; audit = drift found by comparing
+# repos, nothing failed; design = a decision ahead of any failure; outside = an incident or advisory elsewhere.
+ORIGINS_BY_HAND = {
+    "C-AGENT": ["audit"], "C-APPROVAL": ["bug"], "C-ARCH": ["design"], "C-AUTHN": ["audit", "design"],
+    "C-BUILD": ["bug"], "C-CICONF": ["bug", "audit"], "C-CICOST": ["bug", "audit"], "C-CIHYG": ["audit"],
+    "C-COPYRIGHT": ["audit"], "C-DATA": ["design", "audit"], "C-DOCS": ["audit", "bug"], "C-EDITOR": ["design", "audit"],
+    "C-GATES": ["bug"], "C-HEALTH": ["design", "bug"], "C-LAYOUT": ["audit"], "C-LIVEDEV": ["design", "audit"],
+    "C-PORTS": ["audit", "design"], "C-PRECOMMIT": ["audit"], "C-PRGATE": ["audit"], "C-PROCESS": ["bug", "audit"],
+    "C-READPATH": ["design"], "C-REGISTER": ["bug", "audit"], "C-RELEASE": ["audit", "design"], "C-REPO": ["design"],
+    "C-RUNNER": ["audit"], "C-SCHEMA": ["audit", "design"], "C-SECRETS": ["audit"], "C-SENTRY": ["audit"],
+    "C-STACK": ["design"], "C-SUPPLY": ["outside", "audit"], "C-TEMPLATE": ["bug"], "C-TENANT": ["bug", "design"],
+    "C-TOOLCHAIN": ["audit"], "C-TS": ["audit"], "C-VENDORED": ["audit"], "C-VERSION": ["design", "audit"],
+}
+ORIGIN_NAMES = {"bug": "Failure seen in a fleet repo", "audit": "Drift found comparing repos",
+                "design": "Design decision, nothing had failed", "outside": "Incident or advisory outside the fleet"}
+CLASSES = ["After a failure in the fleet", "After observed drift, no failure", "Ahead of any failure"]
+
+
+def origin_class(origins):
+    if "bug" in origins:
+        return CLASSES[0]
+    if "audit" in origins:
+        return CLASSES[1]
+    return CLASSES[2]
+
+
+def fig_control_origins():
+    """5.6: every control's origins (multi-origin, read by hand), its class, and whether it later caught a failure."""
+    x = q_control_origins()
+    L = ledger()
+    later = Counter(v["control"] for v in L if v["how"] == "seen failing in a later audit")
+    at_write = Counter(v["control"] for v in L if v["how"] == "caught when the check was written")
+    code = {"Bug in a fleet repo": "bug", "Outside incident or advisory": "outside", "Design ahead of failure": "design",
+            "Audit sweep finding": "audit"}
+    rows = []
+    for r in x["rows"]:
+        hand = ORIGINS_BY_HAND[r["id"]]
+        hk = code.get(r["trigger"])
+        rows.append({**{k: r[k] for k in ("id", "title", "severity", "first_day")}, "origins": hand,
+                     "class": origin_class(hand), "haiku_primary": hk, "haiku_in_hand": hk in hand,
+                     "haiku_exact": hand == [hk], "caught_at_write": at_write[r["id"]], "later_detected": later[r["id"]]})
+    missing = set(ORIGINS_BY_HAND) ^ {r["id"] for r in rows}
+    assert not missing, missing
+    combos = Counter(tuple(sorted(r["origins"])) for r in rows)
+    return {"rows": rows, "n": len(rows), "combos": combos,
+            "origin_totals": {k: sum(1 for r in rows if k in r["origins"]) for k in ORIGIN_NAMES},
+            "classes": Counter(r["class"] for r in rows), "multi": sum(1 for r in rows if len(r["origins"]) > 1),
+            "agree_in_set": sum(r["haiku_in_hand"] for r in rows), "agree_exact": sum(r["haiku_exact"] for r in rows),
+            "later_any": sum(1 for r in rows if r["later_detected"]),
+            "later_by_class": {c: sum(1 for r in rows if r["class"] == c and r["later_detected"]) for c in CLASSES},
+            "by_sev_class": {c: [sum(1 for r in rows if r["class"] == c and r["severity"] == s) for s in SEVS] for c in CLASSES}}
+
+
+def fig_audit_staleness(end=NOW):
+    """5.7: the fleet picture's age on every day, audits marked full or partial, and the wait a violation faced."""
+    from datetime import timedelta
+    au = audit_days()
+    start = date.fromisoformat(au[0]["day"])
+    audits = []
+    for a in au:
+        alive = family_alive(a["day"])
+        covered = set(a["repos"])
+        audits.append({"day": a["day"], "where": a["where"], "covered": len(covered), "alive": len(alive),
+                       "missing": sorted(alive - covered), "extra": sorted(covered - alive),
+                       "full": alive <= covered})
+    ds = [a["day"] for a in audits]
+    # Age is measured from the audit commit's timestamp to the end of each day (UTC), so a gap of 24 days and
+    # 23 hours reads as 25, not 24, which a whole-day subtraction would give.
+    from datetime import datetime, timezone
+    ts_of = {a["day"]: datetime.fromisoformat(a["ts"]).astimezone(timezone.utc) for a in au}
+    runs = [r["day"] for r in con().execute(
+        "SELECT DISTINCT substr(ts,1,10) day FROM harness.tool_calls WHERE skill_name LIKE '%consistency-audit%' "
+        "OR skill_name LIKE '%audit-compliance%' OR skill_name LIKE '%sync-plan%' ORDER BY 1") if r["day"] <= end]
+    uncommitted = [d for d in runs if d not in ds]
+    daily = []
+    d = start
+    while d.isoformat() <= end:
+        prior = [x for x in ds if x <= d.isoformat()]
+        day_end = datetime(d.year, d.month, d.day, tzinfo=timezone.utc) + timedelta(days=1)
+        daily.append((d.isoformat(), round((day_end - ts_of[prior[-1]]).total_seconds() / 86400, 2)))
+        d += timedelta(days=1)
+    waits = []
+    d = start
+    while d.isoformat() <= ds[-1]:
+        nxt = next(x for x in ds if x >= d.isoformat())
+        waits.append(days(d.isoformat(), nxt))
+        d += timedelta(days=1)
+    q = lambda v, p: sorted(v)[min(len(v) - 1, int(p * len(v)))]
+    stale = [s for _, s in daily]
+    return {"daily": daily, "audits": audits, "uncommitted_runs": uncommitted, "end": end,
+            "n_audit_days": len(ds), "n_full": sum(a["full"] for a in audits),
+            "max_stale": max(stale), "max_stale_day": daily[stale.index(max(stale))][0],
+            "stale_at_end": stale[-1], "days_over_7": sum(1 for s in stale if s > 7), "n_days": len(stale),
+            "waits": waits, "wait_median": q(waits, 0.5), "wait_p90": q(waits, 0.9), "wait_max": max(waits),
+            "wait_same_day": sum(1 for w in waits if w == 0)}
+
+
+FINAL = ["Fixed in the finding sweep", "Fixed in a later sweep", "Fixed, then reopened and fixed again",
+         "Fixed, then reopened; open at the census", "Never fixed; open at the census", "Accepted exception",
+         "No longer applicable"]
+
+
+def fig_violation_outcomes():
+    """5.8: every (check, repo) violation's state at the last audit, reopenings included, with later repair times."""
+    au = audit_days()
+    census = au[-1]
+    L = ledger()
+    reopened = {(r["check"], r["repo"]): r for r in q_violation_fix_time()["regressions"]}
+    final_cell = {(r["check"], rp): m for r in census["rows"] for rp, m in r["cells"].items()}
+    rows = []
+    for v in L:
+        k = (v["check"], v["repo"])
+        cell = final_cell.get(k)
+        if v["outcome"] == "still failing":
+            f = FINAL[4]
+        elif v["outcome"] in ("check retired", "repo left the audit", "check no longer applies"):
+            f = FINAL[6]
+        elif k in reopened:
+            f = FINAL[3] if cell == "fail" else FINAL[2]
+        else:
+            f = FINAL[0] if v["outcome"] == "fixed in the same sweep" else FINAL[1]
+        rows.append({**v, "final": f, "census_cell": cell, "reopened": reopened[k]["reopened"] if k in reopened else None,
+                     "repair_days": days(v["opened"], v["closed"]) if v["outcome"] == "fixed later" else None})
+    by_sev = {f: [sum(1 for r in rows if r["final"] == f and r["severity"] == s) for s in SEVS] for f in FINAL}
+    totals = Counter(r["final"] for r in rows)
+    later = [r["repair_days"] for r in rows if r["repair_days"] is not None]
+    by_ctl = defaultdict(Counter)
+    for r in rows:
+        by_ctl[r["control"]][r["final"]] += 1
+    open_now = sum(1 for r in rows if r["census_cell"] == "fail")
+    return {"rows": rows, "n": len(rows), "totals": totals, "by_sev": by_sev, "sev_n": [sum(1 for r in rows if r["severity"] == s) for s in SEVS],
+            "later_days": sorted(later), "later_median": median(later) if later else None,
+            "later_by_sev": {s: sorted(r["repair_days"] for r in rows if r["repair_days"] is not None and r["severity"] == s) for s in SEVS},
+            "reopened_n": len(reopened), "open_at_census": open_now, "census": census["day"],
+            "exceptions": 0, "by_control": {c: dict(v) for c, v in by_ctl.items()}}

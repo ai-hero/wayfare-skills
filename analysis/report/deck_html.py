@@ -404,6 +404,7 @@ def fill(template, title, payload):
 # ------------------------------------------------------------------ book
 
 FIG_RE = re.compile(r"^\[\[(.+?)\]\]$")
+LIST_RE = re.compile(r"^([-*]|\d+\.)\s+(.+)$")
 NUM_RE = re.compile(r"\$?\d[\d,]*(?:\.\d+)?%?")
 # Numbers a reader can check without the data: question and chapter numbers, dates, years, URLs, model versions,
 # and names that are digits (8090 is a company).
@@ -422,7 +423,8 @@ def warn(msg):
 
 
 def parse_book(text):
-    """book.md: `## ` sections, `### ` subheads, `> ` callouts, `[[Q work-sources · By repo | caption]]` figures."""
+    """book.md: `## ` sections, `### ` subheads, `> ` callouts, `| a | b |` tables, `- ` and `1. ` lists,
+    `[[Q work-sources · By repo | caption]]` figures."""
     sections, para = [{"title": "", "blocks": []}], []
 
     def flush():
@@ -455,6 +457,25 @@ def parse_book(text):
             flush()
             ref, _, caption = fig.group(1).partition("|")
             sections[-1]["blocks"].append({"kind": "figure", "ref": ref.strip(), "caption": caption.strip()})
+        elif line.startswith("|"):
+            flush()
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            blocks = sections[-1]["blocks"]
+            if blocks and blocks[-1]["kind"] == "table":
+                # The `| :--- |` rule under the header row is layout, not a row.
+                if not all(re.fullmatch(r":?-+:?", c) for c in cells):
+                    blocks[-1]["rows"].append(cells)
+            else:
+                blocks.append({"kind": "table", "rows": [cells]})
+        elif LIST_RE.match(line):
+            flush()
+            m = LIST_RE.match(line)
+            kind = "ol" if m.group(1)[0].isdigit() else "ul"
+            blocks = sections[-1]["blocks"]
+            if blocks and blocks[-1]["kind"] == kind:
+                blocks[-1]["items"].append(m.group(2))
+            else:
+                blocks.append({"kind": kind, "items": [m.group(2)]})
         else:
             para.append(line)
     flush()
@@ -482,6 +503,15 @@ def bare(num):
     return num.strip("$%").replace(",", "")
 
 
+def rounds_to(num, known):
+    """`about 695,000` in the prose against 695,450 on the slide: the prose may round to its trailing zeros."""
+    b = bare(num)
+    if not b.isdigit() or not b.endswith("0"):
+        return False
+    unit = 10 ** (len(b) - len(b.rstrip("0")))
+    return any(k.isdigit() and round(int(k) / unit) * unit == int(b) for k in known)
+
+
 def haystack(sections):
     parts = []
     for s in sections:
@@ -493,7 +523,12 @@ def haystack(sections):
                 parts += [" ".join(r) for t in v["tables"] for r in t]
             for st in b["statements"]:
                 parts += [st["headline"], st["notes"], *st["body"]]
-    return {bare(n) for n in NUM_RE.findall(" ".join(parts))}
+    text = " ".join(parts)
+    nums = {bare(n) for n in NUM_RE.findall(text)}
+    # A slide writes 456K where the prose writes 456,000: the same number, so both spellings count.
+    for n, unit in re.findall(r"\b(\d+(?:\.\d+)?)([KkMm])\b", text):
+        nums.add(str(int(float(n) * (1000 if unit in "Kk" else 1000000))))
+    return nums
 
 
 if __name__ == "__main__":

@@ -6,6 +6,7 @@ Sources beyond the cube: every historical HERO.md, registry.json, VERSION.md and
 is read from the read-only mirrors in .analysis/data/mirrors (git show / ls-tree / grep, never a
 write). Model labels (items, prompts) come from connectors.sqlite, written by report/connectors/label.py.
 """
+import hashlib
 import json
 import os
 import re
@@ -595,6 +596,166 @@ def q_design_system_release_reach_adoption():
             "pubs_since_sep": sum(1 for d, _, _ in pubs if d >= "2026-09-01")}
 
 
+# ---------------------------------------------------------------- Q design-system-release-reach, by content
+
+INSTALL_DIRS = ("ui/src/components/ui/", "ui/src/components/blocks/")
+FRESH_DAYS = 21  # the chapter's "three weeks"; no consumer or the registry states a freshness threshold
+# The template and the products with feature work; the three "app, no features yet" clones and the
+# deprecated hiro take fleet sweeps but no UI work of their own, so a lag there is inactivity, not neglect.
+INACTIVE_CONSUMERS = {"ah-cozy", "aihero-dokyu", "aihero-mehr", "hiro"}
+
+
+def norm_hash(text):
+    """Content identity of a component file across the registry's rewrite: shadcn drops the licence header and
+    rewrites the import lines on install, so those and blank lines are left out before hashing."""
+    keep = []
+    for line in text.splitlines():
+        t = line.strip()
+        if not t or t.startswith("//") or t.startswith("import ") or t.startswith("} from ") or t.startswith("export * from"):
+            continue
+        keep.append(t)
+    return hashlib.sha1("\n".join(keep).encode()).hexdigest()
+
+
+def _component(path):
+    return path.endswith(".tsx") and ".test." not in path and ".stories." not in path and "/examples/" not in path
+
+
+@lru_cache(maxsize=None)
+def ds_component_history():
+    """Every version of every design-system component file: {path: [(day, sha, hash)]} in order, one entry per
+    content change, and the reverse index {hash: [(path, first_day, superseded_day)]}."""
+    blob_hash, hist = {}, {}
+    log = git(DS, "log", "--first-parent", "--reverse", "--format=%cs %H", "HEAD", "--", "src/components")
+    for line in log.splitlines():
+        day, sha = line.split()
+        for row in git(DS, "ls-tree", "-r", sha, "src/components").splitlines():
+            meta, path = row.split("\t")
+            if not _component(path):
+                continue
+            blob = meta.split()[2]
+            if blob not in blob_hash:
+                blob_hash[blob] = norm_hash(git(DS, "cat-file", "-p", blob))
+            h = blob_hash[blob]
+            lst = hist.setdefault(path, [])
+            if not lst or lst[-1][2] != h:
+                lst.append((day, sha, h))
+    by_hash = defaultdict(list)
+    for path, lst in hist.items():
+        for i, (day, sha, h) in enumerate(lst):
+            by_hash[h].append((path, day, lst[i + 1][0] if i + 1 < len(lst) else None))
+    return hist, by_hash
+
+
+def ds_releases():
+    """[(day, sha, {paths whose content changed})]: a design-system commit that changes a component's content is a
+    release, because the registry serves main."""
+    hist, _ = ds_component_history()
+    changed = defaultdict(set)
+    for path, lst in hist.items():
+        for day, sha, _h in lst[1:]:
+            changed[(day, sha)].add(path)
+    return sorted((day, sha, ps) for (day, sha), ps in changed.items())
+
+
+@lru_cache(maxsize=None)
+def installed_at(repo, sha):
+    """{installed path: content hash} of the consumer's registry directories at a commit."""
+    out = {}
+    for row in git(repo, "ls-tree", "-r", sha, *INSTALL_DIRS).splitlines():
+        meta, path = row.split("\t")
+        if path.endswith(".tsx"):
+            out[path] = norm_hash(git(repo, "cat-file", "-p", meta.split()[2]))
+    return out
+
+
+def _version_of(h, by_hash):
+    """(first published day, superseded day or None) of a content hash, or None when no registry version matches."""
+    if h not in by_hash:
+        return None
+    first = min(d for _, d, _n in by_hash[h])
+    nxts = [n for _, _d, n in by_hash[h]]
+    return first, (None if any(n is None for n in nxts) else max(nxts))
+
+
+def q_design_system_release_reach_versions():
+    """Adoption read from content: which registry version each installed file is, per consumer and per day."""
+    hist, by_hash = ds_component_history()
+    releases = ds_releases()
+    today = date.fromisoformat(TODAY)
+    consumers = {}
+    for r in CONSUMERS:
+        since = registry_declared(r)
+        if not since:
+            continue
+        snaps = []  # (day, sha, {path: (first, superseded) | None}, kind)
+        prev = None
+        for day, sha, subj in consumer_pulls(r):
+            inst = installed_at(r, sha)
+            vers = {p: _version_of(h, by_hash) for p, h in inst.items()}
+            newer = [p for p, v in vers.items() if v and (prev is None or p not in prev or prev[p] is None or v[0] > prev[p][0])]
+            kind = "Registry pull" if newer else "Local edit"
+            snaps.append((day, sha, vers, kind, len(newer)))
+            prev = vers
+        head_sha = main_log(r)[-1][1]
+        head = {p: _version_of(h, by_hash) for p, h in installed_at(r, head_sha).items()}
+        # lag on each day: days since the oldest publish that superseded something installed and was not taken
+        lag_days, d = [], date.fromisoformat(since)
+        while d <= today:
+            day = d.isoformat()
+            cur = next((s for s in reversed(snaps) if s[0] <= day), None)
+            vers = cur[2] if cur else {}
+            due = [v[1] for v in vers.values() if v and v[1] and v[1] <= day]
+            lag_days.append((day, (d - date.fromisoformat(min(due))).days if due else 0))
+            d += timedelta(1)
+        matched = {p: v for p, v in head.items() if v}
+        lags = [(today - date.fromisoformat(v[1])).days if v[1] else 0 for v in matched.values()]
+        consumers[r] = dict(
+            repo=r, since=since, snaps=[(s[0], s[3], s[4]) for s in snaps], lag_days=lag_days,
+            n_installed=len(head), n_matched=len(matched), n_unmatched=len(head) - len(matched),
+            n_current=sum(1 for l in lags if l == 0), lags=sorted(lags),
+            median_lag=median(lags) if lags else None, max_lag=max(lags) if lags else None,
+            group="Inactive product" if r in INACTIVE_CONSUMERS else "Active",
+            pulls=sum(1 for s in snaps if s[3] == "Registry pull"), edits=sum(1 for s in snaps if s[3] == "Local edit"))
+    # adoption of each release by each consumer that had one of its files installed on the day
+    pairs = []
+    for day, sha, paths in releases:
+        for r, c in consumers.items():
+            snaps = [s for s in consumer_pulls(r)]
+            before = [s for s in snaps if s[0] <= day]
+            if not before:
+                continue
+            inst = installed_at(r, before[-1][1])
+            hits = {p for p in inst if any(os.path.basename(p) == os.path.basename(q) for q in paths)}
+            if not hits:
+                continue
+            adopted = None
+            for s in snaps:
+                if s[0] < day:
+                    continue
+                vers = {p: _version_of(h, by_hash) for p, h in installed_at(r, s[1]).items() if p in hits}
+                if vers and all(v and v[0] >= day for v in vers.values()):
+                    adopted = s[0]
+                    break
+            pairs.append(dict(release=day, consumer=r, files=len(hits), adopted=adopted,
+                              days=(date.fromisoformat(adopted) - date.fromisoformat(day)).days if adopted else None,
+                              censored_at=(today - date.fromisoformat(day)).days if not adopted else None,
+                              group=c["group"]))
+    done = [p for p in pairs if p["days"] is not None]
+    within = sum(1 for p in pairs if p["days"] is not None and p["days"] <= FRESH_DAYS)
+    # only pairs old enough to have had the whole threshold can say whether they met it
+    eligible = [p for p in pairs if (today - date.fromisoformat(p["release"])).days >= FRESH_DAYS]
+    within_eligible = sum(1 for p in eligible if p["days"] is not None and p["days"] <= FRESH_DAYS)
+    return dict(consumers=consumers, releases=[(d, s, sorted(ps)) for d, s, ps in releases], pairs=pairs,
+                n_releases=len(releases), n_pairs=len(pairs), n_adopted=len(done), n_within=within,
+                n_eligible=len(eligible), n_within_eligible=within_eligible,
+                n_censored=sum(1 for p in pairs if p["days"] is None),
+                adoption_median=median([p["days"] for p in done]) if done else None,
+                releases_sep=sum(1 for d, _s, _p in releases if d >= "2026-09-01"),
+                pulls_sep=sum(1 for c in consumers.values() for s in c["snaps"] if s[0] >= "2026-09-01" and s[1] == "Registry pull"),
+                fresh_days=FRESH_DAYS, today=TODAY, n_paths=len(hist))
+
+
 @lru_cache(maxsize=None)
 def registry_index(day):
     """(install targets, item names) of the registry design-system served on `day`."""
@@ -952,6 +1113,7 @@ def all_data(con):
     return {
         "q_declared_connections": q_declared_connections_declared(), "q_connections_read_by_skills": q_connections_read_by_skills_readers(), "q_connection_reach_in_use": q_connection_reach_in_use_reach(con), "q_wrong_declared_reach": q_wrong_declared_reach_corrections(con),
         "q_copied_connector_values": q_copied_connector_values_copies(), "q_design_work_finders": q_design_work_finders_origin(con), "q_design_snapshot_lag": q_design_snapshot_lag_snapshot(), "q_design_system_release_reach": q_design_system_release_reach_adoption(),
+        "q_design_system_release_reach_versions": q_design_system_release_reach_versions(),
         "q_registry_component_share": q_registry_component_share_registry(), "q_design_divergence": q_design_divergence_backlog(con), "q_divergence_outcomes": q_divergence_outcomes_outcomes(con), "q_design_feedback_loop": q_design_feedback_loop_feedback(con),
         "q_unreachable_connections": q_unreachable_connections_failures(con), "q_expired_logins": q_expired_logins_credentials(con), "q_human_only_verification": q_human_only_verification_human(con),
     }

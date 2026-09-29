@@ -612,7 +612,7 @@ def all_data():
     return {"written-reasons": q_written_reasons_reasons(), "owner-attention-split": q_owner_attention_split_attention(), "correction-kinds-over-time": q_correction_kinds_over_time_corrections(), "corrections-to-memory": q_corrections_to_memory_memory(), "auto-approve-changes": q_auto_approve_changes_gate(),
             "controls-after-incidents": q_controls_after_incidents_controls(), "register-origin": q_register_origin_register(), "restated-rules": q_restated_rules_restated(), "plugin-restructures": q_plugin_restructures_restructures(),
             "limit-driven-changes": q_limit_driven_changes_spend(), "owner-as-go-between": q_owner_as_go_between_gobetween(), "care-vs-speed": q_care_vs_speed_speed(), "incident-bursts": q_incident_bursts_incidents(),
-            "practice-flow-direction": q_practice_flow_direction_origin()}
+            "practice-flow-direction": q_practice_flow_direction_origin(), "plugin-restructures-blast": q_plugin_restructures_blast()}
 
 
 if __name__ == "__main__":
@@ -628,3 +628,87 @@ if __name__ == "__main__":
         print(f"==== Q 18.{k}")
         pprint.pprint({a: b for a, b in d.items() if a not in ("weekly", "examples", "commits")}, width=140,
                       compact=True)
+
+
+# ------------------------------------------------------------------ Book figure 7.3: restructures and their blast radius
+
+RESTRUCTURE_MIN = 4   # skills renamed or removed on one day
+REPAIR_DAYS = 14
+# The rename's own PRs: the plugin's rename (#106), the repository's (#108), the caller fix (#115), and the two waves
+# of consumer PRs (by title), so the incident lane timeline can be drawn from github.prs alone.
+RENAME_WAVES = [("chore: hero-skills is wayfare, and the caller points at the renamed repo", "Point the caller at the renamed repo"),
+                ("ci(auto-approve): re-vendor the caller", "Re-vendor the caller")]
+
+
+def _plugin_terms(day, by_day):
+    """The names a consumer's PR title would carry when it changes what points at the plugin: the plugin's
+    repository names, every multi-word skill renamed or removed that day (old and new directory name), the
+    caller and a re-vendor. Single-word skill names (wayfare, fleet, harden) are ordinary words and are left out;
+    bodies are not searched because agent commits name the skill they ran, which is use, not repair."""
+    terms = {"hero-skills", "wayfare-skills", "is wayfare", "wayfare plugin", "re-vendor", "the caller", "shared workflow"}
+    for v in by_day[day]:
+        if v["change_type"] in ("rename", "delete"):
+            for name in (v["skill"], (v["old_path"] or "/").split("/")[1]):
+                if "-" in name:
+                    terms.add(name)
+    return {t.lower() for t in terms}
+
+
+
+
+def q_plugin_restructures_blast():
+    sv = rows("SELECT skill, ts, day, change_type, subject, old_path FROM knowledge.skill_versions ORDER BY ts")
+    by_day = defaultdict(list)
+    for v in sv:
+        by_day[v["day"]].append(v)
+    moves = Counter(v["day"] for v in sv if v["change_type"] in ("rename", "delete"))
+    events = sorted(d for d, n in moves.items() if n >= RESTRUCTURE_MIN)
+    ws = labels("ws_reason")
+    ws_rows = rows("SELECT sha, day, subject, conv_type FROM git.commits WHERE repo='wayfare-skills' AND is_merge=0")
+    # Merged PRs, not git commits: one consumer's mirror (saga) stops before the rename, GitHub's record does not.
+    consumers = rows("SELECT repo, number, substr(merged_ts, 1, 10) day, title subject, created_ts, merged_ts FROM github.prs "
+                     "WHERE repo != 'wayfare-skills' AND merged_ts >= '2026-03-01'")
+    consumers = [c for c in consumers if cat(c["repo"]) in APP_CATS + ("allied",)]
+    hero_first = {r["repo"]: r["d"] for r in rows("SELECT c.repo, MIN(c.day) d FROM git.commit_files f JOIN git.commits c "
+                                                   "ON c.repo=f.repo AND c.sha=f.sha WHERE f.path='HERO.md' GROUP BY c.repo")}
+    caller_first = {r["repo"]: r["d"] for r in rows("SELECT c.repo, MIN(c.day) d FROM git.commit_files f JOIN git.commits c "
+                                                     "ON c.repo=f.repo AND c.sha=f.sha WHERE f.path LIKE '.github/workflows/auto-approve.y%' "
+                                                     "GROUP BY c.repo")}
+    table = []
+    for d in events:
+        end = (date.fromisoformat(d) + timedelta(days=REPAIR_DAYS)).isoformat()
+        subj = next(v["subject"] for v in by_day[d] if v["change_type"] in ("rename", "delete"))
+        fixes = [r for r in ws_rows if d < r["day"] <= end and ws.get(r["sha"], {}).get("incident")]
+        terms = _plugin_terms(d, by_day)
+        repairs = [c for c in consumers if d < c["day"] <= end and any(t in (c["subject"] or "").lower() for t in terms)]
+        exposed_skills = sorted(r for r, first in hero_first.items() if first <= d and cat(r) in APP_CATS + ("allied",) and r != "wayfare-skills")
+        exposed_caller = sorted(r for r, first in caller_first.items() if first <= d and cat(r) in APP_CATS + ("allied",) and r != "wayfare-skills")
+        repo_days = Counter((c["repo"], c["day"]) for c in repairs)
+        burst_day = Counter(c["day"] for c in repairs).most_common(1)
+        table.append({"day": d, "subject": subj,
+                      "renamed": sum(1 for v in by_day[d] if v["change_type"] == "rename"),
+                      "deleted": sum(1 for v in by_day[d] if v["change_type"] == "delete"),
+                      "added": sum(1 for v in by_day[d] if v["change_type"] == "add"),
+                      "plugin_fixes_14d": len(fixes), "fix_subjects": [f["subject"] for f in fixes],
+                      "repair_commits_14d": len(repairs), "repair_repos": len({c["repo"] for c in repairs}),
+                      "exposed_skills_repos": len(exposed_skills), "exposed_caller_repos": len(exposed_caller),
+                      "unrepaired_caller_repos": sorted(set(exposed_caller) - {c["repo"] for c in repairs}),
+                      "repairs_first_day": burst_day[0] if burst_day else None,
+                      "repos_repaired_within_1d": len({r for (r, dd) in repo_days if dd <= (date.fromisoformat(d) + timedelta(days=1)).isoformat()}),
+                      "repair_subjects": Counter(c["subject"] for c in repairs).most_common(6)})
+    # The 21 Sep incident, hour by hour, from the PRs themselves.
+    prs = rows("SELECT repo, number, title, created_ts, merged_ts FROM github.prs WHERE merged_ts BETWEEN '2026-09-21' AND '2026-09-25' ORDER BY created_ts")
+    plugin = [p for p in prs if p["repo"] == "wayfare-skills" and p["number"] in (106, 108, 115)]
+    waves = {}
+    for title, label in RENAME_WAVES:
+        waves[label] = [p for p in prs if p["repo"] != "wayfare-skills" and p["title"].startswith(title)]
+    wave_repos = [sorted({p["repo"] for p in v}) for v in waves.values()]
+    fixes_after = [r for r in ws_rows if "2026-09-21" < r["day"] <= "2026-10-05" and ws.get(r["sha"], {}).get("incident")]
+    runs = rows("SELECT day, conclusion, COUNT(*) n FROM github.ci_runs WHERE workflow_name='Auto Approve' AND day BETWEEN '2026-09-21' "
+                "AND '2026-09-23' GROUP BY day, conclusion")
+    return {"events": table, "plugin_prs": plugin, "waves": waves, "wave_repos": wave_repos,
+            "consumers_both_waves": sorted(set(wave_repos[0]) & set(wave_repos[1])) if len(wave_repos) == 2 else [],
+            "fixes_after_rename": [(f["day"], f["subject"]) for f in fixes_after], "aa_runs": runs,
+            "incident_audit": [(r["sha"][:7], r["day"], r["subject"]) for r in ws_rows
+                               if any(e < r["day"] <= (date.fromisoformat(e) + timedelta(days=REPAIR_DAYS)).isoformat() for e in events)
+                               and r["sha"] in ws]}

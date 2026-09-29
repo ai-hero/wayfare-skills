@@ -666,12 +666,271 @@ def q_coordination_limits_coordination(con):
             "peak_repos": max(peak.values()) if peak else 0, "peak_open": max(open_peak), "repos_now": len(live_w.get(WEEKS[-2], ()))}
 
 
+# ------------------------------------------------------------------ Figure 8.1 · Q no-human-merges, monthly and by definition
+
+AUTONOMY_CATS_81 = ["Gate approved; no owner prompt in the repo while open", "Gate approved; owner prompted in the repo while open",
+                    "Approved or authored under a person's account", "No approval recorded", "Unknown (no merge event)"]
+DEFINITIONS_81 = ["No non-bot GitHub account acted", "Approved by the gate, by no person's account",
+                  "... and no owner prompt in that repo while open", "... and no owner prompt anywhere in the fleet while open"]
+
+
+def pr_items(con):
+    """(repo, PR number) -> the work item whose frontmatter names that PR (pr URL) or its branch."""
+    out = {}
+    branches = {}
+    for r in rows(con, "SELECT repo, item_id, ready_ts, goal_id, raw_frontmatter_json fm FROM plans.plan_items WHERE type != 'goal'"):
+        fm = json.loads(r["fm"] or "{}")
+        auth = bool(r["ready_ts"]) or bool(r["goal_id"])
+        pr = fm.get("pr")
+        m = re.search(r"/pull/(\d+)", str(pr or ""))
+        if m:
+            out[(r["repo"], int(m.group(1)))] = {"item": r["item_id"], "authorized": auth}
+        if fm.get("branch"):
+            branches[(r["repo"], fm["branch"])] = {"item": r["item_id"], "authorized": auth}
+    return out, branches
+
+
+def q_no_human_merges_monthly(con):
+    """Merged non-bot PRs by month under the primary definition, the four definitions side by side, and, for the
+    hands-off PRs, whether a prior owner prompt or an authorized work item stands behind them."""
+    import bisect
+    prs = pr_autonomy(con)
+    merged_events = {(r["repo"], r["number"]) for r in rows(con, "SELECT repo, number FROM github.pr_timeline WHERE event='merged'")}
+    prompts_all = sorted(p["t"] for p in owner_prompts(con))
+    prompts_repo = defaultdict(list)
+    for p in owner_prompts(con):
+        prompts_repo[p["repo"]].append(p["t"])
+    for v in prompts_repo.values():
+        v.sort()
+    heads = {(r["repo"], r["number"]): r["head_ref"] for r in rows(con, "SELECT repo, number, head_ref FROM github.prs")}
+    by_pr, by_branch = pr_items(con)
+    months = MONTHS
+    counts = {c: [0] * len(months) for c in AUTONOMY_CATS_81}
+    defs = {d: [0] * len(months) for d in DEFINITIONS_81}
+    n_month = [0] * len(months)
+    prior = Counter()
+    for p in prs:
+        k = (p["repo"], p["number"])
+        if p["month"] not in months:
+            continue
+        i = months.index(p["month"])
+        n_month[i] += 1
+        cat = "Unknown (no merge event)" if k not in merged_events else {
+            AUTONOMY_CATS[0]: AUTONOMY_CATS_81[0], AUTONOMY_CATS[1]: AUTONOMY_CATS_81[1],
+            AUTONOMY_CATS[2]: AUTONOMY_CATS_81[2], AUTONOMY_CATS[3]: AUTONOMY_CATS_81[3]}[p["cat"]]
+        counts[cat][i] += 1
+        opened, merged = parse_ts(p["created_ts"]), parse_ts(p["merged_ts"])
+        fleet_prompts = bisect.bisect_right(prompts_all, merged) - bisect.bisect_left(prompts_all, opened)
+        if not p["human_account"]:
+            defs[DEFINITIONS_81[0]][i] += 1
+        if p["gate_only"]:
+            defs[DEFINITIONS_81[1]][i] += 1
+        if p["cat"] == AUTONOMY_CATS[0]:
+            defs[DEFINITIONS_81[2]][i] += 1
+            if fleet_prompts == 0:
+                defs[DEFINITIONS_81[3]][i] += 1
+            # Prior direction: an owner prompt in the repo in the 7 days before the PR opened; authorization: a
+            # ready-marked or goal-member work item names the PR or its branch.
+            ts = prompts_repo.get(p["repo"], [])
+            before = bisect.bisect_left(ts, opened) - bisect.bisect_left(ts, opened - timedelta(days=7))
+            item = by_pr.get(k) or by_branch.get((p["repo"], heads.get(k)))
+            prior["hands_off"] += 1
+            prior["prompt_7d"] += bool(before)
+            prior["item"] += bool(item)
+            prior["item_authorized"] += bool(item and item["authorized"])
+            prior["neither"] += not (before or item)
+            if p["day"] >= "2026-09-01":
+                prior["sep_hands_off"] += 1
+                prior["sep_prompt_7d"] += bool(before)
+                prior["sep_item"] += bool(item)
+                prior["sep_neither"] += not (before or item)
+    shares = {c: [counts[c][i] / n_month[i] if n_month[i] else None for i in range(len(months))] for c in AUTONOMY_CATS_81}
+    def_shares = {d: [defs[d][i] / n_month[i] if n_month[i] else None for i in range(len(months))] for d in DEFINITIONS_81}
+    h1 = [p for p in prs if p["day"] <= "2026-06-30"]
+    sep = [p for p in prs if p["day"] >= "2026-09-01"]
+    share = lambda ps, cat: sum(1 for p in ps if p["cat"] == cat) / len(ps) if ps else None
+    excluded = con.execute("""SELECT COUNT(*) FROM github.prs WHERE merged_ts >= '2026-01-01'
+                              AND (author_is_bot = 1 OR author LIKE '%dependabot%')""").fetchone()[0]
+    return {"months": months, "n_month": n_month, "counts": counts, "shares": shares, "defs": defs, "def_shares": def_shares,
+            "n": len(prs), "excluded_bot": excluded, "prior": dict(prior),
+            "h1": {"n": len(h1), "hands_off": share(h1, AUTONOMY_CATS[0]), "with_prompt": share(h1, AUTONOMY_CATS[1])},
+            "sep": {"n": len(sep), "hands_off": share(sep, AUTONOMY_CATS[0]), "with_prompt": share(sep, AUTONOMY_CATS[1])},
+            "unknown": sum(counts["Unknown (no merge event)"])}
+
+
+# ------------------------------------------------------------------ Figure 8.2 · Q human-reading-points, composition of owner input
+
+INPUT_CATS = ["Planning commands", "Approving a plan or step", "Work item marked ready", "New work and instructions",
+              "Build commands", "PR and review handling", "Merge and ship commands", "Corrections and redirects",
+              "Questions and answers", "Operational (continue, meta, other)", "Unlabelled free text"]
+PERIODS_82 = [("Skills only (to 22 Jul)", "2026-01-01", "2026-07-22"), ("Work items (23 Jul–27 Aug)", "2026-07-23", "2026-08-27"),
+              ("Goals (from 28 Aug)", "2026-08-28", "2026-12-31")]
+# Free text that gives a PR or merge order is PR handling, whatever intent the classifier gave it.
+PR_TEXT_RE = re.compile(r"^\W*(ship( it)?|merge( it)?|push( it)?|rebase|review and ship|ship [0-9a-f]{7,}|"
+                        r"(please )?(push|ship|merge)\b.*(pr|pull request|change|branch|main)|"
+                        r".*\b(ship|merge) (the |this |that )?(pr|pull request|changes?)\b)\W*$", re.I | re.S)
+INTENT_CAT = {"approve": "Approving a plan or step", "new_work": "New work and instructions",
+              "correction": "Corrections and redirects", "redirect": "Corrections and redirects",
+              "question": "Questions and answers", "answer": "Questions and answers",
+              "continue": "Operational (continue, meta, other)", "meta": "Operational (continue, meta, other)",
+              "other": "Operational (continue, meta, other)"}
+CMD_CAT = {"Idea and plan": "Planning commands", "Build": "Build commands", "PR and review": "PR and review handling",
+           "Merge": "Merge and ship commands"}
+
+
+def owner_inputs(con):
+    """Every owner input in 2026 in a fleet repo with its category: typed prompts (slash commands by name, free text
+    by the shared intent label, D-prompt_intent) and ready-marks from the plan store."""
+    ad = adoption(con)
+    intents = {(r["ts"], r["repo"]): r["intent"] for r in rows(con, "SELECT ts, repo, intent FROM detectors.prompt_intent")}
+    cmd_stage = {c: s for s, cs in STAGE_OF_CMD.items() for c in cs}
+    out = []
+    for p in owner_prompts(con):
+        if p["repo"] not in ad or p["ts"][:4] != "2026":
+            continue
+        if p["slash"]:
+            st = cmd_stage.get(p["cmd"])
+            if st is None:
+                continue
+            cat = CMD_CAT[st]
+        elif PR_TEXT_RE.match(p["text"].strip()[:200]):
+            cat = "PR and review handling"
+        else:
+            it = intents.get((p["ts"], p["repo"]))
+            cat = INTENT_CAT.get(it, "Unlabelled free text") if it else "Unlabelled free text"
+        out.append({"day": p["ts"][:10], "repo": p["repo"], "cat": cat, "kind": "command" if p["slash"] else "text",
+                    "text": p["text"], "intent": None if p["slash"] else intents.get((p["ts"], p["repo"]))})
+    for r in rows(con, "SELECT repo, ready_ts FROM plans.plan_items WHERE ready_ts IS NOT NULL AND type != 'goal'"):
+        if r["repo"] in ad and r["ready_ts"][:4] == "2026":
+            out.append({"day": r["ready_ts"][:10], "repo": r["repo"], "cat": "Work item marked ready", "kind": "ready",
+                        "text": "", "intent": None})
+    return out
+
+
+def q_human_reading_points_composition(con):
+    inputs = owner_inputs(con)
+    per = {}
+    for name, a, b in PERIODS_82:
+        xs = [x for x in inputs if a <= x["day"] <= b]
+        c = Counter(x["cat"] for x in xs)
+        per[name] = {"n": len(xs), "counts": {k: c.get(k, 0) for k in INPUT_CATS},
+                     "shares": {k: (c.get(k, 0) / len(xs) if xs else None) for k in INPUT_CATS}}
+    grp = lambda name, keys: sum(per[name]["shares"][k] or 0 for k in keys)
+    pr_keys = ("PR and review handling", "Merge and ship commands")
+    plan_keys = ("Planning commands", "Approving a plan or step", "Work item marked ready")
+    first, last = PERIODS_82[0][0], PERIODS_82[-1][0]
+    labelled = [x for x in inputs if x["kind"] == "text"]
+    return {"periods": [p[0] for p in PERIODS_82], "cats": INPUT_CATS, "per": per, "n": len(inputs),
+            "pr_first": grp(first, pr_keys), "pr_last": grp(last, pr_keys),
+            "plan_first": grp(first, plan_keys), "plan_last": grp(last, plan_keys),
+            "corr_first": grp(first, ("Corrections and redirects",)), "corr_last": grp(last, ("Corrections and redirects",)),
+            "pr_text": sum(1 for x in labelled if x["cat"] == "PR and review handling"),
+            "unlabelled": sum(1 for x in labelled if x["cat"] == "Unlabelled free text"), "n_text": len(labelled),
+            "n_ready": sum(1 for x in inputs if x["kind"] == "ready"), "n_cmd": sum(1 for x in inputs if x["kind"] == "command")}
+
+
+# ------------------------------------------------------------------ Figure 8.3 · Q git-only-measurability, source combinations
+
+SOURCE_CLASS = {0: "Git/GitHub", 1: "Agent transcripts", 2: "Factory records", 3: "Factory records"}
+CLASSES_83 = ["Git/GitHub", "Agent transcripts", "Factory records", "Live system", "Human testimony"]
+LIVE_RE = re.compile(r"\blive\b|revocation|network exposure|boot configuration|blast radius held|running (service|environment)", re.I)
+
+
+def question_sources(con):
+    """Each bank question's set of evidence classes, by explicit rules: a source table or detector maps to Git/GitHub,
+    agent transcripts or factory records (SOURCE_TIER, DETECTOR_TIER); a method naming a person adds human testimony;
+    a question that asks about a live check or a running system adds live system; no source and no rule is unknown."""
+    out = []
+    for r in csv.DictReader(open(os.path.join(ANALYSIS, "bank", "questions.csv"))):
+        if not r["chapter"].strip():
+            continue
+        srcs = [_source_key(s) for s in r["sources"].split(";") if s.strip()]
+        dets = [d.strip() for d in r["detectors"].split(";") if d.strip()] + re.findall(r"D\d+", r["method"])
+        classes = {SOURCE_CLASS[SOURCE_TIER.get(s, 3)] for s in srcs} | {SOURCE_CLASS[DETECTOR_TIER.get(d, 0)] for d in dets}
+        method = r["method"]
+        if "human" in method or (method == "deferred" and not srcs):
+            classes.add("Human testimony")
+        if LIVE_RE.search(r["question"]) and (method == "deferred" or not srcs):
+            classes.add("Live system")
+        out.append({"rq": r["rq_id"], "chapter": r["chapter"].strip(), "classes": frozenset(classes),
+                    "model": "haiku" in method or "D1" in dets, "method": method})
+    return out
+
+
+def q_git_only_measurability_sources(con):
+    qs = question_sources(con)
+    combos = Counter(q["classes"] for q in qs)
+    name = lambda fs: " + ".join(c for c in CLASSES_83 if c in fs) if fs else "No source listed"
+    table = [{"combination": name(fs), "classes": sorted(fs, key=CLASSES_83.index), "n": n} for fs, n in combos.most_common()]
+    needs = {c: sum(1 for q in qs if c in q["classes"]) for c in CLASSES_83}
+    only = {c: sum(1 for q in qs if q["classes"] == {c}) for c in CLASSES_83}
+    git_plus_records = sum(1 for q in qs if q["classes"] == {"Git/GitHub", "Factory records"})
+    multi = sum(1 for q in qs if len(q["classes"]) > 1)
+    chapters = sorted({q["chapter"] for q in qs}, key=list(TOPICS).index)
+    by_ch = {c: [sum(1 for q in qs if q["chapter"] == ch and c in q["classes"]) / max(1, sum(1 for q in qs if q["chapter"] == ch))
+                 for ch in chapters] for c in CLASSES_83}
+    return {"table": table, "needs": needs, "only": only, "total": len(qs), "multi": multi,
+            "git_plus_records": git_plus_records, "unlisted": combos.get(frozenset(), 0),
+            "model_labels": sum(1 for q in qs if q["model"]), "chapters": chapters, "by_chapter": by_ch,
+            "without_git": sum(1 for q in qs if q["classes"] and "Git/GitHub" not in q["classes"]),
+            "records_any": needs["Factory records"] + needs["Agent transcripts"] - sum(1 for q in qs if {"Factory records", "Agent transcripts"} <= q["classes"])}
+
+
+# ------------------------------------------------------------------ Figure 8.4 · Q onboarding-speed, dumbbell per repo
+
+ITEM_STORE_FROM = "2026-07-23"
+
+
+def q_onboarding_speed_dumbbell(con, today=None):
+    """Per repo created after the skills existed: days from its first commit to HERO.md and to its first work item
+    (any, and the first that is not a Dependabot bump), with censoring made explicit."""
+    today = today or con.execute("SELECT MAX(day) FROM git.commits").fetchone()[0]
+    ad = adoption(con)
+    items = defaultdict(list)
+    for r in rows(con, "SELECT repo, item_id, day, origin, raw_frontmatter_json fm FROM plans.plan_items WHERE type != 'goal' AND day IS NOT NULL"):
+        fm = json.loads(r["fm"] or "{}")
+        items[r["repo"]].append((r["day"], r["origin"] or "", bool(fm.get("bot")), r["item_id"]))
+    hero_first = {r["repo"]: r["n"] for r in rows(con, """SELECT c.repo, COUNT(*) n FROM git.commit_files f JOIN git.commits c
+        ON c.repo=f.repo AND c.sha=f.sha WHERE f.path='HERO.md' AND c.day = (SELECT MIN(day) FROM git.commits g WHERE g.repo=c.repo) GROUP BY c.repo""")}
+    out = []
+    for r in sorted(ad, key=lambda k: ad[k]["first"]):
+        a = ad[r]
+        if a["first"] < CAPABILITY["skills"]:
+            continue
+        d0 = date.fromisoformat(a["first"])
+        days = lambda d: (date.fromisoformat(d) - d0).days if d else None
+        its = sorted(items.get(r, []))
+        first_any = its[0] if its else None
+        first_real = next((i for i in its if not i[2]), None)
+        row = {"repo": r, "first": a["first"], "category": a["category"], "skills": days(a["skills"]),
+               "hero_in_first_commit": bool(hero_first.get(r)),
+               "item_any": days(first_any[0]) if first_any else None, "item_real": days(first_real[0]) if first_real else None,
+               "item_origin": first_real[1] if first_real else None, "item_id": first_real[3] if first_real else None,
+               "age": days(today), "store_after_creation": a["first"] < ITEM_STORE_FROM,
+               "censored": "none yet" if not first_real else ("store began later" if a["first"] < ITEM_STORE_FROM else None)}
+        out.append(row)
+    born_after_store = [x for x in out if x["first"] >= CAPABILITY["items"]]
+    # Median with right-censoring: censored repos count as at least their age (Kaplan–Meier median on so few rows
+    # reduces to the middle of the ordered values with censored ones placed at their age).
+    ordered = sorted([(x["item_real"] if x["item_real"] is not None else x["age"], x["item_real"] is None) for x in born_after_store])
+    med = ordered[len(ordered) // 2] if ordered else (None, False)
+    observed = sorted(x["item_real"] for x in born_after_store if x["item_real"] is not None)
+    return {"repos": out, "today": today, "n": len(out), "skills_max": max(x["skills"] for x in out if x["skills"] is not None),
+            "skills_in_first_commit": sum(1 for x in out if x["hero_in_first_commit"]),
+            "n_after_store": len(born_after_store), "censored_after_store": sum(1 for x in born_after_store if x["item_real"] is None),
+            "median_item_days": med[0], "median_is_censored": med[1], "observed_median": observed[len(observed) // 2] if observed else None,
+            "observed_iqr": (observed[len(observed) // 4], observed[(3 * len(observed)) // 4]) if observed else None,
+            "origins": Counter(x["item_origin"] for x in out if x["item_origin"] is not None)}
+
+
 def all_data():
     con = connect()
     return {name: fn(con) for name, fn in [
         ("q_portable_questions", q_portable_questions_generic), ("q_git_only_measurability", q_git_only_measurability_tiers), ("q_unified_timeline", q_unified_timeline_timeline), ("q_comparable_units", q_comparable_units_definitions),
         ("q_no_human_merges", q_no_human_merges_autonomy), ("q_review_load_vs_volume", q_review_load_vs_volume_review), ("q_throughput_by_stage", q_throughput_by_stage_throughput), ("q_human_reading_points", q_human_reading_points_touches),
-        ("q_onboarding_speed", q_onboarding_speed_learning), ("q_minimal_register", q_minimal_register_register), ("q_practices_after_failures", q_practices_after_failures_practices), ("q_coordination_limits", q_coordination_limits_coordination)]}
+        ("q_onboarding_speed", q_onboarding_speed_learning), ("q_minimal_register", q_minimal_register_register), ("q_practices_after_failures", q_practices_after_failures_practices), ("q_coordination_limits", q_coordination_limits_coordination),
+        ("fig_8_1", q_no_human_merges_monthly), ("fig_8_2", q_human_reading_points_composition),
+        ("fig_8_3", q_git_only_measurability_sources), ("fig_8_4", q_onboarding_speed_dumbbell)]}
 
 
 if __name__ == "__main__":

@@ -104,7 +104,13 @@ def find_anchor(lines, anchor, section):
 
 
 def ref_key(ref):
-    return re.sub(r"\s+", " ", ref.split("·")[0]).strip().lower()
+    """`I slug` and `Q slug` are one card: the letter only picks the in-text or the whole form."""
+    return re.sub(r"^i ", "q ", re.sub(r"\s+", " ", ref.split("·")[0]).strip().lower())
+
+
+def in_text(ref):
+    """The line a chapter gets: a card in its in-text form; a diagram or table as it is."""
+    return re.sub(r"^Q ", "I ", ref)
 
 
 def place(lines, entries, results, purge_old, report):
@@ -142,7 +148,7 @@ def place(lines, entries, results, purge_old, report):
             report.append(f"  {e['kind']} {e['id']}: anchor lost while placing; not placed")
             continue
         cap = r.get("caption", "").replace("\n", " ").strip()
-        inserts.setdefault(at, []).append(f"[[{r['ref']} | {cap}]]" if cap else f"[[{r['ref']}]]")
+        inserts.setdefault(at, []).append(f"[[{in_text(ref)} | {cap}]]" if cap else f"[[{in_text(ref)}]]")
         report.append(f"  {e['kind']} {e['id']} -> after line {at} in {e['section']!r}: {r['ref']}")
     out = []
     for i, l in enumerate(lines2 + [None]):

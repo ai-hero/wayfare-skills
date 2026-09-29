@@ -135,8 +135,9 @@ def find_diagram(diagrams, ref, prefer=()):
 
 def card(b, number, caption="", view=None, compact=False):
     """A question's whole card, placed in the prose: every view, with the one the text drew first.
-    A chapter's card is `compact` (question, finding, chart, up to three views to switch between);
-    the appendix keeps the whole card, so every view still ships and the viewer decides what to show."""
+    A `[[I ...]]` line places the card `compact` (question, finding, chart, up to three views to switch
+    between); `[[Q ...]]` and the appendix keep the whole card. Every view ships either way; the viewer
+    decides what to show."""
     views = list(b["views"])
     if view is not None and view in views:
         views.insert(0, views.pop(views.index(view)))
@@ -199,7 +200,7 @@ def build(ch, text, questions, diagrams, deck_known):
                 k = D.qkey(b["key"])
                 if k in own and k not in placed:
                     placed.add(k)
-                    blk = card(b, f"{lab}.{fig}", blk["caption"], v, compact)
+                    blk = card(b, f"{lab}.{fig}", blk["caption"], v, blk.get("inline", False))
                 else:
                     blk.update({"number": f"{lab}.{fig}", "key": b["key"], "view": v,
                                 "caption": blk["caption"] or v["title"]})

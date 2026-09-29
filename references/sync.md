@@ -641,6 +641,16 @@ rather than reporting clean, the same rule the Upstream lane above follows):
   `ready` or later task keeps its plan (the ready-mark bought it), so propose
   the re-slice for what remains instead.
 
+- **untriaged and unwanted items**: every `new` item, and any `accepted` task
+  the person says they no longer want, offered in the ordinary confirm flow with
+  two answers: accept (`new` becomes `accepted`) or drop. Drop calls the same
+  write as `wayfare-drop-item` (`references/drop.md`, *Marking the item*): ask
+  for the reason, set `status: dropped`, append
+  `- DATE (wayfare-drop-item) decision: dropped: REASON`, keep the file. An item
+  with no branch touches no git state, so nothing here needs a checkout. A
+  `ready` or later item is out of this lane: it carries a plan the ready-mark
+  bought, and dropping it is the verb's call, not a roundup's.
+
 - **store defects**: `hero_ready_items` stderr warnings (dangling deps,
   duplicate ids, unrecognized statuses; the script checks those and nothing
   below); plus, checked by this finding itself since the listing never reads a

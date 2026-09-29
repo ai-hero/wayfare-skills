@@ -262,7 +262,10 @@ new → accepted → planning → ready → active → committed → review → 
 | `committed` | committed on a goal's branch, absent from the default branch | wayfare-build-task's commit-only mode |
 | `review` | PR open, awaiting review and merge | wayfare-build-task when the PR opens |
 | `done` | finished; dependents are unblocked | wayfare-build-task at merge, or the goal's final turn |
-| `dropped` | abandoned; dependents stay blocked | `wayfare-drop-item` |
+| `dropped` | abandoned; dependents stay blocked | `wayfare-drop-item`, or `wayfare-sync-plan`'s roundup of `new` and `accepted` items, which calls the same write |
+
+`dropped` is reachable from any open state, with or without a branch, and the
+write always appends a dated `decision` line to `## Log` giving the reason.
 
 Not every item visits every state. A `signal` runs
 `new → accepted → ready → active → done` (no plan to write, no branch to commit

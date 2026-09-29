@@ -1,8 +1,8 @@
 ---
 name: wayfare-drop-item
 # prettier-ignore
-description: Abandon work on an unmerged branch and write status dropped on the item, so the roadmap stops claiming it. Stashes only with a named, confirmed stash. Use when work on a branch is being given up rather than finished.
-argument-hint: "ID"
+description: Abandon any open item and write status dropped with a reason, so the roadmap stops claiming it. An item with an unmerged branch also gets the stash and switch, only with a named, confirmed stash; one with no branch touches no git state. Use when work is being given up rather than finished.
+argument-hint: "ID [REASON]"
 ---
 
 # Abandon work, and say so on the roadmap
@@ -45,8 +45,10 @@ one and names the migrator.
 
 ### Abandon work, and say so on the roadmap
 
-**Read `../../references/drop.md`.** It stashes (never silently, always named,
-always confirmed), switches away, and writes `status: dropped`.
+**Read `../../references/drop.md`.** It resolves the id and branches on what it
+names. A task with a branch stashes (never silently, always named, always
+confirmed) and switches away; an item with no branch touches no git state. Both
+write `status: dropped` and a dated reason.
 
 The item write is the part that did not exist before: an abandoned branch used
 to leave its item at `active` forever, claiming work that had stopped. `dropped`

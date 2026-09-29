@@ -1554,6 +1554,24 @@ hero_norm_id() {
   esac
 }
 
+# Reorder listing rows (`WORD FILE — TITLE` on stdin) by priority, then by the
+# order they arrive in, which is filename and so id. Reads each row's file from
+# the current directory. The sort must stay stable (-s): without it the tie
+# between two p1 rows falls to comparing the whole line and id order is lost.
+# Absent and unrecognized both rank 4, after p3.
+hero_sort_rows_by_priority() {
+  local row f key
+  while IFS= read -r row; do
+    read -r _ f _ <<EOF
+$row
+EOF
+    case "$(hero_item_field "$f" priority 2>/dev/null | tr '[:upper:]' '[:lower:]')" in
+      p0) key=0 ;; p1) key=1 ;; p2) key=2 ;; p3) key=3 ;; *) key=4 ;;
+    esac
+    printf '%s\t%s\n' "$key" "$row"
+  done | sort -s -t "$(printf '\t')" -k1,1n | cut -f2-
+}
+
 # Print one line per work-item:  STATE  file — title
 # A blocked row whose dependency does not exist anywhere in the store gets a
 # trailing ` [missing dep: ID…]` annotation, because that reference can NEVER be
@@ -1764,6 +1782,14 @@ hero_ready_items() (
     resolution=$(hero_item_field "$f" resolution | tr '[:upper:]' '[:lower:]')
     [ -z "$resolution" ] || [ "$state" = "done" ] || echo "hero_ready_items: $f carries resolution '$resolution' at status '$state'; resolution is set only at done" >&2
 
+    # `priority` orders the listing and nothing else. An unrecognized value
+    # sorts as unranked (hero_sort_rows_by_priority), so a typo can only lose
+    # its rank, never claim p0; the warning keeps that from being silent.
+    case "$(hero_item_field "$f" priority | tr '[:upper:]' '[:lower:]')" in
+      ''|p0|p1|p2|p3) ;;
+      *) echo "hero_ready_items: $f has unrecognized priority '$(hero_item_field "$f" priority)'; expected p0, p1, p2 or p3. Sorting it as unranked" >&2 ;;
+    esac
+
     # Suspension is a FLAG, not a status (docs/PLAN.md): the item keeps the
     # status it held and `awaiting` is what makes it suspended. Read before the
     # status table, because it overrides every non-terminal row. A terminal
@@ -1924,7 +1950,7 @@ EOF
     else
       echo "blocked $f — $title${missing:+ [missing dep:$missing]}${committed:+ [committed dep:$committed]}"
     fi
-  done
+  done | hero_sort_rows_by_priority
 )
 
 # Tasks no open goal holds that `wayfare-start-goal`'s gate may adopt into

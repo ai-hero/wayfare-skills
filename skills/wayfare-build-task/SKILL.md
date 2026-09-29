@@ -558,7 +558,7 @@ Rows are first-match, top to bottom.
 | `$ARGUMENTS` matches a **review** task (`status: review`) | Check its PR first (URL recorded in the task's `## Log`; else `gh pr list --search`). Open → `gh pr checkout` its branch and let Step 0.5's resume detection route from there. Merged → the close-out was missed: run Step 9a on it now. No PR found → treat as active/in-flight and confirm with the user. Never assume the PR is open. A merged-but-not-closed-out task must not loop here. |
 | `$ARGUMENTS` matches a **done** item | STOP: report that it already landed, with the item's `success` criteria as evidence. Offer the next READY item. Do NOT re-grill it; that writes a duplicate. |
 | `$ARGUMENTS` matches an **active** item | STOP and confirm: another session may hold it. Step 2 marks items `active` before the first edit precisely so two runs cannot claim one item. |
-| `$ARGUMENTS` matches nothing, or is empty | Print the readiness view and ask: pick a READY item, or grill this as new work → 1d |
+| `$ARGUMENTS` matches nothing, or is empty | Print the readiness view and ask: pick a READY item (the listing is in `priority` order, `p0` first, then id), or grill this as new work → 1d |
 | `$ARGUMENTS` matches more than one READY item | Ask which one. Never guess. |
 
 For an issue ID with a Linear MCP configured, fetch it for the fuller context:

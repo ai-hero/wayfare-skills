@@ -64,7 +64,8 @@ Progress:
   comments, compliance, deps, unshipped
 - [ ] 4. Visual pass: the shipped screens, per `../../references/shaping.md`
 - [ ] 5. Store defects: dangling deps, orphaned members, missing anchors
-- [ ] 6. Confirm the proposal table with the user, row by row
+- [ ] 6. Confirm the proposal table with the user, row by row, including each
+  task's proposed `priority`
 - [ ] 7. Write the accepted items at `status: accepted` (`docs/PLAN.md` format)
 - [ ] 8. Propose goals over what was planned; this skill writes them, never
   authorizes

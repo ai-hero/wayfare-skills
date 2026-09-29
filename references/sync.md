@@ -469,11 +469,16 @@ No branch besides the default → `(–)` and one line saying so.
    (`overlaps: item N`). It keeps its own lifecycle and is never edited or
    converted; a legacy plain item likewise.
 
-5. **Confirm, then write.** On the user's confirmation of the list (edits
-   welcome: drop rows, reword, re-scope), write each task in the format below:
-   `status: accepted`, `anchors.target` = the target head resolved in step 2
-   (self-review mode resolved no target head, so leave it absent). Ids continue
-   the store's single sequence (wayfare-grill-idea's numbering rules).
+5. **Confirm, then write.** Each task row carries a proposed `priority` (`p0` to
+   `p3`, `docs/PLAN.md`): propose one from the design's journey order and what
+   depends on it, and leave the cell `-` when nothing supports a guess. The
+   person confirms or changes it with the rest of the row, and a `-` is written
+   as an absent field, which lists last. On the user's confirmation of the list
+   (edits welcome: drop rows, reword, re-scope, re-rank), write each task in the
+   format below with its confirmed `priority`: `status: accepted`,
+   `anchors.target` = the target head resolved in step 2 (self-review mode
+   resolved no target head, so leave it absent). Ids continue the store's single
+   sequence (wayfare-grill-idea's numbering rules).
 
 6. **Plan the set: the postflight.** See *Plan the set* below. `sync` is not
    finished when the rows are written; it is finished when every task that needs

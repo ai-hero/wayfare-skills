@@ -303,7 +303,11 @@ one set of sections, one thing for wayfare-build-task to build, whether or not
 the repo has a `## Wayfare` block or a design target. A task with no target is
 still a task; `target:` and `anchors.target` is simply absent. Set `depends_on`
 to encode the real order. This is the payoff over a flat TODO list. Flag any
-one-way-door item with `one_way_door: true`.
+one-way-door item with `one_way_door: true`. Ask once, at write time, what
+priority the person wants on the set (`p0` to `p3` in `docs/PLAN.md`, where
+absent is unranked): one question for the set with a per-item override, never
+one per item, and write it only when they name one. It is the owner's call on
+when, not `severity`.
 
 Number items sequentially from the highest existing `id` in `.plans/`,
 re-checked immediately before writing (not cached from earlier in the session).
@@ -400,9 +404,9 @@ Ids are normalized to base-10, so `007` and `7` compare equal. A dangling
 `depends_on` shows as `[missing dep: …]` on the listing, permanently blocked
 until fixed, which is why Step 4 verifies every reference at write time.
 
-Run this any time to see what to pick up next. Pick the highest-priority ready
-item (or the user's choice) and start it, moving its `status` to `active`, then
-`done` when it lands.
+Run this any time to see what to pick up next. Pick the first READY row (the
+listing is in `priority` order, then id) or the user's choice and start it,
+moving its `status` to `active`, then `done` when it lands.
 
 **Readiness is about dependencies, not about the codebase.** `hero_ready_items`
 reads frontmatter; it never checks whether the work actually happened. An item

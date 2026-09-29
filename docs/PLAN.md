@@ -289,6 +289,7 @@ status: ready
 resolution: # set only at done — shipped | delivered | rejected | promoted | obsolete
 origin: wayfare # the producer that authored this item; never claimed for another
 severity: # optional — high | medium | low
+priority: # optional — p0 | p1 | p2 | p3; absent means unranked
 depends_on: [9] # ids that must reach `done` first; blockers only
 parent: 7 # GOAL membership: the goal this task belongs to
 rank: 2 # optional — order within the parent where depends_on leaves it free
@@ -307,6 +308,16 @@ branch: feat/12-google-sign-in # written when work starts
 pr: https://github.com/OWNER/REPO/pull/41
 success: "a signed-out user completes Google sign-in and lands on their dashboard"
 ---
+
+`priority` is what the owner wants first: `p0` is drop-everything, `p3` is
+whenever, and absent means unranked, which sorts after `p3`. It is a field on
+every type. `hero_ready_items` lists rows by priority, then id, so READY `p0`
+work comes before READY `p2` work whatever their ids. A value outside the enum
+warns on stderr and sorts as unranked, never as `p0`. It is not `severity`:
+severity is impact (does the defect block a story, degrade it, or only look
+wrong) and is read off the defect, while priority is the owner's call on when,
+so a low-severity docs fix can be `p0`. It is not `rank` either, which orders
+tasks inside one goal and means nothing between goals.
 
 ## Context
 
@@ -518,6 +529,7 @@ local format looks the way it does.
 | `.plans/items/NNN-slug.md` frontmatter | one `items` row; `id` is unique per plan, not global |
 | `type` | enum column: the discriminator, four values |
 | `shape`, `channel` | nullable enum columns, valid only for their type |
+| `priority` | nullable enum column (`p0` to `p3`), valid on every type; null is unranked |
 | `status`, `resolution` | enum columns; `resolution` null until `done` |
 | `depends_on` | `item_dependencies` join table |
 | `parent`, `discovered_from` | self-referencing nullable FKs |

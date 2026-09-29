@@ -837,6 +837,36 @@ check "type: missing type warns on stderr" "0" "$?"
 printf '%s' "$ERRT" | grep -q "unrecognized type 'widget'"
 check "type: unrecognized type names the type on stderr" "0" "$?"
 
+# ---------- priority ---------------------------------------------------------
+#
+# `priority` orders the listing. Absent must sort LAST and an unrecognized value
+# must never sort first: a typo that claimed p0 would hand the owner's
+# attention to the wrong item with no error.
+
+PR="$TMP/prio"
+mkdir -p "$PR/items"
+plan "$PR"
+pitem() { # file id priority
+  printf -- '---\nid: %s\ntype: task\nshape: structural\ntitle: T%s\nstatus: ready\ndepends_on: []\n' "$2" "$2" > "$PR/items/$1"
+  [ -z "$3" ] || printf 'priority: %s\n' "$3" >> "$PR/items/$1"
+  printf -- '---\n' >> "$PR/items/$1"
+}
+pitem 001-none.md 1 ""
+pitem 002-p2.md 2 p2
+pitem 003-p0.md 3 p0
+pitem 004-urgent.md 4 urgent
+pitem 005-p2b.md 5 p2
+pitem 006-p1.md 6 P1
+POUT="$(hero_ready_items "$PR" 2>/dev/null | awk '{print $2}' | tr '\n' ' ')"
+check "priority: p0, p1, then p2 in id order, then unranked and invalid in id order" \
+  "003-p0.md 006-p1.md 002-p2.md 005-p2b.md 001-none.md 004-urgent.md " "$POUT"
+PERR="$(hero_ready_items "$PR" 2>&1 >/dev/null)"
+printf '%s' "$PERR" | grep -q "004-urgent.md has unrecognized priority 'urgent'"
+check "priority: a value outside the enum warns on stderr" "0" "$?"
+printf '%s' "$PERR" | grep -q "002-p2.md.*priority"
+check "priority: a valid value does not warn" "1" "$?"
+check "priority: the listing keeps every row" "6" "$(hero_ready_items "$PR" 2>/dev/null | wc -l | tr -d ' ')"
+
 # ---------- planning gate ----------------------------------------------------
 #
 # `planning` is the human ready-mark gate: planned items sit there until a
@@ -1808,7 +1838,7 @@ fi
 # floor with a hundred cases of slack protects nothing, which is how this
 # suite came to run 365 against a floor of 210. Raise it with every block you
 # add, and read the CI number rather than the local one when you do.
-MIN_CASES=377
+MIN_CASES=381
 if [ "$PASS" -lt "$MIN_CASES" ]; then
   echo "hero-lib: only $PASS cases ran, expected >= $MIN_CASES — a block stopped executing" >&2
   exit 1

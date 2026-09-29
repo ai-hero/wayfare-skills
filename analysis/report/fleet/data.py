@@ -974,3 +974,177 @@ if __name__ == "__main__":
     for k, v in all_data(which).items():
         print(f"===== 12.{k}")
         pprint.pprint(v, width=160, compact=True)
+
+
+# ------------------------------------------------------------------ Figure 2.1: features vs structure, by week, repo, model and workflow
+
+UNLABELLED = "no work-type label"
+WORKFLOWS = ["goal", "work item", "one-shot task", "pushed to main"]
+
+
+def _workflow_of(con):
+    from links import set_item_links
+    links, _ = set_item_links(con)
+    meta = {(r["repo"], str(r["item_id"])): r for r in rows(con, "SELECT repo, item_id, goal_id FROM plans.plan_items")}
+    in_goal = set()
+    for g in rows(con, "SELECT repo, members FROM plans.goals"):
+        for m in json.loads(g["members"] or "[]"):
+            in_goal.add((g["repo"], str(m)))
+
+    def wf(f):
+        ids = links.get((f["repo"], f["unit_kind"], f["unit_id"], f["set_idx"]), set())
+        items = [meta.get((f["repo"], str(i))) for i in ids]
+        if any(i and (i["goal_id"] or (f["repo"], str(i["item_id"])) in in_goal) for i in items):
+            return WORKFLOWS[0]
+        if ids:
+            return WORKFLOWS[1]
+        return WORKFLOWS[3] if f["unit_kind"] == "push" else WORKFLOWS[2]
+    return wf
+
+
+def _subject_class(subjects):
+    """The conventional-commit alternative label: a change set is a feature when most of its commit subjects say feat."""
+    kinds = [re.match(r"([a-z_]+)(\(|!|:)", (s or "").strip().lower()) for s in subjects]
+    kinds = [m.group(1) for m in kinds if m]
+    if not kinds:
+        return None
+    return "feat" if kinds.count("feat") * 2 > len(kinds) else "other"
+
+
+def fig_features_vs_structure(con):
+    """Weekly mix of app change sets with the customer-facing share and its interval; the July-to-September fall
+    raw, then standardised to July's repo mix and to July's workflow mix; the commit-subject label as a check."""
+    wt = {(r["repo"], r["unit_kind"], r["unit_id"], r["set_idx"]): (r["work_type"], r["theme"])
+          for r in rows(con, "SELECT * FROM detectors.cs_worktype")}
+    subj = {(r["repo"], r["sha"]): r["subject"] for r in rows(con, "SELECT repo, sha, subject FROM pr_commits.pr_commits")}
+    subj.update({(r["repo"], r["sha"]): r["subject"] for r in rows(con, "SELECT repo, sha, subject FROM git.commits")})
+    wf = _workflow_of(con)
+    facts = []
+    for f in changeset_facts(con):
+        if f["repo"] not in APPS or f["dependabot"]:
+            continue
+        t = wt.get((f["repo"], f["unit_kind"], f["unit_id"], f["set_idx"]))
+        facts.append({**f, "mix": mix_of(*t) if t else UNLABELLED, "workflow": wf(f),
+                      "alt": _subject_class([subj.get((f["repo"], s)) for s in f["shas"]])})
+    cats = MIX + [UNLABELLED]
+    weekly = {m: [0] * len(WEEKS) for m in cats}
+    for f in facts:
+        if f["week"] in WEEKS:
+            weekly[f["mix"]][WEEKS.index(f["week"])] += 1
+    n_week = [sum(weekly[m][i] for m in cats) for i in range(len(WEEKS))]
+    feat = weekly[MIX[0]]
+    share = [round(k / n, 3) if n >= 10 else None for k, n in zip(feat, n_week)]
+    from figure_lib import wilson
+    lo_hi = [wilson(k, n) if n >= 10 else (None, None) for k, n in zip(feat, n_week)]
+    shares = {m: [round(weekly[m][i] / n_week[i], 3) if n_week[i] >= 10 else None for i in range(len(WEEKS))] for m in cats}
+    peak_i = max((i for i in range(len(WEEKS)) if share[i] is not None), key=lambda i: share[i])
+    sep = [(w, s) for w, s in zip(WEEKS, share) if w >= "2026-W36" and s is not None]
+
+    def fshare(v):
+        return round(sum(1 for f in v if f["mix"] == MIX[0]) / len(v), 3) if v else None
+    jul = [f for f in facts if f["month"] == "2026-07"]
+    sept = [f for f in facts if f["month"] == "2026-09"]
+
+    def standardised(key):
+        """September's share if its mix over `key` had been July's: direct standardisation to July's weights."""
+        w_jul = Counter(f[key] for f in jul)
+        p_sep = {k: fshare([f for f in sept if f[key] == k]) for k in w_jul}
+        usable = [k for k in w_jul if p_sep[k] is not None]
+        tot = sum(w_jul[k] for k in usable)
+        return round(sum(w_jul[k] * p_sep[k] for k in usable) / tot, 3), {k: (w_jul[k], p_sep[k]) for k in w_jul}
+    by_repo_std, by_repo = standardised("repo")
+    by_wf_std, by_wf = standardised("workflow")
+    strata = {key: {k: {"jul": (Counter(f[key] for f in jul)[k], fshare([f for f in jul if f[key] == k])),
+                        "sep": (Counter(f[key] for f in sept)[k], fshare([f for f in sept if f[key] == k]))}
+                    for k in sorted({f[key] for f in jul + sept})} for key in ("repo", "workflow")}
+    fell = sum(1 for k, (n, p) in by_repo.items() if p is not None and p < fshare([f for f in jul if f["repo"] == k]))
+    comparable = sum(1 for k, (n, p) in by_repo.items() if p is not None)
+    alt_share = lambda v: round(sum(1 for f in v if f["alt"] == "feat") / len([f for f in v if f["alt"]]), 3)
+    both = [f for f in facts if f["alt"]]
+    agree = sum(1 for f in both if (f["alt"] == "feat") == (f["mix"] == MIX[0]))
+    x = q_features_vs_structure_mix(con)
+    return {"weeks": WEEKS, "cats": cats, "weekly": weekly, "shares": shares, "n_week": n_week, "share": share,
+            "lo": [a for a, _ in lo_hi], "hi": [b for _, b in lo_hi],
+            "peak": (WEEKS[peak_i], share[peak_i], n_week[peak_i]),
+            "sept": {"lo": min(s for _, s in sep), "hi": max(s for _, s in sep), "weeks": [w for w, _ in sep]},
+            "overall": fshare(facts), "n": len(facts), "unlabelled": sum(1 for f in facts if f["mix"] == UNLABELLED),
+            "jul": fshare(jul), "sep": fshare(sept), "n_jul": len(jul), "n_sep": len(sept),
+            "sep_std_repo": by_repo_std, "sep_std_workflow": by_wf_std, "by_repo": by_repo, "by_workflow": by_wf,
+            "repos_fell": fell, "repos_comparable": comparable, "strata": strata,
+            "alt": {"overall": alt_share(facts), "jul": alt_share(jul), "sep": alt_share(sept), "n": len(both),
+                    "agree": round(agree / len(both), 3)},
+            "paired": x["paired"], "by_model": x["by_model"], "per_repo": x["per_repo"]}
+
+
+# ------------------------------------------------------------------ Figure 6.1: repos in motion against the eligible fleet
+
+def fig_repos_in_motion(con):
+    """Weekly: repos with a non-Dependabot change set merged, repos that existed, and change sets per active repo;
+    the first half against the last eight weeks, split into parallelism and output per active repo."""
+    ad = adoption(con)
+    cs = [f for f in changeset_facts(con) if not f["dependabot"] and f["week"] in WEEKS]
+    active, sets = defaultdict(set), Counter()
+    for f in cs:
+        active[f["week"]].add(f["repo"])
+        sets[f["week"]] += 1
+    eligible = [sum(1 for r in ad if ad[r]["first"] <= week_end(w)) for w in WEEKS]
+    n_active = [len(active[w]) for w in WEEKS]
+    per_active = [round(sets[w] / len(active[w]), 2) if active[w] else None for w in WEEKS]
+    share = [round(a / e, 3) if e else None for a, e in zip(n_active, eligible)]
+
+    def window(ws):
+        n_sets = sum(sets[w] for w in ws)
+        act = sum(len(active[w]) for w in ws)
+        return {"weeks": [ws[0], ws[-1]], "n_weeks": len(ws), "sets_per_week": round(n_sets / len(ws), 1),
+                "active_per_week": round(act / len(ws), 1), "sets_per_active_repo": round(n_sets / act, 2) if act else None,
+                "eligible_mean": round(sum(eligible[WEEKS.index(w)] for w in ws) / len(ws), 1)}
+    h1, last8 = window(WEEKS[:26]), window(WEEKS[-8:])
+    growth = last8["sets_per_week"] / h1["sets_per_week"]
+    par = last8["active_per_week"] / h1["active_per_week"]
+    per = last8["sets_per_active_repo"] / h1["sets_per_active_repo"]
+    import math
+    return {"weeks": WEEKS, "active": n_active, "eligible": eligible, "share": share, "per_active": per_active,
+            "sets": [sets[w] for w in WEEKS], "h1": h1, "last8": last8,
+            "growth": round(growth, 2), "growth_parallelism": round(par, 2), "growth_per_repo": round(per, 2),
+            "parallelism_share_of_growth": round(math.log(par) / math.log(growth), 3),
+            "peak": max(zip(n_active, WEEKS)), "share_last8": round(sum(share[-8:]) / 8, 3)}
+
+
+# ------------------------------------------------------------------ Figure 6.2: product work, factory work and shared-benefit work
+
+FACTORY_THEMES = {"skills", "harness", "compliance", "work_items", "cross_repo", "spend", "fleet_apps", "human_loop", "connectors"}
+FACTORY_CATS = ["Product work in an app", "Factory work inside an app repo", "Template and infrastructure repos",
+                "The plugin (wayfare-skills)"]
+
+
+def fig_apps_vs_factory(con):
+    """Monthly change sets in four classes; the factory share under the strict reading (the plugin) and the broad
+    one (plus shared-benefit work)."""
+    wt = {(r["repo"], r["unit_kind"], r["unit_id"], r["set_idx"]): (r["work_type"], r["theme"])
+          for r in rows(con, "SELECT * FROM detectors.cs_worktype")}
+
+    def cls(f):
+        if f["repo"] == "wayfare-skills":
+            return FACTORY_CATS[3]
+        if f["category"] == "allied":
+            return FACTORY_CATS[2]
+        t = wt.get((f["repo"], f["unit_kind"], f["unit_id"], f["set_idx"]))
+        return FACTORY_CATS[1] if t and (t[1] in FACTORY_THEMES or t[0] == "factory") else FACTORY_CATS[0]
+    facts = [{**f, "cls": cls(f)} for f in changeset_facts(con) if not f["dependabot"] and f["month"] in MONTHS]
+    by = defaultdict(Counter)
+    for f in facts:
+        by[f["month"]][f["cls"]] += 1
+    n_month = [sum(by[m].values()) for m in MONTHS]
+    counts = {c: [by[m][c] for m in MONTHS] for c in FACTORY_CATS}
+    shares = {c: [round(by[m][c] / n, 3) if n else None for m, n in zip(MONTHS, n_month)] for c in FACTORY_CATS}
+    strict = [round(by[m][FACTORY_CATS[3]] / n, 3) if n else None for m, n in zip(MONTHS, n_month)]
+    broad = [round(sum(by[m][c] for c in FACTORY_CATS[1:]) / n, 3) if n else None for m, n in zip(MONTHS, n_month)]
+    since = [f for f in facts if f["month"] >= "2026-07"]
+    tot = Counter(f["cls"] for f in since)
+    n = len(since)
+    return {"months": MONTHS, "cats": FACTORY_CATS, "counts": counts, "shares": shares, "n_month": n_month,
+            "strict": strict, "broad": broad, "n_since_jul": n,
+            "since_jul": {c: round(tot[c] / n, 3) for c in FACTORY_CATS},
+            "strict_since_jul": round(tot[FACTORY_CATS[3]] / n, 3),
+            "broad_since_jul": round(sum(tot[c] for c in FACTORY_CATS[1:]) / n, 3),
+            "all": {c: sum(counts[c]) for c in FACTORY_CATS}, "n_all": len(facts)}

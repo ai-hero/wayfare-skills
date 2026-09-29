@@ -210,7 +210,10 @@ def parse_item(repo, path, schema_era):
     ready_marked = fm.get("ready_marked")
     ready_ts = to_ts(ready_marked) if isinstance(ready_marked, str) else None
 
-    created_ts = to_ts(min(dates)) if dates else None
+    # A schema migration rewrites the log, so its line is the earliest one on every migrated item; taking it
+    # as the creation date makes the whole backlog look new on migration day. Skip it; the real date is lost.
+    born = [e[0] for e in logs if e[2] != "migrate" and "migrated to schema" not in (e[3] or "")]
+    created_ts = to_ts(min(born)) if born else None
     updated_ts = to_ts(max(dates)) if dates else created_ts
 
     done_ts = None

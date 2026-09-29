@@ -9,3 +9,6 @@ report/conclusion/data.py
 report/*/*_hand.py
 bank/groundings.csv
 report/*/book.md
+report/diagrams/d_*.py
+report/conclusion/figures.py
+report/*/audit_*.json

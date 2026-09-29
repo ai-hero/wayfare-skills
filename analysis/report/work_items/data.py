@@ -215,6 +215,7 @@ def items(con):
             "end_week": week_of(end_day.isoformat()) if end_day else None,
             "prs": linked, "link_how": how, "first_merge": merged[0] if merged else None,
             "goal": sorted(goals)[0] if goals else None, "found": key in found,
+            "discovered_note": fm.get("discovered_from") if isinstance(fm.get("discovered_from"), str) else None,
             "body_chars": r["body_chars"], "one_way_door": fm.get("one_way_door"),
             "depends_on": fm.get("depends_on") or [], "category": category_of(r["repo"]),
             "stage": stage_of(con, r["repo"], created.isoformat()) if created and r["repo"] in adoption(con) else None,
@@ -298,6 +299,10 @@ def q_work_sources(con, its):
     def source(i):
         if i["found"]:
             return "Found in other work"
+        # Old-schema items carry the audit as prose ("hero-skills:harden audit, 2026-08-25 (Part C)") with no
+        # origin; the figure-2.3 audit found every such item to be a hardening finding, not an unrecorded source.
+        if not i["origin"] and re.search(r"harden", i["discovered_note"] or "", re.I):
+            return "Security audit"
         return SOURCE_OF.get(i["origin"], "Not recorded" if not i["origin"] else "Owner asked")
     for i in its:
         i["source"] = source(i)
@@ -335,7 +340,13 @@ def q_work_sources(con, its):
     def shipped_share(sel):
         ended = [i for i in its if sel(i) and i["created"] and i["created"] <= date(2026, 9, 10)]
         return share(sum(1 for i in ended if i["ending"] == "Shipped"), len(ended))
+    # Figure 2.3: what became of each source's items (completed = shipped or delivered upstream).
+    outcome_of = lambda i: ("Completed" if i["ending"] in ("Shipped", "Delivered upstream") else
+                            "Abandoned" if i["ending"] else "Still open")
+    outcomes = {s: Counter(outcome_of(i) for i in its if i["source"] == s) for s in SOURCES}
     return {"weeks": WEEKS, "series": series, "sources": SOURCES, "total": dict(total), "n": len(its),
+            "outcomes": {s: dict(c) for s, c in outcomes.items()}, "outcome_names": ["Completed", "Still open", "Abandoned"],
+            "backlog": q_backlog_trend_backlog(con, its),
             "depth": dict(sorted(depth.items())), "n_found": len(fw), "roots": len(roots),
             "max_depth": max(depth) if depth else 0, "tree_sizes": sorted(tree.values(), reverse=True)[:10],
             "biggest_tree": max(tree.items(), key=lambda kv: kv[1]) if tree else None,
@@ -594,6 +605,7 @@ def q_prs_per_work_item(con, its):
     ipp_before = [len(v) for (repo, n), v in per_pr.items() if prs[(repo, n)]["merged_ts"][:10] < "2026-09-18"]
     ipp_after = [len(v) for (repo, n), v in per_pr.items() if prs[(repo, n)]["merged_ts"][:10] >= "2026-09-18"]
     return {"weeks": WEEKS, "series": series, "items_per_pr": items_per_pr, "n": len(s),
+            "ipp_dist": {"before": dict(Counter(ipp_before)), "after": dict(Counter(ipp_after))},
             "totals": {c: sum(1 for i in s if i["pr_bucket"] == c) for c in cats}, "link_how": dict(how),
             "one_pr_share_linked": share(sum(1 for i in s if i["pr_bucket"] == "One PR"),
                                          sum(1 for i in s if i["prs"])),
@@ -667,6 +679,12 @@ def q_goal_duration_and_scope(con, its):
         by_repo[g["repo"]].append(g)
     grew = [g for g in gs if g["later_members"] or g["joined_logs"]]
     return {"weeks": WEEKS, "series": {"Median days to done": wk("days"), "Median work items": wk("members")},
+            "days_dist": dict(Counter(g["days"] for g in done)), "members_dist": dict(Counter(g["members"] for g in gs)),
+            "median_members_all": med([g["members"] for g in gs]),
+            "later_dist": dict(Counter(g["later_members"] for g in gs)),
+            "grew_how": {"Items filed after the goal": sum(1 for g in grew if g["later_members"] and not g["joined_logs"]),
+                         "Log says items joined": sum(1 for g in grew if g["joined_logs"] and not g["later_members"]),
+                         "Both": sum(1 for g in grew if g["later_members"] and g["joined_logs"])},
             "n": len(gs), "n_done": len(done), "median_days": med([g["days"] for g in done]),
             "p80_days": pctl([g["days"] for g in done], 0.8), "median_members": med([g["members"] for g in done]),
             "mean_members": round(statistics.mean(g["members"] for g in done), 1) if done else None,

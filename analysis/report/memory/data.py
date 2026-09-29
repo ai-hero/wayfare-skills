@@ -630,8 +630,122 @@ def q_observable_repo_facts_signals():
 
 # ------------------------------------------------------------------ all
 
+
+# ------------------------------------------------------------------ book figures 3.3 and 3.4
+
+STANDARD_DAY = "2026-08-29"  # wayfare-skills #66; each repo's "bring AGENTS.md to the standard" commit landed that day
+
+
+def wilson(k, n, z=1.96):
+    if not n:
+        return None, None
+    p = k / n
+    c = (p + z * z / (2 * n)) / (1 + z * z / n)
+    h = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / (1 + z * z / n)
+    return round(c - h, 3), round(c + h, 3)
+
+
+def _harness_data():
+    """agent_harness/data.py loaded under its own name: this deck's `data` module is the memory one."""
+    import importlib.util
+    path = os.path.join(os.path.dirname(HERE), "agent_harness", "data.py")
+    spec = importlib.util.spec_from_file_location("ah_data", path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, os.path.dirname(path))
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def fig33_standardisation(weeks_around=4):
+    """Figure 3.3: what an agent loads at session start and what it can load on demand, per repo, the day before
+    the AGENTS.md standard and the day of it (each repo's own adoption commit dated from git), plus today; and
+    the owner's correction share and the 14-day fix rate in the four weeks either side."""
+    ad = repos_in_scope()
+    before = (date.fromisoformat(STANDARD_DAY) - timedelta(1)).isoformat()
+    plugin = {d: plugin_skills(d) for d in (before, STANDARD_DAY, TODAY)}
+    rows_ = []
+    for repo in sorted(ad):
+        if not exists_on(repo, before):
+            continue
+        log = git(repo, "log", "--format=%as %s", f"--since={before}T00:00:00", "--until=2026-09-15", "--", "AGENTS.md", "CLAUDE.md")
+        adopted = next((l[:10] for l in log.splitlines()[::-1] if "to the standard" in l), None)
+        vals = {}
+        for name, day in (("before", before), ("after", STANDARD_DAY), ("now", TODAY)):
+            a, d = loaded(repo, sha_at(repo, day))
+            vals[f"start_{name}"] = round((a + plugin[day][0]) / 1024, 1)
+            vals[f"own_demand_{name}"] = round(d / 1024, 1)
+        rows_.append({"repo": repo, "category": ad[repo]["category"], "adopted": adopted, **vals})
+    apps = [r for r in rows_ if r["category"] in APPS]
+    med = lambda rs, k: median([r[k] for r in rs])
+    medians = {k: {"apps": med(apps, k), "all": med(rows_, k)}
+               for k in ("start_before", "start_after", "start_now", "own_demand_before", "own_demand_after", "own_demand_now")}
+    later = [r for r in ad if not exists_on(r, before)]
+    # Corrections: the owner's typed prompts labelled correction or redirect (shared intent labels), every repo.
+    con = _con()
+    w0 = (date.fromisoformat(STANDARD_DAY) - timedelta(7 * weeks_around)).isoformat()
+    w1 = (date.fromisoformat(STANDARD_DAY) + timedelta(7 * weeks_around)).isoformat()
+    corr = {}
+    for name, lo, hi in (("before", w0, STANDARD_DAY), ("after", STANDARD_DAY, w1)):
+        r = con.execute("""SELECT SUM(intent IN ('correction','redirect')) k, COUNT(*) n FROM detectors.prompt_intent
+                           WHERE day >= ? AND day < ?""", (lo, hi)).fetchone()
+        corr[name] = {"k": r[0] or 0, "n": r[1] or 0, "rate": round((r[0] or 0) / r[1], 3) if r[1] else None,
+                      "ci": wilson(r[0] or 0, r[1] or 0), "from": lo, "to": hi}
+    ah = _harness_data()
+    ahcon = connect("agent_harness")
+    prs = [p for p in ah.pr_models(ahcon) if p["complete"] and p["model"] != ah.NONE]
+    fixes = {}
+    for name, lo, hi in (("before", w0, STANDARD_DAY), ("after", STANDARD_DAY, w1)):
+        sel = [p for p in prs if lo <= p["day"] < hi]
+        k = sum(p["fixed_days"] is not None for p in sel)
+        fixes[name] = {"k": k, "n": len(sel), "rate": round(k / len(sel), 3) if sel else None, "ci": wilson(k, len(sel)),
+                       "from": lo, "to": min(hi, ah.FIX_CUTOFF)}
+    return {"day": STANDARD_DAY, "before": before, "now": TODAY, "rows": rows_, "medians": medians,
+            "plugin": {d: {"desc_kb": round(v[0] / 1024, 1), "body_kb": round(v[1] / 1024, 1), "skills": v[2]} for d, v in plugin.items()},
+            "created_later": later, "corrections": corr, "fixes": fixes, "weeks_around": weeks_around,
+            "adopted_on_day": sum(1 for r in rows_ if r["adopted"] == STANDARD_DAY), "n_repos": len(rows_),
+            "adopted_other": {r["repo"]: r["adopted"] for r in rows_ if r["adopted"] != STANDARD_DAY}}
+
+
+def fig34_prose(audit):
+    """Figure 3.4: corrections of prose that had gone false, per 100 change sets by week (with the week's
+    denominator), and by record type split into standalone corrections and ones bundled in other work. `audit`
+    is the deck's hand audit of the labels (findings stay in the gitignored deck, not here)."""
+    x = q_stale_prose_fixes_prose()
+    facts = [s for s in F.changeset_facts(_con()) if not s["dependabot"]]
+    lab = {r["cs_key"]: r for r in rows("""SELECT l.cs_key, c.k, c.w FROM memory.prose_labels l
+                                           JOIN memory.prose_cache c ON c.h = l.h""")}
+    kinds = {"i": "Agent instructions", "d": "Docs", "c": "Code comments"}
+    split = {k: {"Standalone": 0, "Bundled in other work": 0} for k in kinds.values()}
+    weekly_n, weekly_k = Counter(), Counter()
+    span = {"before_jul": [0, 0], "since_aug": [0, 0], "jul": [0, 0]}
+    for s in facts:
+        key = f"{s['repo']}|{s['unit_kind']}|{s['unit_id']}|{s['set_idx']}"
+        l = lab.get(key)
+        hit = bool(l and l["k"] in kinds)
+        weekly_n[s["week"]] += 1
+        weekly_k[s["week"]] += hit
+        sp = "before_jul" if s["month"] < "2026-07" else "since_aug" if s["month"] >= "2026-08" else "jul"
+        span[sp][0] += 1
+        span[sp][1] += hit
+        if hit:
+            split[kinds[l["k"]]]["Standalone" if l["w"] else "Bundled in other work"] += 1
+    table = [[w, weekly_n[w], weekly_k[w], round(100 * weekly_k[w] / weekly_n[w], 1) if weekly_n[w] >= 5 else None]
+             for w in WEEKS]
+    n = sum(v for d in split.values() for v in d.values())
+    standalone = sum(d["Standalone"] for d in split.values())
+    return {"weeks": WEEKS, "per100": [t[3] for t in table], "table": table, "split": split, "n": n,
+            "standalone": standalone, "bundled": n - standalone, "n_sets": len(facts), "n_candidates": x["n_candidates"],
+            "spans": {k: {"sets": v[0], "corrections": v[1], "per100": round(100 * v[1] / v[0], 1) if v[0] else None}
+                      for k, v in span.items()},
+            "self_cite": len(x["self_cite"]), "audit": audit,
+            "precision": audit["positives"]["agree"] / audit["positives"]["n"],
+            "neg_agree": audit["negatives"]["agree"] / audit["negatives"]["n"],
+            "agreement": (audit["positives"]["agree"] + audit["negatives"]["agree"]) / (audit["positives"]["n"] + audit["negatives"]["n"])}
+
+
 def all_data():
-    return {"knowledge-stores": q_knowledge_stores_stores(), "startup-instruction-size": q_startup_instruction_size_loaded(), "stale-prose-fixes": q_stale_prose_fixes_prose(), "work-item-log-contents": q_work_item_log_contents_logs(),
+    return {"knowledge-stores": q_knowledge_stores_stores(), "startup-instruction-size": q_startup_instruction_size_loaded(), "stale-prose-fixes": q_stale_prose_fixes_prose(),
+            "fig33": fig33_standardisation(), "work-item-log-contents": q_work_item_log_contents_logs(),
             "memory-growth": q_memory_growth_memory(), "work-item-cost-record": q_work_item_cost_record_cost(), "plan-store-authors": q_plan_store_authors_writers(), "observable-repo-facts": q_observable_repo_facts_signals()}
 
 

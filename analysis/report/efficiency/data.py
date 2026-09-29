@@ -925,13 +925,200 @@ def q_change_set_traceability_trace(con):
             "attribution_usd": dict(conf)}
 
 
+# ------------------------------------------------------------------ 6.3 Q session-clock, explicit states
+
+# Book figure 6.3. Every gap between two logged turns of an interactive session gets exactly one state; the
+# classifier's if-chain below is the precedence, STATE_ORDER is only the display order. `turns` holds the main thread only: a tool result is not a turn and a subagent's
+# turns live in its own transcript, so a gap between two assistant turns is a tool call or a subagent still
+# running, not idleness. A gap that ends in a prompt the owner typed was the owner's: waiting on a question
+# the agent asked in prose when its last message reads as one, otherwise reading or away, which the logs
+# cannot tell apart.
+STATE_ORDER = ["Agent working", "Agent's tool or subagent running (no main-thread turn)",
+               "Waiting on the owner: ask tool", "Waiting on the owner: question in prose",
+               "Stopped by a usage limit", "Owner reading or away (ended by a typed prompt)",
+               "Scheduled loop tick or session continuation", "Unclassified"]
+PROSE_QUESTION_RE = re.compile(r"\?|\btell me\b|\breply\b|\bready for me\b|\byour call\b|\bshall i\b|\bwant me to\b|"
+                               r"\bblocked\b|\bpermission\b|\bconfirm\b|\bwhich (one|do you)\b", re.I)
+
+
+def _events_by_session(con, sql):
+    out = defaultdict(list)
+    for r in rows(con, sql):
+        out[r["s"]].append(parse_ts(r["ts"]))
+    return out
+
+
+@lru_cache(maxsize=None)
+def state_gaps(con):
+    """One row per gap between consecutive logged turns of an interactive session, 25 Aug to DATA_END, with
+    its state (gaps of 5 min or less are working; over 8 h the session had closed and is excluded)."""
+    skip = headless(con)
+    asks = _events_by_session(con, "SELECT session_id_hash s, ts FROM harness.asks WHERE ts IS NOT NULL")
+    lims = _events_by_session(con, "SELECT session_id_hash s, ts FROM harness.limit_events WHERE ts IS NOT NULL")
+    subs = defaultdict(list)
+    for r in rows(con, "SELECT session_id_hash s, ts_start, ts_end FROM harness.subagent_runs WHERE ts_start IS NOT NULL AND ts_end IS NOT NULL"):
+        subs[r["s"]].append((parse_ts(r["ts_start"]), parse_ts(r["ts_end"])))
+    out, closed = [], 0.0
+    for s, turns in session_turns(con).items():
+        if s in skip:
+            continue
+        for i in range(1, len(turns)):
+            a, b = turns[i - 1], turns[i]
+            if not observed(a[0].date()) or a[0].date().isoformat() > DATA_END:
+                continue
+            m = (b[0] - a[0]).total_seconds() / 60
+            if m > CLOSED_GAP_MIN:
+                closed += m
+                continue
+            if m <= 5:
+                state = 0
+            elif any(a[0] <= t <= b[0] for t in asks.get(s, [])):
+                state = 2
+            elif any(a[0] <= t <= b[0] for t in lims.get(s, [])):
+                state = 4
+            elif is_owner_prompt(b):
+                state = 3 if a[1] == "assistant" and PROSE_QUESTION_RE.search((a[3] or "").strip()[-400:]) else 5
+            elif a[1] == "assistant" == b[1]:
+                state = 1
+            elif any(x < b[0] and y > a[0] for x, y in subs.get(s, [])):
+                state = 1
+            elif b[1] == "user":
+                state = 6
+            else:
+                state = 7
+            out.append({"s": s, "i": i, "minutes": m, "state": state, "week": week_of(a[0].date().isoformat())})
+    return tuple(out), closed
+
+
+STATE_FAMILY = {0: "agent", 1: "agent", 2: "wait", 3: "wait", 4: "limit", 5: "away", 6: "away", 7: "unknown"}
+
+
+def state_audit(con):
+    """The hand audit (audit_session_states.json) scored against the classifier and against D6's rule, which
+    called every long gap without an ask or limit idle."""
+    path = os.path.join(HERE, "audit_session_states.json")
+    # The audit is hand-checked from the owner's own sessions and never published. Without it the check
+    # reports itself unavailable: a zero here would read as "nothing was judged".
+    if not os.path.exists(path):
+        print("efficiency: audit_session_states.json absent; the session-state audit is unavailable", file=sys.stderr)
+        return {"unavailable": "audit_session_states.json absent"}
+    with open(path, encoding="utf-8") as f:
+        a = json.load(f)
+    gaps, _ = state_gaps(con)
+    by_key = {(g["s"][:8], g["i"]): g for g in gaps}
+    n = agree = d6_agree = 0
+    families = Counter()
+    for row in a["gaps"]:
+        g = by_key.get((row["session"], row["i"]))
+        hand = row["judgement"].split(":")[0]
+        families[hand] += 1
+        if g is None or hand == "unknown":
+            continue
+        n += 1
+        agree += STATE_FAMILY[g["state"]] == hand
+        d6_agree += hand == ("wait" if g["state"] == 2 else "limit" if g["state"] == 4 else "away")
+    return {"sampled": len(a["gaps"]), "judgeable": n, "agree": agree, "share": round(agree / n, 2) if n else None,
+            "d6_agree": d6_agree, "d6_share": round(d6_agree / n, 2) if n else None, "hand_families": dict(families)}
+
+
+def q_session_clock_states(con):
+    logged = session_weeks_with_logs(con)
+    gaps, closed = state_gaps(con)
+    by_week = defaultdict(lambda: [0.0] * len(STATE_ORDER))
+    for g in gaps:
+        by_week[g["week"]][g["state"]] += g["minutes"] / 60
+    weeks = [w for w in SESSION_WEEKS if w in logged and w in by_week]
+    total = [sum(by_week[w][k] for w in weeks) for k in range(len(STATE_ORDER))]
+    hours = sum(total)
+    rows_ = [("All weeks", total)] + [(w, by_week[w]) for w in weeks]
+    return {"states": STATE_ORDER, "rows": [r[0] for r in rows_], "hours": [round(sum(v)) for _, v in rows_],
+            "shares": {st: [round(v[k] / sum(v), 3) if sum(v) else None for _, v in rows_] for k, st in enumerate(STATE_ORDER)},
+            "totals": {st: round(total[k], 1) for k, st in enumerate(STATE_ORDER)},
+            "total_hours": round(hours), "closed_hours": round(closed / 60),
+            "n_gaps": len(gaps), "n_long_gaps": sum(1 for g in gaps if g["state"]),
+            "rules": {"working_max_min": 5, "closed_over_min": CLOSED_GAP_MIN},
+            "weeks": weeks, "audit": state_audit(con)}
+
+
+# ------------------------------------------------------------------ 4.4 Q work-while-away, distance from a prompt
+
+DISTANCE_BINS = [(0, 5, "0-5 min"), (5, 15, "5-15 min"), (15, 30, "15-30 min"), (30, 60, "30-60 min"),
+                 (60, 180, "1-3 h"), (180, 8 * 60, "3-8 h"), (8 * 60, 1e12, "over 8 h")]
+THRESHOLDS = (15, 30, 60)
+
+
+def _pr_items(con):
+    """The set of (repo, PR) a work item records by URL or branch, plus every PR on a goal branch:
+    durable authorization."""
+    from links import _items
+    heads = {(r["repo"], r["head_ref"]): r["number"] for r in rows(con, "SELECT repo, number, head_ref FROM github.prs")}
+    goal_heads = {(r["repo"], r["number"]) for r in rows(con, "SELECT repo, number FROM github.prs WHERE head_ref LIKE 'goal-%'")}
+    out = set(goal_heads)
+    for it in _items(con):
+        if it["type"] == "goal":
+            continue
+        for n in set(it["prs"]) | ({heads[(it["repo"], it["branch"])]} if (it["repo"], it["branch"]) in heads else set()):
+            out.add((it["repo"], n))
+    return out
+
+
+def q_work_while_away_distance(con):
+    """Agent working minutes by the time since the owner's last typed prompt (any repo), and monthly merges
+    with no prompt in the last 15, 30 and 60 minutes; of those, the share a work item or goal had authorized."""
+    prompts = owner_prompt_times(con)
+    dist = [0.0] * len(DISTANCE_BINS)
+    work_total = 0.0
+    work_away = {t: 0.0 for t in THRESHOLDS}
+    for g in segments(con):
+        if g["kind"] != "working":
+            continue
+        m = minutes_since_prompt(prompts, g["start"])
+        m = 1e12 if m is None else m
+        for k, (lo, hi, _) in enumerate(DISTANCE_BINS):
+            if lo <= m < hi:
+                dist[k] += g["minutes"]
+        work_total += g["minutes"]
+        for t in THRESHOLDS:
+            work_away[t] += g["minutes"] if m > t else 0
+    authorized = _pr_items(con)
+    months = MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
+    merges = {t: defaultdict(lambda: [0, 0, 0]) for t in THRESHOLDS}
+    n_merges = defaultdict(int)
+    for p in rows(con, "SELECT repo, number, merged_ts FROM github.prs WHERE merged_ts IS NOT NULL AND author_is_bot = 0 AND merged_ts >= '2026-01-01'"):
+        if not in_scope(p["repo"]):
+            continue
+        m = minutes_since_prompt(prompts, parse_ts(p["merged_ts"]))
+        m = 1e12 if m is None else m
+        mo = p["merged_ts"][:7]
+        n_merges[mo] += 1
+        for t in THRESHOLDS:
+            merges[t][mo][0] += 1
+            if m > t:
+                merges[t][mo][1] += 1
+                merges[t][mo][2] += 1 if (p["repo"], p["number"]) in authorized else 0
+    tot = lambda t, k: sum(v[k] for v in merges[t].values())
+    return {"bins": [b[2] for b in DISTANCE_BINS], "work_hours": [round(v / 60, 1) for v in dist],
+            "work_share": [round(v / work_total, 3) for v in dist], "work_total_hours": round(work_total / 60),
+            "work_away_share": {t: round(v / work_total, 3) for t, v in work_away.items()},
+            "months": months, "n_merges": [n_merges[m] for m in months],
+            "merge_away_share": {t: [share(merges[t][m][1], merges[t][m][0], 5) for m in months] for t in THRESHOLDS},
+            "merge_away_total": {t: {"away": tot(t, 1), "of": tot(t, 0), "share": round(tot(t, 1) / tot(t, 0), 3),
+                                     "authorized": tot(t, 2), "authorized_share": round(tot(t, 2) / tot(t, 1), 3) if tot(t, 1) else None}
+                                 for t in THRESHOLDS},
+            "merge_away_authorized_since_goals": (lambda rs: {"away": sum(r[1] for r in rs), "authorized": sum(r[2] for r in rs)})(
+                [merges[30][m] for m in months if m >= "2026-08"]),
+            "timezone": "US Pacific (UTC-7); distances are clock differences and do not depend on it",
+            "n_prompts": len(prompts), "first_prompt": prompts[0].date().isoformat()}
+
+
 def all_data(con=None):
     con = con or connect()
     return {"q_change_set_traceability": q_change_set_traceability_trace(con), "q_session_clock": q_session_clock_clock(con), "q_usage_limit_stops": q_usage_limit_stops_limits(con),
             "q_owner_wait_length": q_owner_wait_length_waits(con), "q_concurrent_sessions": q_concurrent_sessions_concurrency(con), "q_work_in_progress": q_work_in_progress_wip(con),
             "q_pr_vs_item_lead_time": q_pr_vs_item_lead_time_cycle(con), "q_work_while_away": q_work_while_away_unattended(con), "q_unshipped_work_share": q_unshipped_work_share_yield(con),
             "q_right_first_time": q_right_first_time_first_pass(con), "q_wasted_session_effort": q_wasted_session_effort_waste(con), "q_output_vs_agent_hours": q_output_vs_agent_hours_rate(con),
-            "q_oee_score": q_oee_score_oee(con)}
+            "q_oee_score": q_oee_score_oee(con), "q_session_clock_states": q_session_clock_states(con),
+            "q_work_while_away_distance": q_work_while_away_distance(con)}
 
 
 if __name__ == "__main__":

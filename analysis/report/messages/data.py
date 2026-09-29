@@ -97,12 +97,12 @@ def frontmatter(path):
 
 
 try:
-    from messages_hand import MESSAGE_OUTCOMES, MOVES  # noqa: E402
+    from messages_hand import MESSAGE_EVENTS, MESSAGE_OUTCOMES, MOVES  # noqa: E402
     HAND_DATA = True
 except ImportError:
     # messages_hand.py is hand-checked from the fleet's own records and is never published. Without it the
     # outcome questions report themselves unavailable: empty tables would read as "nothing was acted on".
-    MESSAGE_OUTCOMES, MOVES = {}, []
+    MESSAGE_OUTCOMES, MOVES, MESSAGE_EVENTS = {}, [], {}
     HAND_DATA = False
     print("messages: messages_hand.py absent; Q message-delivery, Q message-response-time, Q message-fidelity and Q ownership-handovers are unavailable", file=sys.stderr)
 UNAVAILABLE = {"unavailable": "messages_hand.py absent"}
@@ -251,6 +251,52 @@ def q_message_delivery():
         by_type["Replies" if m["type"] == "reply" else "Asks and bug reports"][m["state"]] += 1
     return dict(messages=ms, states=states, by_type=by_type, counts=Counter(m["state"] for m in ms),
                 inboxes=q_message_channels()["inboxes"])
+
+
+STAGES = ["Created", "In the recipient's inbox", "Acted on", "Shipped", "Acknowledged"]
+KINDS = ["Asks", "Bug reports", "Replies"]
+
+
+def mailbox_events():
+    """Each message's dated comment lines, as the files record them: [(msg_id, day, who, text)]."""
+    out = []
+    for m in messages():
+        for line in open(m["path"], errors="replace").read().split("## Comments", 1)[-1].splitlines():
+            mm = re.match(r"^- (\d{4}-\d\d-\d\d) \(([^)]*)\):\s*(.*)", line)
+            if mm:
+                out.append((m["id"], mm.group(1), mm.group(2), mm.group(3)))
+    return out
+
+
+def q_message_delivery_funnel():
+    """Stage reached by each message, by kind, with the failures at the delivery step and the days between stages."""
+    if not HAND_DATA:
+        return UNAVAILABLE
+    ms = {m["id"]: m for m in messages()}
+    rows_ = []
+    for mid, ev in MESSAGE_EVENTS.items():
+        m = ms.get(mid, {})
+        kind = {"ask": KINDS[0], "bug": KINDS[1], "reply": KINDS[2]}.get(ev["type"], "Signal (outside the mailbox)")
+        stages = [True, ev["delivered"] is not None, ev["accepted"] is not None, ev["shipped"] is not None,
+                  ev["acknowledged"] is not None]
+        rows_.append(dict(id=mid, kind=kind, sender=m.get("sender"), to=m.get("to"), **ev, stages=stages,
+                          file_delivered=m.get("delivered"),
+                          to_delivery=days(ev["created"], ev["delivered"]) if ev["delivered"] else None,
+                          to_accept=days(ev["created"], ev["accepted"]) if ev["accepted"] else None,
+                          to_ship=days(ev["created"], ev["shipped"]) if ev["shipped"] else None,
+                          to_ack=days(ev["created"], ev["acknowledged"]) if ev["acknowledged"] else None))
+    # cross-check the hand table against the files: a delivered message is one whose file sits in the recipient's inbox
+    disagree = [r["id"] for r in rows_ if r["kind"] != "Signal (outside the mailbox)" and bool(r["delivered"]) != bool(r["file_delivered"])]
+    funnel = {k: [sum(1 for r in rows_ if r["kind"] == k and r["stages"][i]) for i in range(len(STAGES))] for k in KINDS}
+    failures = [(r["id"], r["kind"], r["failure"]) for r in rows_ if r["failure"]]
+    lat = {k: {f: median([r[f] for r in rows_ if r["kind"] == k and r[f] is not None])
+               for f in ("to_delivery", "to_accept", "to_ship", "to_ack")} for k in KINDS}
+    return dict(rows=rows_, stages=STAGES, kinds=KINDS, funnel=funnel, failures=failures, latency=lat,
+                n=len(rows_), n_mailbox=sum(1 for r in rows_ if r["kind"] in KINDS),
+                undelivered=[r for r in rows_ if r["kind"] == KINDS[2] and not r["delivered"]],
+                delayed=[r for r in rows_ if r["to_delivery"]],
+                disagree=disagree, comments=len(mailbox_events()), duplicates=0, retries=0,
+                asof=max(r["created"] for r in rows_))
 
 
 def q_message_response_time():
@@ -762,7 +808,7 @@ def q_ownership_handovers():
 
 
 def all_data():
-    return {f.__name__: f() for f in (q_message_channels, q_message_direction, q_message_delivery, q_message_response_time, q_cross_repo_finds,
+    return {f.__name__: f() for f in (q_message_channels, q_message_direction, q_message_delivery, q_message_delivery_funnel, q_message_response_time, q_cross_repo_finds,
                                        q_message_fidelity, q_sibling_awareness, q_cross_repo_edits, q_upstream_vs_local_changes_same_change, q_upstream_change_reach_lag,
                                        q_vendored_file_staleness, q_fan_out_method_carrier, q_fan_out_review_review, q_shared_piece_references, q_upstream_breaks_breaks,
                                        q_upstream_impact_notes_names, q_cross_repo_decision_agreement, q_ownership_handovers)}

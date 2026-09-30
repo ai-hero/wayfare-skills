@@ -294,6 +294,12 @@ run_validate "$d"
 check "agents entry name missing: rc" "1" "$RC"
 check_contains "agents entry name missing: reported" "$OUT" "no .plugins entry named 'wayfare'"
 
+d=$(fixture agents-source-url)
+jq '.plugins[0].source = {"source":"url","url":"./"}' "$d/.agents/plugins/marketplace.json" > "$d/.agents/plugins/marketplace.json.tmp" && mv "$d/.agents/plugins/marketplace.json.tmp" "$d/.agents/plugins/marketplace.json"
+run_validate "$d"
+check "agents source url form: rc" "1" "$RC"
+check_contains "agents source url form: reported" "$OUT" "source is 'url|', not local ./"
+
 d=$(fixture agents-name-duplicate)
 jq '.plugins += [.plugins[0]]' "$d/.agents/plugins/marketplace.json" > "$d/.agents/plugins/marketplace.json.tmp" && mv "$d/.agents/plugins/marketplace.json.tmp" "$d/.agents/plugins/marketplace.json"
 run_validate "$d"

@@ -142,6 +142,12 @@ repos:
     hooks:
       - id: semgrep
         stages: [pre-push]
+        # analysis/ is research code, out of this gate like the other hooks
+        # above; its raw-SQL and dynamic-import findings fail the push
+        # otherwise. Running semgrep by hand needs the same exclusion plus the
+        # CLAUDE.md symlink, which pre-commit already filters out and semgrep
+        # treats as a fatal scanning root.
+        exclude: ^analysis/
         args:
           - --config=auto
           - --error

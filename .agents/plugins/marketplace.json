@@ -1,10 +1,20 @@
 {
   "name": "wayfare",
-  "interface": { "displayName": "Wayfare" },
-  "plugins": [{
-    "name": "wayfare",
-    "source": { "source": "url", "url": "./" },
-    "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
-    "category": "Developer Tools"
-  }]
+  "interface": {
+    "displayName": "Wayfare"
+  },
+  "plugins": [
+    {
+      "name": "wayfare",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
 }

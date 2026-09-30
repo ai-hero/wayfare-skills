@@ -224,6 +224,19 @@ check_plugins_entry() {  # $1=required(true/false) $2=label $3=file $4=rel_path
 check_plugins_entry false "the marketplace manifest" "$MARKETPLACE" "$MARKETPLACE_REL"
 check_plugins_entry true "the .agents manifest" "$AGENTS_MANIFEST" "$AGENTS_MANIFEST_REL"
 
+# Codex installs from the marketplace entry's source. The `local` + `path`
+# form is what Codex's own bundled marketplace uses; the `url` form makes
+# Codex git-clone the checkout, which fails on any copy without .git.
+if [[ -f "$AGENTS_MANIFEST" ]] && jq empty "$AGENTS_MANIFEST" 2>/dev/null; then
+  AGENTS_SOURCE=$(jq -r --arg name "$NAME" '[(.plugins // [])[]? | select(.name == $name)][0].source | "\(.source // "")|\(.path // "")"' "$AGENTS_MANIFEST")
+  if [[ "$AGENTS_SOURCE" == "local|./" ]]; then
+    pass "$AGENTS_MANIFEST_REL: source is local ./"
+  else
+    error "the .agents entry's source is '$AGENTS_SOURCE', not local ./" \
+      "$AGENTS_MANIFEST_REL" "" 'Set "source": {"source": "local", "path": "./"}'
+  fi
+fi
+
 echo ""
 
 # ─── Skills ───────────────────────────────────────────────────────

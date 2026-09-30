@@ -142,12 +142,12 @@ repos:
     hooks:
       - id: semgrep
         stages: [pre-push]
-        # CLAUDE.md is a symlink to AGENTS.md. Semgrep treats a symlinked
-        # scanning root as a fatal error, exits 1 with zero findings, and the
-        # scan never runs, so a run that included it looked like a failing
-        # gate while checking nothing. analysis/ is research code, out of this
-        # gate like the other hooks above.
-        exclude: ^(CLAUDE\.md$|analysis/)
+        # analysis/ is research code, out of this gate like the other hooks
+        # above; its raw-SQL and dynamic-import findings fail the push
+        # otherwise. Running semgrep by hand needs the same exclusion plus the
+        # CLAUDE.md symlink, which pre-commit already filters out and semgrep
+        # treats as a fatal scanning root.
+        exclude: ^analysis/
         args:
           - --config=auto
           - --error

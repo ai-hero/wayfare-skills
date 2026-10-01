@@ -3,10 +3,10 @@
 Test the outstanding work (verification plus smoke tests), commit it with a
 smart conventional commit, branch off the default branch first if you're still
 on it, push to the remote repository, and open a **draft PR by default**. Drafts
-are the default because the author should run `wayfare:wayfare-review-pr` (which
-calls all pr-review-toolkit agents plus a security pass, applies fixes, and asks
-for confirmation) before promoting the PR to ready-for-review. After a
-successful push, this skill also prints a brief CI status summary.
+are the default because `wayfare:wayfare-review-pr` (all pr-review-toolkit
+agents plus a security pass, fixes, and a mark-ready confirmation) runs before
+the PR is promoted to ready-for-review. After a successful push this skill
+prints a brief CI status summary, then continues into review and ship (A6).
 
 The test phase (Step 2) absorbed the former `test-changes` skill. Run
 `wayfare:wayfare-push-pr test` for a test-only run that stops before any commit.
@@ -37,9 +37,10 @@ The test phase (Step 2) absorbed the former `test-changes` skill. Run
   - `ready` - Test, commit if dirty, push, and create a non-draft PR (ready for
     review immediately). Only use this when you have already self-reviewed, or
     for trivial changes
-  - Any other first token - Treated as a target branch name (e.g., `main`,
-    `develop`): test, commit if dirty, push, then merge into that branch (no
-    PR). A branch literally named `recalibrate`, `test`, `commit`, or `ready`
+  - Any other first token - Treated as a target branch name (e.g., `develop`,
+    never the default branch): test, commit if dirty, push, then merge into that
+    branch (no PR). Only when the person typed it; Step 1 checks it before any
+    work. A branch literally named `recalibrate`, `test`, `commit`, or `ready`
     cannot be targeted this way and needs a rename or a manual `git merge`
 
 ## `recalibrate`
@@ -124,6 +125,41 @@ nothing, so it may run on any branch, including the default.
 reason:** the caller has already put this checkout on the branch it wants the
 commit on. A goal turn owns its branch, and branching here would move the commit
 off it.
+
+**Any other non-empty first token except `ready` is a merge target. Check it
+now, before branching, testing or committing.** First, the person must have
+typed it in this invocation. When another skill runs this one
+(wayfare-build-task, a goal turn), a non-keyword first token is a malformed
+call, not a target: STOP and print the arguments received. A forwarded
+permissions line or a `branch NAME` phrase lands here as a word nobody meant as
+a merge target. Then run:
+
+```bash
+# shellcheck source=/dev/null
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT — export WAYFARE_ROOT as the plugin root"; exit 1; }
+FIRST_ARG=$(printf '%s' "$ARGUMENTS" | awk '{print $1}')
+# Strip the spellings git also accepts: `refs/heads/main` passes a plain
+# string compare, and Workflow B then pushes local main to the default branch.
+TARGET_BRANCH=${FIRST_ARG#refs/heads/}
+TARGET_BRANCH=${TARGET_BRANCH#heads/}
+TARGET_BRANCH=${TARGET_BRANCH#origin/}
+DEFAULT_BRANCH=$(hero_default_branch_verbose)
+case "$TARGET_BRANCH" in
+  "$DEFAULT_BRANCH"|main|master)
+    echo "STOP: '$FIRST_ARG' is the default branch. It takes changes only through a PR; run wayfare:wayfare-push-pr with no arguments."
+    exit 1 ;;
+esac
+# A full ref, not --heads NAME: ls-remote matches the tail of a ref, so a bare
+# `develop` would also match refs/heads/feature/develop.
+git ls-remote --exit-code origin "refs/heads/$TARGET_BRANCH" >/dev/null \
+  || { echo "STOP: no branch '$TARGET_BRANCH' on origin."; exit 1; }
+echo "TARGET_BRANCH=$TARGET_BRANCH"
+```
+
+A STOP here leaves nothing branched, tested or pushed. On success, Workflow B
+uses the printed `TARGET_BRANCH`, not the raw argument: every bash block is a
+fresh shell, so set it from that line at the top of each B block.
 
 Never commit or push directly to the default branch.
 
@@ -972,8 +1008,10 @@ Proceed to Step 4.
 | `test` | Already stopped after Step 2 (test-only) |
 | `commit` | Stop after Step 3: the commit is the deliverable. Report the SHA and stop; do not reach Workflow A or B. |
 | `ready` | Push + non-draft PR |
-| `main`/`master` | Push + Merge to main |
-| Other branch | Push + Merge to target |
+| Other branch | Push + Merge to the `TARGET_BRANCH` Step 1's target check printed. Without that line, STOP: the check did not pass |
+
+The default branch is never a target: Step 1's check stops it, because a merge
+there skips the PR, the review and auto-approve, and on most repos it deploys.
 
 ______________________________________________________________________
 
@@ -1100,8 +1138,8 @@ Commits pushed: N
 Draft PR created: #{number}
 URL: {pr-url}
 
-Next step: `wayfare:wayfare-review-pr` performs self-review, independent quality
-and security passes, fixes, and the mark-ready gate.
+Next: `wayfare:wayfare-review-pr` (self-review, then the mark-ready gate), then
+`wayfare:wayfare-ship-pr` (A6).
 ```
 
 If the PR was created with `ready` (non-draft), report `PR created` instead of
@@ -1113,9 +1151,8 @@ instead:
   harden covers Docker image hardening too):
   `Next step: wayfare:wayfare-sync-plan, whose harden stage audits the new dependency surface and writes any fix as a security item`
   (print only).
-- **Otherwise**:
-  `Next step: wayfare:wayfare-ship-pr, which once green posts @auto-approve, merges, verifies the deploy, and resets`
-  (offer to auto-run).
+- **Otherwise**: `Next: wayfare:wayfare-review-pr, then wayfare:wayfare-ship-pr`
+  (A6).
 
 ### A5: Report CI Status
 
@@ -1173,6 +1210,39 @@ Overall: PASSING | FAILING | IN PROGRESS | NO RUNS YET
 If `gh` is unavailable, or `gh run list` errors (no workflows, no auth, etc.),
 skip this step silently and omit the CI Status block from the report.
 
+### A6: Continue to Review and Ship
+
+A push is not the end of the run. Without asking, invoke the next skill through
+the active client's skill mechanism. Choose it from the PR's state, not from the
+argument, because A2 also reaches here for a PR that already existed:
+
+```bash
+# shellcheck source=/dev/null
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT — export WAYFARE_ROOT as the plugin root"; exit 1; }
+PR_NUMBER=$(gh pr view --json number --jq .number)
+echo "IS_DRAFT=$(gh pr view "$PR_NUMBER" --json isDraft --jq .isDraft)"
+echo "SELF_REVIEWS=$(hero_self_review_count "$PR_NUMBER")"
+```
+
+- **Draft PR**: `wayfare:wayfare-review-pr` with no arguments, even when it was
+  reviewed before: the commits just pushed have not been. It self-reviews, asks
+  the mark-ready question, and on a ready PR with `agent: none` continues into
+  `wayfare:wayfare-ship-pr` itself.
+- **Ready PR, `SELF_REVIEWS` is 0** (a `ready` run): `wayfare:wayfare-review-pr`
+  too. Sending it straight to ship-pr fails ship-pr's prior-review gate after a
+  CI wait of up to 30 minutes.
+- **Ready PR, already self-reviewed**: `wayfare:wayfare-ship-pr` with the PR
+  number.
+- **Dependency files touched on a ready PR**: nothing; the sync-plan hint is
+  print only.
+- **Any lookup above failed**: nothing; print the next step instead of guessing.
+
+Skip A6 when another skill runs this one as a step (`wayfare:wayfare-build-task`
+Step 4): the caller runs `wayfare-review-pr --no-mark-ready` next, and
+continuing here would review the PR twice and skip the caller's mark-ready node.
+In a headless run, return the A6 invocation as the `resume:` action instead.
+
 ______________________________________________________________________
 
 ## Workflow B: Merge to Target Branch
@@ -1197,14 +1267,17 @@ git status --porcelain
 back and commit them (re-run Step 3) before continuing.
 
 ```bash
-git checkout $TARGET_BRANCH
-git pull origin $TARGET_BRANCH
+TARGET_BRANCH="TARGET_BRANCH_FROM_STEP_1"
+git checkout "$TARGET_BRANCH"
+git pull origin "$TARGET_BRANCH"
 ```
 
 ### B3: Merge Feature Branch
 
 ```bash
-git merge $FEATURE_BRANCH --no-ff -m "Merge branch '$FEATURE_BRANCH' into $TARGET_BRANCH"
+TARGET_BRANCH="TARGET_BRANCH_FROM_STEP_1"
+FEATURE_BRANCH="FEATURE_BRANCH_FROM_B2"
+git merge "$FEATURE_BRANCH" --no-ff -m "Merge branch '$FEATURE_BRANCH' into $TARGET_BRANCH"
 ```
 
 **If merge conflicts:** Stop and let user resolve.
@@ -1212,7 +1285,8 @@ git merge $FEATURE_BRANCH --no-ff -m "Merge branch '$FEATURE_BRANCH' into $TARGE
 ### B4: Push Target
 
 ```bash
-git push origin $TARGET_BRANCH
+TARGET_BRANCH="TARGET_BRANCH_FROM_STEP_1"
+git push origin "$TARGET_BRANCH"
 ```
 
 ### B5: Report and Suggest Cleanup

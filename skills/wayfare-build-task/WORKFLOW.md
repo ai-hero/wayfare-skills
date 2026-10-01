@@ -1030,13 +1030,16 @@ runs there at commit time, so do not run it here as well.
 
 ### Step 4: push
 
-Render DAG with `push` active. Run `wayfare:wayfare-push-pr` with no arguments.
-It runs its test phase first: verification plus smoke tests, including UI smoke
-via Playwright MCP when a UI project is detected; then commits any outstanding
-work with a smart conventional commit, branches off the default branch first if
-needed, pushes, and opens a draft PR. Trust its grouping and commit logic, and
-do not skip pre-commit hooks. Capture the PR number from its output for
-downstream steps.
+Render DAG with `push` active. Run `wayfare:wayfare-push-pr` with no arguments:
+not the permissions line, not the branch name, nothing. push-pr reads any word
+it does not recognise as a branch to merge into with no PR. It runs its test
+phase first: verification plus smoke tests, including UI smoke via Playwright
+MCP when a UI project is detected; then commits any outstanding work with a
+smart conventional commit, branches off the default branch first if needed,
+pushes, and opens a draft PR. Trust its grouping and commit logic, and do not
+skip pre-commit hooks. Capture the PR number from its output for downstream
+steps. Run as this step, it stops at its report instead of continuing into
+review and ship (its A6): Step 5 is the review.
 
 Under a goal turn's commit-only mode this step is
 `wayfare:wayfare-push-pr commit` instead: the tests covering this change, the

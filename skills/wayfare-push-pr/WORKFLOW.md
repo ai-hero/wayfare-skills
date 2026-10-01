@@ -39,9 +39,9 @@ The test phase (Step 2) absorbed the former `test-changes` skill. Run
     for trivial changes
   - Any other first token - Treated as a target branch name (e.g., `develop`,
     never the default branch): test, commit if dirty, push, then merge into that
-    branch (no PR). Only when the person typed it; Step 4 lists the checks. A
-    branch literally named `recalibrate`, `test`, `commit`, or `ready` cannot be
-    targeted this way and needs a rename or a manual `git merge`
+    branch (no PR). Only when the person typed it; Step 1 checks it before any
+    work. A branch literally named `recalibrate`, `test`, `commit`, or `ready`
+    cannot be targeted this way and needs a rename or a manual `git merge`
 
 ## `recalibrate`
 
@@ -125,6 +125,41 @@ nothing, so it may run on any branch, including the default.
 reason:** the caller has already put this checkout on the branch it wants the
 commit on. A goal turn owns its branch, and branching here would move the commit
 off it.
+
+**Any other non-empty first token except `ready` is a merge target. Check it
+now, before branching, testing or committing.** First, the person must have
+typed it in this invocation. When another skill runs this one
+(wayfare-build-task, a goal turn), a non-keyword first token is a malformed
+call, not a target: STOP and print the arguments received. A forwarded
+permissions line or a `branch NAME` phrase lands here as a word nobody meant as
+a merge target. Then run:
+
+```bash
+# shellcheck source=/dev/null
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT — export WAYFARE_ROOT as the plugin root"; exit 1; }
+FIRST_ARG=$(printf '%s' "$ARGUMENTS" | awk '{print $1}')
+# Strip the spellings git also accepts: `refs/heads/main` passes a plain
+# string compare, and Workflow B then pushes local main to the default branch.
+TARGET_BRANCH=${FIRST_ARG#refs/heads/}
+TARGET_BRANCH=${TARGET_BRANCH#heads/}
+TARGET_BRANCH=${TARGET_BRANCH#origin/}
+DEFAULT_BRANCH=$(hero_default_branch_verbose)
+case "$TARGET_BRANCH" in
+  "$DEFAULT_BRANCH"|main|master)
+    echo "STOP: '$FIRST_ARG' is the default branch. It takes changes only through a PR; run wayfare:wayfare-push-pr with no arguments."
+    exit 1 ;;
+esac
+# A full ref, not --heads NAME: ls-remote matches the tail of a ref, so a bare
+# `develop` would also match refs/heads/feature/develop.
+git ls-remote --exit-code origin "refs/heads/$TARGET_BRANCH" >/dev/null \
+  || { echo "STOP: no branch '$TARGET_BRANCH' on origin."; exit 1; }
+echo "TARGET_BRANCH=$TARGET_BRANCH"
+```
+
+A STOP here leaves nothing branched, tested or pushed. On success, Workflow B
+uses the printed `TARGET_BRANCH`, not the raw argument: every bash block is a
+fresh shell, so set it from that line at the top of each B block.
 
 Never commit or push directly to the default branch.
 
@@ -973,22 +1008,10 @@ Proceed to Step 4.
 | `test` | Already stopped after Step 2 (test-only) |
 | `commit` | Stop after Step 3: the commit is the deliverable. Report the SHA and stop; do not reach Workflow A or B. |
 | `ready` | Push + non-draft PR |
-| The default branch (`main`, `master`, or `$DEFAULT_BRANCH`) | **STOP.** Never a target; see below |
-| Other branch | Push + Merge to target, only after the checks below |
+| Other branch | Push + Merge to the `TARGET_BRANCH` Step 1's target check printed. Without that line, STOP: the check did not pass |
 
-Before Workflow B, run all three checks; any failure is a STOP with nothing
-pushed:
-
-- **The target is not the default branch.** A merge there skips the PR, the
-  review and auto-approve, and on most repos it deploys. Say so and offer the
-  default run (draft PR) instead.
-- **The person typed the target themselves, in this invocation.** When another
-  skill runs this one (wayfare-build-task, a goal turn), a non-keyword first
-  token is a malformed call, not a target: STOP and print the arguments
-  received. A forwarded permissions line or `branch NAME` phrase lands here as a
-  word nobody meant as a merge target.
-- **The target exists on the remote**:
-  `git ls-remote --exit-code --heads origin "$TARGET_BRANCH"`.
+The default branch is never a target: Step 1's check stops it, because a merge
+there skips the PR, the review and auto-approve, and on most repos it deploys.
 
 ______________________________________________________________________
 
@@ -1128,8 +1151,7 @@ instead:
   harden covers Docker image hardening too):
   `Next step: wayfare:wayfare-sync-plan, whose harden stage audits the new dependency surface and writes any fix as a security item`
   (print only).
-- **Otherwise**:
-  `Next: wayfare:wayfare-ship-pr, which once green posts @auto-approve, merges, verifies the deploy, and resets`
+- **Otherwise**: `Next: wayfare:wayfare-review-pr, then wayfare:wayfare-ship-pr`
   (A6).
 
 ### A5: Report CI Status
@@ -1191,15 +1213,30 @@ skip this step silently and omit the CI Status block from the report.
 ### A6: Continue to Review and Ship
 
 A push is not the end of the run. Without asking, invoke the next skill through
-the active client's skill mechanism:
+the active client's skill mechanism. Choose it from the PR's state, not from the
+argument, because A2 also reaches here for a PR that already existed:
 
-- **Draft PR** (the default): `wayfare:wayfare-review-pr` with no arguments. It
-  self-reviews, asks the mark-ready question, and on a ready PR with
-  `agent: none` continues into `wayfare:wayfare-ship-pr` itself.
-- **`ready` PR, no dependency files touched**: `wayfare:wayfare-ship-pr` with
-  the PR number.
-- **`ready` PR that touched dependency files**: nothing; the sync-plan hint is
+```bash
+# shellcheck source=/dev/null
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT — export WAYFARE_ROOT as the plugin root"; exit 1; }
+PR_NUMBER=$(gh pr view --json number --jq .number)
+echo "IS_DRAFT=$(gh pr view "$PR_NUMBER" --json isDraft --jq .isDraft)"
+echo "SELF_REVIEWS=$(hero_self_review_count "$PR_NUMBER")"
+```
+
+- **Draft PR**: `wayfare:wayfare-review-pr` with no arguments, even when it was
+  reviewed before: the commits just pushed have not been. It self-reviews, asks
+  the mark-ready question, and on a ready PR with `agent: none` continues into
+  `wayfare:wayfare-ship-pr` itself.
+- **Ready PR, `SELF_REVIEWS` is 0** (a `ready` run): `wayfare:wayfare-review-pr`
+  too. Sending it straight to ship-pr fails ship-pr's prior-review gate after a
+  CI wait of up to 30 minutes.
+- **Ready PR, already self-reviewed**: `wayfare:wayfare-ship-pr` with the PR
+  number.
+- **Dependency files touched on a ready PR**: nothing; the sync-plan hint is
   print only.
+- **Any lookup above failed**: nothing; print the next step instead of guessing.
 
 Skip A6 when another skill runs this one as a step (`wayfare:wayfare-build-task`
 Step 4): the caller runs `wayfare-review-pr --no-mark-ready` next, and
@@ -1230,14 +1267,17 @@ git status --porcelain
 back and commit them (re-run Step 3) before continuing.
 
 ```bash
-git checkout $TARGET_BRANCH
-git pull origin $TARGET_BRANCH
+TARGET_BRANCH="TARGET_BRANCH_FROM_STEP_1"
+git checkout "$TARGET_BRANCH"
+git pull origin "$TARGET_BRANCH"
 ```
 
 ### B3: Merge Feature Branch
 
 ```bash
-git merge $FEATURE_BRANCH --no-ff -m "Merge branch '$FEATURE_BRANCH' into $TARGET_BRANCH"
+TARGET_BRANCH="TARGET_BRANCH_FROM_STEP_1"
+FEATURE_BRANCH="FEATURE_BRANCH_FROM_B2"
+git merge "$FEATURE_BRANCH" --no-ff -m "Merge branch '$FEATURE_BRANCH' into $TARGET_BRANCH"
 ```
 
 **If merge conflicts:** Stop and let user resolve.
@@ -1245,7 +1285,8 @@ git merge $FEATURE_BRANCH --no-ff -m "Merge branch '$FEATURE_BRANCH' into $TARGE
 ### B4: Push Target
 
 ```bash
-git push origin $TARGET_BRANCH
+TARGET_BRANCH="TARGET_BRANCH_FROM_STEP_1"
+git push origin "$TARGET_BRANCH"
 ```
 
 ### B5: Report and Suggest Cleanup

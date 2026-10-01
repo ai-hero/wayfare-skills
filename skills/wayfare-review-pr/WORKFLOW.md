@@ -502,10 +502,10 @@ Next step: (pick exactly one, based on what actually happened above)
   `Waiting on {agent}'s first review, then run wayfare:wayfare-respond-pr.` (no
   prompt, nothing to invoke yet).
 - **Marked ready, `agent: none`**:
-  `Next step: wayfare:wayfare-ship-pr, which posts @auto-approve, merges, and resets`
-  (invoke through the active client's skill mechanism when the current
-  invocation includes that continuation; otherwise report it as the next
-  action).
+  `Next: wayfare:wayfare-ship-pr, which posts @auto-approve, merges, and resets`.
+  Invoke it through the active client's skill mechanism without asking; the
+  mark-ready yes above is the go-ahead. In a headless run, return it as the
+  `resume:` action instead.
 - **Declined mark-ready**:
   `Next step: address the findings above, then re-run wayfare:wayfare-review-pr.`
   (print only, because re-invoking the same skill right after it finishes is not

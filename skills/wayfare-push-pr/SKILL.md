@@ -11,8 +11,9 @@ Verify the outstanding work, create a focused commit, push the feature branch,
 and open a draft PR by default. With a target branch as the argument it merges
 the pushed branch into that target instead of opening a PR, which bypasses the
 approval workflow, so that mode needs the person to have named the target
-themselves. Never commit or push directly to the default branch. Treat tests and
-a clean understanding of the diff as prerequisites to publication.
+themselves, and the default branch is never a target. Never commit or push
+directly to the default branch. Treat tests and a clean understanding of the
+diff as prerequisites to publication.
 
 ## Load the workflow
 
@@ -30,7 +31,9 @@ workflow names a client-specific tool or chained skill.
 - Preserve unrelated user changes and never rewrite history without explicit
   authorization.
 - A test failure stops publication and is reported with actionable evidence.
-- A successful default run leaves a pushed branch and a discoverable draft PR.
+- A successful default run leaves a pushed branch and a discoverable draft PR,
+  then continues into `wayfare-review-pr` and `wayfare-ship-pr` without asking,
+  unless another skill runs it as a step.
 - `test` and `commit` modes stop at the boundary their names promise.
 
 Return the verification result, commit and branch state, PR URL when one was

@@ -3,10 +3,10 @@
 Test the outstanding work (verification plus smoke tests), commit it with a
 smart conventional commit, branch off the default branch first if you're still
 on it, push to the remote repository, and open a **draft PR by default**. Drafts
-are the default because the author should run `wayfare:wayfare-review-pr` (which
-calls all pr-review-toolkit agents plus a security pass, applies fixes, and asks
-for confirmation) before promoting the PR to ready-for-review. After a
-successful push, this skill also prints a brief CI status summary.
+are the default because `wayfare:wayfare-review-pr` (all pr-review-toolkit
+agents plus a security pass, fixes, and a mark-ready confirmation) runs before
+the PR is promoted to ready-for-review. After a successful push this skill
+prints a brief CI status summary, then continues into review and ship (A6).
 
 The test phase (Step 2) absorbed the former `test-changes` skill. Run
 `wayfare:wayfare-push-pr test` for a test-only run that stops before any commit.
@@ -37,10 +37,11 @@ The test phase (Step 2) absorbed the former `test-changes` skill. Run
   - `ready` - Test, commit if dirty, push, and create a non-draft PR (ready for
     review immediately). Only use this when you have already self-reviewed, or
     for trivial changes
-  - Any other first token - Treated as a target branch name (e.g., `main`,
-    `develop`): test, commit if dirty, push, then merge into that branch (no
-    PR). A branch literally named `recalibrate`, `test`, `commit`, or `ready`
-    cannot be targeted this way and needs a rename or a manual `git merge`
+  - Any other first token - Treated as a target branch name (e.g., `develop`,
+    never the default branch): test, commit if dirty, push, then merge into that
+    branch (no PR). Only when the person typed it; Step 4 lists the checks. A
+    branch literally named `recalibrate`, `test`, `commit`, or `ready` cannot be
+    targeted this way and needs a rename or a manual `git merge`
 
 ## `recalibrate`
 
@@ -972,8 +973,22 @@ Proceed to Step 4.
 | `test` | Already stopped after Step 2 (test-only) |
 | `commit` | Stop after Step 3: the commit is the deliverable. Report the SHA and stop; do not reach Workflow A or B. |
 | `ready` | Push + non-draft PR |
-| `main`/`master` | Push + Merge to main |
-| Other branch | Push + Merge to target |
+| The default branch (`main`, `master`, or `$DEFAULT_BRANCH`) | **STOP.** Never a target; see below |
+| Other branch | Push + Merge to target, only after the checks below |
+
+Before Workflow B, run all three checks; any failure is a STOP with nothing
+pushed:
+
+- **The target is not the default branch.** A merge there skips the PR, the
+  review and auto-approve, and on most repos it deploys. Say so and offer the
+  default run (draft PR) instead.
+- **The person typed the target themselves, in this invocation.** When another
+  skill runs this one (wayfare-build-task, a goal turn), a non-keyword first
+  token is a malformed call, not a target: STOP and print the arguments
+  received. A forwarded permissions line or `branch NAME` phrase lands here as a
+  word nobody meant as a merge target.
+- **The target exists on the remote**:
+  `git ls-remote --exit-code --heads origin "$TARGET_BRANCH"`.
 
 ______________________________________________________________________
 
@@ -1100,8 +1115,8 @@ Commits pushed: N
 Draft PR created: #{number}
 URL: {pr-url}
 
-Next step: `wayfare:wayfare-review-pr` performs self-review, independent quality
-and security passes, fixes, and the mark-ready gate.
+Next: `wayfare:wayfare-review-pr` (self-review, then the mark-ready gate), then
+`wayfare:wayfare-ship-pr` (A6).
 ```
 
 If the PR was created with `ready` (non-draft), report `PR created` instead of
@@ -1114,8 +1129,8 @@ instead:
   `Next step: wayfare:wayfare-sync-plan, whose harden stage audits the new dependency surface and writes any fix as a security item`
   (print only).
 - **Otherwise**:
-  `Next step: wayfare:wayfare-ship-pr, which once green posts @auto-approve, merges, verifies the deploy, and resets`
-  (offer to auto-run).
+  `Next: wayfare:wayfare-ship-pr, which once green posts @auto-approve, merges, verifies the deploy, and resets`
+  (A6).
 
 ### A5: Report CI Status
 
@@ -1172,6 +1187,24 @@ Overall: PASSING | FAILING | IN PROGRESS | NO RUNS YET
 
 If `gh` is unavailable, or `gh run list` errors (no workflows, no auth, etc.),
 skip this step silently and omit the CI Status block from the report.
+
+### A6: Continue to Review and Ship
+
+A push is not the end of the run. Without asking, invoke the next skill through
+the active client's skill mechanism:
+
+- **Draft PR** (the default): `wayfare:wayfare-review-pr` with no arguments. It
+  self-reviews, asks the mark-ready question, and on a ready PR with
+  `agent: none` continues into `wayfare:wayfare-ship-pr` itself.
+- **`ready` PR, no dependency files touched**: `wayfare:wayfare-ship-pr` with
+  the PR number.
+- **`ready` PR that touched dependency files**: nothing; the sync-plan hint is
+  print only.
+
+Skip A6 when another skill runs this one as a step (`wayfare:wayfare-build-task`
+Step 4): the caller runs `wayfare-review-pr --no-mark-ready` next, and
+continuing here would review the PR twice and skip the caller's mark-ready node.
+In a headless run, return the A6 invocation as the `resume:` action instead.
 
 ______________________________________________________________________
 

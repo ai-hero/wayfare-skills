@@ -1,7 +1,7 @@
 ---
 name: wayfare-setup-dev
 # prettier-ignore
-description: Set up a developer's local environment. Reads HERO.md, checks required tools, guides through git config, CLI auth, and missing dependencies. Per-developer, and never modifies shared files. Use on a fresh machine or clone, or when a tool or login is missing.
+description: "Check local tools and credentials against HERO.md. Guide a developer through git config, CLI authentication, and missing dependencies. Never change shared files. Use on a fresh machine or clone, or when a tool or login is missing."
 argument-hint: "[--check | recalibrate]"
 compatibility: "Requires the complete Wayfare plugin and access to the developer machine whose local tools and credentials are being checked."
 disable-model-invocation: true
@@ -9,9 +9,8 @@ disable-model-invocation: true
 
 # Setup: get a developer's machine ready
 
-Guide an individual developer through setting up their local environment based
-on the team's `HERO.md` configuration. This skill handles everything that is
-per-developer and should NOT be committed to the repo.
+Guide one developer through local setup using the team's `HERO.md`
+configuration. Keep developer-specific setup out of repository commits.
 
 ## Arguments
 
@@ -31,24 +30,23 @@ No HERO.md found. Run wayfare:wayfare-init-repo first to configure the project.
 
 ## `recalibrate`
 
-`wayfare:wayfare-setup-dev recalibrate` tunes the config that drives this skill,
-and stops. It does not go on to run the skill. You want to see which field was
-wrong, not spend a whole run finding out.
+`wayfare:wayfare-setup-dev recalibrate` tunes this skill's config. It stops
+after tuning and does not run the main procedure.
 
-Dispatch on it before parsing any other argument, in whichever step does that
-parsing. When the first token of `$ARGUMENTS` is exactly `recalibrate`, print
+Check for `recalibrate` before you parse other arguments. If the first token of
+`$ARGUMENTS` is exactly `recalibrate`, print
 `wayfare-setup-dev: running recalibrate`, follow the four phases in
-[docs/RECALIBRATE.md](../../docs/RECALIBRATE.md) (report, ask, write, commit)
-using the table below as the report, and stop.
+[docs/RECALIBRATE.md](../../docs/RECALIBRATE.md): report, ask, write, commit.
+Use the table below as the report. Stop after these phases.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 "$WAYFARE_ROOT/scripts/hero-fields.sh" wayfare-setup-dev
 ```
 
-Ask only about rows whose CURRENT is parenthesised: `(unset)`, `(no-section)`,
-`(refused)`, `(absent)`, `(no-file)`. Also ask about any row the user says is
-wrong. A row that already holds the right value is not a question.
+Ask only about rows whose CURRENT value is `(unset)`, `(no-section)`,
+`(refused)`, `(absent)`, or `(no-file)`. Also ask about rows the user identifies
+as wrong. Do not ask about a row that already has the correct value.
 
 ## Instructions
 
@@ -65,8 +63,8 @@ cat "$ROOT/HERO.md"
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
-**At the fleet root** in `docs/FLEET-MD.md`.
+If the command prints `FLEET_ROOT`, stop this repo procedure. Follow **At the
+fleet root** in `docs/FLEET-MD.md`.
 
 Parse the `## Developer Setup` section for required tools, recommended tools,
 and MCP servers. Also read other sections for implicit requirements (e.g., CI
@@ -184,9 +182,8 @@ Only check auth for tools that are actually installed AND relevant to HERO.md.
 
 ### Step 5: Check Recommended Tools
 
-Same as Step 3 but for `## Developer Setup → Recommended Tools`. Use `[--]`
-instead of `[!!]` for missing recommended tools. They are nice to have, not
-blockers.
+Run Step 3's checks for `## Developer Setup → Recommended Tools`. Report missing
+recommended tools with `[--]` instead of `[!!]`. These tools do not block setup.
 
 ```
 RECOMMENDED TOOLS
@@ -239,8 +236,8 @@ Run wayfare:wayfare-init-repo recalibrate if the project setup has changed.
 Next step: wayfare:wayfare-check-preflight — sanity-check tooling, .env, ports before starting (print only — model-invocation-restricted, cannot auto-run)
 ```
 
-Don't also print `wayfare:wayfare-build-task`; `wayfare-check-preflight`'s own
-next-steps lead there once it passes.
+Do not also print `wayfare:wayfare-build-task`. Follow
+`wayfare-check-preflight`'s next steps after it passes.
 
 ## Key Principles
 

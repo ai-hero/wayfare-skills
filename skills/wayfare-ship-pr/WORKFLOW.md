@@ -64,24 +64,23 @@ This skill checks that first.
 
 ## `recalibrate`
 
-`wayfare:wayfare-ship-pr recalibrate` tunes the config that drives this skill,
-and stops. It does not go on to run the skill. You want to see which field was
-wrong, not spend a whole run finding out.
+`wayfare:wayfare-ship-pr recalibrate` tunes this skill's config. It stops after
+tuning and does not run the main procedure.
 
-Dispatch on it before parsing any other argument, in whichever step does that
-parsing. When the first token of `$ARGUMENTS` is exactly `recalibrate`, print
+Check for `recalibrate` before you parse other arguments. If the first token of
+`$ARGUMENTS` is exactly `recalibrate`, print
 `wayfare-ship-pr: running recalibrate`, follow the four phases in
-[docs/RECALIBRATE.md](../../docs/RECALIBRATE.md) (report, ask, write, commit)
-using the table below as the report, and stop.
+[docs/RECALIBRATE.md](../../docs/RECALIBRATE.md): report, ask, write, commit.
+Use the table below as the report. Stop after these phases.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 "$WAYFARE_ROOT/scripts/hero-fields.sh" wayfare-ship-pr
 ```
 
-Ask only about rows whose CURRENT is parenthesised: `(unset)`, `(no-section)`,
-`(refused)`, `(absent)`, `(no-file)`. Also ask about any row the user says is
-wrong. A row that already holds the right value is not a question.
+Ask only about rows whose CURRENT value is `(unset)`, `(no-section)`,
+`(refused)`, `(absent)`, or `(no-file)`. Also ask about rows the user identifies
+as wrong. Do not ask about a row that already has the correct value.
 
 ## Instructions
 
@@ -93,8 +92,8 @@ cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
-**At the fleet root** in `docs/FLEET-MD.md`.
+If the command prints `FLEET_ROOT`, stop this repo procedure. Follow **At the
+fleet root** in `docs/FLEET-MD.md`.
 
 Read `HERO.md` if it exists. This skill uses:
 
@@ -415,7 +414,7 @@ if any of the following:
   (`gh pr checks $PR_NUMBER`), fix, push, and re-run. The workflow's CI gate
   would REQUEST_CHANGES on this anyway; failing here saves the run.
 - `CI_PENDING > 0` after the 30-minute wait: a check is hung or queued behind a
-  full runner pool. Report it; do not post `@auto-approve` into a pending build.
+  full runner pool. Report it. Do not post `@auto-approve` into a pending build.
 
 Show the offending items inline so the user can act:
 
@@ -585,7 +584,7 @@ done
 
 If every run after `TRIGGERED_AT` is `skipped`, the command comment itself did
 not match the trigger. On a public repo that is the
-`github.event.repository.private` gate; otherwise check that the comment body
+`github.event.repository.private` gate. Otherwise check that the comment body
 *starts with* `@auto-approve`. A body that merely contains it no longer fires.
 
 If no run appears within ~50 seconds, surface a clear error:
@@ -1334,7 +1333,7 @@ Classify in this order:
 
 - **`UNKNOWN` (could not verify)** when `CHECK_FAILED` is `true`, meaning a
   health query itself failed (RBAC denial, missing `argocd` binary, apiserver
-  error, expired token). This is **not** the same as healthy; report it as
+  error, expired token). This is **not** the same as healthy. Report it as
   `could not verify deployment health` so the user investigates rather than
   trusting a false green.
 - Otherwise `HEALTHY` (all nodes Ready, no crashlooping/pending pods, all
@@ -1344,7 +1343,7 @@ Classify in this order:
 
 **`vm`, `paas`, `serverless`**: curl the health endpoints configured in HERO.md.
 HERO.md's Deployment section lists one or more, e.g.
-`- health-endpoint: https://api.example.com/healthz`; read them all first:
+`- health-endpoint: https://api.example.com/healthz`. Read them all first:
 
 ```bash
 # hero_field returns only the FIRST match; health-endpoint legitimately repeats,

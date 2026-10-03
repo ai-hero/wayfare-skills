@@ -1,19 +1,19 @@
 ---
 name: wayfare-push-pr
-description: Test, commit, push, and open a draft PR with a CI report. Use when work is ready to verify or share; use its test or commit modes when the run must stop before publishing.
+description: "Test the work, commit it, push it, and open a draft PR with a CI report. Use when work is ready to check or share. Use test or commit mode to stop before publishing."
 argument-hint: "[recalibrate | test [MODIFIER...] | commit | ready | target-branch]"
 compatibility: "Requires the complete Wayfare plugin, git, GitHub CLI, network access for publishing, and the repository configuration described by HERO.md."
 ---
 
 # Push a pull request
 
-Verify the outstanding work, create a focused commit, push the feature branch,
-and open a draft PR by default. With a target branch as the argument it merges
-the pushed branch into that target instead of opening a PR, which bypasses the
-approval workflow, so that mode needs the person to have named the target
-themselves, and the default branch is never a target. Never commit or push
-directly to the default branch. Treat tests and a clean understanding of the
-diff as prerequisites to publication.
+Check the outstanding work before publication. Create a focused commit. Push the
+feature branch. Open a draft PR by default. If the argument names a target
+branch, merge the pushed branch into that target instead of opening a PR. This
+mode bypasses the approval workflow. Use it only when the person names the
+target themselves. Never use the default branch as that target. Never commit or
+push directly to the default branch. Publish only after tests pass and you
+understand the diff.
 
 ## Load the workflow
 
@@ -28,12 +28,12 @@ workflow names a client-specific tool or chained skill.
 
 ## Invariants
 
-- Preserve unrelated user changes and never rewrite history without explicit
+- Preserve unrelated user changes. Never rewrite history without explicit
   authorization.
 - A test failure stops publication and is reported with actionable evidence.
-- A successful default run leaves a pushed branch and a discoverable draft PR,
-  then continues into `wayfare-review-pr` and `wayfare-ship-pr` without asking,
-  unless another skill runs it as a step.
+- A successful default run leaves a pushed branch and a discoverable draft PR.
+  Continue into `wayfare-review-pr` and `wayfare-ship-pr` without asking. If
+  another skill runs this skill as a step, return control to that skill instead.
 - `test` and `commit` modes stop at the boundary their names promise.
 
 Return the verification result, commit and branch state, PR URL when one was

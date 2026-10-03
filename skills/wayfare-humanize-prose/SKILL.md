@@ -1,7 +1,7 @@
 ---
 name: wayfare-humanize-prose
 # prettier-ignore
-description: Remove signs of AI-generated writing from text so it reads as human-written; based on Wikipedia's "Signs of AI writing". Use when editing or reviewing prose, or on any text you want to pass through the same filter the pipeline applies.
+description: "Rewrite text with the maintained rules from Wikipedia's \"Signs of AI writing\". Preserve meaning and remove AI writing patterns. Use when editing prose or applying the pipeline's prose filter to text."
 argument-hint: "[TEXT | PATH | nothing, to use the text in context]"
 compatibility: "Requires the complete Wayfare plugin because its maintained prose rules live in docs/HUMANIZING.md."
 ---
@@ -11,19 +11,18 @@ compatibility: "Requires the complete Wayfare plugin because its maintained pros
 Apply [docs/HUMANIZING.md](../../docs/HUMANIZING.md) to the text you were given
 and return the rewrite.
 
-**Read that file first.** It is the whole substance of this skill: the tells,
-the rewrites, the words to watch, and the rules about what not to change. It
-lives in `docs/` rather than here because four pipeline steps read it too
-(`wayfare-push-pr`, `wayfare-review-pr`, `wayfare-respond-pr`, and wayfare's
-review step), and they read it directly rather than invoking this skill.
+**Read that file first.** It defines the writing patterns, replacements, and
+constraints on changes. Four pipeline steps read it directly: `wayfare-push-pr`,
+`wayfare-review-pr`, `wayfare-respond-pr`, and wayfare's review step. Thus, the
+shared rules live in `docs/`.
 
 ## Instructions
 
 1. Read `docs/HUMANIZING.md` in full.
-2. Resolve what to humanize, in this order: `$ARGUMENTS` as literal text; a path
-   in `$ARGUMENTS`, if it names a file that exists; otherwise the text already
-   in the conversation the user is pointing at. If none of the three resolves,
-   ask which text. Never guess and rewrite something the user did not mean.
+2. Resolve the input in this order. First, try `$ARGUMENTS` as literal text.
+   Next, try a path in `$ARGUMENTS` that names an existing file. Otherwise, use
+   the conversation text the user identifies. If no input resolves, ask which
+   text to rewrite. Never guess the input.
 3. Apply the file's rules. **Rewrite, never delete**: cover everything the
    original covers. Five paragraphs in, five paragraphs out.
 4. Return the rewrite. For a file, show the diff and ask before writing.

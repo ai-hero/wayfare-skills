@@ -45,24 +45,23 @@ The test phase (Step 2) absorbed the former `test-changes` skill. Run
 
 ## `recalibrate`
 
-`wayfare:wayfare-push-pr recalibrate` tunes the config that drives this skill,
-and stops. It does not go on to run the skill. You want to see which field was
-wrong, not spend a whole run finding out.
+`wayfare:wayfare-push-pr recalibrate` tunes this skill's config. It stops after
+tuning and does not run the main procedure.
 
-Dispatch on it before parsing any other argument, in whichever step does that
-parsing. When the first token of `$ARGUMENTS` is exactly `recalibrate`, print
+Check for `recalibrate` before you parse other arguments. If the first token of
+`$ARGUMENTS` is exactly `recalibrate`, print
 `wayfare-push-pr: running recalibrate`, follow the four phases in
-[docs/RECALIBRATE.md](../../docs/RECALIBRATE.md) (report, ask, write, commit)
-using the table below as the report, and stop.
+[docs/RECALIBRATE.md](../../docs/RECALIBRATE.md): report, ask, write, commit.
+Use the table below as the report. Stop after these phases.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 "$WAYFARE_ROOT/scripts/hero-fields.sh" wayfare-push-pr
 ```
 
-Ask only about rows whose CURRENT is parenthesised: `(unset)`, `(no-section)`,
-`(refused)`, `(absent)`, `(no-file)`. Also ask about any row the user says is
-wrong. A row that already holds the right value is not a question.
+Ask only about rows whose CURRENT value is `(unset)`, `(no-section)`,
+`(refused)`, `(absent)`, or `(no-file)`. Also ask about rows the user identifies
+as wrong. Do not ask about a row that already has the correct value.
 
 ## Instructions
 
@@ -80,8 +79,8 @@ hero_at_fleet_root && echo "FLEET_ROOT"
 hero_check_staleness
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
-**At the fleet root** in `docs/FLEET-MD.md`.
+If the command prints `FLEET_ROOT`, stop this repo procedure. Follow **At the
+fleet root** in `docs/FLEET-MD.md`.
 
 > Each bash block below runs in a fresh shell, so re-source `hero-lib.sh` at the
 > top of any block that calls a `hero_*` function.
@@ -633,7 +632,7 @@ cleanup step knows whether to call `browser_close`.
 For each route in order, run the same recipe via Playwright MCP:
 
 1. `mcp__playwright__browser_navigate` to `$DEV_URL$ROUTE`. Set `expectedStatus`
-   to 200-399 if the tool supports it; otherwise check status from a follow-up
+   to 200-399 if the tool supports it. Otherwise check status from a follow-up
    `browser_network_requests` call.
 
 2. `mcp__playwright__browser_wait_for` until the page is interactive (look for a
@@ -875,9 +874,9 @@ Additional checks beyond simplify:
 **Code Quality**
 
 Debug code and TODOs without an issue are a script's job, not a read. In
-`commit` mode it reads the uncommitted change against `HEAD`; otherwise, the
-whole branch against its merge base with the default branch. Both read the
-working tree and untracked files, since this runs before the commit:
+`commit` mode it reads the uncommitted change against `HEAD`. Otherwise, it
+reads the whole branch against its merge base with the default branch. Both read
+the working tree and untracked files, since this runs before the commit:
 
 ```bash
 # shellcheck source=/dev/null
@@ -1006,7 +1005,7 @@ Proceed to Step 4.
 | -- | -- |
 | (none, default) | Push + **Draft** PR |
 | `test` | Already stopped after Step 2 (test-only) |
-| `commit` | Stop after Step 3: the commit is the deliverable. Report the SHA and stop; do not reach Workflow A or B. |
+| `commit` | Stop after Step 3: the commit is the deliverable. Report the SHA and stop. Do not reach Workflow A or B. |
 | `ready` | Push + non-draft PR |
 | Other branch | Push + Merge to the `TARGET_BRANCH` Step 1's target check printed. Without that line, STOP: the check did not pass |
 

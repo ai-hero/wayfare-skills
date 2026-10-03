@@ -1,14 +1,15 @@
 ---
 name: wayfare-respond-pr
-description: Address actionable PR review comments, verify the fixes, and resolve the corresponding conversations. Use when a reviewer or review bot has left feedback on your pull request.
+description: "Address actionable PR review comments. Check the fixes and resolve the corresponding conversations. Use when a reviewer or review bot leaves feedback on your pull request."
 argument-hint: "[pr-number | recalibrate]"
 compatibility: "Requires the complete Wayfare plugin, git, GitHub CLI, network access, and write access to the pull request branch."
 ---
 
 # Respond to pull-request feedback
 
-Read unresolved review feedback, classify it, make only justified fixes, verify
-the result, and resolve conversations whose concerns are actually addressed.
+Read unresolved review feedback. Classify it before making changes. Make only
+justified fixes. Check the result. Resolve a conversation only when you
+addressed its concern.
 
 ## Load the workflow
 
@@ -28,7 +29,7 @@ workflow names a client-specific file, shell, or skill facility.
 - Do not implement ambiguous feedback as though it were a requirement.
 - Do not resolve a thread until its concern is addressed or explicitly declined
   with rationale.
-- Preserve unrelated changes and never force-push without explicit authority.
+- Preserve unrelated changes. Never force-push without explicit authority.
 - Verification evidence accompanies every code-changing response cycle.
 
 Return addressed, declined, unresolved, and newly discovered findings plus the

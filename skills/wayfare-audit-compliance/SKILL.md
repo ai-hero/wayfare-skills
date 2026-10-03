@@ -1,16 +1,17 @@
 ---
 name: wayfare-audit-compliance
 # prettier-ignore
-description: "Run the compliance register audit on its own (this repo against the baseline, or the whole fleet at merged state), report register defects, regenerate CONSISTENCY.md, and draft backports to the template. Use to check conformance without a full roadmap sync."
+description: "Audit this repo against the compliance baseline, or audit the fleet at merged state. Report register defects, regenerate CONSISTENCY.md, and draft template backports. Use to check compliance without a full roadmap sync."
 argument-hint: ""
 compatibility: "Requires the complete Wayfare plugin, git, and Python 3; fleet mode also requires sibling checkouts and FLEET.md."
 ---
 
 # Audit the repo, or the fleet, against the compliance register
 
-The compliance stage of `wayfare:wayfare-sync-plan`, runnable on its own, plus
-the half `sync` never does: the backports. `scripts/audit.py` computes (check x
-repo) results from the register described in `assets/compliance/README.md`.
+Run the compliance stage of `wayfare:wayfare-sync-plan` independently. Also
+draft backports, which `sync` does not draft. `scripts/audit.py` computes
+results for each check and repo from the register in
+`assets/compliance/README.md`.
 
 ## Instructions
 
@@ -20,8 +21,9 @@ repo) results from the register described in `assets/compliance/README.md`.
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-`FLEET_ROOT` selects the family audit below. Otherwise this is a repo audit;
-read `../../references/loading.md` and work its checklist first.
+If the command prints `FLEET_ROOT`, select the family audit below. Otherwise,
+select the repo audit. Read `../../references/loading.md` before the repo audit.
+Complete its checklist first.
 
 ### The audit
 

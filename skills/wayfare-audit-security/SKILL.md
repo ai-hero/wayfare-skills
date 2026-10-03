@@ -1,7 +1,7 @@
 ---
 name: wayfare-audit-security
 # prettier-ignore
-description: "Run by wayfare-sync-plan. Audits the codebase read-only for hardening: dependency CVEs, container CVEs (Scout and Trivy), and code-level robustness. Emits execution-ready plans as .plans security items and never edits source."
+description: "Run by wayfare-sync-plan. Audit dependency CVEs, container CVEs with Scout and Trivy, and code hardening. Write executable security plans under .plans. Never edit source."
 argument-hint: "[deps|docker|code|all]"
 compatibility: "Requires the complete Wayfare plugin; some audit modes require GitHub CLI, Docker, Scout, Trivy, and network access."
 user-invocable: false
@@ -9,28 +9,25 @@ user-invocable: false
 
 # Harden: audit read-only, emit execution-ready hardening plans
 
-Deeply audit the codebase for security and robustness hardening opportunities,
-then write plans precise enough that a downstream executor (a cheaper model, a
-fresh session, or `wayfare:wayfare-build-task`) can apply, test, and verify them
-with **zero context from this session**.
+Audit the codebase for security and hardening needs. Write plans that a
+downstream executor can apply and test with **no context from this session**.
+The executor can be a cheaper model, a fresh session, or
+`wayfare:wayfare-build-task`.
 
-**This is a stage of `wayfare:wayfare-sync-plan`, not a skill a person runs.**
-Wayfare invokes it with the line `launched by wayfare` after the architecture
-map is current and before the roadmap is judged; the items it writes are
-ready-marked in wayfare's planning postflight and grouped into a security goal
-there. It has no verbs of its own beyond the audit scope, no config to tune
-(wayfare's `recalibrate` carries the fields it reads), and no fleet fan-out
-(wayfare already ran in one repo by the time this starts). Every path into it is
-a Skill-tool chain from a skill that already ran the fleet-root test, which is
-why Step 0 has none.
+**Run this stage only through `wayfare:wayfare-sync-plan`.** Wayfare invokes it
+with `launched by wayfare` after updating the architecture map and before
+judging the roadmap. Wayfare's planning postflight marks the resulting items
+ready and groups them into a security goal. This stage accepts only the audit
+scope. Use wayfare's `recalibrate` for the fields this stage reads. The calling
+skill already selected one repo and checked for a fleet root. Thus, Step 0 does
+not repeat that check.
 
-Inspired by [shadcn/improve](https://github.com/shadcn/improve): the expensive,
-high-ceiling model does the part where intelligence compounds (understanding,
-judging, specifying); cheaper models do the execution. **The plan is the
-product.** This skill absorbed the former `scan-vulns` skill. Its Dependabot and
-Docker CVE-scanning mechanics live in Parts A and B, but the *apply-and-commit*
-half now lands in the plan's execution recipe instead of this session's working
-tree.
+Use the approach from [shadcn/improve](https://github.com/shadcn/improve): the
+stronger model investigates, judges, and specifies the fix. Cheaper models
+execute the plan. **The plan is the product.** This skill absorbed the former
+`scan-vulns` skill. Parts A and B retain its Dependabot and Docker CVE scans.
+Put apply and commit commands in the plan's execution recipe. Do not execute
+them in this session's working tree.
 
 ## The Hard Rule
 
@@ -51,10 +48,10 @@ item's execution recipe.
 ## Prerequisites
 
 - `gh` CLI installed and authenticated (for Dependabot alerts)
-- `docker` CLI installed (for Docker Scout; the `docker` part degrades to
-  skipped without it)
-- `trivy` CLI installed (the second container scanner; see Part B. Degrades to
-  Scout-only with a note if unavailable)
+- `docker` CLI installed for Docker Scout. If unavailable, report the `docker`
+  part as skipped.
+- `trivy` CLI installed as the second container scanner (Part B). If
+  unavailable, use Scout only and report the missing scanner.
 
 ## Instructions
 
@@ -128,8 +125,8 @@ A bot PR that can merge as it stands is not harden's to re-implement: wayfare's
 `wayfare-advance-item ID` takes that one PR through review, tests,
 `@auto-approve`, merge and the deployment check, without a copy of its diff.
 Harden's batch (A4) exists for the alerts no PR covers, and for bumps that must
-be tested together; a batch that supersedes a bot's PR names it, so wayfare
-leaves that PR's item `accepted` rather than carrying both.
+be tested together. If a batch supersedes a bot's PR, name that PR. Wayfare
+leaves its item `accepted` instead of carrying both fixes.
 
 ### A3: Judge Each Alert
 
@@ -148,9 +145,8 @@ expensive-model work):
 
 The plan's execution recipe (Step 3) must have the executor batch **every**
 dependency bump onto one fresh branch, tested together in one e2e run. Two
-individually-passing bumps can still break once combined, and that interaction
-bug only surfaces when the fixes are tested together. Bake this into the recipe
-rather than emitting one plan item per package:
+updates can pass separately and fail together. Specify a combined test in the
+recipe. Do not emit one plan item per package:
 
 1. Branch fresh off the default branch (never a long-lived security-fix branch
    reused across runs, because a fresh branch off today's default never has a
@@ -162,7 +158,8 @@ rather than emitting one plan item per package:
 4. Run the test suite once against the combined change. A bump that breaks tests
    gets reverted individually and noted as skipped. It does not block the rest
    of the batch.
-5. One commit for the whole batch; `wayfare:wayfare-push-pr` opens the PR.
+5. Make one commit for the whole batch. Use `wayfare:wayfare-push-pr` to open
+   the PR.
 6. Once `wayfare:wayfare-ship-pr` merges it, close every Dependabot PR listed in
    A2 directly with
    `gh pr close N --comment "Superseded by #MERGED_PR_NUMBER, merged in MERGED_SHA."`
@@ -170,10 +167,10 @@ rather than emitting one plan item per package:
    and it is not "nightly" or slow. GitHub only recognizes a fix as resolving a
    Dependabot PR when *that PR itself* is the one merged. A batched fix lands
    via a different commit by design (step 2), and Dependabot does not reliably
-   detect that as equivalent; confirmed both by two real runs of this workflow
-   where the originals stayed open indefinitely after merge, and by GitHub's own
-   community reports (dependabot-core#3880). Proactively closing with a
-   reference is the only reliable path.
+   detect that as equivalent. Two runs of this workflow left the original PRs
+   open indefinitely after merge. GitHub community reports describe the same
+   behavior (dependabot-core#3880). Proactively closing with a reference is the
+   only reliable path.
 
 ______________________________________________________________________
 
@@ -324,19 +321,18 @@ ______________________________________________________________________
 
 ## Step 2: Prioritize
 
-Rank everything found by `severity × blast radius ÷ effort`. Cluster related
-findings into plan-sized units (one dependency-update batch per ecosystem; one
-code-hardening item per subsystem or mechanism, not per line). Cap the emitted
-plans at the top **10** items per run; note what was cut so nothing is silently
-dropped.
+Rank findings by `severity × blast radius ÷ effort`. Group dependency updates
+into one batch per ecosystem. Group code findings into one hardening item per
+subsystem or mechanism. Do not create one item per line. Emit at most the top
+**10** items per run. Report findings excluded by that limit.
 
 ## Step 3: Emit Plan Items
 
-Write each unit as a work-item in `.plans/` using wayfare-grill-idea's format
-(id numbering continues from the highest existing id; filename `NNN-slug.md`;
-`depends_on` when one plan must land first, `discovered_from` for provenance
-only), with two extra sections the executor needs. Emit every plan with
-`status: planning`.
+Write each unit as a work item in `.plans/` using wayfare-grill-idea's format.
+Continue id numbering from the highest existing id. Use filename `NNN-slug.md`.
+Use `depends_on` when another plan must land first. Use `discovered_from` only
+for provenance. Add the two sections below for the executor. Emit every plan
+with `status: planning`.
 
 ```markdown
 ---
@@ -435,7 +431,7 @@ items.)
 
 - Never edit source, dependency files, Dockerfiles, or workflows. The plan is
   the product.
-- Flag major version updates as breaking-change risks in the plan; default the
+- Flag major version updates as breaking-change risks in the plan. Default the
   recipe to the non-breaking path.
 - Never assume Dependabot auto-closes its own PRs once a batched fix lands. It
   does not reliably fire for a fix that lands via a different commit than its
@@ -444,7 +440,7 @@ items.)
   PR.
 - Always specify rescanning with **both** Scout and Trivy in a Docker plan
   item's verification. Neither scanner alone is sufficient (see B1).
-- `.plans/` is private and git-ignored; never commit or push it.
+- `.plans/` is private and git-ignored. Never commit or push it.
 
 ### Before a plan says "no fix available"
 

@@ -1,7 +1,7 @@
 ---
 name: wayfare-audit-plugin
 # prettier-ignore
-description: Audit the wayfare plugin. Checks skill quality, consistency, DRY violations, HERO.md field coverage, and readability. Use before releasing changes to the plugin.
+description: "Audit skill quality, consistency, duplication, HERO.md field coverage, and readability in the wayfare plugin. Use before releasing plugin changes."
 argument-hint: [--fix]
 compatibility: "Requires the complete Wayfare plugin checkout and its validation dependencies."
 disable-model-invocation: true
@@ -70,7 +70,7 @@ Flag skills that are too large or too small:
 
 - **Over 500 lines**: Move reference material to `references/`, each file linked
   from the body with the condition under which to read it. A long executable
-  procedure goes in a skill-local `WORKFLOW.md` linked from `SKILL.md`; the
+  procedure goes in a skill-local `WORKFLOW.md` linked from `SKILL.md`. The
   budget has no exceptions
 - **Over 5000 words**: Consuming too much context window
 - **Under 20 lines** (body only): Probably too thin to be useful
@@ -122,11 +122,11 @@ reference file.
 
 #### 2d: HERO.md Field Coverage
 
-`scripts/hero-fields.sh --all` is the declared map of which skill reads which
-field, and what it decides there (its CURRENT column is always `-`; the map
-reads no repo). It is a claim, not evidence: cross-reference it against the
-HERO.md template in `wayfare-init-repo`'s reference and against what the skills
-actually read, and report both directions of drift.
+`scripts/hero-fields.sh --all` declares which fields each skill reads and which
+decisions use them. Its CURRENT column is always `-`. The map reads no repo.
+Compare the declarations with the HERO.md template in `wayfare-init-repo`'s
+reference. Also compare them with the fields the skills actually read. Report
+omitted fields and declared fields that no skill reads.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
@@ -185,12 +185,17 @@ DESCRIPTION QUALITY
 - Does a skill-local `WORKFLOW.md` have a conditional link from `SKILL.md`?
 - Do portable operations use capability language instead of Read, Bash, Skill,
   or subagent call syntax from one client?
+- Do agent procedures follow
+  [the simplified English guide](../../docs/SIMPLIFIED-ENGLISH.md)? Check
+  actors, condition scope, instruction order, and requirement strength. Treat
+  sentence length as a review signal. Never weaken a gate to satisfy a word
+  limit.
 - Are confirmation prompts limited to consequential actions, material choices,
   and missing authority under `references/authorization.md`?
 
-Frontmatter key order, step numbering, description length and the trigger phrase
-are `scripts/check_docs.py`'s, run on every commit and in CI; this audit reports
-what they cannot judge.
+`scripts/check_docs.py` checks frontmatter order, step numbers, description
+length, and trigger phrases on every commit and in CI. This audit checks
+requirements that those mechanical checks cannot judge.
 
 ### Step 3: Report Summary
 
@@ -221,8 +226,8 @@ Next step: `wayfare:wayfare-push-pr` can commit and publish confirmed changes.
 
 If `--fix` is passed, automatically fix:
 
-- Frontmatter field ordering (name, description, argument-hint, then the rest;
-  `check_docs.py` enforces the first three)
+- Frontmatter field ordering (name, description, argument-hint, then the rest).
+  `check_docs.py` enforces the first three
 - Step renumbering gaps
 
 Whitespace and line wrapping are the pre-commit hooks' (trailing-whitespace,

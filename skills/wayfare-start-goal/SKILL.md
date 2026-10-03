@@ -1,25 +1,25 @@
 ---
 name: wayfare-start-goal
 # prettier-ignore
-description: Authorize the next goal at a gate the person types, then run its first turn. The grant is in-session and never stored. Use when the roadmap is planned and you are ready to start building the next goal.
+description: "Ask the user to authorize the next goal, then run its first turn. Keep the grant in the session. Never store it. Use when the roadmap is planned and the user is ready to build the next goal."
 argument-hint: ""
 compatibility: "Requires the complete Wayfare plugin, git, an interactive authorization gate, and a planned .plans store."
 ---
 
 # Authorize the next goal and run it
 
-Source is the product as it is; Target is the product as it should be, a
-claude.ai/design project configured in HERO.md. With no design project the route
-reconciles Source against itself: `DESIGN.md`, its own gaps, its own hardening.
-The README's command table says which skill does what; **`docs/PLAN.md` is the
-store's specification, and nothing here restates it.**
+Source is the current product. Target is the intended product, recorded in a
+claude.ai/design project configured in HERO.md. Without a design project,
+compare Source with its own `DESIGN.md`, gaps, and hardening needs. The README
+command table describes each skill. **Use `docs/PLAN.md` as the specification
+for the store and item format.**
 
 ## Instructions
 
 ### Step 0: load
 
-**Read `../../references/loading.md` and work its checklist**; nothing below
-runs until it passes.
+**Read `../../references/loading.md`.** Complete its checklist. Run the steps
+below only after the checklist passes.
 
 The fleet check is first and is a hard stop:
 
@@ -27,9 +27,9 @@ The fleet check is first and is a hard stop:
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
-**At the fleet root** in `../../docs/FLEET-MD.md`, which fans out into the repos
-you pick. A run against the folder itself plans nothing.
+If the command prints `FLEET_ROOT`, stop this repo procedure. Follow **At the
+fleet root** in `../../docs/FLEET-MD.md` for the repos the user selects. Do not
+plan against the fleet folder itself.
 
 Progress:
 
@@ -40,17 +40,16 @@ Progress:
 - [ ] 4. Snapshot: pull the design snapshot, resolve both heads
 - [ ] 5. Local stages: this repo's own `wayfare: sync` skills, at the trust gate
 
-An unset sentinel (`SOURCE_HEAD`, `UX_FLOW`, `DS_REPO`, `RECON`) **stops the
-run**. A store that is not at schema 1 stops it too: `hero_ready_items` refuses
-one and names the migrator.
+**Stop if any sentinel is unset:** `SOURCE_HEAD`, `UX_FLOW`, `DS_REPO`, or
+`RECON`. Stop if the store does not use schema 1. `hero_ready_items` rejects
+that store and names the migrator.
 
 ### Authorize the next goal and run it
 
-**Read `../../references/goals.md`.** The gate here is the only place a person
-grants a goal's `## Permissions`, and the grant is **in-session, never stored**.
-A line in the item's log reading `authorized by NAME` is a stored authorization
-by another name, and a later turn reading it as one is exactly the failure the
-in-session rule exists to prevent.
+**Read `../../references/goals.md`.** Only this gate accepts a person's grant of
+a goal's `## Permissions`. Keep the grant **in the session, never in storage**.
+Do not write `authorized by NAME` in the item's log. A later turn could
+incorrectly treat that stored line as permission.
 
 Progress:
 
@@ -60,10 +59,10 @@ Progress:
   the DoD
 - [ ] 4. Read the goal aloud: its DoD, its members, the adoptions, its `source`
   paths
-- [ ] 5. Read `## Permissions` aloud and take the grant, in-session; the typed
+- [ ] 5. Read `## Permissions` aloud and take the grant, in-session. The typed
   id writes the adoptions
 - [ ] 6. Cut the branch, run turn 1 (`../../references/goals.md`, *One turn*)
-- [ ] 7. Append the turn to `## Log`; stop on any stop condition
+- [ ] 7. Append the turn to `## Log`. Stop on any stop condition
 
 ## Next steps
 

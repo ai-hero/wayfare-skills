@@ -138,24 +138,23 @@ from `RESUME_STEP` onward when resuming).
 
 ## `recalibrate`
 
-`wayfare:wayfare-build-task recalibrate` tunes the config that drives this
-skill, and stops. It does not go on to run the skill. You want to see which
-field was wrong, not spend a whole run finding out.
+`wayfare:wayfare-build-task recalibrate` tunes this skill's config. It stops
+after tuning and does not run the main procedure.
 
-Dispatch on it before parsing any other argument, in whichever step does that
-parsing. When the first token of `$ARGUMENTS` is exactly `recalibrate`, print
+Check for `recalibrate` before you parse other arguments. If the first token of
+`$ARGUMENTS` is exactly `recalibrate`, print
 `wayfare-build-task: running recalibrate`, follow the four phases in
-[docs/RECALIBRATE.md](../../docs/RECALIBRATE.md) (report, ask, write, commit)
-using the table below as the report, and stop.
+[docs/RECALIBRATE.md](../../docs/RECALIBRATE.md): report, ask, write, commit.
+Use the table below as the report. Stop after these phases.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 "$WAYFARE_ROOT/scripts/hero-fields.sh" wayfare-build-task
 ```
 
-Ask only about rows whose CURRENT is parenthesised: `(unset)`, `(no-section)`,
-`(refused)`, `(absent)`, `(no-file)`. Also ask about any row the user says is
-wrong. A row that already holds the right value is not a question.
+Ask only about rows whose CURRENT value is `(unset)`, `(no-section)`,
+`(refused)`, `(absent)`, or `(no-file)`. Also ask about rows the user identifies
+as wrong. Do not ask about a row that already has the correct value.
 
 ## Instructions
 
@@ -188,8 +187,8 @@ echo "inbox: unread=$(hero_inbox_count "$STORE") claimed=$(hero_inbox_count "$ST
 echo "deploy checks owed: $(hero_deploy_pending "$STORE" 2>/dev/null | wc -l | tr -d ' ')"
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
-**At the fleet root** in `docs/FLEET-MD.md`.
+If the command prints `FLEET_ROOT`, stop this repo procedure. Follow **At the
+fleet root** in `docs/FLEET-MD.md`.
 
 If `HERO.md` is missing, STOP and tell the user to run
 `wayfare:wayfare-init-repo` first. wayfare-build-task relies on every downstream
@@ -499,7 +498,7 @@ confirm it is still outstanding. Resolve first, grill only if nothing resolves.
 #### 1a: Parse `$ARGUMENTS`
 
 If the first token matches an issue-ID pattern (`PROJ-123`: letters, dash,
-digits), treat it as an issue ID; otherwise treat the entire argument as a
+digits), treat it as an issue ID. Otherwise treat the entire argument as a
 plain-text description. Any remaining text after the issue ID is additional
 context. If `$ARGUMENTS` is empty, fall through to 1b and offer the ready items.
 Step 0.5 routes here only when it found no current goal on the current branch to
@@ -543,12 +542,12 @@ Rows are first-match, top to bottom.
 | `$ARGUMENTS` matches a **blocked** item | STOP: print the item's unmet `depends_on` ids and their titles. Do not implement past a dependency. A row annotated `[on: TEXT, since DATE]` is blocked on something outside the store (`blocked_on:`, docs/PLAN.md): print the text and date, say a person clears it through `wayfare-sync-plan`'s blocked lane, and never build around it. A `[committed dep: ID]` annotation on the row names a dependency committed on a goal branch and not yet merged: building on it produces a change against a tree that lacks what it depends on, so name the goal that holds that id and wait for it to ship. |
 | `$ARGUMENTS` matches a **suspended** item | STOP: it waits on a sibling repo's reply (`awaiting:`). Say which message and since when; `wayfare-sync-plan`'s inbox stage is what un-suspends it. |
 | `$ARGUMENTS` matches a **plan** (planning) item | STOP: the item awaits the user's ready-mark. Show its title and `success` criteria and ask whether to mark it ready; on yes, set `status: ready` + `ready_marked:` date and it is the plan → 1c. For a task, first confirm `## Approach`, `## Subtasks`, and `## Definition of Done` are non-empty. A planning run that died before writing them leaves a hollow plan; route that to wayfare-grill-idea instead of flipping it. Do NOT re-grill a filled item; that writes a duplicate. |
-| `$ARGUMENTS` matches a **new** item (`status: new`, or no status line) | STOP: the item was created and nobody has triaged it. Say so and ask whether to move it to `accepted`; never build or grill an untriaged item. The `new` default exists so a jotted-down item cannot reach here by accident. |
-| `$ARGUMENTS` matches an **anti-feature** (`type: anti-feature`, the listing's `anti` row) | STOP: it records a decision not to build, so there is nothing to build. Print its title and `## Context` as the citation. Reversing the decision is a person's, through `wayfare:wayfare-grill-idea`, which writes the reversal on the anti-feature; never build past it. |
+| `$ARGUMENTS` matches a **new** item (`status: new`, or no status line) | STOP: the item was created and nobody has triaged it. Say so and ask whether to move it to `accepted`. Never build or grill an untriaged item. The `new` default exists so a jotted-down item cannot reach here by accident. |
+| `$ARGUMENTS` matches an **anti-feature** (`type: anti-feature`, the listing's `anti` row) | STOP: it records a decision not to build, so there is nothing to build. Print its title and `## Context` as the citation. Reversing the decision is a person's, through `wayfare:wayfare-grill-idea`, which writes the reversal on the anti-feature. Never build past it. |
 | `$ARGUMENTS` matches a **goal** row (`type: goal`) | STOP: a goal is a set of tasks, not a unit of work. Suggest `wayfare:wayfare-start-goal` (to authorize and run it) or `wayfare:wayfare-advance-item GOAL_ID` (one turn of it). |
 | `$ARGUMENTS` matches a **feedback** row (`type: signal`) | STOP: a signal is delivered, never built. Suggest `wayfare:wayfare-sync-plan`, whose feedback finding delivers it. |
 | `$ARGUMENTS` matches an **invalid** row | STOP: a store defect (bad id, unrecognized status or type). Print `hero_ready_items`' stderr line for it and route to `wayfare-sync-plan`. Never grill it as new work: an invalid item that is really a finished one would be re-planned from scratch. |
-| `$ARGUMENTS` matches a **backlog** item (a task at `status: accepted`) | STOP: the task is on the roadmap but unplanned. Suggest `wayfare:wayfare-grill-idea TASK_ID` (its Feature mode plans it in place); never build a task that skipped planning. |
+| `$ARGUMENTS` matches a **backlog** item (a task at `status: accepted`) | STOP: the task is on the roadmap but unplanned. Suggest `wayfare:wayfare-grill-idea TASK_ID` (its Feature mode plans it in place). Never build a task that skipped planning. |
 | `$ARGUMENTS` matches a **review** task (`status: review`) | Check its PR first (URL recorded in the task's `## Log`; else `gh pr list --search`). Open → `gh pr checkout` its branch and let Step 0.5's resume detection route from there. Merged → the close-out was missed: run Step 9a on it now. No PR found → treat as active/in-flight and confirm with the user. Never assume the PR is open. A merged-but-not-closed-out task must not loop here. |
 | `$ARGUMENTS` matches a **done** item | STOP: report that it already landed, with the item's `success` criteria as evidence. Offer the next READY item. Do NOT re-grill it; that writes a duplicate. |
 | `$ARGUMENTS` matches an **active** item | STOP and confirm: another session may hold it. Step 2 marks items `active` before the first edit precisely so two runs cannot claim one item. |
@@ -657,7 +656,7 @@ confirming shared understanding, and wayfare-build-task does not bypass that
 gate.
 
 When wayfare-one-shot returns, this run is finished: print what it reported and
-stop; never fall through to 1e.
+stop. Never fall through to 1e.
 
 When wayfare-grill-idea returns, re-run the readiness query and pick the item to
 implement.
@@ -723,8 +722,8 @@ others a goal has in flight. Follow these rules:
 - **Before building toward a DoD line, answer how you would test it**, per
   `../../references/testing.md`: which line it proves, what evidence proves it,
   what failure looks like, and what already covers it. Where the evidence is a
-  test, write it first and see it fail on its assertion before writing the code;
-  never stash or check out to recreate the old state. The plan deliberately
+  test, write it first and see it fail on its assertion before writing the code.
+  Never stash or check out to recreate the old state. The plan deliberately
   lists no tests. Designing them is this step's job, and `wayfare-push-pr`'s
   test phase only runs what exists, so a test not written here is not written by
   anything that runs before review.
@@ -1034,7 +1033,7 @@ Render DAG with `push` active. Run `wayfare:wayfare-push-pr` with no arguments:
 not the permissions line, not the branch name, nothing. push-pr reads any word
 it does not recognise as a branch to merge into with no PR. It runs its test
 phase first: verification plus smoke tests, including UI smoke via Playwright
-MCP when a UI project is detected; then commits any outstanding work with a
+MCP when a UI project is detected. Then it commits any outstanding work with a
 smart conventional commit, branches off the default branch first if needed,
 pushes, and opens a draft PR. Trust its grouping and commit logic, and do not
 skip pre-commit hooks. Capture the PR number from its output for downstream
@@ -1244,7 +1243,7 @@ Concretely, in commit-only mode:
 - Step 3 (simplify) renders `(–)` with `deferred to the goal`.
 - Step 4 becomes **`wayfare:wayfare-push-pr commit`**, which runs the tests
   covering this change and the smart-commit phase and stops before any push. The
-  branch is already checked out by the goal turn; do not create one, and do not
+  branch is already checked out by the goal turn. Do not create one, and do not
   switch.
 - Steps 5 to 9 render `(–)` with `deferred to the goal` and do not run.
 - **It carries no permissions line, by design, and reaches no gate.** A missing

@@ -1,19 +1,18 @@
 ---
 name: wayfare-one-shot
 # prettier-ignore
-description: "Take one small, clear change from a one-line description to a merged PR: draft one task, show it, and on the person's yes mark it ready and build it. Routes to wayfare-grill-idea when the description is several items, an anti-feature, or a one-way door. Use for a fix you already understand."
+description: "Draft one small task from a clear description. Show it and ask before marking it ready and building it through a merged PR. Route multiple items, anti-features, and irreversible changes to wayfare-grill-idea. Use for a fix you already understand."
 argument-hint: "DESCRIPTION"
 compatibility: "Requires the complete Wayfare plugin, git, GitHub CLI, network access, and an interactive readiness gate."
 ---
 
 # One thing, described once, shipped
 
-A feature needs a grill; "rename this flag and update the docs" does not.
-`wayfare-grill-idea` asks one question at a time and stops for the ready-mark,
-which is right for the first and slow for the second. This skill is the front
-door for the second: it drafts the one task itself, asks one question, and hands
-the item to `wayfare:wayfare-build-task`. **`docs/PLAN.md` is the store's
-specification; nothing here restates the item format.**
+Use this skill for one small change with a clear approach, such as "rename this
+flag and update the docs". Use `wayfare-grill-idea` for a feature that needs a
+decision interview. This skill drafts one task. It asks one readiness question
+before passing the item to `wayfare:wayfare-build-task`. **Use `docs/PLAN.md` as
+the specification for the store and item format.**
 
 ## Arguments
 
@@ -25,8 +24,8 @@ specification; nothing here restates the item format.**
 
 ### Step 0: load
 
-**Read `../../references/loading.md` and work its checklist**; nothing below
-runs until it passes.
+**Read `../../references/loading.md`.** Complete its checklist. Run the steps
+below only after the checklist passes.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
@@ -40,10 +39,9 @@ folder itself drafts nothing.
 
 ### Step 1: read what the description names
 
-Read every file, path and symbol the description names, and search for the ones
-it implies. The draft is written from the code as it is, never from the
-description alone: a rename that misses three call sites is a red build in the
-next step.
+Read every file, path, and symbol named in the description. Search for implied
+references. Draft from the current code and the description. For example, a
+rename must include all call sites to avoid a build failure.
 
 Before drafting, read `hero_ready_items`. A description that names an existing
 item (id, slug or title) is not a new task: stop and suggest
@@ -95,7 +93,7 @@ because a collision surfaces only as a `duplicate id` line on stderr.
 - A `## Log` line:
   `note: drafted by wayfare-one-shot from a one-line description`.
 
-Print the item whole, then ask the one question:
+Print the whole item. Then ask this question:
 
 ```
 Build this? [y/N]

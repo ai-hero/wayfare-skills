@@ -1,19 +1,17 @@
 ---
 name: wayfare-sync-fleet
 # prettier-ignore
-description: Create and converge FLEET.md, the local unversioned map of sibling checkouts (group, port). Scans the folder, proposes rows, and writes only what the user confirms. Use from the folder that holds the repos, when adding a checkout or claiming a port. To report drift without writing, use wayfare-review-fleet.
+description: "Create or update FLEET.md, the local map of sibling checkouts, groups, and ports. Propose rows and write only what the user confirms. Use from the folder containing the repos when adding a checkout or claiming a port. Use wayfare-review-fleet to report drift without writing."
 argument-hint: ""
 compatibility: "Requires the complete Wayfare plugin and a writable fleet folder containing sibling checkouts."
 ---
 
 # Fleet: the map of the checkouts beside you
 
-A fleet folder holds sibling repos. `FLEET.md` at its top says which of them are
-family, which are just parked there, and which host port each dev stack claims,
-so a skill run from the folder can fan out to the right repos, and two stacks
-never fight over one port. The standard is
-[docs/FLEET-MD.md](../../docs/FLEET-MD.md); read it once before the first
-`sync`.
+A fleet folder holds sibling repos. `FLEET.md` records fleet membership and the
+host port assigned to each dev stack. The map lets a fleet run select the
+correct repos and avoid port collisions. Read
+[docs/FLEET-MD.md](../../docs/FLEET-MD.md) before the first `sync`.
 
 ## Instructions
 
@@ -51,26 +49,27 @@ registry into someone's home directory.
 
 ## Converge FLEET.md with the folder
 
-Both modes share one shape: **scan, propose, write only what the user
-confirms.** `sync` writes one file, `FLEET.md`, and sends the `## Fleet` section
-to each fleet repo as a message (step *Make the repos fleet-aware*, both modes).
-Any other repo change, such as a port or a missing `HERO.md`, goes to the skill
-that owns it.
+Both modes use this sequence: **scan, propose, write only what the user
+confirms.** `sync` writes only `FLEET.md`. Send the `## Fleet` section as a
+message to each fleet repo after confirmation, as specified below. Route other
+repo changes, including ports and missing `HERO.md`, to the skill that owns
+them.
 
 **Bootstrap: no FLEET.md yet.**
 
-1. Scan: `"$SCAN" "$CAND" --list`. Every git checkout directly under the folder
-   is a candidate row; plain folders are not.
+1. Scan: `"$SCAN" "$CAND" --list`. Each git checkout directly under the folder
+   is a candidate row. Exclude plain folders.
 2. Ask, in one pass, for the `## Fleet` block: name (default: the folder name),
    `org` (the GitHub owner: read it off the first checkout's `origin` with
    `git -C PATH remote get-url origin`, offer it), the template repo if there is
-   one, and the port range. Skip what does not apply; only `name` is required.
+   one, and the port range. Skip fields that do not apply. Only `name` is
+   required.
 3. Ask for the groups. Offer `template` / `apps` / `infra` / `none` with the
    meanings from the standard, and let the user rename or add. `none` stays.
 4. Propose the rows as a table of name, group, port, and what, with every group
    defaulted to `none` and the port read from the compose file. Guess nothing
    about membership: a repo is fleet when the user says so. `what` comes from
-   the repo's `README.md` first line or `HERO.md`'s framework field; leave it
+   the repo's `README.md` first line or `HERO.md`'s framework field. Leave it
    blank rather than invent it.
 5. Show the whole file, confirm, write `FLEET_ROOT/FLEET.md`. Then run
    `"$SCAN" "$FLEET_ROOT" --review` and show it. A fresh registry that already
@@ -85,11 +84,11 @@ that owns it.
    | -- | -- |
    | `BAD_ROW` | the row could not be trusted (the detail says why: a bad name, a dashed or non-numeric value, a duplicate, a path outside the fleet). Fix or drop it, and never guess a replacement |
    | `MISSING` | drop the row, or fix `path` if the folder moved. Ask first |
-   | `NOT_GIT` | same as `MISSING`; a folder that stopped being a checkout is not a repo |
+   | `NOT_GIT` | same as `MISSING`. A folder that stopped being a checkout is not a repo |
    | `PORT_MISMATCH` | the row is the assignment, the compose default is the implementation. Ask which is right. If the repo must change, hand it to `wayfare:wayfare-build-task` in that repo. The standard's last anti-pattern names every place the port appears. Never edit the repo from here |
-   | `PORT_UNIMPLEMENTED` | the claim is made, the repo has no compose file yet. Nothing to fix here; it clears when the dev stack lands |
+   | `PORT_UNIMPLEMENTED` | the claim is made, the repo has no compose file yet. Nothing to fix here. It clears when the dev stack lands |
    | `PORT_UNPARSED` | a compose file the scanner cannot read a host port from. Look at it: either it publishes no port (drop the row's port) or it uses a syntax worth adding to `hero_compose_port` |
-   | `PORT_COLLISION` | pick the next free port in `port-range` for the newer row, propose it; same routing as a mismatch for the repo side |
+   | `PORT_COLLISION` | pick the next free port in `port-range` for the newer row, propose it. Route the repo change as for a mismatch |
    | `NO_HERO` | offer `wayfare:wayfare-init-repo` in that repo (a subagent, per the standard's fan-out) |
    | `NO_AGENTS` | same, via `wayfare-init-repo`'s Step 1 |
    | `NOT_FLEET_AWARE` | *Make the repos fleet-aware*, below |
@@ -103,7 +102,7 @@ that owns it.
 
 3. If `org` is set, list what exists there and is not on disk.
    `gh repo list ORG --limit 200 --json name,isArchived --jq '.[] | select(.isArchived|not) | .name'`
-   minus the folder's checkouts. Print it as *not cloned*; add no rows.
+   minus the folder's checkouts. Print it as *not cloned*. Add no rows.
 
 4. Show the proposed rows, confirm, write. Re-run `--review` and show the
    remainder. The repo-side findings that were routed elsewhere stay until those
@@ -154,9 +153,9 @@ agent workflow to read it. Name those separately and offer to `cd` in. Never
 create a store inside someone else's checkout to make the deposit work. That is
 the second kind of write, and it is the one that does not exist.
 
-A repo whose section is present but differs from the asset gets the same
-message, saying so; the asset is authored here, and a per-repo edit to it is
-output to be overwritten.
+If a repo's existing section differs from the asset, send the same message and
+report the difference. Wayfare maintains the source asset. Treat each repo's
+copy as output that re-vendoring can overwrite.
 
 ## Anti-patterns
 

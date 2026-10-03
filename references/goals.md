@@ -305,7 +305,7 @@ between turns:
    `done`, after a merge) and which is in flight, and count the branch's commits
    against `budget` with `git log --oneline "origin/$BASE..$GOAL_BRANCH"`. **Git
    is the one source for that count.** The `commits:` field is a record for a
-   reader, appended as each commit lands; never compute the budget from it,
+   reader, appended as each commit lands. Never compute the budget from it,
    because after step 7 merges the branch that range is empty while `commits:`
    still holds N. The `turn` lines in `## Log` say what the last turn did. Also
    read `hero_deploy_pending`, the probes earlier merges deferred when their

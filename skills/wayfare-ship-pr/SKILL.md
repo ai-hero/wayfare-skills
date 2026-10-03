@@ -1,15 +1,15 @@
 ---
 name: wayfare-ship-pr
-description: Trigger the configured approval workflow, evaluate its verdict, merge an approved PR, and verify post-merge state. Use after review when a pull request is ready to ship.
+description: "Trigger the configured approval workflow and read its verdict. Merge an approved PR and check state after the merge. Use after review when a pull request is ready to ship."
 argument-hint: "[pr-number | recalibrate]"
 compatibility: "Requires the complete Wayfare plugin, git, GitHub CLI, network access, repository approval configuration, and permission to merge."
 ---
 
 # Ship a pull request
 
-Ship only the reviewed, current PR head. The reusable approval workflow has
-fleet-wide consequences, so preserve every branch-protection, stale-approval,
-last-push, and rebase invariant.
+Ship only the reviewed, current PR head. The reusable approval workflow affects
+the whole fleet. Preserve all invariants for branch protection, stale approvals,
+last-push approval, and rebasing.
 
 ## Load the workflow
 
@@ -18,8 +18,8 @@ triggering approval or changing remote state. It defines preflight, rebase
 ordering, approval triggering, verdict interpretation, merge authorization,
 cleanup, and post-merge verification.
 
-Use [the authorization model](../../references/authorization.md); merging is a
-consequential external mutation and retains an explicit gate. Use
+Use [the authorization model](../../references/authorization.md). Merging
+changes external state and retains an explicit authorization gate. Use
 [the client capability map](../../references/client-capabilities.md) to
 translate any client-specific invocation language without changing behavior.
 

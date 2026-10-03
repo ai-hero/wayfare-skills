@@ -18,24 +18,23 @@ resolve the conversations on GitHub.
 
 ## `recalibrate`
 
-`wayfare:wayfare-respond-pr recalibrate` tunes the config that drives this
-skill, and stops. It does not go on to run the skill. You want to see which
-field was wrong, not spend a whole run finding out.
+`wayfare:wayfare-respond-pr recalibrate` tunes this skill's config. It stops
+after tuning and does not run the main procedure.
 
-Dispatch on it before parsing any other argument, in whichever step does that
-parsing. When the first token of `$ARGUMENTS` is exactly `recalibrate`, print
+Check for `recalibrate` before you parse other arguments. If the first token of
+`$ARGUMENTS` is exactly `recalibrate`, print
 `wayfare-respond-pr: running recalibrate`, follow the four phases in
-[docs/RECALIBRATE.md](../../docs/RECALIBRATE.md) (report, ask, write, commit)
-using the table below as the report, and stop.
+[docs/RECALIBRATE.md](../../docs/RECALIBRATE.md): report, ask, write, commit.
+Use the table below as the report. Stop after these phases.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 "$WAYFARE_ROOT/scripts/hero-fields.sh" wayfare-respond-pr
 ```
 
-Ask only about rows whose CURRENT is parenthesised: `(unset)`, `(no-section)`,
-`(refused)`, `(absent)`, `(no-file)`. Also ask about any row the user says is
-wrong. A row that already holds the right value is not a question.
+Ask only about rows whose CURRENT value is `(unset)`, `(no-section)`,
+`(refused)`, `(absent)`, or `(no-file)`. Also ask about rows the user identifies
+as wrong. Do not ask about a row that already has the correct value.
 
 ## Instructions
 
@@ -47,8 +46,8 @@ cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
-**At the fleet root** in `docs/FLEET-MD.md`.
+If the command prints `FLEET_ROOT`, stop this repo procedure. Follow **At the
+fleet root** in `docs/FLEET-MD.md`.
 
 Read `HERO.md` if it exists. This skill uses:
 
@@ -480,10 +479,10 @@ will overwrite the PR description with the literal string
 
 Rules:
 
-- Append new changeset entries; never delete prior ones (commit history is the
+- Append new changeset entries. Never delete prior ones (commit history is the
   source of truth).
 - Update Test Plan checkboxes if respond fixes added new verification steps.
-- Keep the title under 70 chars; use the body for detail.
+- Keep the title under 70 chars. Use the body for detail.
 - If the PR title's scope shifted (e.g., a "feat" PR now also has a critical
   "fix"), update the title.
 
@@ -530,7 +529,7 @@ Next step: (pick exactly one)
 - **Otherwise**:
   `Next step: wayfare:wayfare-ship-pr, which posts @auto-approve, merges, and resets to the default branch (it blocks if any threads remain unresolved)`
   (invoke through the active client's skill mechanism when the current
-  invocation includes that continuation; otherwise report it as the next
+  invocation includes that continuation. Otherwise report it as the next
   action).
 
 **If changes were stashed in Step 2, remind the user:**

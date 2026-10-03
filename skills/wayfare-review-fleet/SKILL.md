@@ -1,18 +1,18 @@
 ---
 name: wayfare-review-fleet
 # prettier-ignore
-description: Report drift between FLEET.md and the checkouts beside it, read-only. Names repos missing from the map, rows with no checkout, and port collisions between dev stacks. Writes nothing. Use from the folder that holds the repos, to check the map before trusting a fan-out.
+description: "Compare FLEET.md with sibling checkouts. Report unmapped repos, missing checkouts, and port collisions. Write nothing. Use from the folder containing the repos to check the map before a fleet run."
 argument-hint: ""
 compatibility: "Requires the complete Wayfare plugin and a fleet folder containing sibling checkouts and FLEET.md."
 ---
 
 # Review the fleet: what the map claims against what is there
 
-`FLEET.md` at the top of a fleet folder says which sibling checkouts are family
-and which host port each dev stack claims. Every fan-out reads it, so a stale
-map sends work to the wrong repos or lets two stacks fight over one port. This
-skill reports the difference and changes nothing; `wayfare-sync-fleet` is what
-writes. The standard is [docs/FLEET-MD.md](../../docs/FLEET-MD.md).
+`FLEET.md` identifies fleet checkouts and the host port assigned to each dev
+stack. Every fleet run reads this map. A stale map can direct work to the wrong
+repo or allow a port collision. This skill reports differences and writes
+nothing. Use `wayfare-sync-fleet` to update the map. Follow
+[docs/FLEET-MD.md](../../docs/FLEET-MD.md).
 
 ## Instructions
 
@@ -39,7 +39,7 @@ fi
 > Each bash block below runs in a fresh shell, so re-source `hero-lib.sh` at the
 > top of any block that calls a `hero_*` function.
 
-`NO_FLEET` → STOP. There is no map to review; say so and offer
+`NO_FLEET` → STOP. There is no map to review. Report that fact and offer
 `wayfare:wayfare-sync-fleet`, which bootstraps one. Do not guess a candidate
 folder here: choosing one is a write decision and belongs to `sync`.
 
@@ -50,7 +50,7 @@ folder here: choosing one is a write decision and belongs to `sync`.
 ```
 
 Print each finding with its meaning from the standard and the repo it names.
-Exit 1 means there is something to fix; say which of
+Exit 1 means there is something to fix. Say which of
 `wayfare:wayfare-sync-fleet` or a repo-side skill fixes it. Write nothing: not
 `FLEET.md`, not a repo.
 
@@ -58,8 +58,8 @@ Exit 1 means there is something to fix; say which of
 
 - **Fixing what you found.** A drift report that also edits is a `sync` with no
   confirmation step. Report it and name the skill that fixes it.
-- **Reporting "holds" on a missing map.** `NO_FLEET` is a finding, not a clean
-  bill; an absent file must never produce the healthy verdict.
+- **Reporting "holds" on a missing map.** `NO_FLEET` is a finding, not a healthy
+  verdict. An absent file must never produce the healthy verdict.
 
 ## Next steps
 

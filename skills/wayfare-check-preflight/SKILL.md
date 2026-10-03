@@ -1,7 +1,7 @@
 ---
 name: wayfare-check-preflight
 # prettier-ignore
-description: Run pre-flight checks for the wayfare pipeline. Catches missing tooling, stale HERO.md, .env mismatches and busy ports before any step does destructive work. Use before wayfare-push-pr, wayfare-ship-pr or wayfare-build-task, or when a pipeline step fails on setup.
+description: "Check tooling, HERO.md freshness, .env keys, and ports before the pipeline changes state. Use before wayfare-push-pr, wayfare-ship-pr, or wayfare-build-task, or when a pipeline fails during setup."
 argument-hint: "[--bucket tooling|repo|runtime|pipeline|all] [--projects p1,p2] | recalibrate"
 compatibility: "Requires the complete Wayfare plugin and the tools configured by the target repository's HERO.md."
 disable-model-invocation: true
@@ -9,9 +9,8 @@ disable-model-invocation: true
 
 # Preflight: fail fast before the pipeline does damage
 
-Runs the union of every downstream skill's blocking check so a
-`wayfare-build-task` (or any individual hero skill) fails fast: before code is
-edited, before a branch is created, before a PR is pushed.
+Run the blocking checks required by downstream skills. Detect blockers before a
+hero skill edits code, creates a branch, or pushes a PR.
 
 The actual checks live in `scripts/preflight.sh`. This skill is a thin wrapper:
 it invokes the script, renders the result for the user, and tells them what to
@@ -26,8 +25,8 @@ fix next.
     `runtime`, `pipeline`, or `all` (default).
   - `--projects p1,p2` - Restrict the `runtime` bucket to specific project paths
     or names from HERO.md. Useful when the diff only touches part of a monorepo.
-  - `--quiet` - Suppress `[OK]` lines; only `[WARN]`, `[BLOCKER]`, `[SKIP]` are
-    printed.
+  - `--quiet` - Suppress `[OK]` lines. Print only `[WARN]`, `[BLOCKER]`, and
+    `[SKIP]` lines.
 
 ## Buckets
 
@@ -50,24 +49,23 @@ Exit code is `1` if any `BLOCKER` fired, `0` otherwise. Warnings never block.
 
 ## `recalibrate`
 
-`wayfare:wayfare-check-preflight recalibrate` tunes the config that drives this
-skill, and stops. It does not go on to run the skill. You want to see which
-field was wrong, not spend a whole run finding out.
+`wayfare:wayfare-check-preflight recalibrate` tunes this skill's config. It
+stops after tuning and does not run the main procedure.
 
-Dispatch on it before parsing any other argument, in whichever step does that
-parsing. When the first token of `$ARGUMENTS` is exactly `recalibrate`, print
-`preflight: running recalibrate`, follow the four phases in
-[docs/RECALIBRATE.md](../../docs/RECALIBRATE.md) (report, ask, write, commit)
-using the table below as the report, and stop.
+Check for `recalibrate` before you parse other arguments. If the first token of
+`$ARGUMENTS` is exactly `recalibrate`, print `preflight: running recalibrate`,
+follow the four phases in [docs/RECALIBRATE.md](../../docs/RECALIBRATE.md):
+report, ask, write, commit. Use the table below as the report. Stop after these
+phases.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 "$WAYFARE_ROOT/scripts/hero-fields.sh" wayfare-check-preflight
 ```
 
-Ask only about rows whose CURRENT is parenthesised: `(unset)`, `(no-section)`,
-`(refused)`, `(absent)`, `(no-file)`. Also ask about any row the user says is
-wrong. A row that already holds the right value is not a question.
+Ask only about rows whose CURRENT value is `(unset)`, `(no-section)`,
+`(refused)`, `(absent)`, or `(no-file)`. Also ask about rows the user identifies
+as wrong. Do not ask about a row that already has the correct value.
 
 ## Instructions
 
@@ -79,8 +77,8 @@ cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
-**At the fleet root** in `docs/FLEET-MD.md`.
+If the command prints `FLEET_ROOT`, stop this repo procedure. Follow **At the
+fleet root** in `docs/FLEET-MD.md`.
 
 If `HERO.md` is missing, mention it but still run `scripts/preflight.sh`. The
 script reports the missing-HERO blocker with a useful next step
@@ -110,14 +108,14 @@ Capture the script's exit code. Then:
 
 - **Exit 0, 0 warnings** → "All preflight checks passed. Safe to run
   wayfare:wayfare-build-task or any individual hero skill."
-- **Exit 0, N warnings** → "Preflight passed with N warning(s). Safe to proceed;
-  warnings are advisory and may bite later."
+- **Exit 0, N warnings** → "Preflight passed with N warning(s). Safe to proceed.
+  Warnings are advisory and may cause later failures."
 - **Exit 1** → "Preflight found one or more blockers. The wayfare pipeline will
   fail if you continue. Fix the blockers above, then re-run
   wayfare:wayfare-check-preflight."
 - **Any other exit code** → preflight did not run to completion (e.g. it could
   not be found or resolve `WAYFARE_ROOT`). Report the exit code and the message
-  printed above it; do not report it as pass or fail.
+  printed above it. Do not report it as pass or fail.
 
 For each `[BLOCKER]` line, the script already prints the recommended fix inline.
 Do not re-explain it. Point the user at the line.

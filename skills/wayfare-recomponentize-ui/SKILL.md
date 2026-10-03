@@ -1,19 +1,19 @@
 ---
 name: wayfare-recomponentize-ui
 # prettier-ignore
-description: Refactor a project's UI into atomic components (atoms/molecules/organisms/templates), sourcing primitives from a design-system registry when one is configured (default @aihero) or stock shadcn otherwise, and codemod off-token styling. Use when asked to recomponentize, refactor UI, adopt a design system, or clean up component structure.
+description: "Refactor UI into atomic layers, replace off-token styling, and source primitives from a configured registry or stock shadcn. Use when asked to recomponentize, refactor UI, adopt a design system, or clean up component structure."
 argument-hint: "[--audit-only] [REGISTRY_NAMESPACE] | recalibrate"
 compatibility: "Requires the complete Wayfare plugin and the package manager, UI framework, and registry access used by the target project."
 ---
 
 # Recomponentize UI: atomic components, sourced from the design system
 
-Refactor an app's UI into a proper atomic component hierarchy, and stop
-hand-rolling primitives that already exist upstream.
+Refactor the app's UI into atomic component layers. Replace locally written
+primitives when equivalent upstream primitives exist.
 
-Two things always happen: **components get recomponentized into atomic layers**,
-and **off-token styling gets codemodded**. A third happens when a registry is
-available: **local primitives get replaced by registry components**.
+Always **recomponentize components into atomic layers**. Always **replace
+styling that violates design tokens**. If a registry is available, **replace
+local primitives with registry components**.
 
 ## Pipeline DAG
 
@@ -29,11 +29,11 @@ Print the DAG line at the start of each step:
 Now running: enforce
 ```
 
-Enforcement is installed early, before any code is rewritten, so the path-scoped
-rule guides the migration itself rather than only future work.
+Install enforcement before rewriting code. The path-scoped rule must guide the
+migration and future work.
 
-When no registry is configured, `map` and `install` still run, against stock
-shadcn or the project's existing UI library instead of a private registry.
+If no registry is configured, still run `map` and `install`. Use stock shadcn or
+the project's existing UI library.
 
 ## Arguments
 
@@ -41,31 +41,30 @@ shadcn or the project's existing UI library instead of a private registry.
   - `recalibrate` - tune the `HERO.md` fields this skill reads, then stop (see
     below). Matched before every other form.
   - (none) - full pass using the component source resolved in Step 0
-  - `--audit-only` - run `wayfare-check-preflight`, `inventory`, `map`; report
+  - `--audit-only` - run `wayfare-check-preflight`, `inventory`, `map`. Report
     the plan, change nothing. Skips `enforce` too: installing the rule and hook
     writes files, which `--audit-only` promises not to do.
   - `REGISTRY_NAMESPACE` - override the registry, for example `@acme`
 
 ## `recalibrate`
 
-`wayfare:wayfare-recomponentize-ui recalibrate` tunes the config that drives
-this skill, and stops. It does not go on to run the skill. You want to see which
-field was wrong, not spend a whole run finding out.
+`wayfare:wayfare-recomponentize-ui recalibrate` tunes this skill's config. It
+stops after tuning and does not run the main procedure.
 
-Dispatch on it before parsing any other argument, in whichever step does that
-parsing. When the first token of `$ARGUMENTS` is exactly `recalibrate`, print
+Check for `recalibrate` before you parse other arguments. If the first token of
+`$ARGUMENTS` is exactly `recalibrate`, print
 `wayfare-recomponentize-ui: running recalibrate`, follow the four phases in
-[docs/RECALIBRATE.md](../../docs/RECALIBRATE.md) (report, ask, write, commit)
-using the table below as the report, and stop.
+[docs/RECALIBRATE.md](../../docs/RECALIBRATE.md): report, ask, write, commit.
+Use the table below as the report. Stop after these phases.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 "$WAYFARE_ROOT/scripts/hero-fields.sh" wayfare-recomponentize-ui
 ```
 
-Ask only about rows whose CURRENT is parenthesised: `(unset)`, `(no-section)`,
-`(refused)`, `(absent)`, `(no-file)`. Also ask about any row the user says is
-wrong. A row that already holds the right value is not a question.
+Ask only about rows whose CURRENT value is `(unset)`, `(no-section)`,
+`(refused)`, `(absent)`, or `(no-file)`. Also ask about rows the user identifies
+as wrong. Do not ask about a row that already has the correct value.
 
 ## Step 0: Resolve the component source
 
@@ -79,8 +78,8 @@ the verb down with it.
 **If `HERO.md` says `role: producer` (or `enabled: false`) under
 `## Design System`, stop immediately.** Report that this repo *publishes* the
 design system and exit without changing anything. A registry repo's pipeline
-runs mockup → design system; running this skill there would invert it and try to
-consume its own output.
+runs mockup → design system. This skill would reverse that direction and make
+the repo consume its own output.
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -93,8 +92,8 @@ sed -n -e '/^### design-system/,/^#\{2,3\} /p' -e '/^## Design System/,/^## /p' 
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
-**At the fleet root** in `docs/FLEET-MD.md`.
+If the command prints `FLEET_ROOT`, stop this repo procedure. Follow **At the
+fleet root** in `docs/FLEET-MD.md`.
 
 A repo is a producer if it builds a `registry.json`, serves `/r/*`, or its
 `components.json` aliases `ui` to an internal atomic directory rather than
@@ -110,12 +109,12 @@ Resolve in this order and **state which one you picked** before proceeding:
 | The `design-system` connection carries a `namespace` | That registry |
 | No config, but the user wants one | Offer `@aihero` at `https://design.aihero.studio`. Needs a token (Step 1) |
 | No registry, `components.json` exists | Stock shadcn: `npx shadcn@latest add ITEM` |
-| No registry, another UI lib in `package.json` (MUI, Chakra, Mantine, Ant) | That library's primitives; do not migrate libraries uninvited |
-| Nothing, just plain HTML and CSS | Recomponentize and codemod only; **ask** before introducing any dependency |
+| No registry, another UI lib in `package.json` (MUI, Chakra, Mantine, Ant) | That library's primitives. Do not migrate libraries uninvited |
+| Nothing, just plain HTML and CSS | Recomponentize and codemod only. **Ask** before introducing any dependency |
 
 Expected keys on the `design-system` connection (docs/CONNECTIONS.md):
 `namespace`, `registry-url`, `token-env-var`, `docs`, `atomic-layers`. A repo
-that has not migrated still carries them under `## Design System`; read that as
+that has not migrated still carries them under `## Design System`. Read that as
 the same block rather than reporting no registry. AI Hero defaults:
 
 - namespace: `@aihero`
@@ -139,12 +138,12 @@ It does not add the `registries` block and may pick a conflicting style.
 
 | Check | Requirement |
 | -- | -- |
-| `components.json` | Has a `registries` block for the namespace; `"ui": "@/components/ui"` |
+| `components.json` | Has a `registries` block for the namespace and `"ui": "@/components/ui"` |
 | Token expansion | Header is `Bearer ${REGISTRY_TOKEN}`, the plain form ONLY |
-| `.env` | Holds the token; `.gitignore` covers `.env` BEFORE the token is written |
+| `.env` | Holds the token. `.gitignore` covers `.env` BEFORE the token is written |
 | `src/lib/utils.ts` | Exports `cn` (clsx + tailwind-merge) |
 | `tsconfig.json` | `baseUrl: "."` and `paths: { "@/*": ["./src/*"] }` |
-| CSS entry | Imports tailwind (v4); named in `components.json` → `tailwind.css` |
+| CSS entry | Imports tailwind (v4). `components.json` names it in `tailwind.css` |
 | Runtime deps | `react@^19`, `react-dom@^19`, `tailwindcss@^4`, `clsx@^2`, `tailwind-merge@^3`, `shadcn@^4.13.0` |
 
 **Trap: never write `${VAR:-default}`.** The CLI's expansion regex is
@@ -211,7 +210,7 @@ the consumer SKILL.md (Part 9). If the registry ships them, paste verbatim.
 Optionally port the registry's lint config (for `@aihero`,
 `eslint.taste.config.mjs`, covering Tailwind correctness, token discipline and
 an a11y floor). Its atomic-boundaries block **does** apply once Step 6's layers
-exist; add `ui` and `blocks` as the lowest elements in the layer matrix.
+exist. Add `ui` and `blocks` as the lowest elements in the layer matrix.
 
 ## Step 3: Inventory the current UI (`inventory`)
 
@@ -248,14 +247,14 @@ npx shadcn@latest search NAMESPACE -q "form"
 npx shadcn@latest view NAMESPACE/field    # inspect the API before committing
 ```
 
-There is no `--registry` flag; registries come only from `components.json`. For
+There is no `--registry` flag. Read registries only from `components.json`. For
 `@aihero` the full catalog is `GET /r/registry.json`. There is no
 `/r/index.json`.
 
 **Browse the docs/gallery site** (finds by appearance): open it with the browser
-tools and look at the rendered components. Search matches keywords; the gallery
-matches *look*. A local "stat card" may be a `tile` or a `kpi-strip`, and only
-the gallery makes that obvious. For stock shadcn, use
+tools and look at the rendered components. Search matches keywords. The gallery
+matches *appearance*. A local "stat card" may be a `tile` or a `kpi-strip`, and
+only the gallery makes that obvious. For stock shadcn, use
 `ui.shadcn.com/docs/components`.
 
 Optionally wire the registry's MCP server for in-editor search:
@@ -305,7 +304,8 @@ with no upstream match, for projects with no registry at all, and for the app
 code that composes vendored primitives. Swapping in new components without
 recomponentizing leaves the same monolith wearing new classes.
 
-Target layout. Vendored code stays flat; the app's own components go atomic:
+Use this layout. Keep vendored code flat. Put the app's own components in atomic
+layers:
 
 ```
 src/components/
@@ -321,14 +321,14 @@ Layer rules, enforced in review:
 
 - **atoms / molecules** are stateless and generic: no fetching, no auth, no
   domain types. Props in, UI out. Every one accepts and merges `className`.
-- **organisms** may import domain types and compose molecules, but still no data
-  fetching; data arrives via props.
+- **organisms** may import domain types and compose molecules, but must not
+  fetch data. Supply data through props.
 - **templates** define *where things go* via slot props (`header`, `sidebar`,
-  `children`); they never hardcode copy or fetch data.
+  `children`). They never hardcode copy or fetch data.
 - **Imports flow downward only:** templates → organisms → molecules → atoms →
   (`ui/`, `blocks/`). `ui/` and `blocks/` are the floor, and any layer may
-  import them. An atom importing a molecule is a defect; restructure instead of
-  suppressing it.
+  import them. An atom importing a molecule is a defect. Restructure instead of
+  suppressing the defect.
 - **Same-layer imports** only for *family* relationships. Test: can you describe
   the importer without naming a different concept? "A row of buttons" is still
   buttons → atom. The moment a component combines distinct siblings (`input` +
@@ -340,8 +340,8 @@ Signals a component needs recomponentizing: boolean-prop explosion, a molecule
 fetching data, two organisms sharing copy-pasted JSX, a component importing from
 a higher layer, a file well above the codebase's median length.
 
-Migrate call sites as you move files; never leave a re-export shim behind as
-"temporary". Finish the move or do not start it.
+When you move a component file, update every call site that imports it. Never
+leave a temporary re-export shim. Finish the move or do not start it.
 
 ## Step 7: Codemod off-token styling (`codemod`)
 
@@ -350,8 +350,8 @@ Migrate call sites as you move files; never leave a re-export shim behind as
 | Raw palette (`bg-zinc-100`, `text-gray-500`) | Semantic token (`bg-muted`, `text-muted-foreground`) |
 | Hex / `oklch()` literal in TSX | A token in the `@theme` layer |
 | `dark:` **color** override | Delete it. A `dark:` color means the wrong token was used |
-| Margin on a component root (`m-*`, `mt-*`, `ms-*`) | `gap-*` / `space-*` on the **parent**; parents own layout |
-| Arbitrary spacing (`p-[13px]`, `gap-[7px]`) | The spacing scale; if a step is missing, change the scale |
+| Margin on a component root (`m-*`, `mt-*`, `ms-*`) | `gap-*` / `space-*` on the **parent**. Parents own layout |
+| Arbitrary spacing (`p-[13px]`, `gap-[7px]`) | The spacing scale. If a step is missing, change the scale |
 | `z-[9999]` | The named z-scale (`z-dropdown` < `z-sticky` < `z-overlay` < `z-modal` < `z-toast`) |
 | `rounded-[10px]`, `text-[15px]`, any `[Npx]` | The radius / type / spacing scale |
 | `shadow-*` | Remove. Elevation is borders and hairlines (`@aihero` house rule) |
@@ -361,7 +361,7 @@ Migrate call sites as you move files; never leave a re-export shim behind as
 | Opacity hack for disabled | `disabled:` variants + `aria-disabled` semantics |
 
 Also: variants via `cva` with typed props, never ternary/string-concat className
-soup. Never hand-sort classes; `prettier-plugin-tailwindcss` owns the order.
+soup. Never sort classes by hand. `prettier-plugin-tailwindcss` owns the order.
 
 The no-shadow rule and the exact token vocabulary are registry-specific. With
 stock shadcn, keep its default token names (`bg-background`,
@@ -412,9 +412,9 @@ Next step: wayfare:wayfare-push-pr
   the point. A pass that swaps components without restructuring has failed.
 - **Search before you build.** Hand-rolling an existing component is the defect
   this skill prevents.
-- **Vendored, not authored.** Rewrite call sites; never edit `ui/` or `blocks/`.
+- **Vendored, not authored.** Rewrite call sites. Never edit `ui/` or `blocks/`.
 - **The concept, not the markup.** Search for what an element *means*.
-- **Gallery and search are complementary.** Search matches keywords; the gallery
+- **Gallery and search are complementary.** Search matches keywords. The gallery
   matches appearance.
 - **Never force a match, never add a library uninvited.** No upstream equivalent
   → keep it local, recomponentize it, and say so.

@@ -1,7 +1,7 @@
 ---
 name: wayfare-create-skill
 # prettier-ignore
-description: Create an Agent Skill or a supported client-specific agent, rule, or hook with clear triggers and success criteria. Use when extending an agent client or adding a reusable workflow.
+description: "Create an Agent Skill or a supported client-specific agent, rule, or hook. Define its triggers and success criteria. Use when extending an agent client or adding a reusable workflow."
 argument-hint: "DESCRIPTION_OF_THE_CAPABILITY | recalibrate"
 compatibility: "Requires the complete Wayfare plugin; client-specific components also require that client's plugin format and runtime."
 disable-model-invocation: true
@@ -9,9 +9,9 @@ disable-model-invocation: true
 
 # Create Skill: build agent components
 
-A skill is a folder with a `SKILL.md` in it, following the open
-[Agent Skills](https://agentskills.io/specification) format. This skill writes
-one, or the subagent, rule, or hook that fits better.
+A skill is a folder containing `SKILL.md` in the open
+[Agent Skills](https://agentskills.io/specification) format. Create a skill,
+subagent, rule, or hook according to the capability required.
 
 ## Arguments
 
@@ -62,15 +62,15 @@ wayfare: sync
 ---
 ```
 
-Only `name` and `description` are required by the spec. `argument-hint` and
-`disable-model-invocation` are Claude Code fields, and `wayfare` is this
-plugin's own; a standalone portable skill carries neither. A Wayfare skill is
-not standalone because it uses plugin-global scripts and references, so it also
-declares standard `compatibility` metadata naming that package boundary and any
-required tools or network access.
+The spec requires only `name` and `description`. `argument-hint` and
+`disable-model-invocation` are Claude Code fields. `wayfare` is this plugin's
+field. A standalone portable skill omits these client and plugin fields. Wayfare
+skills depend on plugin-global scripts and references. Declare that dependency
+in standard `compatibility` metadata. Also declare required tools and network
+access.
 
-- `name`: 1-64 chars, lowercase letters, digits and hyphens; no leading,
-  trailing or doubled hyphen; must equal the folder name. Use verb-object.
+- `name`: Use 1-64 lowercase letters, digits, or hyphens. Do not use a leading,
+  trailing, or doubled hyphen. Match the folder name. Use verb-object.
 - `description`: 1-1024 chars. Say what the skill does and when to use it,
   phrased as an instruction ("Use when the user..."). Name the user's intent,
   not the mechanics, and list the cases where they won't say the keyword. It is
@@ -90,9 +90,9 @@ the conversation for attention. Three rules:
 2. **Keep it under 500 lines.** Longer material goes in `references/`, with the
    instruction saying *when* to read each file ("read `references/api-errors.md`
    if the API returns non-200"), not a bare "see references/".
-3. **Match specificity to fragility.** Prose where several approaches are fine;
-   exact commands where the sequence matters. Give a default and mention
-   alternatives briefly, never a menu.
+3. **Match specificity to fragility.** Use prose when several approaches are
+   acceptable. Use exact commands when the sequence matters. Give a default and
+   mention alternatives briefly, never a menu.
 
 Use capability language such as "inspect the file", "run the command", or
 "invoke the named skill through the active client". Do not hard-code another
@@ -100,8 +100,14 @@ client's Read, Bash, Skill, or subagent call syntax. Read
 `../../references/client-capabilities.md` when a workflow depends on chaining,
 delegation, progress channels, or client settings. Read
 `../../references/authorization.md` when the skill changes local or external
-state; preserve consequential gates without asking again for ordinary work the
+state. Preserve consequential gates without asking again for ordinary work the
 invocation already authorized.
+
+Read [the simplified English guide](../../docs/SIMPLIFIED-ENGLISH.md) before
+writing agent instructions. Name each actor and preserve every condition,
+exception, and authorization gate. Use short sentences with one instruction
+each. Keep commands and machine-readable literals unchanged during prose
+rewrites.
 
 Patterns that earn their place: a **Gotchas** list (facts that defy reasonable
 assumptions), a **template** for any output that must have a shape, a
@@ -128,20 +134,20 @@ them by path relative to the skill root.
 then stops. It does not go on to run the skill. You want to see which field was
 wrong, not spend a whole run finding out.
 
-Dispatch on it before parsing any other argument, in whichever step does that
-parsing. When the first token of `$ARGUMENTS` is exactly `recalibrate`, print
+Check for `recalibrate` before you parse other arguments. If the first token of
+`$ARGUMENTS` is exactly `recalibrate`, print
 `wayfare-create-skill: running recalibrate`, follow the four phases in
-[docs/RECALIBRATE.md](../../docs/RECALIBRATE.md) (report, ask, write, commit)
-using the table below as the report, and stop.
+[docs/RECALIBRATE.md](../../docs/RECALIBRATE.md): report, ask, write, commit.
+Use the table below as the report. Stop after these phases.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 "$WAYFARE_ROOT/scripts/hero-fields.sh" wayfare-create-skill
 ```
 
-Ask only about rows whose CURRENT is parenthesised: `(unset)`, `(no-section)`,
-`(refused)`, `(absent)`, `(no-file)`. Also ask about any row the user says is
-wrong. A row that already holds the right value is not a question.
+Ask only about rows whose CURRENT value is `(unset)`, `(no-section)`,
+`(refused)`, `(absent)`, or `(no-file)`. Also ask about rows the user identifies
+as wrong. Do not ask about a row that already has the correct value.
 
 ## Instructions
 
@@ -157,8 +163,8 @@ cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
 [ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
 ```
 
-If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
-**At the fleet root** in `docs/FLEET-MD.md`.
+If the command prints `FLEET_ROOT`, stop this repo procedure. Follow **At the
+fleet root** in `docs/FLEET-MD.md`.
 
 Use `HERO.md` to understand the project's stack and conventions when creating
 skills that reference project-specific tools.
@@ -191,7 +197,8 @@ task does not need three skills.
 mkdir -p .claude/skills/SKILL_NAME
 ```
 
-Write `SKILL.md` with frontmatter and instructions, then any referenced files.
+Write `SKILL.md` with frontmatter and instructions, then write any referenced
+files.
 
 ### Step 4: Validate
 
@@ -225,5 +232,5 @@ wiring. Print this line only; wayfare-audit-plugin is user-only and cannot be
 started automatically.
 ```
 
-Don't also print `wayfare:wayfare-push-pr`; `wayfare-audit-plugin`'s own
-next-steps already lead there.
+Do not also print `wayfare:wayfare-push-pr`. Follow `wayfare-audit-plugin`'s
+next steps.

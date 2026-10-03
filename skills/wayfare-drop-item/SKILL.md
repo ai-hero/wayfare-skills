@@ -9,10 +9,10 @@ compatibility: "Requires the complete Wayfare plugin, git, and the repository's 
 # Abandon work, and say so on the roadmap
 
 Source is the current product. Target is the intended product, recorded in a
-claude.ai/design project configured in HERO.md. Without a design project,
-compare Source with its own `DESIGN.md`, gaps, and hardening needs. The README
-command table describes each skill. **Use `docs/PLAN.md` as the specification
-for the store and item format.**
+claude.ai/design project configured in HERO.md. Without a design project, the
+route compares Source with its own `DESIGN.md`, gaps, and hardening needs. The
+README command table describes each skill. **Use `docs/PLAN.md` as the
+specification for the store and item format.**
 
 ## Instructions
 

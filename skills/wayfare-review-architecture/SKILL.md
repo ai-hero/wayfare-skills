@@ -38,8 +38,8 @@ What belongs, which is exactly what the code cannot say:
   `services/auth/ for token issuing and verification` belongs. Do not list its
   exported functions.
 - **Boundaries**: dependency direction and the rules. Which layers exist, what
-  must never depend on what, where the seams are. Use one focused Mermaid graph
-  here. Omit additional diagrams.
+  must never depend on what, where the seams are. A focused Mermaid graph can
+  clarify these boundaries. Omit additional diagrams.
 - **Invariants**: cross-cutting truths that hold everywhere ("all writes go
   through the repository layer", "handlers never touch the DB directly",
   "everything user-visible is behind i18n").
@@ -273,7 +273,7 @@ anchor, not a plan item.
 | Route tables, schemas, signatures | Restated code goes false silently. The Hard Rule exists for this. |
 | Writing without confirmation | Propose changes first. Write only after confirmation. |
 | Editing or deleting a Decision entry | Append-only. Supersede with a new dated entry. Preserve the decision history. |
-| A diagram where prose would do | Use one Boundaries graph and one flowchart per flow. Omit other diagrams. |
+| A diagram where prose would do | One Boundaries graph and one flowchart per flow are acceptable. Omit other diagrams. |
 | `review` that edits the file | Review reports. Sync writes. |
 | Re-growing a specs/ tree | Keep the design in one file. A specs tree encourages duplication of code details. |
 

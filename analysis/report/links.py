@@ -57,7 +57,7 @@ MILESTONES = [
     ("2026-09-13", "Messages", "7181504 mailbox"),
     ("2026-09-18", "1 commit per feature", "597dd87 a goal is one branch, one PR"),
 ]
-WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
+WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 
 
 def _items(con):

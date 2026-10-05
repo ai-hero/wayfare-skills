@@ -30,16 +30,23 @@ def week_axis(ax, weeks, every=4):
 def milestones(ax, weeks, events=(), above=False):
     """The factory's milestones as dotted verticals, named along the top (or above the axes); question events in pink."""
     y, va = (1.01, "bottom") if above else (1.0, "top")
-    for day, name, *_ in MILESTONES:
-        x = week_x(day, weeks)
-        ax.axvline(x, color=F.GREY_DARK, linewidth=0.7, linestyle=(0, (1, 3)), zorder=1)
-        ax.text(x + 0.15, y, name, rotation=90, ha="left", va=va, fontsize=7, color=F.GREY_DARK,
+    marks = [(week_x(day, weeks), name, F.GREY_DARK) for day, name, *_ in MILESTONES]
+    marks += [(week_x(day, weeks), name, F.PINK) for day, name in events]
+    for x, _, color in marks:
+        ax.axvline(x, color=color, linewidth=0.7, linestyle=(0, (1, 3)), zorder=1)
+    # Two lines a few days apart put their rotated names on top of each other; walk the names left to
+    # right and push each one at least a line of type past the last, so close events stay legible.
+    fig = ax.figure
+    # The position is the pre-layout one and `save` narrows the canvas to print width, so the plot
+    # ends up narrower than this says; the 0.8 keeps names apart at the width they print.
+    width_in = ax.get_position().width * min(fig.get_figwidth(), F.PRINT_W) * 0.8
+    sep = (7 * 1.35 / 72) / width_in * (ax.get_xlim()[1] - ax.get_xlim()[0])
+    last = None
+    for x, name, color in sorted(marks):
+        at = x + 0.15 if last is None else max(x + 0.15, last + sep)
+        ax.text(at, y, name, rotation=90, ha="left", va=va, fontsize=7, color=color,
                 transform=ax.get_xaxis_transform())
-    for day, name in events:
-        x = week_x(day, weeks)
-        ax.axvline(x, color=F.PINK, linewidth=0.7, linestyle=(0, (1, 3)), zorder=1)
-        ax.text(x - 0.15, y, name, rotation=90, ha="right", va=va, fontsize=7, color=F.PINK,
-                transform=ax.get_xaxis_transform())
+        last = at
 
 
 def draw_features_vs_structure(x):
@@ -47,12 +54,11 @@ def draw_features_vs_structure(x):
     weekly sample size beneath."""
     weeks = x["weeks"]
     cats = [c for c in x["cats"] if sum(x["weekly"][c]) > 0]
-    colors = {x["cats"][0]: F.PINK, x["cats"][1]: F.PINK_LIGHT, x["cats"][2]: F.GREY_DARK, x["cats"][3]: F.GREY,
-              x["cats"][4]: F.PINK_DARK, x["cats"][5]: F.GREY_LIGHT}
-    fig, (ax, axn) = F.fig(F.CHART_W, F.CHART_H, nrows=2, sharex=True, gridspec_kw={"height_ratios": [3.2, 1]})
+    colors = {c: F.named(c, F.GREY_LIGHT) for c in x["cats"]}
+    fig, (ax, axn) = F.fig(F.CHART_W, F.CHART_H, nrows=2, sharex=True, gridspec_kw={"height_ratios": [3.2, 1.1]})
     xs = list(range(len(weeks)))
     valid = [s is not None for s in x["share"]]
-    # Stack each contiguous run of weeks with 10+ change sets; thinner weeks stay blank, and the lower panel says why.
+    # A week with no change set has no share, so the stack breaks there rather than drawing a 0% that never happened.
     i = 0
     while i < len(weeks):
         if not valid[i]:
@@ -85,15 +91,20 @@ def draw_features_vs_structure(x):
                 arrowprops={"arrowstyle": "-", "color": F.INK, "linewidth": 0.8})
     ax.set_ylim(0, 1)
     ax.yaxis.set_major_formatter(F.matplotlib.ticker.PercentFormatter(1.0))
-    ax.set_ylabel("Share of the week's app change sets")
+    ax.set_ylabel("Share of the week's app\nand infra change sets")
     ax.grid(axis="x", visible=False)
     milestones(ax, weeks, MODEL_EVENTS, above=True)
-    axn.legend(*ax.get_legend_handles_labels(), ncol=3, loc="upper center", bbox_to_anchor=(0.5, -0.55), fontsize=8.5)
-    axn.bar(xs, x["n_week"], color=F.GREY, width=0.8)
-    axn.axhline(10, color=F.GREY_DARK, linewidth=0.7, linestyle=(0, (2, 3)))
-    axn.text(len(weeks) - 0.6, 12, "weeks under 10 are left blank above", ha="right", va="bottom", fontsize=7.5, color=F.MUTED)
+    fig.align_ylabels([ax, axn])
+    first = weeks.index(x["first_app_week"])
+    ax.text((first - 1) / 2, 0.28, "Before the factory:\nwork was in ai-hero/studio,\noutside the fleet", ha="center", va="center",
+            fontsize=8.5, color=F.MUTED)
+    n_app = [n - i for n, i in zip(x["n_week"], x["n_infra"])]
+    axn.bar(xs, n_app, color=F.named("app"), width=0.8, label="app change sets")
+    axn.bar(xs, x["n_infra"], bottom=n_app, color=F.named("infra change sets"), width=0.8, label="infra change sets")
+    axn.add_artist(axn.legend(loc="upper left", fontsize=7.5, frameon=False))
     axn.set_ylabel("Change sets (n)")
     axn.grid(axis="x", visible=False)
+    axn.legend(*ax.get_legend_handles_labels(), ncol=3, loc="upper center", bbox_to_anchor=(0.5, -0.55), fontsize=8.5)
     week_axis(axn, weeks)
     return F.save(fig, F.asset("2.1"))
 
@@ -119,7 +130,7 @@ def draw_repos_in_motion(x):
     ax.set_ylim(0, max(x["eligible"]) + 3)
     ax.set_ylabel("Repos")
     ax.grid(axis="x", visible=False)
-    milestones(ax, weeks)
+    milestones(ax, weeks, above=True)
     ax.legend(loc="upper left", fontsize=9)
     ys = [v if v is not None else float("nan") for v in x["per_active"]]
     axb.plot(xs, ys, color=F.GREY_DARK, linewidth=1.5, marker="o", markersize=3)

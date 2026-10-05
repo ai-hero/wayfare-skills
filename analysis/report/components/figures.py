@@ -4,8 +4,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import figure_lib as F  # noqa: E402
+from record import SESSION_WINDOW_LABEL  # noqa: E402
 
-WINDOW_TEXT = "25 Aug to 25 Sep 2026"
+WINDOW_TEXT = f"{SESSION_WINDOW_LABEL} 2026"
 
 
 def _usd(v):
@@ -17,7 +18,8 @@ def fig_7_1(x):
     cannot tell. Right: how the four overlap on the change sets where all four are known."""
     import matplotlib.ticker as mt
     import numpy as np
-    fig, (ax, bx) = F.fig(ncols=2, gridspec_kw={"width_ratios": [1.35, 1]})
+    # Stacked, not side by side: at print width two panels abreast leave each too narrow for its labels.
+    fig, (ax, bx) = F.fig(F.CHART_W, 9.6, nrows=2, gridspec_kw={"height_ratios": [1, 1.25]})
     rows = x["table"]
     n = x["n"]
     ys = list(range(len(rows)))[::-1]
@@ -28,15 +30,16 @@ def fig_7_1(x):
         vals = np.array([r[key] / n for r in rows])
         ax.barh(ys, vals, left=left, color=col, edgecolor="white", linewidth=1.5, height=0.62, label=name)
         for y, v, l in zip(ys, vals, left):
-            if v >= 0.07:
-                ax.text(l + v / 2, y, f"{v:.0%}", ha="center", va="center", fontsize=9.5,
+            if v >= 0.12:
+                ax.text(l + v / 2, y, f"{v:.0%}", ha="center", va="center", fontsize=8,
                         color="white" if col in (F.PINK, F.GREY_DARK) else F.INK)
         left = left + vals
     for y, r in zip(ys, rows):
-        ax.text(1.01, y, f"{r['through']} of {n}\n95% CI {r['lo']:.0%} to {r['hi']:.0%}", ha="left", va="center", fontsize=8, color=F.MUTED)
+        ax.text(1.02, y, f"{r['through']} of {n}\n95% CI {r['lo']:.0%} to {r['hi']:.0%}", ha="left", va="center", fontsize=8, color=F.MUTED)
     ax.set_yticks(ys)
     ax.set_yticklabels([r["component"] for r in rows])
-    ax.set_xlim(0, 1)
+    ax.set_xlim(0, 1.42)
+    ax.set_xticks([0, 0.25, 0.5, 0.75, 1])
     ax.set_ylim(-0.6, len(rows) - 0.4)
     ax.xaxis.set_major_formatter(mt.PercentFormatter(1.0))
     ax.grid(axis="y", visible=False)
@@ -58,6 +61,7 @@ def fig_7_1(x):
     bx.grid(axis="y", visible=False)
     bx.set_xlabel(f"Share where all four are known (n={x['n_known']})")
     bx.set_title("How the four overlap", loc="left", fontsize=10.5, color=F.BODY)
+    F.coverage(fig)
     png = F.save(fig, F.asset("7.1"))
     F.summary("7.1", question="On one shared population and window, what proportion of shipped change sets passed through each "
                               "factory component, which overlapped, and how much apparent non-use was missing linkage?",
@@ -99,7 +103,7 @@ def fig_7_2(x):
     ax.set_yticklabels([(("    " if r["depth"].startswith("No saved plan:") else "") + r["depth"].replace("No saved plan: ", "") +
                          f"\n{'    ' if r['depth'].startswith('No saved plan:') else ''}n={r['n']} of {r['n_all']} ({r['coverage']:.0%} costed)")
                         for r in rows], fontsize=9.5)
-    ax.set_ylim(-0.3, 4.7)
+    ax.set_ylim(-1.5, 4.7)  # the band under the last row holds the legend
     ax.set_xscale("log")
     ax.set_xlim(1, 100)
     ax.xaxis.set_major_locator(mt.FixedLocator([1, 3, 10, 30, 100]))
@@ -112,12 +116,13 @@ def fig_7_2(x):
     ax.plot([], [], color=F.PINK_DARK, linewidth=1.4, label="95% interval for the median (bootstrap)")
     ax.legend(loc="lower right", fontsize=9)
     adj = x["adjusted"]
+    note = None
     if adj:
         g, i = adj["adjusted"]["Inside a goal"], adj["adjusted"]["Work item only"]
-        ax.text(0, -0.13, f"Change sets merged {WINDOW_TEXT}, apps and allied repos. Holding repository, work type, model family and "
-                          f"size fixed (n={adj['n']}), goal work costs {g['ratio']:.2f}x no-plan work (95% CI {g['lo']:.2f} to {g['hi']:.2f}) "
-                          f"and work-item-only work {i['ratio']:.2f}x ({i['lo']:.2f} to {i['hi']:.2f}): an association, not a cause.",
-                transform=ax.transAxes, fontsize=8.5, color=F.MUTED, va="top", wrap=True)
+        note = (f"Change sets merged {WINDOW_TEXT}, apps and allied repos. Holding repository, work type, model family and "
+                f"size fixed (n={adj['n']}), goal work costs {g['ratio']:.2f}x no-plan work (95% CI {g['lo']:.2f} to {g['hi']:.2f}) "
+                f"and work-item-only work {i['ratio']:.2f}x ({i['lo']:.2f} to {i['hi']:.2f}): an association, not a cause.")
+    F.coverage(fig, note)
     png = F.save(fig, F.asset("7.2"))
     F.summary("7.2", question="After adjusting for repository, task type, change size and model, how was planning depth associated "
                               "with cost per change set, with sample sizes, attribution coverage and uncertainty shown?",

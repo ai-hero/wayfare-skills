@@ -4,7 +4,7 @@
 
 One function per question. The headline counts (change sets, spend, planned share) call
 evolution.py's functions rather than recomputing them, so the two topics print the same
-numbers. Weeks run 2026-W01..W39 (evolution.WEEKS); pre-2026 history is folded into the
+numbers. Weeks run 2026-W01..W40 (evolution.WEEKS); pre-2026 history is folded into the
 starting value where a chart is cumulative and otherwise left out.
 """
 import json
@@ -19,19 +19,19 @@ from datetime import date, datetime, timedelta, timezone
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.dirname(HERE), os.path.dirname(os.path.dirname(HERE))]
 from cube.db import connect as _connect  # noqa: E402
-from record import adoption, changeset_facts, rows, stage_of, week_of  # noqa: E402
+from record import SESSION_FULL_WEEKS, adoption, changeset_facts, gap_range, gap_weeks, rows, stage_of, week_of  # noqa: E402
 from evolution import MONTHS, WEEKS, q_cost_saving_changes, q_weekly_change_sets_by_stage, q_observable_work_share  # noqa: E402
 from ingest.fleet import role_of  # noqa: E402
 
 FLEET = os.path.expanduser(os.environ.get("WAYFARE_FLEET_ROOT", "~/workspaces/aihero"))
 PLUGIN = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 CH01_DB = os.path.join(PLUGIN, ".analysis", "data", "intro.sqlite")
-LATEST = "2026-09-24"
+LATEST = "2026-10-01"
 APPS = ("app", "app, no features yet")
-# Session data is not available for 10-24 Aug, W33-W34 (owner confirmed): no sessions, prompts or spend exist
-# for those days, so they are left out of every session-based average and share.
-OUTAGE = ("2026-08-10", "2026-08-24")
-OUTAGE_WEEKS = ("2026-W33", "2026-W34")
+# Session logs are missing, then partial, over record.gap_range() (W33-W34), so those days are left out of every
+# session-based average and share.
+OUTAGE = gap_range()
+OUTAGE_WEEKS = tuple(sorted(set().union(*gap_weeks())))
 
 
 def in_outage(day):
@@ -326,7 +326,7 @@ def q_weekly_factory_cost(con):
         wall[w] = tot / 3600
     sessions = Counter(r["week"] for r in rows(con, "SELECT week FROM harness.sessions"))
     weeks = [w for w in WEEKS if sessions.get(w)]
-    full = [w for w in weeks if w not in (weeks[0], weeks[-1]) and w not in OUTAGE_WEEKS]
+    full = SESSION_FULL_WEEKS
     avg = lambda d: round(sum(d.get(w, 0) for w in full) / len(full), 1)
     return {**c, "owner_hours": [round(owner.get(w, 0), 1) for w in WEEKS],
             "hours_wall": [round(wall.get(w, 0), 1) for w in WEEKS], "sessions": [sessions.get(w, 0) for w in WEEKS],

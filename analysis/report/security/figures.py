@@ -2,6 +2,7 @@
 for the answer slide with a summary table under .analysis/data/figures/."""
 import os
 import sys
+from datetime import date
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
@@ -9,6 +10,9 @@ import figure_lib as F  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 
 import data as D  # noqa: E402
+
+_END = date.fromisoformat(D.END)
+F_END = f"{_END.day} {_END:%b}"
 
 XMAX = 150  # days; the one flaw beyond it is named on the chart rather than stretching the axis for a single point
 
@@ -29,13 +33,13 @@ def flaw_lifetimes(x):
                 ha="right", fontsize=8.5, color=F.MUTED)
     ax.axvline(30, color=F.GREY_DARK, linewidth=0.8, linestyle=(0, (2, 3)))
     ax.text(31, 0.02, f"{x['over30']} of {x['n_traced']} past 30 d", fontsize=8.5, color=F.MUTED)
-    ax.set_xlabel(f"Days from introducing commit to merged fix (n = {x['n_traced']}, all fixed by 24 Sep)")
+    ax.set_xlabel(f"Days from introducing commit to merged fix (n = {x['n_traced']}, all fixed by {F_END})")
     ax.legend(loc="center right", bbox_to_anchor=(1.0, 0.42), fontsize=8.5)
     ax.set_title("Time on main before the fix", fontsize=11, loc="left", color=F.BODY)
     import numpy as np
     names = x["expo_names"]
     ecols = [F.PINK, F.GREY_LIGHT, F.GREY]
-    short = ["agent, this repo", "inherited", "a person"]
+    short = ["agent,\nthis repo", "inherited", "a person"]
     bottom = np.zeros(len(D.AUTHOR_GROUPS))
     for e, col in zip(names, ecols):
         vals = np.array([x["exposure"][g][e] for g in D.AUTHOR_GROUPS], dtype=float)
@@ -48,6 +52,9 @@ def flaw_lifetimes(x):
     ax2.set_title("Exposure while on main", fontsize=11, loc="left", color=F.BODY)
     ax2.legend(loc="upper center", bbox_to_anchor=(0.5, -0.12), fontsize=7.5, ncol=1)
     ax2.tick_params(axis="x", labelsize=8.5)
+    # The panel is narrow at print width; level, the three names run into each other.
+    ax2.set_xticks(range(len(short)), [t.replace("\n", " ") for t in short], rotation=50, ha="right",
+                   rotation_mode="anchor")
     ax2.grid(axis="x", visible=False)
     png = F.save(fig, F.asset("5.3"))
     cols_ = ["repo", "pr", "fix_day", "label", "kind", "intro_day", "intro_pr", "group", "agent", "inherited", "days", "shipped",
@@ -57,7 +64,7 @@ def flaw_lifetimes(x):
               params={"population": "security change sets (not dependency CVEs) merged through a PR whose fix rewrote or removed lines; "
                                     "git blame at the fix's parent names the commit owning most of those lines",
                       "censoring": "none possible from this side: a flaw is only visible once fixed, so every interval is complete and the "
-                                   "curve is conditional on a fix by 24 Sep 2026; flaws still on main are not in the population",
+                                   "curve is conditional on a fix by " + D.END + "; flaws still on main are not in the population",
                       "groups": D.AUTHOR_GROUPS, "severity": "not recorded for change sets; none shown",
                       "exposure": "a successful deploy or main-branch build between the introducing and fixing merges (github.ci_runs, from July)",
                       "detection": "creation date of the work item linked to the fix PR, where one is linked", "xmax": XMAX},

@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 DATA = os.path.join(ROOT, ".analysis", "data")
 MIRRORS = os.path.join(DATA, "mirrors")
 DB = os.path.join(DATA, "security.sqlite")
-WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
+WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 
 SECRET_TOOLS = re.compile(r"\b(gitleaks|detect-secrets|trufflehog|ggshield|secretlint)\b")
 DEP_SCAN = re.compile(r"\b(govulncheck|npm audit|pnpm audit|yarn audit|bun audit|osv-scanner|pip-audit|trivy fs|"

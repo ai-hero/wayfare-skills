@@ -32,9 +32,12 @@ def rename_timeline(x):
             ax.plot([T(l["caller re-pointed"]["merged"])], [y], "D", color=F.INK, markersize=6, zorder=5)
         if "caller re-vendored" in l:
             ax.plot([T(l["caller re-vendored"]["merged"])], [y], "D", markerfacecolor="white", markeredgecolor=F.INK, markersize=6, zorder=5)
-    for ts, lab in PLUGIN_EVENTS:
+    # The two events are three hours apart; centred on their lines the names overlap, so the first ends at
+    # its line and the second starts at its own.
+    for (ts, lab), ha in zip(PLUGIN_EVENTS, ("right", "left")):
         ax.axvline(T(ts), color=F.GREY_DARK, linewidth=0.9, linestyle=(0, (2, 3)))
-        ax.text(T(ts), len(names) - 0.35, lab, fontsize=7.5, color=F.GREY_DARK, ha="center", va="bottom")
+        ax.text(T(ts), len(names) - 0.35, lab, fontsize=7.5, color=F.GREY_DARK, ha=ha, va="bottom",
+                multialignment=ha)
     ax.plot([], [], "|", color=F.PINK, markersize=12, markeredgewidth=1.8, label="Auto-approve run failed at startup")
     ax.plot([], [], "o", color=F.GREY_DARK, markersize=4, label="Auto-approve run succeeded")
     ax.plot([], [], "D", color=F.INK, markersize=6, label="Caller re-pointed at wayfare-skills (PR merged)")

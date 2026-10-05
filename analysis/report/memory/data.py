@@ -29,13 +29,13 @@ import record as F  # noqa: E402
 DATA = os.path.join(os.path.dirname(ANALYSIS), ".analysis", "data")
 MIRRORS = os.path.join(DATA, "mirrors")
 PLUGIN_MIRROR = os.path.join(MIRRORS, "wayfare-skills.git")
-LATEST_WEEK = 39
+LATEST_WEEK = 40
 WEEKS = [f"2026-W{w:02d}" for w in range(1, LATEST_WEEK + 1)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
-TODAY = "2026-09-24"
-# 10-24 Aug: no Claude Code session logs. Only session-derived series (sessions, spend) are
+TODAY = "2026-10-01"
+# Session logs are missing or partial over the gap. Only session-derived series (sessions, spend) are
 # affected; plan logs, git and memory files are not, so they are charted as recorded.
-NO_SESSION_DATA = ("2026-08-10", "2026-08-24")
+NO_SESSION_DATA = F.gap_range()
 APPS = ("app", "app, no features yet")
 
 
@@ -239,6 +239,9 @@ def memory_files():
             sess = re.search(r"^\s*originSessionId:\s*(\S+)", fm, re.M)
             cands = [born] + ([mod.group(1)] if mod else []) + ([session_start().get(sess.group(1))] if sess else [])
             born = min(c for c in cands if c)
+            # Memory folders are live; a file written after the freeze would move every frozen count.
+            if born > TODAY:
+                continue
             out.append({"repo": repo, "file": os.path.basename(f), "day": born, "week": F.week_of(born),
                         "month": born[:7], "type": t.group(1) if t else "untyped", "bytes": len(raw.encode()),
                         "why": bool(re.search(r"\*\*Why[:*]", body)),

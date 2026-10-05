@@ -19,17 +19,17 @@ from functools import lru_cache
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.dirname(HERE), os.path.dirname(os.path.dirname(HERE))]
-from record import rows, week_of  # noqa: E402
+from record import gap_weeks, rows, week_of  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE, category_of, path_of  # noqa: E402
 
 ANALYSIS = os.path.dirname(os.path.dirname(HERE))
 MIRRORS = os.path.join(os.path.dirname(ANALYSIS), ".analysis", "data", "mirrors")
-WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
+WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
-TODAY = "2026-09-25"
-# No Claude Code sessions are logged 10-24 Aug (W33-W34): session, tool and
+TODAY = "2026-10-01"
+# Session logs are missing, then partial, in W33-W34 (record.session_gap): session, tool and
 # turn series leave these weeks blank and out of every average, never zero.
-NA_WEEKS = {"2026-W33", "2026-W34"}
+NA_WEEKS = set().union(*gap_weeks())
 SESSIONS_FROM = "2026-W32"  # the first logged Claude Code session is 9 Aug
 KINDS = ["design", "design-system", "issues", "infrastructure", "reference", "architecture"]
 CONSUMERS = ["ah-cozy", "aihero-dokyu", "aihero-mehr", "aihero-steadfast", "aihero-wayfare", "auth",

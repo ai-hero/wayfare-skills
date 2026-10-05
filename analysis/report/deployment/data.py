@@ -25,7 +25,7 @@ from functools import lru_cache
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
-from record import adoption, rows, stage_of, week_of  # noqa: E402
+from record import adoption, gap_range, rows, stage_of, week_of  # noqa: E402
 from evolution import MONTHS, WEEKS  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE, category_of  # noqa: E402
 
@@ -59,9 +59,9 @@ HEALTH_EVENTS = [
     ("2026-08-26", "Asserts /readyz (#116)"),
     ("2026-09-17", "Hourly → every 6 h (#134)"),
 ]
-# No Claude Code sessions are logged 10–24 Aug (the owner confirmed the gap): a session match there is
+# Session logs are missing or partial over record.gap_range(): a session match there is
 # "data not available", never "no session".
-SESSION_GAP = ("2026-08-10", "2026-08-24")
+SESSION_GAP = gap_range()
 CI_GATE_EVENTS = [("2026-08-29", "Auto-approve reads CI (#65)")]
 AA_EVENTS = [
     ("2026-08-29", "Scripted gates (#65)"),

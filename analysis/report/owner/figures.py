@@ -7,7 +7,8 @@ from datetime import date
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 import figure_lib as F  # noqa: E402
-from deck_lib import MILESTONES, wlabel  # noqa: E402
+from deck_lib import MILESTONES  # noqa: E402
+from record import SESSION_WINDOW_LABEL  # noqa: E402
 
 
 def _wrap(s, n=34):
@@ -15,64 +16,24 @@ def _wrap(s, n=34):
 
 
 def draw_direction_vs_planning(x):
-    """Five shares of one population as paired dots (first logged week against the last four), their Wilson
-    intervals as whiskers; beneath, the three shares week by week with the unlogged span hatched."""
-    fig, (ax, axt) = F.fig(F.CHART_W, F.CHART_H, nrows=2, gridspec_kw={"height_ratios": [2.6, 1.6]})
-    ms = x["measures"]
-    first, last = x["table"]["first"], x["table"]["last4"]
-    n1, n2 = x["n"]["first"], x["n"]["last4"]
-    w1 = x["logged_weeks"][0]
-    lab1 = f"{wlabel(w1)}–{(date.fromisocalendar(2026, int(w1[6:]), 7)).strftime('%-d %b')} (first logged week, n={n1})"
-    w4 = x["last4_weeks"]
-    lab2 = f"{wlabel(w4[0])}–{(date.fromisocalendar(2026, int(w4[-1][6:]), 7)).strftime('%-d %b')} (last four weeks, n={n2})"
-    ys = list(range(len(ms)))[::-1]
-    for y, a, b in zip(ys, first, last):
-        ax.plot([a["lo"], a["hi"]], [y + 0.12] * 2, color=F.GREY, linewidth=1.5, solid_capstyle="round", zorder=2)
-        ax.plot([b["lo"], b["hi"]], [y - 0.12] * 2, color=F.PINK_LIGHT, linewidth=1.5, solid_capstyle="round", zorder=2)
-        ax.plot([a["share"]], [y + 0.12], "o", color=F.GREY_DARK, markersize=7, zorder=3)
-        ax.plot([b["share"]], [y - 0.12], "o", color=F.PINK, markersize=7, zorder=3)
-        ax.annotate(f"{a['share']:.0%}", (a["share"], y + 0.12), xytext=(0, 7), textcoords="offset points", ha="center",
-                    fontsize=8.5, color=F.GREY_DARK)
-        ax.annotate(f"{b['share']:.0%}", (b["share"], y - 0.12), xytext=(0, -13), textcoords="offset points", ha="center",
-                    fontsize=8.5, color=F.PINK_DARK)
-    ax.plot([], [], "o", color=F.GREY_DARK, label=lab1)
-    ax.plot([], [], "o", color=F.PINK, label=lab2)
-    ax.legend(loc="upper center", bbox_to_anchor=(0.5, 1.2), ncol=1, fontsize=8.5)
+    """One point: most change sets trace to an owner decision, far fewer to a plan written down, fewer still to one
+    written before the work began. Three bars over the logged window."""
+    fig, ax = F.fig(F.CHART_W, 2.9)
+    since, n = x["table"]["since"], x["n"]["since"]
+    bars = [("Traced to a decision of mine", since[0]["share"], F.OWNER),
+            ("Had a work item", since[2]["share"], F.GREY_DARK),
+            ("Had one written before the work began", since[3]["share"], F.GREY)]
+    ys = list(range(len(bars)))[::-1]
+    for y, (label, v, col) in zip(ys, bars):
+        ax.barh(y, v, color=col, height=0.6)
+        ax.text(v + 0.015, y, f"{v:.0%}", va="center", fontsize=13, color=F.INK, fontweight="bold")
     ax.set_yticks(ys)
-    ax.set_yticklabels([_wrap(m) for m in ms], fontsize=8.5)
-    ax.set_ylim(-0.7, len(ms) - 0.3)
-    ax.set_xlim(0, 1.04)
+    ax.set_yticklabels([b[0] for b in bars], fontsize=10.5)
+    ax.set_xlim(0, 1)
     ax.xaxis.set_major_formatter(F.matplotlib.ticker.PercentFormatter(1.0))
-    ax.set_xlabel(f"Share of the window's change sets (Dependabot excluded; whiskers: 95% Wilson interval)")
+    ax.set_xlabel(f"Share of the {n:,} change sets merged {SESSION_WINDOW_LABEL} (complete session logs)")
     ax.grid(axis="y", visible=False)
-
-    weeks = x["weeks"]
-    start = weeks.index("2026-W30")
-    xs = list(range(start, len(weeks)))
-    styles = {ms[0]: (F.PINK, "-"), ms[1]: (F.PINK_LIGHT, (0, (3, 2))), ms[2]: (F.GREY_DARK, "-")}
-    for m, (col, ls) in styles.items():
-        vals = [x["trend"][m][i] if x["trend"][m][i] is not None else float("nan") for i in xs]
-        axt.plot(xs, vals, color=col, linewidth=1.8, linestyle=ls, marker="o", markersize=3.5,
-                 label={ms[0]: "Decision identifiable", ms[1]: "Decision, unlogged one-shots as instructed", ms[2]: "Written intent"}[m])
-    g0, g1 = weeks.index("2026-W33") - 0.5, weeks.index("2026-W34") + 0.5
-    axt.axvspan(g0, g1, color=F.GREY_LIGHT, alpha=0.5, hatch="//", linewidth=0)
-    axt.text((g0 + g1) / 2, 0.5, "Session logs:\none day (9 Aug),\nnone 10–24 Aug", ha="center", va="center", fontsize=7.5, color=F.MUTED)
-    for day, name, *_ in MILESTONES:
-        y, w, wd = date.fromisoformat(day).isocalendar()
-        px = (w - 1) + (wd - 1) / 7
-        if px >= start - 0.5:
-            axt.axvline(px, color=F.GREY_DARK, linewidth=0.7, linestyle=(0, (1, 3)))
-            axt.text(px + 0.1, 1.0, name, rotation=90, ha="left", va="top", fontsize=7, color=F.GREY_DARK,
-                     transform=axt.get_xaxis_transform())
-    axt.set_ylim(0, 1.02)
-    axt.set_xlim(start - 0.5, len(weeks) - 0.5)
-    axt.set_xticks(xs)
-    axt.set_xticklabels([wlabel(weeks[i]) for i in xs], fontsize=8)
-    axt.yaxis.set_major_formatter(F.matplotlib.ticker.PercentFormatter(1.0))
-    axt.set_ylabel("Share, by week")
-    axt.set_xlabel("Week of 2026 (weeks with 10+ change sets)")
-    axt.grid(axis="x", visible=False)
-    axt.legend(loc="lower left", bbox_to_anchor=(0.0, 0.08), fontsize=7.5, ncol=1)
+    F.coverage(fig)
     return F.save(fig, F.asset("2.2"))
 
 
@@ -93,7 +54,7 @@ def _layer_bar(ax, y, parts, colors, n, width_chars=70, named=0.3):
     for (name, k), col in zip(parts.items(), colors):
         v = k / n
         ax.barh(y, v, left=left, height=0.5, color=col, edgecolor="white", linewidth=1)
-        txt = "white" if col in (F.PINK, F.GREY_DARK, F.PINK_DARK) else F.INK
+        txt = "white" if col in (F.PINK, F.GREY_DARK, F.PINK_DARK, F.OWNER) else F.INK
         if v >= named:
             ax.text(left + v / 2, y, f"{SHORT.get(name, name)}\n{v:.0%}", ha="center", va="center", fontsize=8, color=txt)
         elif v >= 0.08:
@@ -109,10 +70,11 @@ def _layer_bar(ax, y, parts, colors, n, width_chars=70, named=0.3):
 def draw_review_layers(x):
     """Left: one 100% bar per layer (coverage, reviewer identity, independence) for every merged PR. Right: the
     independence layer for one-way-door PRs against the rest."""
-    fig, (ax, axr) = F.fig(F.CHART_W, F.CHART_H, ncols=2, gridspec_kw={"width_ratios": [1.45, 1]})
+    # Stacked, not side by side: at print width two panels abreast leave each too narrow for its labels.
+    fig, (ax, axr) = F.fig(F.CHART_W, 11.5, nrows=2, gridspec_kw={"height_ratios": [1.45, 1.35]})
     n = x["n"]
     I, D = x["identity_cats"], x["indep_cats"]
-    id_cols = [F.PINK, F.PINK_LIGHT, F.PINK_DARK, F.GREY, F.GREY_LIGHT]
+    id_cols = [F.OWNER, F.PINK_LIGHT, F.PINK, F.GREY, F.GREY_LIGHT]
     in_cols = [F.PINK, F.PINK_LIGHT, F.GREY_DARK, F.GREY, F.GREY_LIGHT]
     rows = [("Coverage: was there any review?", x["coverage"], [F.GREY, F.GREY_LIGHT]),
             ("Reviewer identity: who posted the reviews?", {c: x["identity"][c] for c in I}, id_cols),
@@ -137,12 +99,14 @@ def draw_review_layers(x):
         f"95% interval {a['human_lo']:.1%}–{a['human_hi']:.1%}) against {b['counts'][D[0]]} of {b['n']:,} other PRs "
         f"({b['shares'][D[0]]:.1%}, {b['human_lo']:.1%}–{b['human_hi']:.1%}).", 46)), fontsize=8, color=F.INK, va="top",
         linespacing=1.2)
-    for y, name in zip([3.3, 1.3], names):
+    # Each bar's notes run three or four lines at print width; the spacing leaves them room above the
+    # next bar's title and above the axis.
+    for y, name in zip([3.5, 1.4], names):
         s = side[name]
         axr.text(0, y + 0.36, f"{name}: independence  (n={s['n']:,})", fontsize=9, color=F.INK, va="bottom")
         _layer_bar(axr, y, {c: s["counts"][c] for c in D}, in_cols, s["n"], width_chars=48)
     axr.set_xlim(0, 1)
-    axr.set_ylim(0.2, 6.0)
+    axr.set_ylim(-0.5, 6.0)
     axr.set_yticks([])
     axr.xaxis.set_major_formatter(F.matplotlib.ticker.PercentFormatter(1.0))
     axr.grid(axis="y", visible=False)

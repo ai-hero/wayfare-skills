@@ -15,16 +15,16 @@ from collections import defaultdict
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
-from record import STAGES, adoption, changeset_facts, rows, week_of  # noqa: E402
+from record import SESSION_FULL_WEEKS, SESSION_WINDOW, STAGES, adoption, changeset_facts, gap_weeks, rows, week_of  # noqa: E402
 from links import _items, set_item_links  # noqa: E402
 from spend.attribution import spend_by_changeset, spend_by_pr, spend_rows  # noqa: E402
 
-WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
+WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 SPEND_WEEKS = [w for w in WEEKS if w >= "2026-W32"]
-# No sessions are logged 10-24 Aug: those weeks are "data not available", never zero spend, and
-# stay out of every weekly average and median.
-NA_WEEKS = {"2026-W33", "2026-W34"}
-FULL_WEEKS = ["2026-W35", "2026-W36", "2026-W37", "2026-W38"]  # fully logged: W32 has one session, W39 ends 25 Sep
+# W33-W34 (record.session_gap) have no session logs, then partial ones: never zero spend, and
+# they stay out of every weekly average and median.
+NA_WEEKS = set().union(*gap_weeks())
+FULL_WEEKS = SESSION_FULL_WEEKS
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
 APPS = ("app", "app, no features yet")
 HUNG_DAY = "2026-08-26"
@@ -182,8 +182,8 @@ def q_cost_rollup_rollup(con):
             "kind_sets": [mean(ksets[k]) for k in kinds]}
 
 
-# Book figure 6.5: one window (session logging resumes 25 Aug; change sets end 25 Sep), one price basis.
-UNIT_WINDOW = ("2026-08-25", "2026-09-25")
+# Book figure 6.5: one window, one price basis.
+UNIT_WINDOW = SESSION_WINDOW
 
 
 def q_cost_rollup_units(con):
@@ -517,7 +517,7 @@ def q_ci_minutes_pareto(con):
                 "per_week": round(wall(rs) / days * 7), "runs_per_week": round(len(rs) / days * 7)}
     before = week_span("2026-07-29", HUNG_DAY)          # the four weeks before the hang
     after_fix = week_span(FIX_DAY, CUT_DAY)             # from the fix to the deliberate cut
-    after_cut = week_span(CUT_DAY, "2026-09-25")        # after the cut, to the last full day
+    after_cut = week_span(CUT_DAY, "2026-10-01")        # after the cut, to the last full day
     table = [{"group": "Normal runs", "runs": len(normal), "wall_min": round(wall(normal)), "billable_lb_min": billable_lb(normal),
               "share_wall": round(wall(normal) / total, 3)},
              {"group": "Hung runs (26 Aug, cancelled 28 Aug)", "runs": len(hung), "wall_min": round(wall(hung)),
@@ -640,8 +640,56 @@ def q_ci_change_effect_ci_changes(con):
     return {"series": {"Auto Approve minutes per change set": s_aa, "Build, test, deploy minutes per change set": s_ot},
             "aa_per_run": aa_per_run,
             "before_cut": (mean(pick(s_aa, "2026-W33", "2026-W37")), mean(pick(s_ot, "2026-W33", "2026-W37"))),
-            "after_cut": (mean(pick(s_aa, "2026-W38", "2026-W39")), mean(pick(s_ot, "2026-W38", "2026-W39"))),
-            "aa_run_before": mean(pick(aa_per_run, "2026-W31", "2026-W35")), "aa_run_after": mean(pick(aa_per_run, "2026-W36", "2026-W39"))}
+            "after_cut": (mean(pick(s_aa, "2026-W38", "2026-W40")), mean(pick(s_ot, "2026-W38", "2026-W40"))),
+            "aa_run_before": mean(pick(aa_per_run, "2026-W31", "2026-W35")), "aa_run_after": mean(pick(aa_per_run, "2026-W36", "2026-W40"))}
+
+
+# ---------------------------------------------------------------- Q ci-cost-vs-change-sets
+
+# W29 is the first week the fleet ran CI at volume (shared caller, 18 Jul); W40 ends 1 Oct and would read as a drop.
+VOLUME_WEEKS = [w for w in WEEKS if "2026-W29" <= w <= "2026-W39"]
+VOLUME_MONTHS = ["2026-07", "2026-08", "2026-09"]
+
+
+def q_ci_cost_vs_change_sets_volume(con):
+    """Weekly CI minutes against weekly change sets and merged PRs, and the monthly split of what grew. Dependabot's
+    change sets count, since its CI minutes do; the 26 Aug hung runs do not."""
+    runs = [r for r in ci_runs(con) if not r["hung"]]
+    sets_w, sets_m = defaultdict(int), defaultdict(int)
+    for f in changeset_facts(con):
+        sets_w[f["week"]] += 1
+        sets_m[f["month"]] += 1
+    prs_w, prs_m = defaultdict(int), defaultdict(int)
+    for p in rows(con, "SELECT merged_ts FROM github.prs WHERE merged_ts >= '2026-01-01'"):
+        prs_w[week_of(p["merged_ts"][:10])] += 1
+        prs_m[p["merged_ts"][:7]] += 1
+    min_w, min_m = defaultdict(float), defaultdict(float)
+    grp_m = defaultdict(lambda: defaultdict(lambda: [0.0, 0]))
+    repos_m = defaultdict(set)
+    for r in runs:
+        min_w[r["week"]] += r["min"]
+        min_m[r["month"]] += r["min"]
+        g = grp_m[r["month"]][r["group"]]
+        g[0] += r["min"]
+        g[1] += 1
+        repos_m[r["month"]].add(r["repo"])
+    xs = [sets_w[w] for w in VOLUME_WEEKS]
+    ps = [prs_w[w] for w in VOLUME_WEEKS]
+    ys = [round(min_w[w]) for w in VOLUME_WEEKS]
+    fit = statistics.linear_regression(xs, ys)
+    months = [{"month": m, "change_sets": sets_m[m], "prs": prs_m[m], "ci_min": round(min_m[m]),
+               "min_per_set": round(min_m[m] / sets_m[m], 1), "repos_with_ci": len(repos_m[m]),
+               "build_min_per_run": round(grp_m[m]["Build, test, checks"][0] / grp_m[m]["Build, test, checks"][1], 1),
+               "deploy_min_per_run": round(grp_m[m]["Deploy"][0] / grp_m[m]["Deploy"][1], 1),
+               "by_group": {g: round(v[0]) for g, v in grp_m[m].items()}} for m in VOLUME_MONTHS]
+    first, last = months[0], months[-1]
+    return {"weeks": VOLUME_WEEKS, "change_sets": xs, "prs": ps, "ci_min": ys,
+            "r_sets": round(statistics.correlation(xs, ys), 2),
+            "rho_sets": round(statistics.correlation(xs, ys, method="ranked"), 2),
+            "r_prs": round(statistics.correlation(ps, ys), 2),
+            "slope": round(fit.slope, 1), "intercept": round(fit.intercept), "months": months,
+            "sets_growth": round(last["change_sets"] / first["change_sets"], 2),
+            "min_growth": round(last["ci_min"] / first["ci_min"], 2)}
 
 
 # ---------------------------------------------------------------- Q multi-repo-change-cost

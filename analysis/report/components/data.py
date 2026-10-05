@@ -20,23 +20,23 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ANALYSIS = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, ANALYSIS)
 sys.path.insert(0, os.path.dirname(HERE))
-from record import STAGES, adoption, changeset_facts, commit_facts, rows, week_of  # noqa: E402
+from record import SESSION_WINDOW, STAGES, adoption, changeset_facts, commit_facts, gap_range, gap_weeks, rows, week_of  # noqa: E402
 
 DATA = os.path.join(os.path.dirname(ANALYSIS), ".analysis", "data")
 REPO_ROOT = os.path.dirname(ANALYSIS)
 
-WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
+WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
-TODAY = "2026-09-24"
+TODAY = "2026-10-01"
 RECENT = "2026-08-26"  # "in use now" = seen in the last 30 days
 SESSIONS_FROM = "2026-08-09"
-SKILLS_FROM = "2026-08-25"  # first wayfare skill invocation in the session logs (harness.tool_calls)
+SKILLS_FROM = SESSION_WINDOW[0]  # first wayfare skill invocation in the session logs (harness.tool_calls)
 FOLLOWUP_CUTOFF = "2026-09-17"  # a PR merged later has not had its 7 days to draw a follow-up
-# 10-24 Aug (W33-W34): no Claude Code sessions are logged between the one on 9 Aug and 25 Aug; the owner
-# confirmed the data is not available. Session-derived series (sessions, tool calls, spend) treat those
+# W33-W34 (record.session_gap): Claude Code session logs are missing, then partial, between the one on 9 Aug
+# and 25 Aug. Session-derived series (sessions, tool calls, spend) treat those
 # weeks as missing, never zero. Git, GitHub and .plans data are unaffected.
-NO_DATA = ("2026-08-10", "2026-08-24")
-NO_DATA_WEEKS = {"2026-W33", "2026-W34"}
+NO_DATA = gap_range()
+NO_DATA_WEEKS = set().union(*gap_weeks())
 PRE_DAYS = 28  # an event study needs the component to arrive at least 4 weeks after the repo's first commit
 APPS = ("app", "app, no features yet")
 
@@ -519,7 +519,9 @@ def aligned(con, per_repo_week, comps=EVENT_COMPONENTS, cats=APPS, agg=mean, min
             for rel in REL:
                 d = date.fromisocalendar(y, w0, 1) + timedelta(weeks=rel)
                 y2, w2, _ = d.isocalendar()
-                if ad[r]["first"] <= (d + timedelta(days=6)).isoformat() and d.isoformat() <= ad[r]["last"]:
+                # A week still running at TODAY holds a few days of output; counted as a week it reads as a drop.
+                if ad[r]["first"] <= (d + timedelta(days=6)).isoformat() and d.isoformat() <= ad[r]["last"] \
+                        and (d + timedelta(days=6)).isoformat() <= TODAY:
                     v = per_repo_week(r, f"{y2}-W{w2:02d}")
                     if v is not None:
                         vals[rel].append(v)
@@ -1019,8 +1021,7 @@ if __name__ == "__main__":
 
 # ---------------------------------------------------------------- Book figures 7.1 and 7.2: one window, one population
 
-# Session logging resumes 25 Aug (the first skill invocation in the logs); change sets end 25 Sep.
-BOOK_WINDOW = ("2026-08-25", "2026-09-25")
+BOOK_WINDOW = SESSION_WINDOW
 # Skills that plan work in the session (a one-shot PR from one of these was planned, but the plan was not saved).
 PLANNING_SKILLS = ("grill", "think-it-through", "plan-work", "sync-plan", "hero-skills:wayfare", "start-goal", "advance-item",
                    "run-task", "build-task", "one-shot")

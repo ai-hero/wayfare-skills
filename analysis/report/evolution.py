@@ -18,15 +18,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ingest.fleet import REPO_ALIASES  # noqa: E402
 from record import (CATEGORIES, STAGES, adoption, changeset_facts, commit_facts,  # noqa: E402
-                       rows, week_of, weekly)
+                       gap_events, gap_weeks, rows, week_of, weekly)
 
-LATEST_WEEK = 39
+LATEST_WEEK = 40
 WEEKS = [f"2026-W{w:02d}" for w in range(1, LATEST_WEEK + 1)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
 SESSIONS_FROM_WEEK = "2026-W32"
-# No Claude Code sessions are logged 10–24 Aug: session-derived weeks are unknown, not zero.
-GAP_WEEKS = {"2026-W33", "2026-W34"}
-SESSION_GAP = [("2026-08-10", "Session data not available (10–24 Aug)")]
+# Session-derived weeks in the gap (record.gap_weeks) are unknown or understated, not zero: blank them.
+GAP_WEEKS = set().union(*gap_weeks())
+SESSION_GAP = gap_events()
 APPS = ("app", "app, no features yet")
 
 # Changes to the factory made to save cost or time, from wayfare-skills' history.
@@ -41,6 +41,7 @@ FORMAT_EVENTS = [
     ("2026-07-22", ".plans/ store"),
     ("2026-08-30", "Plan file as state (#69)"),
     ("2026-09-20", "Plan standard, schema 1 (#105)"),
+    ("2026-09-30", "Priority, blocks, anti-features (#141)"),
 ]
 
 

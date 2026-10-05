@@ -22,7 +22,7 @@ import gitwalk as G  # noqa: E402
 from d_shared_labels import run_batches  # noqa: E402
 
 DB = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(HERE))), ".analysis", "data", "skills.sqlite")
-SNAPSHOTS = ["2026-03-31", "2026-04-30", "2026-05-31", "2026-06-30", "2026-07-31", "2026-08-31", "2026-09-24"]
+SNAPSHOTS = ["2026-03-31", "2026-04-30", "2026-05-31", "2026-06-30", "2026-07-31", "2026-08-31", "2026-10-01"]
 MAX_CHARS = 3500
 
 STEP_HEADER = """You read sections of the instruction files of a coding-agent skills plugin. Each section is one
@@ -170,12 +170,12 @@ VFIELDS = ["verdict", "verdict_quote", "untrusted", "untrusted_quote", "bounded"
 
 
 def verdict_doc(tree, skill):
-    """The skill's SKILL.md plus every references/ or docs/ file it names, as one text."""
+    """The skill's SKILL.md and WORKFLOW.md plus every references/ or docs/ file they name, as one text."""
     if skill == "auto-approve workflow":
         paths = sorted(p for p in tree if p.startswith(".github/workflows/") and "approve" in p)
     else:
-        paths = [f"skills/{skill}/SKILL.md"]
-        body = G.blobs(G.PLUGIN, [tree[paths[0]]])[tree[paths[0]]]
+        paths = [p for p in (f"skills/{skill}/SKILL.md", f"skills/{skill}/WORKFLOW.md") if p in tree]
+        body = "\n".join(G.blobs(G.PLUGIN, [tree[p] for p in paths]).values())
         for ref in sorted(set(re.findall(r"(references/[\w.-]+\.md|docs/[A-Z][\w.-]+\.md)", body))):
             if ref in tree and ref not in paths:
                 paths.append(ref)

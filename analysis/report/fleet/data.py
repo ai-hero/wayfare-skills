@@ -25,8 +25,8 @@ from ingest.fleet import OUT_OF_SCOPE, category_of  # noqa: E402
 FLEET = os.path.expanduser(os.environ.get("WAYFARE_FLEET_ROOT", "~/workspaces/aihero"))
 PLUGIN = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 MIRRORS = os.path.join(PLUGIN, ".analysis", "data", "mirrors")
-LATEST = "2026-09-24"
-WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
+LATEST = "2026-10-01"
+WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
 CATS = ["app", "app, no features yet", "allied", "out of scope"]
 TEMPLATE = "hero-template"
@@ -1011,6 +1011,8 @@ def _subject_class(subjects):
     return "feat" if kinds.count("feat") * 2 > len(kinds) else "other"
 
 
+INFRA = ["infrastructure-root", "infrastructure-environments"]
+INFRA_FEATURE = "infrastructure feature"
 def fig_features_vs_structure(con):
     """Weekly mix of app change sets with the customer-facing share and its interval; the July-to-September fall
     raw, then standardised to July's repo mix and to July's workflow mix; the commit-subject label as a check."""
@@ -1021,23 +1023,27 @@ def fig_features_vs_structure(con):
     wf = _workflow_of(con)
     facts = []
     for f in changeset_facts(con):
-        if f["repo"] not in APPS or f["dependabot"]:
+        if f["repo"] not in APPS + INFRA or f["dependabot"]:
             continue
         t = wt.get((f["repo"], f["unit_kind"], f["unit_id"], f["set_idx"]))
-        facts.append({**f, "mix": mix_of(*t) if t else UNLABELLED, "workflow": wf(f),
+        mix = mix_of(*t) if t else UNLABELLED
+        if f["repo"] in INFRA and mix in MIX[:2]:
+            mix = INFRA_FEATURE
+        facts.append({**f, "mix": mix, "workflow": wf(f),
                       "alt": _subject_class([subj.get((f["repo"], s)) for s in f["shas"]])})
-    cats = MIX + [UNLABELLED]
+    cats = MIX[:2] + [INFRA_FEATURE] + MIX[2:] + [UNLABELLED]
     weekly = {m: [0] * len(WEEKS) for m in cats}
     for f in facts:
         if f["week"] in WEEKS:
             weekly[f["mix"]][WEEKS.index(f["week"])] += 1
     n_week = [sum(weekly[m][i] for m in cats) for i in range(len(WEEKS))]
     feat = weekly[MIX[0]]
-    share = [round(k / n, 3) if n >= 10 else None for k, n in zip(feat, n_week)]
+    share = [round(k / n, 3) if n else None for k, n in zip(feat, n_week)]
     from figure_lib import wilson
-    lo_hi = [wilson(k, n) if n >= 10 else (None, None) for k, n in zip(feat, n_week)]
-    shares = {m: [round(weekly[m][i] / n_week[i], 3) if n_week[i] >= 10 else None for i in range(len(WEEKS))] for m in cats}
-    peak_i = max((i for i in range(len(WEEKS)) if share[i] is not None), key=lambda i: share[i])
+    lo_hi = [wilson(k, n) if n else (None, None) for k, n in zip(feat, n_week)]
+    shares = {m: [round(weekly[m][i] / n_week[i], 3) if n_week[i] else None for i in range(len(WEEKS))] for m in cats}
+    # Every week with a change set is drawn, but the peak is read only from weeks of 10+: 1 of 1 is not a peak.
+    peak_i = max((i for i in range(len(WEEKS)) if n_week[i] >= 10), key=lambda i: share[i])
     sep = [(w, s) for w, s in zip(WEEKS, share) if w >= "2026-W36" and s is not None]
 
     def fshare(v):
@@ -1063,6 +1069,7 @@ def fig_features_vs_structure(con):
     both = [f for f in facts if f["alt"]]
     agree = sum(1 for f in both if (f["alt"] == "feat") == (f["mix"] == MIX[0]))
     x = q_features_vs_structure_mix(con)
+    n_infra = [sum(1 for f in facts if f["repo"] in INFRA and f["week"] == w) for w in WEEKS]
     return {"weeks": WEEKS, "cats": cats, "weekly": weekly, "shares": shares, "n_week": n_week, "share": share,
             "lo": [a for a, _ in lo_hi], "hi": [b for _, b in lo_hi],
             "peak": (WEEKS[peak_i], share[peak_i], n_week[peak_i]),
@@ -1073,7 +1080,9 @@ def fig_features_vs_structure(con):
             "repos_fell": fell, "repos_comparable": comparable, "strata": strata,
             "alt": {"overall": alt_share(facts), "jul": alt_share(jul), "sep": alt_share(sept), "n": len(both),
                     "agree": round(agree / len(both), 3)},
-            "paired": x["paired"], "by_model": x["by_model"], "per_repo": x["per_repo"]}
+            "paired": x["paired"], "by_model": x["by_model"], "per_repo": x["per_repo"],
+            "n_infra": n_infra,
+            "first_app_week": next(w for w, n, i in zip(WEEKS, n_week, n_infra) if n > i)}
 
 
 # ------------------------------------------------------------------ Figure 6.1: repos in motion against the eligible fleet

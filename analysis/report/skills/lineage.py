@@ -15,6 +15,7 @@ CURRENT = {
     "wayfare-review-pr": ["hero-pr-review", "hero-review-pr", "hero-self-review", "review", "review-pr"],
     "wayfare-respond-pr": ["hero-pr-respond", "hero-respond-to-pr", "respond", "respond-to-pr",
                            "respond-to-comments", "hero-pr-resolve"],
+    # The old `one-shot` was build-task's name; wayfare-one-shot (#141) is a new skill that hands off to it.
     "wayfare-build-task": ["one-shot", "wayfare-run-task", "hero-plan", "plan", "plan-work", "hero-implement"],
     "wayfare-drop-item": ["hero-reset", "reset", "reset-branch", "abandon-branch", "abandon"],
     "wayfare-init-repo": ["hero-init", "init-hero", "hero-new", "hero-new-project", "create-project"],
@@ -33,7 +34,7 @@ CURRENT = {
     "wayfare-check-preflight": ["preflight"],
 }
 for cur in ["wayfare-advance-item", "wayfare-audit-compliance", "wayfare-review-fleet", "wayfare-start-goal",
-            "wayfare-sync-architecture"]:
+            "wayfare-sync-architecture", "wayfare-one-shot"]:
     CURRENT.setdefault(cur, [])
 
 OLD_TO_CURRENT = {old: cur for cur, olds in CURRENT.items() for old in olds}
@@ -43,6 +44,7 @@ OLD_TO_CURRENT.update({cur: cur for cur in CURRENT})
 FAMILY = {
     "wayfare-push-pr": "push-pr", "wayfare-review-pr": "review-pr", "wayfare-ship-pr": "ship-pr",
     "wayfare-respond-pr": "respond-pr", "wayfare-build-task": "build-task (one-shot)",
+    "wayfare-one-shot": "build-task (one-shot)",
     "wayfare-sync-plan": "plan & goal verbs", "wayfare-start-goal": "plan & goal verbs",
     "wayfare-advance-item": "plan & goal verbs", "wayfare-grill-idea": "plan & goal verbs",
     "wayfare-drop-item": "plan & goal verbs",

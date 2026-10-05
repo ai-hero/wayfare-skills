@@ -18,7 +18,7 @@ def fig_7_3(x):
     from datetime import date
     import matplotlib.ticker as mt
     ev = x["events"]
-    fig, (ax, bx) = F.fig(nrows=2, gridspec_kw={"height_ratios": [1, 1.6]})
+    fig, (ax, bx) = F.fig(F.CHART_W, 9, nrows=2, gridspec_kw={"height_ratios": [1, 2.4]})
     # Top: the five events side by side.
     labels = [date.fromisoformat(e["day"]).strftime("%-d %b") for e in ev]
     idx = list(range(len(ev)))
@@ -49,8 +49,8 @@ def fig_7_3(x):
     for y, name in zip(ys, names):
         if name.startswith("wayfare-skills"):
             for p in x["plugin_prs"]:
-                bx.plot([_h(p["created_ts"]), _h(p["merged_ts"])], [y, y], color=F.GREY_DARK, linewidth=6, solid_capstyle="butt")
-                bx.text(_h(p["merged_ts"]) + 0.05, y + 0.32, f"#{p['number']}", fontsize=7.5, color=F.GREY_DARK, ha="left", va="center")
+                bx.plot([_h(p["created_ts"]), _h(p["merged_ts"])], [y, y], color=F.named("wayfare-skills"), linewidth=6, solid_capstyle="butt")
+                bx.text(_h(p["merged_ts"]) + 0.05, y + 0.32, f"#{p['number']}", fontsize=7.5, color=F.named("wayfare-skills"), ha="left", va="center")
             continue
         for (label, ps), col in zip(waves, (F.PINK_LIGHT, F.PINK)):
             for p in ps:
@@ -62,14 +62,16 @@ def fig_7_3(x):
     bx.text(_h(rename["merged_ts"]) - 0.05, ys[0] + 0.9, "repository renamed (#108 merged)", fontsize=8, color=F.PINK_DARK, ha="right")
     last = max(_h(p["merged_ts"]) for _, ps in waves for p in ps)
     bx.axvline(last, color=F.PINK_DARK, linewidth=0.9, linestyle=(0, (3, 3)))
-    bx.text(last - 0.05, ys[0] + 0.9, f"last consumer merged, {last - _h(rename['merged_ts']):.1f} h later", fontsize=8, color=F.PINK_DARK, ha="right")
+    bx.text(last - 0.05, ys[0] + 1.8, f"last consumer merged, {last - _h(rename['merged_ts']):.1f} h later", fontsize=8, color=F.PINK_DARK, ha="right")
     for (label, _), col in zip(waves, (F.PINK_LIGHT, F.PINK)):
         bx.plot([], [], color=col, linewidth=6, label=label)
-    bx.plot([], [], color=F.GREY_DARK, linewidth=6, label="Plugin PR (#106 plugin renamed, #108 repo renamed, #115 caller fix)")
+    bx.plot([], [], color=F.named("wayfare-skills"), linewidth=6, label="Plugin PR (#106 plugin renamed, #108 repo renamed, #115 caller fix)")
     bx.legend(loc="lower left", fontsize=8)
     bx.set_yticks(ys)
     bx.set_yticklabels(names, fontsize=8)
-    bx.set_ylim(-0.7, len(names) + 0.6)
+    # Room inside the plot for the two event names stacked above the top lane; above it they ran into
+    # the panel heading.
+    bx.set_ylim(-0.7, len(names) + 1.4)
     bx.set_xlim(0, 8)
     bx.xaxis.set_major_locator(mt.MultipleLocator(1))
     bx.xaxis.set_major_formatter(mt.FuncFormatter(lambda v, _: (T0.replace(hour=21) + __import__("datetime").timedelta(hours=v)).strftime("%H:%M")))

@@ -137,10 +137,34 @@ def bibliography(doc):
     return items, per_chapter
 
 
+# The paper's text block is 5.5 in, so 300 ppi needs at most this many pixels across.
+MAX_PX = 1650
+
+
+def place(name):
+    """Copy a figure into the bundle. A chart PNG is flat colour with antialiased text, so a
+    256-colour palette at print resolution looks the same and is about a third smaller; vector
+    figures are copied as they are."""
+    src, dst = os.path.join(paths.ASSETS, name), os.path.join(BUILD, "figures", name)
+    if not name.endswith(".png"):
+        shutil.copyfile(src, dst)
+        return
+    from PIL import Image
+    with Image.open(src) as im:
+        im = im.convert("RGBA")
+        flat = Image.new("RGB", im.size, "white")
+        flat.paste(im, mask=im.getchannel("A"))
+        if flat.width > MAX_PX:
+            flat = flat.resize((MAX_PX, round(flat.height * MAX_PX / flat.width)), Image.LANCZOS)
+        # 256, not fewer: a heatmap's colour scale bands into visible steps at 64, and no pixel
+        # measure separated those charts from the flat ones.
+        flat.quantize(256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(dst, optimize=True)
+
+
 def asset(b):
     f = b["files"]
     name = f.get("pdf") or f.get("png") or f.get("svg")
-    shutil.copyfile(os.path.join(paths.ASSETS, name), os.path.join(BUILD, "figures", name))
+    place(name)
     return f"figures/{name}"
 
 
@@ -244,7 +268,7 @@ def appendix_block(b, refs):
 
 def appendix_chart(c):
     name = c["files"].get("pdf") or c["files"].get("png") or c["files"].get("svg")
-    shutil.copyfile(os.path.join(paths.ASSETS, name), os.path.join(BUILD, "figures", name))
+    place(name)
     return ("\\begin{center}\n"
             f"\\includegraphics[width=0.8\\linewidth,height=0.36\\textheight,keepaspectratio]{{figures/{name}}}\n"
             f"\\captionof{{figure}}{{Chart for \\texttt{{{tex_escape(c['slug'])}}}.}}\\label{{fig:appendix-{c['slug']}}}\n"
@@ -360,7 +384,9 @@ def main():
     if refs.unmapped:
         print(f"warn: technical: references with no figure: {sorted(refs.unmapped)}")
     compile_pdf()
-    shutil.copyfile(os.path.join(BUILD, "paper.pdf"), os.path.join(paths.DIST, "technical.pdf"))
+    import fitz
+    pdf = fitz.open(os.path.join(BUILD, "paper.pdf"))
+    pdf.save(os.path.join(paths.DIST, "technical.pdf"), garbage=4, deflate=True, deflate_fonts=True, clean=True)
     print(f"technical: {os.path.join(paths.DIST, 'technical.pdf')} and {bundle()}")
 
 

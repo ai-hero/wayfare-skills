@@ -24,7 +24,7 @@ from ingest.fleet import OUT_OF_SCOPE  # noqa: E402
 
 PLUGIN = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 DB = os.path.join(PLUGIN, ".analysis", "data", "messages.sqlite")
-LATEST = "2026-09-24"
+LATEST = "2026-10-01"
 UPSTREAM = ("wayfare-skills", "hero-template", "design-system", "auth")
 LINK_DAYS, SPAN_DAYS, CREATION_DAYS = 14, 45, 3
 PR_RE = re.compile(r"\(#(\d+)\)\s*$|Merge pull request #(\d+)")

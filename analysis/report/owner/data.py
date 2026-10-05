@@ -2,7 +2,7 @@
 
     WAYFARE_FLEET_ROOT=~/workspaces/aihero python3 report/owner/data.py   # prints every answer's numbers
 
-Weeks run from 1 Jan 2026 (ISO W01) to W39. Owner-local times use this machine's zone (the
+Weeks run from 1 Jan 2026 (ISO W01) to W40. Owner-local times use this machine's zone (the
 owner's, PDT). Out-of-scope repos (the deleted -design repos) are dropped everywhere.
 """
 import json
@@ -19,14 +19,17 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 sys.path.insert(0, HERE)
-from record import STAGES, adoption, changeset_facts, rows, stage_of, week_of  # noqa: E402
+from record import SESSION_WINDOW, STAGES, adoption, changeset_facts, gap_short, in_session_window, rows, stage_of, week_of  # noqa: E402
 from links import set_item_links  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE  # noqa: E402
 import actors  # noqa: E402
 
-WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
+WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
+# The data ends mid-week; a per-week average over the last week counts a few days as a week.
+DATA_END = "2026-10-01"
+FULL_WEEKS = [w for w in WEEKS if date.fromisocalendar(2026, int(w[6:]), 7).isoformat() <= DATA_END]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
-# No Claude Code sessions were logged from 10 to 24 Aug (W33-W34; the owner confirmed an outage). Session-derived
+# Session logs are missing 10-19 Aug and partial 20-24 Aug (W33-W34; record.session_gap). Session-derived
 # series (sessions, turns, tool calls, asks) show those weeks as "data not available", never zero, and leave them
 # out of averages. Typed prompts come from the prompt history, which continues through the gap.
 NA_WEEKS = ("2026-W33", "2026-W34")
@@ -40,6 +43,7 @@ GATE_EVENTS = [
     ("2026-07-18", "Approve only on a write-access comment"),
     ("2026-07-22", "Ready-mark gate (#41)"),
     ("2026-09-18", "Goal runs after its gate (#95)"),
+    ("2026-09-30", "One-shot: the yes is the ready-mark (#141)"),
 ]
 PERMISSION_EVENTS = [
     ("2026-08-14", "Auto mode default (Claude Code)"),
@@ -224,12 +228,12 @@ def q_owner_wait_points_gates(con):
     return {"weeks": WEEKS, "cats": cats, "series": ser, "totals": {c: sum(ev[c].values()) for c in cats},
             "first_week": first,
             "table": [
-                ("Question in a session (ask)", "harness.asks", "yes", "yes: the agent's next turn", "9 Aug (none logged 10–24 Aug)"),
+                ("Question in a session (ask)", "harness.asks", "yes", "yes: the agent's next turn", f"9 Aug ({gap_short()})"),
                 ("Ready-mark on a work item", "plans.plan_items.ready_ts", "no", "day only", "23 Jul"),
                 ("Go: authorize a goal", "an ask ('Authorize goal N…')", "yes", "yes", "28 Aug"),
                 ("Go: a typed instruction", "harness.prompts (text only)", "no", "yes: the prompt", "Nov 2025"),
-                ("Tool-call permission", "harness.tool_calls.was_rejected (denials only)", "no", "denials only", "9 Aug (none logged 10–24 Aug)"),
-                ("Interrupt", "harness.sessions.interrupted_count", "no", "count per session", "9 Aug (none logged 10–24 Aug)"),
+                ("Tool-call permission", "harness.tool_calls.was_rejected (denials only)", "no", "denials only", f"9 Aug ({gap_short()})"),
+                ("Interrupt", "harness.sessions.interrupted_count", "no", "count per session", f"9 Aug ({gap_short()})"),
                 ("PR review or merge", "github.pr_reviews / pr_timeline", "no", "yes, but the actor is ambiguous", "Mar"),
                 ("Reading a plan", "none", "no", "no", "never")]}
 
@@ -268,7 +272,7 @@ def q_owner_typing_prompts(con):
     ok = lambda w, lo, hi: lo <= w <= hi
     tot = lambda lo, hi: (sum(v for w, v in typed_wk.items() if ok(w, lo, hi)) + sum(v for w, v in wk["Slash commands"].items() if ok(w, lo, hi)),
                           sum(v for w, v in cs_wk.items() if ok(w, lo, hi)))
-    early, late = tot("2026-W01", "2026-W26"), tot("2026-W27", "2026-W39")
+    early, late = tot("2026-W01", "2026-W26"), tot("2026-W27", "2026-W40")
     p_m, cs_m = Counter(p["day"][:7] for p in ps), Counter(f["month"] for f in work_sets(con))
     return {"weeks": WEEKS, "series": series(wk, ["Typed prompts", "Slash commands"]), "per_cs": per_cs,
             "per_cs_month": [share(p_m[m], cs_m[m]) for m in MONTHS], "p_month": [p_m[m] for m in MONTHS],
@@ -306,7 +310,7 @@ def q_owner_keyboard_hours_hours(con):
     hour_share = {e: [share(by_hour[e][h], sum(by_hour[e].values())) for h in range(24)] for e in eras}
     wkend = {e: share(by_dow[e][5] + by_dow[e][6], sum(by_dow[e].values())) for e in eras}
     night = {e: share(sum(by_hour[e][h] for h in (0, 1, 2, 3, 4, 5)), sum(by_hour[e].values())) for e in eras}
-    late = [i for i, w in enumerate(WEEKS) if w >= "2026-W27"]
+    late = [i for i, w in enumerate(WEEKS) if w >= "2026-W27" and w in FULL_WEEKS]
     early = [i for i, w in enumerate(WEEKS) if "2026-W14" <= w <= "2026-W26"]
     avg = lambda v, idx: round(sum(v[i] for i in idx) / len(idx), 1)
     return {"weeks": WEEKS, "active_hours": act, "active_repos": rep, "hour_share": hour_share, "eras": eras,
@@ -381,7 +385,7 @@ def q_owner_gates_per_item_gates_per_item(con):
     for i in its:
         zero[i["month"]].append(i["total"] == 0)
     months = [m for m in MONTHS if m >= "2026-07"]
-    since_ask = [i for i in its if i["done_day"] >= "2026-08-25"]
+    since_ask = [i for i in its if in_session_window(i["done_day"])]
     dist = Counter(min(i["total"], 4) for i in since_ask)
     return {"weeks": WEEKS, "series": ser, "n": len(its),
             "months": months, "zero_share": [share(sum(zero[m]), len(zero[m])) for m in months],
@@ -535,9 +539,8 @@ def q_agent_questions_asks(con):
     wk = defaultdict(Counter)
     for a in A:
         wk[a["kind"]][a["week"]] += 1
-    cs_wk = Counter(f["week"] for f in work_sets(con))
     live = [w for w in SESSION_WEEKS if w not in NA_WEEKS]
-    n_cs = sum(cs_wk[w] for w in live)
+    n_cs = sum(1 for f in work_sets(con) if in_session_window(f["day"]))
     ph = Counter(a["phase"] for a in A)
     phases = ["Planning", "Building", "Shipping", "No skill"]
     kinds = Counter(a["kind"] for a in A)
@@ -549,7 +552,7 @@ def q_agent_questions_asks(con):
             "questions": sum(a["n_questions"] for a in A),
             "on_feature_branch": share(sum(1 for a in A if a["branch"] and not a["on_default"]), sum(1 for a in A if a["branch"])),
             "sessions": len({a["ts"][:13] + a["repo"] for a in A}),
-            "per_week_last4": round(sum(len([a for a in A if a["week"] == w]) for w in SESSION_WEEKS[-4:]) / 4, 1)}
+            "per_week_last4": round(sum(len([a for a in A if a["week"] == w]) for w in [w for w in SESSION_WEEKS if w in FULL_WEEKS][-4:]) / 4, 1)}
 
 
 # ---------------------------------------------------------------- Q recommendation-uptake recommendation taken (+ RQ-h6-048)
@@ -800,7 +803,7 @@ def q_owner_corrections_corrections(con):
     per_cs_stage = {k: [share(by_stage[st][k], st_cs[st]) for st in stages] for k in kinds}
     half = lambda lo, hi: (sum(v for c in wk for w, v in wk[c].items() if lo <= w <= hi),
                            sum(v for w, v in cs_wk.items() if lo <= w <= hi))
-    h1, h2 = half("2026-W01", "2026-W26"), half("2026-W27", "2026-W39")
+    h1, h2 = half("2026-W01", "2026-W26"), half("2026-W27", "2026-W40")
     steer = [r for r in pi if r["intent"] in STEER]
     tgt = Counter(r["target"] for r in steer)
     kind_all = Counter(r["correction_kind"] for r in steer)
@@ -841,7 +844,7 @@ if __name__ == "__main__":
 
 INTENT_CATS = ["Goal the owner authorized", "Work item marked ready", "Work item, no ready-mark", "One-shot, session logged",
                "One-shot, no record", "Pushed to main"]
-# Session logs hold one day of W32 (9 Aug) and nothing of W33-W34, so W35 is the first week whose one-shot
+# Session logs hold one day of W32 (9 Aug) and little or nothing of W33-W34, so W35 is the first week whose one-shot
 # tasks can all be seen; earlier weeks would read every unlogged task as "no record".
 LOGGED_FROM = "2026-W35"
 
@@ -894,8 +897,8 @@ def _intent_facts(con):
 def fig_direction_vs_planning(con):
     facts = _intent_facts(con)
     logged = lambda w: w >= LOGGED_FROM and w not in NA_WEEKS
-    windows = {"since": [f for f in facts if logged(f["week"])],
-               "first": [f for f in facts if f["week"] == LOGGED_FROM],
+    windows = {"since": [f for f in facts if in_session_window(f["day"])],
+               "first": [f for f in facts if f["week"] == LOGGED_FROM and in_session_window(f["day"])],
                "last4": [f for f in facts if f["week"] in WEEKS[-4:]]}
     from figure_lib import wilson
     MEASURES = ["Owner decision identifiable (goal, ready-mark or a logged one-shot)",
@@ -932,6 +935,7 @@ def fig_direction_vs_planning(con):
     return {"weeks": WEEKS, "cats": INTENT_CATS, "measures": MEASURES, "table": table, "composition": comp,
             "weekly": weekly, "trend": trend, "n": {w: len(v) for w, v in windows.items()},
             "written_when": dict(written), "logged_weeks": [w for w in WEEKS if logged(w)], "last4_weeks": WEEKS[-4:],
+            "window": SESSION_WINDOW,
             "since_w30_all": {c: sum(1 for f in facts if f["week"] >= "2026-W30" and f["intent"] == c) for c in INTENT_CATS}}
 
 

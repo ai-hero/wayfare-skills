@@ -1,0 +1,62 @@
+% Built by publishing/technical.py; edit this file, never the generated paper.tex.
+% NeurIPS 2025 style, vendored unmodified as neurips_2025.sty beside this file.
+\documentclass{article}
+% The style loads natbib in author-year mode; the unkeyed \bibitem list needs numeric [n].
+\PassOptionsToPackage{numbers,sort&compress}{natbib}
+\usepackage[preprint]{neurips_2025}
+% The style prints "Preprint." in the first-page footer; the reference paper (arXiv 2607.25398)
+% suppresses it, so the notice is emptied here rather than by editing the vendored .sty.
+\makeatletter
+\renewcommand{\@noticestring}{}
+% The reference title has no rules: keep the bars' spacing, drop their \hrule.
+\renewcommand{\@toptitlebar}{\vskip 0.25in\vskip -\parskip}
+\renewcommand{\@bottomtitlebar}{\vskip 0.29in\vskip -\parskip\vskip 0.09in}
+\makeatother
+% tectonic is XeTeX: the legacy `times` package would take T1 Type 1 fonts that drop every curly
+% quote and dash in this Unicode text. TeX Gyre Termes/Heros/Cursor are the URW Nimbus/Helvetica/
+% Courier clones the reference embeds, loaded as OpenType so the text's characters survive.
+\usepackage{fontspec}
+\setmainfont{texgyretermes}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,
+  ItalicFont=*-italic,BoldItalicFont=*-bolditalic]
+\setsansfont{texgyreheros}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,
+  ItalicFont=*-italic,BoldItalicFont=*-bolditalic]
+\setmonofont{texgyrecursor}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,
+  ItalicFont=*-italic,BoldItalicFont=*-bolditalic]
+\usepackage{newunicodechar}
+\newunicodechar{λ}{\ensuremath{\lambda}}
+\newunicodechar{→}{\ensuremath{\rightarrow}}
+\newunicodechar{−}{\ensuremath{-}}
+\newunicodechar{×}{\ensuremath{\times}}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xltabular}
+\usepackage{pdflscape}
+\usepackage{array}
+\usepackage{xurl}
+\usepackage[shortlabels]{enumitem}
+\usepackage{xcolor}
+\definecolor{citeblue}{HTML}{000099}
+\usepackage[colorlinks=true,linkcolor=citeblue,citecolor=citeblue,urlcolor=citeblue,
+            pdfusetitle,linktoc=page,bookmarksnumbered=true,bookmarksopen=true]{hyperref}
+\usepackage[nameinlink,noabbrev]{cleveref}
+\usepackage{caption}
+\captionsetup[table]{position=top,skip=4pt}
+
+\setlist{itemsep=1pt,topsep=3pt,parsep=0pt,leftmargin=*}
+\renewcommand{\textfraction}{0.08}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.6}
+\renewcommand{\floatpagefraction}{0.75}
+
+\newcommand{\sources}[1]{\par\smallskip\noindent{\small\textit{Sources for this section:}~\citep{#1}}\par}
+\newcommand{\evidence}[1]{\hyperref[ev:#1]{Q~#1}}
+\hyphenation{Dependabot}
+\frenchspacing
+% NeurIPS separates paragraphs with space; the reference paper indents them instead.
+\setlength{\parskip}{0pt}
+\setlength{\parindent}{1.5em}
+\emergencystretch=2em
+\widowpenalty=10000
+\clubpenalty=10000

@@ -1,0 +1,14 @@
+#!/bin/sh
+# ./publish all | source | book | technical | web | slides | qa
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PY=${PUBLISH_PYTHON:-"$ROOT/.analysis/publish-env/bin/python3"}
+if [ ! -x "$PY" ]; then
+    echo "missing $PY; run: python3 -m venv .analysis/publish-env && .analysis/publish-env/bin/pip install -r publishing/requirements.txt" >&2
+    exit 1
+fi
+# WeasyPrint loads Pango and friends through dlopen; Homebrew's lib dir is not on the default path.
+export DYLD_FALLBACK_LIBRARY_PATH=${DYLD_FALLBACK_LIBRARY_PATH:-/opt/homebrew/lib}
+export MPLCONFIGDIR=${MPLCONFIGDIR:-"$ROOT/.analysis/publish/.mpl"}
+export WAYFARE_FLEET_ROOT=${WAYFARE_FLEET_ROOT:-"$HOME/workspaces/aihero"}
+exec "$PY" "$ROOT/publishing/publish.py" "$@"

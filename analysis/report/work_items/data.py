@@ -3,7 +3,7 @@
     cd analysis && WAYFARE_FLEET_ROOT=~/workspaces/aihero python3 report/work_items/data.py
 
 One function per question (q_backlog_trend..q_change_set_size_vs_pr_time), each returning the series its slides plot plus the
-numbers its title and notes quote. Weeks run 2026-W01..W39; a week before a source existed
+numbers its title and notes quote. Weeks run 2026-W01..W40; a week before a source existed
 is None ("not tracked"), never 0.
 
 Item dates are days: ingest/plans.py dates an item by its first log line and its end by the
@@ -22,10 +22,10 @@ from zoneinfo import ZoneInfo
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.dirname(HERE), os.path.dirname(os.path.dirname(HERE))]
 from cube.db import connect  # noqa: E402
-from record import adoption, changeset_facts, rows, stage_of, week_of  # noqa: E402
+from record import adoption, changeset_facts, gap_range, gap_weeks, rows, stage_of, week_of  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE, REPO_ALIASES, category_of  # noqa: E402
 
-WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
+WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
 ITEMS_FROM = "2026-W30"      # first work item in .plans: 23 Jul
 SESSIONS_FROM = "2026-W32"   # first session log: 9 Aug
@@ -33,10 +33,11 @@ GOALS_FROM = "2026-W35"      # first goal: 29 Aug
 LOCAL = ZoneInfo("America/Los_Angeles")
 CLOSED_GAP_H = 8             # brief's session-time rule: a longer gap means the session was closed
 WORKING_GAP_MIN = 5          # D6: a gap this short is working time
-# 10-24 Aug: no session was logged (owner-confirmed); those weeks are "data not available", never zero or idle.
-OUTAGE = (datetime(2026, 8, 10, tzinfo=ZoneInfo("America/Los_Angeles")),
-          datetime(2026, 8, 25, tzinfo=ZoneInfo("America/Los_Angeles")))
-OUTAGE_WEEKS = ("2026-W33", "2026-W34")
+# Session logs are missing, then partial, over record.gap_range(); those weeks are "data not available", never
+# zero or idle.
+OUTAGE = (datetime.fromisoformat(gap_range()[0]).replace(tzinfo=ZoneInfo("America/Los_Angeles")),
+          datetime.fromisoformat(gap_range()[1]).replace(tzinfo=ZoneInfo("America/Los_Angeles")) + timedelta(days=1))
+OUTAGE_WEEKS = tuple(sorted(set().union(*gap_weeks())))
 STAGE_ORDER = ["No skills yet", "Skills", "+ work items", "+ goals", "+ messages"]
 
 

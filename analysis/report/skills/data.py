@@ -3,7 +3,7 @@
     WAYFARE_FLEET_ROOT=~/workspaces/aihero python3 report/skills/data.py [q_skill_set_history q_factory_work_per_week ...]
 
 Each q_<slug>(con) returns what that question's answer slide (and breakdown slide) plots.
-Weeks run 2026-W01..W39; the plugin's history comes from its own git log (gitwalk),
+Weeks run 2026-W01..W40; the plugin's history comes from its own git log (gitwalk),
 invocations from harness.prompts (typed, Nov 2025 →) and harness.tool_calls (agent, 9 Aug →).
 """
 import json
@@ -25,11 +25,11 @@ from record import adoption, changeset_facts, rows, stage_of, week_of  # noqa: E
 from cube.db import connect  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE, REPO_ALIASES, category_of  # noqa: E402
 
-WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
+WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
 PLUGIN = G.PLUGIN
 SESSIONS_FROM = "2026-08-09"
-TODAY = "2026-09-24"
+TODAY = "2026-10-01"
 
 
 def con_():
@@ -349,7 +349,8 @@ def q_scripted_step_share(con):
         by_day[r["day"]][l["mode"]] += 1
         per_skill[r["day"]][skill_of_path(r["path"])].append(score[l["mode"]])
         files[r["day"]].add(r["path"])
-    month_of = {d: d[:7] for d in snaps}
+    # The last snapshot is the data end (1 Oct), not a month end; it stands for September's point.
+    month_of = {d: min(d[:7], MONTHS[-1]) for d in snaps}
     series = {"Scripted": [None] * len(MONTHS), "Mixed": [None] * len(MONTHS), "Judgement": [None] * len(MONTHS)}
     shares = {}
     for d in snaps:
@@ -363,9 +364,9 @@ def q_scripted_step_share(con):
     last, first = snaps[-1], snaps[0]
     per_now = sorted(((k, statistics.mean(v)) for k, v in per_skill[last].items()), key=lambda kv: -kv[1])
     return {"months_plot": MONTHS, "series": series, "shares": shares, "first_share": shares[first],
-            "last_share": shares[last], "last_judgement": series["Judgement"][MONTHS.index(last[:7])],
+            "last_share": shares[last], "last_judgement": series["Judgement"][MONTHS.index(month_of[last])],
             "first_scripted": series["Scripted"][MONTHS.index(first[:7])],
-            "last_scripted": series["Scripted"][MONTHS.index(last[:7])],
+            "last_scripted": series["Scripted"][MONTHS.index(month_of[last])],
             "n_steps_now": sum(by_day[last].values()), "n_steps_first": sum(by_day[first].values()),
             "n_files_now": len(files[last]), "per_skill_now": per_now, "top_now": per_now[:5],
             "skills_all_judgement": sum(1 for _, v in per_now if v == 0), "counts": {d: dict(by_day[d]) for d in snaps},
@@ -438,7 +439,7 @@ def q_skill_prose_vs_scripts(con):
         series["Prose the model follows"].append(c["prose"] if c else None)
         series["Scripts and workflows"].append(c["code"] if c else None)
         series["Tests"].append(c["tests"] if c else None)
-    # per current skill: SKILL.md lines at its first version (any ancestor name) vs now
+    # per current skill: SKILL.md lines at its first version (any ancestor name) vs SKILL.md + WORKFLOW.md now
     now_t = plugin_tree(TODAY)[1]
     first_lines = {}
     for cur, olds in LN.CURRENT.items():
@@ -452,8 +453,11 @@ def q_skill_prose_vs_scripts(con):
         blob = G.tree(PLUGIN, sha).get(f"skills/{n}/SKILL.md")
         if blob:
             first_lines[cur] = G.blobs(PLUGIN, [blob])[blob].count("\n")
-    cur_lines = {p.split("/")[1]: G.blobs(PLUGIN, [b])[b].count("\n") for p, b in now_t.items()
-                 if re.fullmatch(r"skills/[^/]+/SKILL\.md", p)}
+    cur_lines = Counter()
+    for p, b in now_t.items():
+        if re.fullmatch(r"skills/[^/]+/(SKILL|WORKFLOW)\.md", p):
+            cur_lines[p.split("/")[1]] += G.blobs(PLUGIN, [b])[b].count("\n")
+    cur_lines = dict(cur_lines)
     first_w = next(i for i, v in enumerate(series["Tests"]) if v is not None)
     return {"weeks": WEEKS, "series": series, "first_week": WEEKS[first_w],
             "first": {k: v[first_w] for k, v in series.items()}, "last": {k: v[-1] for k, v in series.items()},

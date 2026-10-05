@@ -16,12 +16,12 @@ def standardisation(x):
     rows = sorted(x["rows"], key=lambda r: r["start_before"])
     labels = [r["repo"] + ("" if r["category"] in ("app", "app, no features yet") else " (allied)") for r in rows]
     names = (fmt_day(x["before"]), fmt_day(x["day"]))
-    fig, (a, b) = F.fig(ncols=2, gridspec_kw={"width_ratios": [1.15, 1]})
+    # Stacked, not side by side: at print width two panels abreast leave each too narrow for its labels.
+    fig, (a, b) = F.fig(F.CHART_W, 12, nrows=2)
     F.dumbbell(a, labels, [r["start_before"] for r in rows], [r["start_after"] for r in rows], names=names,
                xlabel="KB loaded at session start")
     F.dumbbell(b, labels, [r["own_demand_before"] for r in rows], [r["own_demand_after"] for r in rows], names=names,
                xlabel="KB the repo holds for loading on demand")
-    b.set_yticklabels([])
     ys = list(range(len(rows)))[::-1]
     for ax, key in ((a, "start_now"), (b, "own_demand_now")):
         ax.plot([r[key] for r in rows], ys, "o", markerfacecolor="white", markeredgecolor=F.PINK_DARK, markeredgewidth=1.4,

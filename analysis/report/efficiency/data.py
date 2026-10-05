@@ -26,21 +26,20 @@ REPORT = os.path.dirname(HERE)
 ANALYSIS = os.path.dirname(REPORT)
 sys.path.insert(0, ANALYSIS)
 sys.path.insert(0, REPORT)
-from record import STAGES, adoption, changeset_facts, rows, week_of  # noqa: E402
+from record import SESSION_WINDOW, STAGES, adoption, changeset_facts, gap_weeks, in_session_window, rows, week_of  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE, category_of  # noqa: E402
 
-LATEST_WEEK = 39
+LATEST_WEEK = 40
 WEEKS = [f"2026-W{w:02d}" for w in range(1, LATEST_WEEK + 1)]
-# 10-24 Aug (W33-W34): no sessions are logged ("data not available", owner-confirmed), so those weeks
+# W33-W34 (record.session_gap): no session logs, then only partial ones, so those weeks
 # are unobserved in session-derived data, never zero, idle or downtime. Session charts label them; every
 # session measure starts 25 Aug (W35). The lone logged session before it (9 Aug) is left out too. Typed
 # prompts continue through the gap, so prompt-based series keep those weeks.
-OUTAGE_WEEKS = ("2026-W33", "2026-W34")
-OUTAGE = ("2026-08-17", "No session data, 10-24 Aug")
+OUTAGE_WEEKS = tuple(sorted(set().union(*gap_weeks())))
 SESSIONS_FROM_WEEK = "2026-W35"
 SESSION_WEEKS = [w for w in WEEKS if w >= OUTAGE_WEEKS[0]]
 ITEM_WEEKS = [w for w in WEEKS if w >= "2026-W30"]
-DATA_END = "2026-09-24"
+DATA_END = SESSION_WINDOW[1]
 CLOSED_GAP_MIN = 8 * 60
 # The owner works in US Pacific time (UTC-7 in the study window).
 LOCAL = timezone(timedelta(hours=-7))
@@ -98,7 +97,7 @@ def session_weeks_with_logs(con):
 
 
 def observed(ts_or_day):
-    return week_of(str(ts_or_day)[:10]) >= SESSIONS_FROM_WEEK
+    return in_session_window(ts_or_day)
 
 
 # ------------------------------------------------------------------ sessions and time
@@ -950,7 +949,7 @@ def _events_by_session(con, sql):
 
 @lru_cache(maxsize=None)
 def state_gaps(con):
-    """One row per gap between consecutive logged turns of an interactive session, 25 Aug to DATA_END, with
+    """One row per gap between consecutive logged turns of an interactive session in SESSION_WINDOW, with
     its state (gaps of 5 min or less are working; over 8 h the session had closed and is excluded)."""
     skip = headless(con)
     asks = _events_by_session(con, "SELECT session_id_hash s, ts FROM harness.asks WHERE ts IS NOT NULL")
@@ -964,7 +963,7 @@ def state_gaps(con):
             continue
         for i in range(1, len(turns)):
             a, b = turns[i - 1], turns[i]
-            if not observed(a[0].date()) or a[0].date().isoformat() > DATA_END:
+            if not observed(a[0].date()):
                 continue
             m = (b[0] - a[0]).total_seconds() / 60
             if m > CLOSED_GAP_MIN:

@@ -191,18 +191,21 @@ def read_table(shape):
 
 
 def read_slide(slide, where=""):
-    s = {"layout": slide.slide_layout.name, "charts": [], "tables": [], "images": [], "texts": [], "notes": ""}
+    s = {"layout": slide.slide_layout.name, "charts": [], "tables": [], "images": [], "texts": [], "notes": "",
+         "coverage": ""}
     lines, rotated, rects = [], [], []
     for sh in slide.shapes:
         x, y, w, h = inch(sh.left), inch(sh.top), inch(sh.width), inch(sh.height)
-        if sh.has_chart:
+        if sh.name == "coverage" and sh.has_text_frame:
+            s["coverage"] = sh.text_frame.text.strip()
+        elif sh.has_chart:
             s["charts"].append(read_chart(sh, where))
         elif sh.shape_type == MSO_SHAPE_TYPE.TABLE:
             s["tables"].append(read_table(sh))
         elif sh.shape_type == MSO_SHAPE_TYPE.PICTURE:
             img = sh.image
             s["images"].append({"src": f"data:{img.content_type};base64,{base64.b64encode(img.blob).decode()}",
-                                "alt": sh.name})
+                                "alt": sh._element.nvPicPr.cNvPr.get("descr") or sh.name})
         elif sh.shape_type == MSO_SHAPE_TYPE.LINE:
             try:
                 col = str(sh.line.color.rgb)
@@ -247,7 +250,7 @@ def classify(s):
         return {"kind": "view", "tag": tag, "title": " ".join(body[0]["paras"]) if body else "",
                 "points": [p for x in body[1:] for p in x["paras"]],
                 "source": re.sub(r"^SOURCE\s*", "", source, flags=re.I),
-                "extra": [p for x in rest for p in x["paras"]],
+                "extra": [p for x in rest for p in x["paras"]], "coverage": s["coverage"],
                 "charts": s["charts"], "tables": s["tables"], "images": s["images"], "notes": s["notes"]}
     tag = t[0]["paras"][0] if t else ""
     if tag.upper().endswith("· QUESTION"):

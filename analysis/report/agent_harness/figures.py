@@ -40,7 +40,8 @@ def fixes_by_repo_and_type(x):
 
 def delegation(x):
     fb, fa = x["fleet"]["before"], x["fleet"]["after"]
-    fig, (a, b) = F.fig(ncols=2, gridspec_kw={"width_ratios": [1, 1.25]})
+    # Stacked, not side by side: at print width two panels abreast leave each too narrow for its labels.
+    fig, (a, b) = F.fig(F.CHART_W, 10.5, nrows=2)
     for r in x["per_repo"]:
         a.plot([0, 1], [r["before"], r["after"]], color=F.GREY, linewidth=1.5, marker="o", markersize=4, zorder=2)
     # Spread the repo labels so neighbours do not overprint; the marks stay where the data put them.
@@ -71,6 +72,7 @@ def delegation(x):
     b.set_xlabel("Context per main-thread turn (K tokens)")
     b.legend(loc="lower right", fontsize=8.5)
     b.set_title("Main-thread context per turn", loc="left", fontsize=10)
+    F.coverage(fig)
     return F.save(fig, F.asset("3.2"))
 
 
@@ -113,7 +115,9 @@ def uptake_lags(x):
             med = x["median_model"] if name.startswith("MODEL") else x["median_work"]
             top, bot = ys[id(items[0])] + 0.5, ys[id(items[-1])] - 0.5
             ax.plot([med, med], [bot, top], color=col, linewidth=1, linestyle=(0, (2, 3)))
-            ax.text(med + 2, bot + 0.1, f"median {med:.0f} d", color=col, fontsize=8.5, ha="left", va="bottom")
+            # At the top of the group, where the header row leaves the plot empty; at the bottom it sat on
+            # the last item's value.
+            ax.text(med + 2, top, f"median {med:.0f} d", color=col, fontsize=8.5, ha="left", va="bottom")
     ticks = []
     yy = 0
     for l in labels:

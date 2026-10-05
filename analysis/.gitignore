@@ -12,3 +12,4 @@ report/*/book.md
 report/diagrams/d_*.py
 report/conclusion/figures.py
 report/*/audit_*.json
+manuscript/

@@ -24,8 +24,9 @@ from record import STAGES, adoption, changeset_facts, rows, week_of  # noqa: E40
 
 DATA = os.path.join(PLUGIN, ".analysis", "data")
 FLEET = os.path.expanduser(os.environ.get("WAYFARE_FLEET_ROOT", "~/workspaces/aihero"))
-WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
+WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
+DATA_END = "2026-10-01"
 APPS = ("app", "app, no features yet")
 
 
@@ -424,8 +425,10 @@ def q_throughput_by_stage_throughput(con):
     from record import stage_of
     by_stage = defaultdict(list)
     moved = {}
+    # The last week is still running (data ends 1 Oct); counting its few days as a week drags the newest stage down.
+    full = [w for w in WEEKS if date.fromisocalendar(2026, int(w[6:]), 7).isoformat() <= DATA_END]
     for r in apps:
-        for w in WEEKS:
+        for w in full:
             if live(r, w):
                 st = stage_of(con, r, date.fromisocalendar(2026, int(w[6:]), 4).isoformat())
                 by_stage[st].append(per.get((r, w), 0))

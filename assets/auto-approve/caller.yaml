@@ -50,7 +50,20 @@ jobs:
     # Roll back by reverting on main. Do not pin this to a tag or SHA without
     # reading CI-01: a pin means every fix to the shared workflow needs a PR
     # in every consuming repo before it is live anywhere.
-    uses: ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@main
+    #
+    # A pin would also never be bumped: ai-hero/wayfare-skills publishes no
+    # tags and no releases (checked 2026-10-05: `gh api
+    # repos/ai-hero/wayfare-skills/tags` and `/releases` both return an empty
+    # list), and Dependabot bumps a SHA-pinned `uses:` by resolving the newest
+    # release tag, so it would never open a PR for this line. Pin it, and add
+    # it to .github/dependabot.yaml's github-actions entry, when
+    # wayfare-skills cuts its first tag.
+    #
+    # The zizmor ignore below is for consumers that run zizmor, which flags
+    # this line as unpinned-uses. CI-20 holds every consumer's caller to this
+    # file byte for byte, so the ignore is here even though this repo does not
+    # run zizmor; remove it from a consumer and CI-20 fails.
+    uses: ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@main # zizmor: ignore[unpinned-uses] — see above: no upstream tags, so a pin would never be bumped
     # Never `secrets: inherit` — it hands the callee every secret this repo
     # holds. Name only what the callee declares.
     secrets:

@@ -203,7 +203,9 @@ checks:
     byte-identical to the plugin's `assets/exception-expiry/` copy. A workflow
     triggered by `pull_request` runs it, and so does every workflow that hands
     the exceptions to a scanner (`vex-location`, `trivyignores`). Where the
-    repo keeps a `.trivyignore.yaml`, every invocation names it.
+    repo keeps a `.trivyignore.yaml`, every invocation names it. Scout reads
+    VEX from `.vex/` only, and a plain `.trivyignore` holds no entries,
+    because the gate dates neither another directory nor the plain format.
   why: >
     Docker Scout reads `expired_at` on an OpenVEX statement and ignores it: a
     statement dated in the past still suppresses its CVE, so the date is a
@@ -233,4 +235,8 @@ checks:
     description: >
       NA without exceptions; the script equals the asset; every workflow with a
       `vex-location` or `trivyignores` input runs it; some pull_request
-      workflow runs it; with a .trivyignore.yaml every run line names it
+      workflow runs it; with a .trivyignore.yaml every run line names it; a
+      run line counts only as a command that can fail the job (no `||`, no
+      continue-on-error). Not seen: scanners invoked from `run:` lines or
+      inside reusable workflows, and a `paths:` filter on the trigger (CI-21
+      forbids one).

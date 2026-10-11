@@ -119,6 +119,43 @@ new_case vex-dir-arg
 vex "$CASE/elsewhere" "CVE-1:$PAST"
 expect "the VEX dir argument is honoured" 1 'reached their review date' -- "" elsewhere
 
+new_case vex-dir-symlink
+vex "$CASE/real" "CVE-1:$PAST"
+ln -s real "$CASE/.vex"
+expect "a symlinked .vex directory is read, not skipped" 1 'reached their review date' --
+
+new_case vex-file-symlink
+vex "$CASE/elsewhere" "CVE-1:$PAST"
+mkdir -p "$CASE/.vex"
+ln -s ../elsewhere/fixture.openvex.json "$CASE/.vex/link.json"
+expect "a symlinked VEX file is read, not skipped" 1 'reached their review date' --
+
+new_case vex-other-suffix
+vex "$CASE/.vex" "CVE-1:$PAST"
+mv "$CASE/.vex/fixture.openvex.json" "$CASE/.vex/fixture.openvex"
+expect "a document without a .json suffix is still read" 1 'reached their review date' --
+
+new_case vex-is-a-file
+vex "$CASE/tmp" "CVE-1:$PAST"
+mv "$CASE/tmp/fixture.openvex.json" "$CASE/.vex"
+expect "a .vex that is a file fails rather than being skipped" 1 'not a directory' --
+
+new_case vex-case-variant-key
+mkdir -p "$CASE/.vex"
+echo '{"statements":[],"Statements":[{"vulnerability":{"name":"CVE-1"},"status":"not_affected"}]}' >"$CASE/.vex/x.json"
+expect "a Statements key a Go reader would honour fails" 1 'keys spelled exactly' --
+
+new_case vex-case-variant-expiry
+mkdir -p "$CASE/.vex"
+echo "{\"statements\":[{\"vulnerability\":{\"name\":\"CVE-1\"},\"expired_at\":\"$FUTURE\",\"Expired_At\":\"$PAST\"}]}" >"$CASE/.vex/x.json"
+expect "an Expired_At beside expired_at fails" 1 'keys spelled exactly' --
+
+new_case vex-second-file-lapsed
+vex "$CASE/.vex" "CVE-1:$FUTURE"
+vex "$CASE/b" "CVE-2:$PAST"
+mv "$CASE/b/fixture.openvex.json" "$CASE/.vex/b.json"
+expect "a lapsed statement in any file gates" 1 'reached their review date 2000-01-01' --
+
 # --- the Trivy half ---------------------------------------------------------
 
 new_case trivy-named-missing
@@ -136,6 +173,22 @@ if yq --version 2>/dev/null | grep -qE 'mikefarah/yq.* v[4-9]\.'; then
   new_case trivy-undated
   printf 'vulnerabilities:\n  - id: CVE-9\n' >"$CASE/.trivyignore.yaml"
   expect "an undated trivy entry fails" 1 'must carry exactly one expired_at' -- .trivyignore.yaml
+
+  new_case trivy-over-cap
+  printf 'vulnerabilities:\n  - id: CVE-9\n    expired_at: %s\n' "$OVER_CAP" >"$CASE/.trivyignore.yaml"
+  expect "a trivy entry beyond 90 days fails" 1 'beyond the 90-day cap' -- .trivyignore.yaml
+
+  new_case trivy-no-id
+  printf 'vulnerabilities:\n  - expired_at: %s\n' "$FUTURE" >"$CASE/.trivyignore.yaml"
+  expect "a trivy entry without an id fails" 1 'without an id' -- .trivyignore.yaml
+
+  new_case trivy-flow-undated
+  printf 'vulnerabilities:\n  - {statement: x, id: CVE-9}\n' >"$CASE/.trivyignore.yaml"
+  expect "a flow-style undated entry fails" 1 'must carry exactly one expired_at' -- .trivyignore.yaml
+
+  new_case trivy-earliest
+  printf 'vulnerabilities:\n  - id: CVE-8\n    expired_at: %s\n  - id: CVE-9\n    expired_at: %s\n' "$FUTURE" "$PAST" >"$CASE/.trivyignore.yaml"
+  expect "the earliest trivy date gates" 1 'reached their review date 2000-01-01' -- .trivyignore.yaml
 
   new_case both-halves
   printf 'vulnerabilities: []\n' >"$CASE/.trivyignore.yaml"

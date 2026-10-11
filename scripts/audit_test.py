@@ -1238,7 +1238,6 @@ class CI20Owner(unittest.TestCase):
         self.assertEqual(self._verdict(owner), audit.NA)
 
 
-
 class SCAN01(unittest.TestCase):
     """The expiry gate is the only thing that reads a VEX `expired_at`, so a
     repo holding exceptions without it running on PRs and in every scan that
@@ -1303,6 +1302,30 @@ class SCAN01(unittest.TestCase):
         status, detail = self.verdict()
         self.assertEqual(status, audit.FAIL)
         self.assertIn("pull_request", detail)
+
+    def test_a_gate_that_cannot_fail_does_not_count(self):
+        for run in ("./scripts/check-exception-expiry.sh || true",
+                    "echo hi  # TODO wire check-exception-expiry.sh"):
+            self.wf("build.yaml", "on:\n  pull_request:\njobs:\n  lint:\n    steps:\n"
+                    f"      - run: {run}\n")
+            self.assertEqual(self.verdict()[0], audit.FAIL, run)
+        self.wf("build.yaml", "on:\n  pull_request:\njobs:\n  lint:\n    steps:\n"
+                "      - run: ./scripts/check-exception-expiry.sh\n        continue-on-error: true\n")
+        self.assertEqual(self.verdict()[0], audit.FAIL)
+
+    def test_undated_plain_trivyignore_fails(self):
+        write(self.repo, ".trivyignore", "# header\nCVE-2026-1\n")
+        self.wf("build.yaml", self.PR_GATE.format(arg=""))
+        status, detail = self.verdict()
+        self.assertEqual(status, audit.FAIL)
+        self.assertIn("CVE-2026-1", detail)
+        write(self.repo, ".trivyignore", "# header only\n")
+        self.assertEqual(self.verdict(), (audit.PASS, ""))
+
+    def test_vex_location_elsewhere_fails(self):
+        self.wf("build.yaml", self.PR_GATE.format(arg=""))
+        self.wf("image-scan.yaml", self.gated_scan().replace("vex-location: .vex", "vex-location: security/vex"))
+        self.assertEqual(self.verdict()[0], audit.FAIL)
 
     def test_trivyignore_yaml_must_be_named(self):
         write(self.repo, ".trivyignore.yaml", "vulnerabilities: []\n")

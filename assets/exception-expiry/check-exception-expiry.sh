@@ -18,6 +18,12 @@ FILE="${1:-}"
 # only while a Scout exception is in force. The argument lets a fixture point
 # at a tree of its own.
 VEX_DIR="${2:-.vex}"
+# Scout's vex-location also accepts a single file. Skipping a non-directory
+# here would leave that file's statements applied and unread.
+if [ -e "$VEX_DIR" ] && [ ! -d "$VEX_DIR" ]; then
+  echo "::error::$VEX_DIR is not a directory — keep VEX documents in a directory this gate can read"
+  exit 1
+fi
 
 if [ -n "$FILE" ]; then
   # Absent file gets its own branch: otherwise yq fails on the missing path
@@ -102,6 +108,21 @@ validate_date() {
 # Checked before the Trivy half, which exits 0 on an empty .trivyignore.yaml:
 # a VEX statement can suppress a finding with no Trivy entry present at all.
 if [ -d "$VEX_DIR" ]; then
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "::error::jq is required to parse $VEX_DIR — ubuntu-latest ships it"
+    exit 1
+  fi
+  # Every file, not `-name '*.json'`, and `-L`: a symlinked directory or file,
+  # or a document under another suffix, is skipped by a narrower find while
+  # Scout may still read it. Written to a file and checked, because a find
+  # failure inside `< <(...)` is invisible to set -e and the loop would see an
+  # empty list.
+  VEX_LIST=$(mktemp)
+  trap 'rm -f "$VEX_LIST"' EXIT
+  if ! find -L "$VEX_DIR" -type f -print0 >"$VEX_LIST"; then
+    echo "::error::could not list $VEX_DIR — cannot verify its exceptions are unexpired"
+    exit 1
+  fi
   MISSING_VEX_EXPIRY=""
   VEX_OVER_CAP=""
   VEX_DATES=""
@@ -111,12 +132,26 @@ if [ -d "$VEX_DIR" ]; then
     # parse check below, then both queries below emit nothing, reading exactly
     # like a legitimately empty statement list instead of the malformed file
     # it is.
-    if ! shape=$(jq -r '(.statements // []) | if type == "array" then "ok" else "bad" end' "$vexfile" 2>&1); then
+    #
+    # Keys are also compared without case: jq matches `statements` and
+    # `expired_at` exactly, while Go's encoding/json (which OpenVEX tooling
+    # uses) matches case-insensitively. A `Statements` key would be read by
+    # the scanner and invisible here.
+    if ! shape=$(jq -r '
+        def odd(k): [keys[] | select(ascii_downcase == k and . != k)] | length > 0;
+        if type != "object" or odd("statements") then "bad"
+        elif (.statements // []) | type != "array" then "notarray"
+        elif [(.statements // [])[] | select(type != "object" or odd("expired_at"))] | length > 0 then "bad"
+        else "ok" end' "$vexfile" 2>&1); then
       echo "::error::failed to parse $vexfile as VEX JSON — cannot verify its exceptions are unexpired: $shape"
       exit 1
     fi
-    if [ "$shape" != "ok" ]; then
+    if [ "$shape" = "notarray" ]; then
       echo "::error::$vexfile's statements field is not an array — cannot verify its exceptions are unexpired"
+      exit 1
+    fi
+    if [ "$shape" != "ok" ]; then
+      echo "::error::$vexfile is not an OpenVEX document this gate can read (statements must be an array of objects, keys spelled exactly) — cannot verify its exceptions are unexpired"
       exit 1
     fi
 
@@ -146,7 +181,7 @@ $vdate"
         VEX_OVER_CAP="$VEX_OVER_CAP $vid($vdate)"
       fi
     done <<<"$vex_stmts"
-  done < <(find "$VEX_DIR" -type f -name '*.json' -print0)
+  done <"$VEX_LIST"
 
   if [ -n "$MISSING_VEX_EXPIRY" ]; then
     echo "::error::VEX statement(s) in $VEX_DIR without expired_at — a VEX half must carry the same expiry its Trivy entry does:$MISSING_VEX_EXPIRY"
@@ -212,7 +247,7 @@ $rows"
 done
 
 if [ -z "$(printf '%s' "$ENTRIES" | tr -d '\n')" ]; then
-  echo "no CVE exceptions in force"
+  echo "no CVE exceptions in force in $FILE"
   exit 0
 fi
 

@@ -1238,5 +1238,79 @@ class CI20Owner(unittest.TestCase):
         self.assertEqual(self._verdict(owner), audit.NA)
 
 
+
+class SCAN01(unittest.TestCase):
+    """The expiry gate is the only thing that reads a VEX `expired_at`, so a
+    repo holding exceptions without it running on PRs and in every scan that
+    applies them must fail."""
+
+    PR_GATE = ("on:\n  pull_request:\njobs:\n  lint:\n    steps:\n"
+               "      - run: ./scripts/check-exception-expiry.sh{arg}\n")
+    SCAN = ("on:\n  schedule:\n    - cron: '0 6 * * *'\njobs:\n  scan:\n    steps:\n"
+            "{gate}"
+            "      - uses: docker/scout-action@x\n        with:\n          vex-location: .vex\n")
+
+    def setUp(self):
+        self._saved_assets = audit._PLUGIN_ASSETS
+        audit._PLUGIN_ASSETS = HERE.parent / "assets"
+        self.asset = (HERE.parent / "assets" / "exception-expiry" / "check-exception-expiry.sh").read_text()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = pathlib.Path(self.tmp.name) / "consumer"
+        write(self.repo, ".vex/x.openvex.json", '{"statements": []}')
+        write(self.repo, "scripts/check-exception-expiry.sh", self.asset)
+
+    def tearDown(self):
+        audit._PLUGIN_ASSETS = self._saved_assets
+        self.tmp.cleanup()
+
+    def verdict(self):
+        return audit.CHECKS["SCAN-01"](self.repo)
+
+    def wf(self, name, text):
+        write(self.repo, f".github/workflows/{name}", text)
+
+    def gated_scan(self, arg=""):
+        return self.SCAN.format(gate=f"      - run: ./scripts/check-exception-expiry.sh{arg}\n")
+
+    def test_no_exceptions_is_na(self):
+        (self.repo / ".vex" / "x.openvex.json").unlink()
+        self.assertEqual(self.verdict()[0], audit.NA)
+
+    def test_gated_pr_and_scan_passes(self):
+        self.wf("build.yaml", self.PR_GATE.format(arg=""))
+        self.wf("image-scan.yaml", self.gated_scan())
+        self.assertEqual(self.verdict(), (audit.PASS, ""))
+
+    def test_drifted_script_fails(self):
+        write(self.repo, "scripts/check-exception-expiry.sh", self.asset.replace("90", "900"))
+        self.wf("build.yaml", self.PR_GATE.format(arg=""))
+        self.assertEqual(self.verdict()[0], audit.FAIL)
+
+    def test_missing_script_fails(self):
+        (self.repo / "scripts" / "check-exception-expiry.sh").unlink()
+        self.wf("build.yaml", self.PR_GATE.format(arg=""))
+        self.assertEqual(self.verdict()[0], audit.FAIL)
+
+    def test_scan_applying_vex_without_gate_fails(self):
+        self.wf("build.yaml", self.PR_GATE.format(arg=""))
+        self.wf("image-scan.yaml", self.SCAN.format(gate=""))
+        status, detail = self.verdict()
+        self.assertEqual(status, audit.FAIL)
+        self.assertIn("image-scan.yaml", detail)
+
+    def test_scheduled_gate_alone_fails(self):
+        self.wf("image-scan.yaml", self.gated_scan())
+        status, detail = self.verdict()
+        self.assertEqual(status, audit.FAIL)
+        self.assertIn("pull_request", detail)
+
+    def test_trivyignore_yaml_must_be_named(self):
+        write(self.repo, ".trivyignore.yaml", "vulnerabilities: []\n")
+        self.wf("build.yaml", self.PR_GATE.format(arg=""))
+        self.assertEqual(self.verdict()[0], audit.FAIL)
+        self.wf("build.yaml", self.PR_GATE.format(arg=" .trivyignore.yaml"))
+        self.assertEqual(self.verdict(), (audit.PASS, ""))
+
+
 if __name__ == "__main__":
     unittest.main()

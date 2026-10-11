@@ -588,6 +588,14 @@ repo, several of them missing security fixes made here. A job holding both
 `uses:` and `steps:` is also an invalid workflow file, and because the trigger
 is `issue_comment` nothing surfaces that until someone tries to ship.
 
+`assets/exception-expiry/check-exception-expiry.sh` has no installer: copy it to
+`scripts/check-exception-expiry.sh` unchanged. It fails a workflow when a
+`.vex/` statement or `.trivyignore.yaml` entry has no `expired_at`, is dated
+more than 90 days out, or has reached its date. Docker Scout ignores
+`expired_at`, so without this the date on a VEX statement does nothing.
+Compliance check SCAN-01 compares the copy byte for byte and requires the
+pull-request workflow and every scan that reads the exceptions to run it.
+
 ## `main` is the distribution mechanism
 
 Consumers call

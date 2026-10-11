@@ -61,3 +61,16 @@ controls:
     A blanket-ignored .claude/ seeds no agent config at all, and a HERO.md
     that no longer drives its tools is a gate that reads as present and does
     nothing.
+
+- id: C-EXCEPTION
+  title: A scanner exception cannot outlive its review
+  severity: high
+  intent: >
+    Every exception that silences a scanner finding carries a review date no
+    more than 90 days out, and CI fails once that date arrives.
+  why: >
+    An exception is a claim that a finding does not reach us, true for the
+    package version and the advisory text read on one day. Nothing re-reads
+    it unless something forces the question, and Docker Scout honours an
+    OpenVEX statement whatever its `expired_at` says, so a dated exception
+    with no gate is a permanent one.

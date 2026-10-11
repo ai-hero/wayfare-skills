@@ -2655,6 +2655,54 @@ def _(r):
     return _matches_reference(mine, _PLUGIN_ASSETS / "auto-approve" / "caller.yaml")
 
 
+_EXPIRY_GATE = "check-exception-expiry.sh"
+# The `with:` inputs through which a scanner action reads the exceptions:
+# docker/scout-action's `vex-location` and aquasecurity/trivy-action's
+# `trivyignores`.
+_EXCEPTION_INPUTS = {"vex-location", "trivyignores"}
+
+
+@check("SCAN-01")
+def _(r):
+    vex = r / ".vex"
+    has_vex = vex.is_dir() and any(vex.rglob("*.json"))
+    has_trivy = (r / ".trivyignore.yaml").is_file()
+    if not (has_vex or has_trivy):
+        return NA, "no .vex/ or .trivyignore.yaml"
+    status, detail = _matches_reference(r / "scripts" / _EXPIRY_GATE,
+                                        _PLUGIN_ASSETS / "exception-expiry" / _EXPIRY_GATE)
+    if status != PASS:
+        return status, f"scripts/{_EXPIRY_GATE}: {detail}"
+    ungated, unnamed, on_pr = [], [], False
+    for wf in workflows(r):
+        try:
+            doc = _wf_doc(wf)
+        except Unreadable as e:
+            return MANUAL, str(e)
+        steps = [s for job in (doc.get("jobs") or {}).values() if isinstance(job, dict)
+                 for s in (job.get("steps") or []) if isinstance(s, dict)]
+        gates = [str(s.get("run") or "") for s in steps if _EXPIRY_GATE in str(s.get("run") or "")]
+        applies = any(isinstance(s.get("with"), dict) and _EXCEPTION_INPUTS & set(s["with"])
+                      for s in steps)
+        if applies and not gates:
+            ungated.append(wf.name)
+        # Called with no argument the gate skips the Trivy half, so a repo
+        # with a .trivyignore.yaml would pass this check while its Trivy
+        # exceptions went unread.
+        if has_trivy and any(".trivyignore.yaml" not in g for g in gates):
+            unnamed.append(wf.name)
+        if gates and "pull_request" in _wf_on(doc):
+            on_pr = True
+    problems = []
+    if ungated:
+        problems.append("applies exceptions without the gate: " + ", ".join(ungated))
+    if unnamed:
+        problems.append("gate not given .trivyignore.yaml: " + ", ".join(unnamed))
+    if not on_pr:
+        problems.append("no pull_request workflow runs the gate")
+    return (FAIL, "; ".join(problems)) if problems else (PASS, "")
+
+
 @check("CI-21")
 def _(r):
     wfs = workflows(r)

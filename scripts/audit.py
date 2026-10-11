@@ -2655,6 +2655,84 @@ def _(r):
     return _matches_reference(mine, _PLUGIN_ASSETS / "auto-approve" / "caller.yaml")
 
 
+_EXPIRY_GATE = "check-exception-expiry.sh"
+_EXCEPTION_INPUTS = {"vex-location", "trivyignores"}
+_GATE_CMD = re.compile(r"^\s*(?:bash\s+)?(?:\./)?scripts/check-exception-expiry\.sh(?:\s+(.*))?$")
+
+
+def _plain_trivyignore_entries(r):
+    p = r / ".trivyignore"
+    if not p.is_file():
+        return []
+    return [l.split()[0] for l in p.read_text().splitlines() if l.strip() and not l.lstrip().startswith("#")]
+
+
+def _gate_args(step, job):
+    """The argument string of a gate invocation that can fail the job, else
+    None. A substring match counted `echo check-exception-expiry.sh`, a
+    `|| true` and a continue-on-error step as gates that could never fail."""
+    if step.get("continue-on-error") or job.get("continue-on-error"):
+        return None
+    for line in str(step.get("run") or "").splitlines():
+        m = _GATE_CMD.match(line.split(" #")[0])
+        if m and "||" not in line:
+            return (m.group(1) or "").split()
+    return None
+
+
+@check("SCAN-01")
+def _(r):
+    vex = r / ".vex"
+    has_vex = vex.is_dir() and any(p.is_file() for p in vex.rglob("*"))
+    has_trivy = (r / ".trivyignore.yaml").is_file()
+    plain = _plain_trivyignore_entries(r)
+    if not (has_vex or has_trivy or plain):
+        return NA, "no .vex/, .trivyignore.yaml or .trivyignore entries"
+    problems = []
+    # The gate reads only .trivyignore.yaml for dates; a plain-format entry
+    # suppresses in Trivy with no date anything checks.
+    if plain:
+        problems.append(".trivyignore entries the gate cannot date (move them to .trivyignore.yaml): " + ", ".join(plain))
+    status, detail = _matches_reference(r / "scripts" / _EXPIRY_GATE,
+                                        _PLUGIN_ASSETS / "exception-expiry" / _EXPIRY_GATE)
+    if status == MANUAL:
+        return status, f"scripts/{_EXPIRY_GATE}: {detail}"
+    if status != PASS:
+        problems.append(f"scripts/{_EXPIRY_GATE}: {detail}")
+    ungated, unnamed, elsewhere, on_pr = [], [], [], False
+    for wf in workflows(r):
+        try:
+            doc = _wf_doc(wf)
+        except Unreadable as e:
+            return MANUAL, str(e)
+        pairs = [(s, job) for job in (doc.get("jobs") or {}).values() if isinstance(job, dict)
+                 for s in (job.get("steps") or []) if isinstance(s, dict)]
+        gates = [a for a in (_gate_args(s, job) for s, job in pairs) if a is not None]
+        inputs = [s["with"] for s, _ in pairs if isinstance(s.get("with"), dict)]
+        if any(_EXCEPTION_INPUTS & set(w) for w in inputs) and not gates:
+            ungated.append(wf.name)
+        # The gate reads .vex/ by default; a scanner pointed elsewhere applies
+        # statements the gate never opens.
+        if any(os.path.normpath(str(w.get("vex-location", ".vex"))) != ".vex" for w in inputs):
+            elsewhere.append(wf.name)
+        # Called with no argument the gate skips the Trivy half, so a repo
+        # with a .trivyignore.yaml would pass this check while its Trivy
+        # exceptions went unread.
+        if has_trivy and any(".trivyignore.yaml" not in a for a in gates):
+            unnamed.append(wf.name)
+        if gates and "pull_request" in _wf_on(doc):
+            on_pr = True
+    if ungated:
+        problems.append("applies exceptions without the gate: " + ", ".join(ungated))
+    if unnamed:
+        problems.append("gate not given .trivyignore.yaml: " + ", ".join(unnamed))
+    if elsewhere:
+        problems.append("vex-location other than .vex: " + ", ".join(elsewhere))
+    if not on_pr:
+        problems.append("no pull_request workflow runs the gate")
+    return (FAIL, "; ".join(problems)) if problems else (PASS, "")
+
+
 @check("CI-21")
 def _(r):
     wfs = workflows(r)

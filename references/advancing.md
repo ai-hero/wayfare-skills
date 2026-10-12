@@ -155,8 +155,12 @@ for that reason and closes the bots' PRs after its own merge.
    → `@dependabot recreate`. Then poll the head SHA every 30 s for up to 10
    minutes and continue once it moves; a head that never moves is a STOP
    ("Dependabot did not respond. Is it enabled for this repo?"), never a local
-   rebase. Flip the item to `active` here, because this is the first act on the
-   PR.
+   rebase. Then check release age per
+   [dependency-cooldown.md](dependency-cooldown.md), on the head as it now
+   stands: a hold STOPs here with the hold lines, before the test and before the
+   approval in step 3 that would otherwise stand on a release too young for its
+   tier, and the item keeps its status. Once the check passes, flip the item to
+   `active`, because this is the first act on the PR.
 
 2. **Test.** `gh pr checkout N`, which puts this checkout on the bot's branch,
    then `wayfare:wayfare-push-pr test`, whose test phase alone: lint, typecheck,
@@ -210,8 +214,8 @@ for that reason and closes the bots' PRs after its own merge.
    has not had it. All ticked → `status: done`, then the roadmap view.
 
 The stops, all of them hand-backs: the bot never rebased; CI red; local tests
-red; a major whose call sites hit a changed API; wayfare-ship-pr's
-`REQUEST_CHANGES`, `WORKFLOW_FAILED`, or a declined (or ungranted) merge;
-deployment `DEGRADED` or `UNKNOWN`. In a goal turn each is `stop: failure` (or
-`awaiting-human` for the ungranted gate) on the turn report, and the goal does
-not skip past it.
+red; a release-age hold (`stop: awaiting-human`, not a failure); a major whose
+call sites hit a changed API; wayfare-ship-pr's `REQUEST_CHANGES`,
+`WORKFLOW_FAILED`, or a declined (or ungranted) merge; deployment `DEGRADED` or
+`UNKNOWN`. In a goal turn each is `stop: failure` (or `awaiting-human` for the
+ungranted gate) on the turn report, and the goal does not skip past it.

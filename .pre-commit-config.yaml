@@ -90,7 +90,8 @@ repos:
     rev: v2.4.2
     hooks:
       - id: codespell
-        args: [--skip, '*.lock']
+        # TeX Gyre Heros is a font and multline a LaTeX environment, both in publishing/technical.
+        args: [--skip, '*.lock', --ignore-words-list, "heros,multline"]
         exclude: ^analysis/
       - id: codespell
         name: codespell (analysis)

@@ -174,6 +174,7 @@ def audit_staleness(x):
     ax2.set_xlabel(f"Days until the next audit,\nfor each day (n = {len(x['waits'])})")
     ax2.set_ylabel("Days")
     ax2.grid(axis="x", visible=False)
+    F.coverage(fig)
     png = F.save(fig, F.asset("5.7"))
     F.summary("5.7", question="How current was the fleet's conformance view on every day of the study, distinguishing full and partial audits, "
                               "and what was the distribution of time between a violation becoming detectable and the next applicable audit?",
@@ -191,7 +192,7 @@ def audit_staleness(x):
     return png
 
 
-OUTCOME_COLORS = [F.GREY_DARK, F.GREY, F.GREY_LIGHT, F.PINK_LIGHT, F.PINK, F.TEAL, "#F3F4F6"]
+OUTCOME_COLORS = [F.GREY_DARK, F.GREY, F.GREY_LIGHT, F.PINK_LIGHT, F.PINK, F.CONTRAST, "#F4F5F8"]
 
 
 def violation_outcomes(x):

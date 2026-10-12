@@ -17,19 +17,19 @@ from functools import lru_cache
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.dirname(HERE), os.path.dirname(os.path.dirname(HERE))]
 from cube.db import connect as _connect  # noqa: E402
-from record import STAGES, adoption, changeset_facts, commit_facts, rows, stage_of, week_of  # noqa: E402
+from record import STAGES, adoption, changeset_facts, commit_facts, gap_events, gap_weeks, rows, stage_of, week_of  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE  # noqa: E402
 from facts import fix_changesets, fix_method  # noqa: E402
 
-WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
+WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
-# No Claude Code sessions were logged 10-24 Aug. Session-derived series (tool calls, subagent runs)
+# Session logs are missing or partial 10-24 Aug. Session-derived series (tool calls, subagent runs)
 # show those weeks as "data not available" (None), never 0, and leave them out of every average.
 # Typed prompts come from another log and continue through the gap.
-NO_DATA_WEEKS = {"2026-W33", "2026-W34"}
-NO_DATA_EVENT = ("2026-08-10", "Session data not available")
+NO_DATA_WEEKS = set().union(*gap_weeks())
+NO_DATA_EVENTS = gap_events()
 MISTAKE_LOG_EVENT = ("2026-09-19", "Mistake log (#104)")
-DATA_END = date(2026, 9, 25)     # last day in git.commits; a fix window is complete only if it ends by then
+DATA_END = date(2026, 10, 1)     # last day in git.commits; a fix window is complete only if it ends by then
 ITEMS_FROM, SESSIONS_FROM = "2026-W30", "2026-W32"
 RENAMES = {"hero-skills": "wayfare-skills"}
 APPS = ("app", "app, no features yet")
@@ -48,6 +48,7 @@ GUARD_EVENTS = [
     ("2026-05-04", "Prior-review gate"),
     ("2026-09-18", "Draft until self-review (#93)"),
     ("2026-09-23", "Judge fails closed (#118)"),
+    ("2026-10-01", "Push never merges to main (#144)"),
 ]
 JUDGE_EVENTS = [
     ("2026-05-04", "Prior-review gate"),
@@ -574,7 +575,8 @@ def q_who_catches_mistakes_catchers(con):
             "fx_share": {CATCHER_NAMES[k]: round(tot_fx[k] / len(fx), 3) for k in CATCH_ORDER},
             "log_share": {CATCHER_NAMES.get(k, k): round(v / len(lm), 3) for k, v in log_c.most_common()},
             "n_fx": len(fx), "n_lm": len(lm),
-            "review_recent": mean_known(series["Review agents"][-8:]), "review_early": mean_known(series["Review agents"][:18])}
+            "review_recent": mean_known([v for v, w in zip(series["Review agents"], WEEKS)
+                                         if date.fromisocalendar(2026, int(w[6:]), 7) <= DATA_END][-8:]), "review_early": mean_known(series["Review agents"][:18])}
 
 
 # ------------------------------------------------------------------ Q where-fixes-land

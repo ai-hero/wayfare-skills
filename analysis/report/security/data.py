@@ -4,7 +4,7 @@
 
 Reads the shared databases plus .analysis/data/security.sqlite, which report/security/scan.py (weekly
 mirror snapshots, lockfile CVE scans, credential scan of full history) and report/security/label.py
-(Haiku labels on reviews and work items) fill. Weeks are ISO weeks of 2026, W01 to W39.
+(Haiku labels on reviews and work items) fill. Weeks are ISO weeks of 2026, W01 to W40.
 """
 import json
 import os
@@ -24,7 +24,7 @@ from cube.db import connect  # noqa: E402
 from record import adoption, changeset_facts, rows, stage_of, week_of  # noqa: E402
 from ingest.fleet import category_of  # noqa: E402
 
-WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
+WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
 MIRRORS = os.path.join(os.path.dirname(os.path.dirname(REPORT)), ".analysis", "data", "mirrors")
 APPS = ("app", "app, no features yet")
@@ -213,7 +213,7 @@ def q_security_work_share_volume(con):
             series["App" if f["category"] in APPS else "Allied"][WEEKS.index(f["week"])] += 1
     share = [(series["App"][i] + series["Allied"][i]) / tot[w] if tot[w] else None for i, w in enumerate(WEEKS)]
     per = lambda lo, hi: (sum(1 for f in sec if lo <= f["week"] <= hi), sum(1 for f in nondep if lo <= f["week"] <= hi))
-    before, after = per("2026-W01", "2026-W29"), per("2026-W30", "2026-W39")
+    before, after = per("2026-W01", "2026-W29"), per("2026-W30", "2026-W40")
     kinds = [k for k, _ in KINDS] + ["Other hardening"]
     by_kind = {k: [sum(1 for f in sec if f["month"] == m and f["kind"] == k) for m in MONTHS] for k in kinds}
     by_repo = defaultdict(lambda: [0] * len(MONTHS))
@@ -377,7 +377,7 @@ def q_review_security_flags_reviews(con):
                 n_all_reviewed=len(first_rev), n_prs=n_prs, n_find=n_find,
                 n_high=sum(p["high"] for p in per_pr.values()), n_reviews=len(rv),
                 by_repo={k: v for k, v in by_repo.items()}, by_kind=dict(by_kind), kind_n=dict(kind_n), cls=dict(cls),
-                topic_prs=len(old), early=half("2026-W01", "2026-W33"), late=half("2026-W34", "2026-W39"))
+                topic_prs=len(old), early=half("2026-W01", "2026-W33"), late=half("2026-W34", "2026-W40"))
 
 
 # ---------------------------------------------------------------- Q agent-security-defects exposure of agent-introduced defects
@@ -512,7 +512,7 @@ def q_security_fix_time_backlog(con):
     return dict(open=open_, opened=opened, closed_median=closed_med, n=len(it), n_done=len(days), median=median(days),
                 p90=sorted(days)[int(0.9 * (len(days) - 1))] if days else None, same_day=same_day,
                 still_open=len(still), still_by_status=Counter(i["status"] for i in still),
-                oldest_open=max((ddays(i["created_ts"], "2026-09-25") for i in still), default=None),
+                oldest_open=max((ddays(i["created_ts"], END) for i in still), default=None),
                 by_finder={k: (median(v), len(v)) for k, v in by_finder.items()},
                 open_by_finder=Counter(i["finder_final"] for i in still), buckets=buckets,
                 finder_buckets={k: dict(v) for k, v in fb.items()}, first=min(i["created_ts"][:10] for i in it))
@@ -938,7 +938,7 @@ if __name__ == "__main__":
 
 # ---------------------------------------------------------------- book figures 5.3 and 5.4
 
-END = "2026-09-24"  # last day the plan and CI ingests cover; open items are censored here
+END = "2026-10-01"  # last day the plan and CI ingests cover; open items are censored here
 AUTHOR_GROUPS = ["Written by an agent in this repo", "Inherited with the clone's first commit", "Written by a person"]
 
 

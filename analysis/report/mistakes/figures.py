@@ -31,7 +31,8 @@ def _two_bars(ax, labels, values, title, xlabel, share_note):
 
 def fig_4_3(x):
     """Two records of 'done that was not done', each against its own denominator, never summed."""
-    fig, (a, b) = F.fig(h=4.2, ncols=2)
+    # Stacked, not side by side: at print width two panels abreast leave each too narrow for its labels.
+    fig, (a, b) = F.fig(h=5.6, nrows=2)
     lo, hi = F.wilson(x["prs_back"], x["prs_judged"])
     _two_bars(a, ["PRs the judge ruled on", "Sent back at least once"], [x["prs_judged"], x["prs_back"]],
               "The final judge (auto-approve), Apr–Sep",

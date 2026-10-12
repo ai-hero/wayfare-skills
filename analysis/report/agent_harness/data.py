@@ -18,10 +18,10 @@ from functools import lru_cache
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
-from record import adoption, changeset_facts, commit_facts, rows, week_of  # noqa: E402
+from record import SESSION_WINDOW, adoption, changeset_facts, commit_facts, rows, week_of  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE, category_of  # noqa: E402
 
-LATEST_WEEK = 39
+LATEST_WEEK = 40
 WEEKS = [f"2026-W{w:02d}" for w in range(1, LATEST_WEEK + 1)]
 S_WEEKS = [f"2026-W{w:02d}" for w in range(35, LATEST_WEEK + 1)]  # the continuous session log starts 25 Aug
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
@@ -271,7 +271,7 @@ def q_fixes_by_model_fixes(con):
 
 # ---------------------------------------------------------------- session-log helpers
 
-LOG_START = "2026-08-25"  # one session from 9 Aug; the continuous log starts 25 Aug (older transcripts were purged)
+LOG_START = SESSION_WINDOW[0]  # one session from 9 Aug; the continuous log starts 25 Aug (older transcripts were purged)
 
 
 def days_between(a, b):

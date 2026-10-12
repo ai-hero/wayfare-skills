@@ -16,7 +16,12 @@ Views hold findings, so they are written under the gitignored .analysis/, never 
 import json
 import os
 
-from deck_lib import MILESTONES, MONTHS, PINK, REPO_COLORS, mlabel, month_frac, week_frac, wlabel
+from record import is_session_source, session_coverage
+from deck_lib import (MILESTONES, MONTHS, PINK, REPO_COLORS, gap_spans, mlabel, month_frac, series_colors,
+                      week_frac, wlabel)
+
+# Pass as a timeline's unavailable to mark the session-log gap: the missing week and the partial one.
+SESSION_GAP = "session gap"
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 VIEWS_DIR = os.path.join(ROOT, ".analysis", "data", "views")
@@ -31,9 +36,9 @@ def _fmt(pct, fmt):
 
 
 def _series(series, colors):
-    colors = list(colors or REPO_COLORS)
+    colors = series_colors(list(series), colors)
     return [{"name": name, "values": [None if v is None or v != v else float(v) for v in vals],
-             "color": _hex(colors[i % len(colors)]), "pointColors": None}
+             "color": _hex(colors[i]), "pointColors": None}
             for i, (name, vals) in enumerate(series.items())]
 
 
@@ -65,7 +70,7 @@ class Views:
         charts = charts if isinstance(charts, list) else [charts]
         self.views.setdefault(question, []).append({
             "label": label, "title": title, "points": list(points), "source": source, "extra": [],
-            "notes": notes, "charts": charts, "tables": [list(map(list, t)) for t in tables]})
+            "coverage": session_coverage() if is_session_source(source) else "", "notes": notes, "charts": charts, "tables": [list(map(list, t)) for t in tables]})
 
     def save(self):
         os.makedirs(VIEWS_DIR, exist_ok=True)
@@ -77,13 +82,13 @@ class Views:
     @staticmethod
     def timeline(weeks, series, colors=None, kind="stacked", y_title=None, pct=False, fmt=None, events=(),
                  milestones=True, val_max=None, unavailable=None):
-        """Weekly chart; kind is stacked, column or line. unavailable: (first_day, last_day, label) shaded."""
+        """Weekly chart; kind is stacked, column or line. unavailable: (first_day, last_day, label) shaded, or
+        SESSION_GAP."""
         frac = lambda d: week_frac(d, weeks)
         n = len(weeks)
-        bands = []
-        if unavailable:
-            a, b, name = unavailable
-            bands = [{"from": round(frac(a) * n, 3), "to": round(frac(b) * n, 3), "name": name, "color": None}]
+        spans = gap_spans(weeks) if unavailable == SESSION_GAP else [unavailable] if unavailable else []
+        bands = [{"from": round(max(frac(a), 0) * n, 3), "to": round(min(frac(b), 1) * n, 3), "name": name, "color": None}
+                 for a, b, name in spans]
         return _spec("line" if kind == "line" else "bar", [wlabel(w) for w in weeks], series, colors,
                      stacked=kind == "stacked", pct=pct, fmt=fmt, x_title="Week of 2026", y_title=y_title,
                      val_max=val_max, marks=_marks(frac, n, events, milestones), bands=bands)

@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(HERE))
 from record import changeset_facts, week_of  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE, REPO_ALIASES, category_of  # noqa: E402
 
-WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
+WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
 FACTORY_REPOS = ("wayfare-skills", "hero-template")
 APP_CATS = ("app", "app, no features yet")

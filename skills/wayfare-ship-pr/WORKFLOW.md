@@ -467,6 +467,30 @@ the base moved again (`BEHIND`) or the merge became `DIRTY`, come back here once
 to rebase, re-trigger and re-wait. If it is still not clean after that, STOP and
 say what keeps moving underneath it.
 
+#### Step 3b: hold a Dependabot PR until every release is old enough for its tier
+
+**Read `../../references/dependency-cooldown.md` when the PR author is
+Dependabot** (`PR_AUTHOR` is `dependabot[bot]`); skip this step for any other
+author. Dependabot's own `cooldown` does not apply to security updates, so a
+security PR can arrive for a release published hours ago, and this step is the
+only gate on its age.
+
+For each package the PR bumps, after the Step 3a rebase:
+
+1. Read the new version from `gh pr diff $PR_NUMBER`, not from the title.
+2. Find the most severe advisory it fixes, from the PR body or from
+   `gh api repos/$OWNER/$REPO/dependabot/alerts` matched on package and version,
+   and look up each CVE in CISA KEV. That sets the tier.
+3. Read its registry publish time and compute the date it clears that tier.
+4. If it is younger than 7 days and still clears, run the reference's two extra
+   checks (usual publisher, no new install-time script).
+
+If any package is too young for its tier, or fails an extra check, STOP and do
+not post `@auto-approve`. Print one hold line per package, in the reference's
+format, and post the same lines as one PR comment unless a comment from this
+account already carries them. The PR clears on the latest date. A grouped PR
+holds when any one package holds.
+
 ### Step 4: Post the @auto-approve Trigger Comment
 
 **Pre-authorized gates, from a goal turn.** When the invocation that ran this

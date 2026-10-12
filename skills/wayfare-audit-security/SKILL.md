@@ -136,6 +136,12 @@ expensive-model work):
 - Is the vulnerable code path actually reachable from this repo's usage?
 - Is the fix a patch/minor bump (low risk) or a major bump (breaking-change
   risk, so flag it)?
+- Which fixed release may we adopt today? Read
+  `../../references/dependency-cooldown.md` before naming the version for a
+  hand-made fix (an override, a transitive bump, a manifest edit). Pick the
+  newest fixed release that is old enough for the advisory's tier, not simply
+  the newest release. If no fixed release is old enough yet, the plan item names
+  the version and the date it clears.
 - What is the correct update command for this ecosystem
   (`npm install PACKAGE@VERSION`, `uv lock && uv sync` after a `pyproject.toml`
   edit, a version pin bump in `.github/workflows/*.yml`)?

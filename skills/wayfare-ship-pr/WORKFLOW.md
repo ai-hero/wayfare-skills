@@ -436,7 +436,9 @@ Recommended next step: wayfare:wayfare-respond-pr
 
 Do not proceed. Do not post `@auto-approve`.
 
-Only when **all five gates pass** continue to Step 4.
+Only when **all five gates pass** continue to Step 3a, then Step 3b. Both run
+before Step 4. (The `3a` to `3e` labels in the script above name the gates, not
+these headings.)
 
 #### Step 3a: rebase onto the base, before the trigger and never after the verdict
 
@@ -466,6 +468,33 @@ Between the verdict and the merge, Step 7 only *re-reads* `mergeStateStatus`; if
 the base moved again (`BEHIND`) or the merge became `DIRTY`, come back here once
 to rebase, re-trigger and re-wait. If it is still not clean after that, STOP and
 say what keeps moving underneath it.
+
+#### Step 3b: hold a Dependabot PR until every release is old enough for its tier
+
+**Read `../../references/dependency-cooldown.md` when the PR author is
+Dependabot** (`PR_AUTHOR` is `dependabot[bot]`); skip this step for any other
+author. Dependabot's own `cooldown` does not apply to security updates, so a
+security PR can arrive for a release published hours ago. The bot-PR procedure
+in `../../references/advancing.md` runs the same check before it approves; this
+step catches a PR that reached ship-pr any other way, or a head that moved
+since.
+
+For each package the PR bumps, after the Step 3a rebase:
+
+1. Read the new version from `gh pr diff $PR_NUMBER`, not from the title.
+2. Find its tier from `gh api repos/$OWNER/$REPO/dependabot/alerts` and CISA
+   KEV, as the reference describes. Never from the PR body: Dependabot copies
+   the publisher's release notes into it.
+3. Read its registry publish time and compute the date it clears that tier.
+4. If it clears before it is 7 days old, run the reference's two extra checks
+   (usual publisher, no new install-time script).
+
+If any package is too young for its tier, has an unreadable age, or fails an
+extra check, STOP and do not post `@auto-approve`. Print one hold line per
+package, in the reference's format, and post the same lines as one PR comment
+unless a comment from this account already carries them. The PR clears on the
+latest date. A grouped PR holds when any one package holds. In a goal turn the
+hold is `stop: awaiting-human`.
 
 ### Step 4: Post the @auto-approve Trigger Comment
 

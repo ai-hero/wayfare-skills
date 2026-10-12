@@ -27,7 +27,13 @@ controls:
     the trivy-action and kics-github-action compromises worked exactly that
     way. Pinning without an updater is the opposite failure: the pin freezes
     and the repo quietly stops receiving security fixes. Both halves are
-    required; either alone is a false sense of safety.
+    required; either alone is a false sense of safety. Moving the pins has its
+    own risk: a release adopted the day it publishes can be the poisoned one,
+    caught and yanked days later. So an adopted release must be old enough for
+    the tier of the advisory it fixes: 0 days for critical or CISA KEV, 2 for
+    high, 7 for medium, low, or none. Dependabot's cooldown enforces only the
+    last row and does not apply to security updates, so the rest is held at
+    review (references/dependency-cooldown.md).
 
 - id: C-APPROVAL
   title: Automated approval cannot be subverted

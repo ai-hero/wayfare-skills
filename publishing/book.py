@@ -296,8 +296,8 @@ EVI_REF = re.compile(r'(\s*\(|; )<a class="evi-ref" href="#([^"]+)">evidence</a>
 
 
 def case_records_only(doc):
-    """The Kindle edition carries only the case records; the question-backed findings live in the
-    technical edition. Their "evidence" links go too, or each would point at a page that is not there."""
+    """The book prints only the case records; the question-backed findings live in the technical
+    edition. Their "evidence" links go too, or each would point at a page that is not printed."""
     app = doc.get("appendix") or {}
     parts = []
     for p in app.get("parts", []):
@@ -798,7 +798,7 @@ def with_cover(interior):
 def main():
     from weasyprint import HTML
     with open(paths.SOURCE, encoding="utf-8") as f:
-        doc = json.load(f)
+        doc = case_records_only(json.load(f))
     # Every chapter opens on a new recto, so a chapter's pages lay out the same alone as in the
     # book; seating its figures against a render of that chapter only is a tenth of the work per try.
     defer, splits, shrink, solved = {}, {}, {}, {}

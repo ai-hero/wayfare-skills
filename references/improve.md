@@ -5,7 +5,8 @@ The compliance audit on its own, for this repo or the whole fleet.
 `wayfare-audit-compliance` takes no argument. In a repo it runs the `compliance`
 stage exactly as `sync` does, with the same engine call, the same items and the
 same confirm flow and the same filing to the `issues` connection
-([finding-tickets.md](finding-tickets.md)), and then does the one thing `sync`
+([finding-tickets.md](finding-tickets.md)), including its fan-out branch when
+launched with `launched as a fan-out agent`, and then does the one thing `sync`
 never does: **the backport half**. Run the engine once more for the fleet's
 template (`--repo TEMPLATE`, the `template:` row in FLEET.md) and, for every
 check the template fails where this repo is the `reference`, draft a message
@@ -31,18 +32,21 @@ the family audit:
    else surfaces.
 4. Offer the per-repo fan-out per **At the fleet root** in `docs/FLEET-MD.md`:
    the user picks repos, and each gets `wayfare:wayfare-audit-compliance` in a
-   subagent, which proposes its own items in its own store. Each launch says it
-   is part of the family audit, and a repo audit launched that way files no
-   tickets (step 5). The fleet form writes into no repo's store, items are a
-   repo's own decision, made in that repo.
+   subagent, which proposes its own items in its own store. Each launch prompt
+   carries `launched as a fan-out agent: return finding keys, file no tickets`;
+   a repo audit launched that way files nothing and returns `Finding key:` lines
+   (step 5). The fleet form writes into no repo's store, items are a repo's own
+   decision, made in that repo.
 5. File the control findings, as the one writer, after every fan-out agent has
    reported ([finding-tickets.md](finding-tickets.md)). The fan-out agents file
    nothing; they return the keys they would file. The route is the `issues`
    connection of the `template:` row's HERO.md. One ticket per failing check,
    listing the failing repos from step 1's results at origin/main; update an
    existing ticket's list instead of filing a second one, and close a check's
-   ticket with the evidence comment when its failing set is empty. This is the
-   only run that closes a control ticket in a fleet.
+   ticket with the evidence comment when its failing set is empty. To find the
+   tickets for checks that now pass everywhere, list the route's open tickets
+   carrying `compliance-label` and re-check each `[CHECK_ID]` against step 1.
+   This is the only run that closes a control ticket in a fleet.
 
 A family whose FLEET.md rows all say `group: none` is not a family; say that
 instead of auditing nothing and reporting clean.

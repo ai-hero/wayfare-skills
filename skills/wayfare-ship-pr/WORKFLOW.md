@@ -1435,16 +1435,19 @@ Reach it on the `issues` connection's compliance route
 (`../../references/finding-tickets.md`). An unavailable `reach` is reported, and
 the ticket is left for the next audit. Then:
 
-1. Comment on the ticket: the PR merged (its URL and merge SHA), and the
-   versions now on the default branch, read from the lockfile or the file the
-   fix changed at the merge commit, not from the PR description.
-2. Move it to In Review. In Linear that is the team's In Review state; a GitHub
-   issue has no such state, so it stays open with the comment.
+1. Comment on the ticket: this repo's line (the PR merged, its URL and merge
+   SHA, and the versions now on the default branch, read from the lockfile or
+   the file the fix changed at the merge commit, not from the PR description).
+2. Move it to In Review only when this repo is the last one the ticket lists as
+   failing or affected. A ticket that still lists other repos stays where it is
+   with the comment: one repo's merge does not fix the others. In Linear In
+   Review is the team's In Review state; a GitHub issue has no such state, so it
+   stays open with the comment.
 
 **Never move a finding ticket to Done, and never close it.** A merged fix is not
 a cleared scanner: the alert can stay open and the image may not be rebuilt.
 Only the audit, or a person, closes it, after the scanner confirms. Report
-`Finding ticket: TICKET_ID moved to In Review` in the summary.
+`Finding ticket: TICKET_ID commented` or `moved to In Review` in the summary.
 
 ### Step 8: Summary
 
@@ -1502,7 +1505,7 @@ Run:       RUN_URL
 
 Post-merge CI: passed | failed | unknown
 Deployment: HEALTHY | DEGRADED | UNKNOWN | skipped
-Finding ticket: TICKET_ID moved to In Review | not reached (REASON)   # only when 7f ran
+Finding ticket: TICKET_ID commented | moved to In Review | not reached (REASON)   # only when 7f ran
 
 Action taken:
   - Merged with MERGE_METHOD (sha SHORT_SHA)            # APPROVE + user said yes

@@ -270,9 +270,6 @@ while IFS='|' read -r _skill section key decides; do
     if [ "$section" = "${section#*::}" ]; then
       current=$(hero_md_field "$TARGET" "$key" "## $section" 2>"$ERRF"); rc=$?
     else
-      # Not piped into `tr`: a pipeline reports the LAST command's rc, so
-      # hero_md_field's refusal would arrive as 0 and a rejected discriminator
-      # would read as an unmigrated block.
       # The issues block's compliance route has its own discriminator, and it
       # defaults to the main `type`. Judging `compliance-team` against `type`
       # alone reports a Linear route under `type: none` as moot, and judging
@@ -288,6 +285,9 @@ while IFS='|' read -r _skill section key decides; do
       esac
       conn_type=""; type_rc=1
       if [ -n "$disc" ]; then
+        # Not piped into `tr`: a pipeline reports the LAST command's rc, so
+        # hero_md_field's refusal would arrive as 0 and a rejected
+        # discriminator would read as an unmigrated block.
         conn_type=$(hero_md_field "$TARGET" "$disc" "### ${section#*::}" "## ${section%%::*}" 2>/dev/null); type_rc=$?
       fi
       conn_type=$(printf '%s' "$conn_type" | tr '[:upper:]' '[:lower:]')

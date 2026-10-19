@@ -17,7 +17,7 @@ scanner or the engine reports it against the default branch as it is merged:
 | Finding | Confirmed when |
 | -- | -- |
 | A dependency CVE | an open Dependabot alert (alerts are computed on the default branch) |
-| A container CVE | Scout or Trivy reports it on the image the deploy runs |
+| A container CVE | Scout or Trivy reports it on the image the deploy runs: the Deployment `registry` tag built from the default branch. A base image scanned from a Dockerfile in the checkout is a candidate |
 | A control check | `scripts/audit.py` reports `FAIL` for the check at `origin/main` (its default snapshot; a `--no-snapshot` run reads the checkout as it sits, which is a candidate) |
 
 A candidate is anything else: an `ERROR` cell, a `MANUAL` check, a part that ran
@@ -158,24 +158,48 @@ origin/main. A vulnerability ticket closes when that removes the last line.
 A control ticket closes only when that check's failing set is empty at
 origin/main. That set spans repos, so in a fleet only the family audit
 (`improve.md`), which snapshots every repo at origin/main, closes control
-tickets. A repo outside any fleet is the whole set, and its own audit closes
-them.
+tickets. It lists the route's open tickets that carry `compliance-label` and a
+`[CHECK_ID]` title and re-checks each against its own results, because a check
+that now passes everywhere reports no key that would lead it to the ticket. A
+repo outside any fleet is the whole set, and its own audit closes them.
 
 **`wayfare-ship-pr` never closes a finding ticket.** When the fixing PR merges,
-it comments (the PR merged, the versions now on main) and moves the ticket to In
-Review. A merged fix is not a cleared scanner: the alert can stay open, the
-image may not be rebuilt, and Vanta reads the ticket as evidence. For the same
-reason, a PR names a finding ticket with `Relates to:`, never `Fixes:` or
-`Closes:`: a closing keyword lets GitHub, or the tracker's GitHub integration,
-close the ticket at merge, which is Done with no scanner behind it.
+it comments with that repo's line (the PR merged, the versions now on main). It
+moves the ticket to In Review only when that repo was the last one the ticket
+lists. A merged fix is not a cleared scanner: the alert can stay open, the image
+may not be rebuilt, and Vanta reads the ticket as evidence. For the same reason,
+a PR names a finding ticket with `Relates to:`, never `Fixes:` or `Closes:`: a
+closing keyword lets GitHub, or the tracker's GitHub integration, close the
+ticket at merge, which is Done with no scanner behind it.
 
 ## In a fan-out
 
-Fan-out agents never write tickets. The family audit's per-repo agents return
-the keys they would file, and the family audit, as the one writer, files and
-updates once after every agent has reported (docs/PIPELINES.md, *A fan-out waits
-for every agent, then one writer commits once*). Two agents editing one control
-ticket's repo list at once lose a row.
+Fan-out agents never write tickets. Two agents editing one control ticket's repo
+list at once lose a row, and a subagent cannot ask the user to confirm the
+destination. Every fleet-root fan-out that reaches a filing step
+(`wayfare-sync-plan` and `wayfare-audit-compliance` at the fleet root) adds this
+line to each repo's launch prompt:
+
+```text
+launched as a fan-out agent: return finding keys, file no tickets
+```
+
+A filing step that sees the line, in its own launch or passed down from the
+skill that invoked it, searches nothing and writes nothing. It prints one line
+per confirmed finding instead, and the report carries them back:
+
+```text
+Finding key: check CI-20 REPO ITEM_ID DETAIL
+Finding key: cve GHSA-ID,CVE-ID PACKAGE REPO ITEM_ID FIXED_VERSION_OR_none
+```
+
+**The single writer** is the fleet-root session, after every agent has reported
+(docs/PIPELINES.md, *A fan-out waits for every agent, then one writer commits
+once*). It merges the keys by check or advisory group, so one ticket lists every
+failing repo, asks the user once, and then searches, files, updates and reopens
+through this procedure. It writes into no repo's store: it prints each ticket id
+beside the repo and item that reported it, and that repo's next audit finds the
+ticket by search and writes it back.
 
 At the fleet root there is no HERO.md. The route is the `issues` connection of
 the `template:` row's HERO.md (FLEET.md). No template row means no route: say

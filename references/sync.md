@@ -179,7 +179,8 @@ subtasks, never tasks.** Task order comes from the journey.
 
 **The `wayfare-audit-security` stage, in both modes, after the map.** Invoke
 `wayfare:wayfare-audit-security all` through the active client's skill mechanism
-with the line `launched by wayfare`. It is read-only and writes `type: task` +
+with the line `launched by wayfare`, and with `launched as a fan-out agent` too
+when this run was launched with it. It is read-only and writes `type: task` +
 `shape: dependency` (or `architecture`) items at `status: planning`, each
 carrying an execution recipe, a verification, and its failure modes, so those
 items skip the grill in *Plan the set* and go straight to the ready-mark. It
@@ -317,6 +318,11 @@ control ticket is the family audit's in a fleet (`improve.md`), because only it
 sees the whole failing set; outside a fleet this repo is the whole set, and this
 stage closes it. A non-zero `COMPLIANCE_MAIN_RC` files nothing: report
 `Tracker: FAILED (engine at origin/main: REASON)`.
+
+**Launched with `launched as a fan-out agent`**: run the origin/main engine call
+above, then file, search and ask nothing. Print a `Finding key:` line per
+failing check instead (finding-tickets.md, *In a fan-out*), and carry the
+security stage's `Finding key:` lines into the report beside them.
 
 **The `local` stage: this repo's own `wayfare: sync` skills.** For each line
 `hero_local_skills "$ROOT" sync` printed **and accepted at the trust prompt**

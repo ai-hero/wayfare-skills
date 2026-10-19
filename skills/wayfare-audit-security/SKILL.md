@@ -395,11 +395,16 @@ it rather than handing it off vague.
 
 Read `../../references/finding-tickets.md` in full first. It owns the route,
 search, ticket body, risk-acceptance and workaround tickets, and closing. This
-audit hands it the CVE finding groups from Parts A and B that an open alert or a
-Scout or Trivy result confirms; Part C findings stay plans only. Write each
-ticket back onto its Step 3 item. Re-check the tickets this store's items carry,
-and show the route and counts before writing. Print the `Tracker:` line in the
-Step 4 summary.
+audit hands it the CVE finding groups that an open alert (Part A) confirms, or a
+Scout or Trivy result on the deployed image (the Deployment `registry` tag built
+from the default branch). Base images scanned from a Dockerfile in the checkout,
+and Part C findings, stay plans only. Write each ticket back onto its Step 3
+item. Re-check the tickets this store's items carry, and show the route and
+counts before writing. Print the `Tracker:` line in the Step 4 summary.
+
+**Launched with `launched as a fan-out agent`** (passed down by `sync`): file,
+search and ask nothing. Print a `Finding key:` line per confirmed group instead,
+in the reference's format, for the fleet-root writer.
 
 ### Self-Check: Confirm Nothing Tracked Was Touched
 

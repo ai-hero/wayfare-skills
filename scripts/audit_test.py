@@ -1305,6 +1305,22 @@ class ReferenceAssets(unittest.TestCase):
         self.assertIn("fetch failed", note)
         self.assertIn("fetch", err.getvalue())
 
+    def test_hung_fetch_falls_back_like_a_failed_one(self):
+        real = audit.sh3
+
+        def hang(cwd, cmd):
+            if " fetch " in f" {cmd} ":
+                raise subprocess.TimeoutExpired(cmd, 60)
+            return real(cwd, cmd)
+        audit.sh3 = hang
+        try:
+            with contextlib.redirect_stderr(io.StringIO()):
+                with audit.reference_assets() as note:
+                    self.assertEqual(self.ci20("v1"), audit.PASS, "origin/main as last fetched")
+        finally:
+            audit.sh3 = real
+        self.assertIn("timed out after 60s", note)
+
     def test_absent_checkout_is_named(self):
         audit._PLUGIN_HOME = self.plugin.parent / "nowhere"
         with audit.reference_assets() as note:

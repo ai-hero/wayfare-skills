@@ -2481,9 +2481,10 @@ def _assets_at_origin(plugin, dest):
     # A hung fetch or a credential prompt must fall back like any failed fetch,
     # not end the audit in a TimeoutExpired traceback.
     try:
-        rc, _out, err = sh3(plugin, f"GIT_TERMINAL_PROMPT=0 git fetch -q {_PLUGIN_REMOTE} {_PLUGIN_BRANCH}")
-    except subprocess.TimeoutExpired:
-        rc, err = 124, "timed out after 60s"
+        rc, _out, err = sh3(plugin, "GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes' "
+                                    f"git fetch -q {_PLUGIN_REMOTE} {_PLUGIN_BRANCH}")
+    except subprocess.TimeoutExpired as e:
+        rc, err = 124, f"timed out after {e.timeout:g}s"
     stale = ""
     if rc:
         stale = f"  (fetch failed: {err or f'rc={rc}'}; {ref} as last fetched)"

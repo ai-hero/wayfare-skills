@@ -200,9 +200,19 @@ def place(name):
     paper = os.path.join(paths.DIAGRAMS_PAPER, name)
     src = paper if os.path.exists(paper) else os.path.join(paths.ASSETS, name)
     dst = os.path.join(BUILD, "figures", name)
+    if name.endswith(".svg"):
+        # XeTeX can't size an SVG and halts; print it through the cover's Chrome path, which sets the
+        # design system's fonts.
+        from cover import chrome_pdf
+        with open(src, encoding="utf-8") as f:
+            svg = f.read()
+        w, h = (float(re.search(rf'<svg[^>]*\b{a}="([\d.]+)', svg).group(1)) for a in ("width", "height"))
+        name = name[:-4] + ".pdf"
+        chrome_pdf(svg, w * 0.75, h * 0.75, os.path.join(BUILD, "figures", name))
+        return name
     if not name.endswith(".png"):
         shutil.copyfile(src, dst)
-        return
+        return name
     from PIL import Image
     with Image.open(src) as im:
         im = im.convert("RGBA")
@@ -213,13 +223,12 @@ def place(name):
         # 256, not fewer: a heatmap's colour scale bands into visible steps at 64, and no pixel
         # measure separated those charts from the flat ones.
         flat.quantize(256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(dst, optimize=True)
+    return name
 
 
 def asset(b):
     f = b["files"]
-    name = f.get("pdf") or f.get("png") or f.get("svg")
-    place(name)
-    return f"figures/{name}"
+    return f"figures/{place(f.get('pdf') or f.get('png') or f.get('svg'))}"
 
 
 def figure_tex(b, refs):
@@ -364,8 +373,7 @@ def appendix_block(b, refs):
 
 
 def appendix_chart(c):
-    name = c["files"].get("pdf") or c["files"].get("png") or c["files"].get("svg")
-    place(name)
+    name = place(c["files"].get("pdf") or c["files"].get("png") or c["files"].get("svg"))
     return ("\\begin{center}\n"
             f"\\includegraphics[width=0.8\\linewidth,height=0.36\\textheight,keepaspectratio]{{figures/{name}}}\n"
             f"\\captionof{{figure}}{{Chart for \\texttt{{{tex_escape(c['slug'])}}}.}}\\label{{fig:appendix-{c['slug']}}}\n"

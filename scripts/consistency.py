@@ -97,11 +97,13 @@ def main():
     OUT = audit.REGISTER / "CONSISTENCY.md"
     controls, checks = audit.load_register()
     repos = audit.family_repos()
-    if a.no_snapshot:
-        matrix, _fails, errors = audit.run_matrix(checks, repos)
-    else:
-        with audit.snapshot_family(a.ref):
+    with audit.reference_assets() as assets_note:
+        print(f"assets: {assets_note}", file=sys.stderr)
+        if a.no_snapshot:
             matrix, _fails, errors = audit.run_matrix(checks, repos)
+        else:
+            with audit.snapshot_family(a.ref):
+                matrix, _fails, errors = audit.run_matrix(checks, repos)
     if errors:
         sys.exit(f"{len(errors)} checker errors (printed above) — not writing a table built on them")
     rows = [(c, [st for st, _d in cells]) for c, cells in matrix]

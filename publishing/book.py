@@ -295,13 +295,28 @@ CASE_RECORDS_INTRO = ("This appendix holds the four case records the chapters dr
 EVI_REF = re.compile(r'(\s*\(|; )<a class="evi-ref" href="#([^"]+)">evidence</a>\)')
 
 
+PRIVATE_LINK = re.compile(r'^<a href="\.\./evidence/[^"]*">[^<]*</a>\.\s*')
+
+
+def is_case_record(e):
+    # Methods and study limits also carry no question slug; only a case record opens on its finding.
+    return not e["slugs"] and bool(e["blocks"]) and e["blocks"][0].get("html", "").startswith("Finding:")
+
+
+def public(e):
+    """The case record without its pointer to the private query results, which a reader can't open."""
+    blocks = [{**b, "html": PRIVATE_LINK.sub("", b["html"])} if "html" in b else b for b in e["blocks"]]
+    return {**e, "blocks": [b for b in blocks if b.get("html", True)]}
+
+
 def case_records_only(doc):
-    """The book prints only the case records; the question-backed findings live in the technical
-    edition. Their "evidence" links go too, or each would point at a page that is not printed."""
+    """The book prints only the case records; the question-backed findings, methods and study
+    limits live in the technical edition. Their "evidence" links go too, or each would point at a
+    page that is not printed."""
     app = doc.get("appendix") or {}
     parts = []
     for p in app.get("parts", []):
-        groups = [{**g, "entries": [e for e in g["entries"] if not e["slugs"]]} for g in p["groups"]]
+        groups = [{**g, "entries": [public(e) for e in g["entries"] if is_case_record(e)]} for g in p["groups"]]
         groups = [g for g in groups if g["entries"]]
         if groups:
             parts.append({**p, "groups": groups})

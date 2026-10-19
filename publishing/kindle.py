@@ -66,7 +66,7 @@ class Images:
             self.missing.append(name)
             return None
         from PIL import Image
-        im = Image.open(src)
+        im = svg_image(src) if src.endswith(".svg") else Image.open(src)
         if im.mode in ("RGBA", "LA", "P"):
             im = im.convert("RGBA")
             flat = Image.new("RGB", im.size, "white")
@@ -83,6 +83,24 @@ class Images:
 
 
 EVIDENCE = {}  # figure-pipeline id -> appendix anchor
+
+
+def svg_image(src):
+    """A drawn diagram that has no PNG, rendered through the same Chrome path as the cover, so its
+    text is set in the design system's fonts rather than a rasterizer's fallback."""
+    import fitz
+    from PIL import Image
+    from cover import chrome_pdf
+    with open(src, encoding="utf-8") as f:
+        svg = f.read()
+    w, h = (float(re.search(rf'<svg[^>]*\b{a}="([\d.]+)', svg).group(1)) for a in ("width", "height"))
+    pdf = os.path.join(paths.BUILD, "kindle-svg.pdf")
+    chrome_pdf(svg, w * 0.75, h * 0.75, pdf)
+    page = fitz.open(pdf)[0]
+    z = IMAGE_W / page.rect.width
+    pix = page.get_pixmap(matrix=fitz.Matrix(z, z), alpha=False)
+    os.remove(pdf)
+    return Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
 
 
 def table_html(rows, cls=""):
@@ -106,7 +124,7 @@ def figure(b, images):
     if b["type"] == "table":
         return f'<figure id="{fig_id(b)}">{title}{table_html(b["rows"])}{cap}</figure>'
     files = b.get("files") or {}
-    src = images.add(files.get("png"))
+    src = images.add(files.get("png") or files.get("svg"))
     if not src:
         return f'<figure id="{fig_id(b)}">{title}<p>[{esc(b["ref"])} is missing from this build]</p>{cap}</figure>'
     alt = b.get("alt") or md_plain(b["caption_md"])
@@ -154,7 +172,7 @@ def appendix_entry(e, images):
     name += " · ".join(esc(x) for x in e["slugs"]) if e["slugs"] else esc(e.get("title") or "")
     out = [f'<section class="entry" id="{esc(e["anchor"])}"><h4>{name}</h4>']
     for ch in e["charts"]:
-        src = images.add(ch["files"].get("png"))
+        src = images.add(ch["files"].get("png") or ch["files"].get("svg"))
         if src:
             out.append(f'<img src="{src}" alt="{esc(md_plain(ch.get("alt") or e.get("title") or ""))}"/>')
     for b in e["blocks"]:
@@ -192,6 +210,27 @@ def front_matter(meta, preface):
         body = "".join(f"<p>{b['html']}</p>" for b in preface["blocks"])
         pages.append(("preface", preface["title"], "preface", f'<section id="preface"><h1>{esc(preface["title"])}</h1>{body}</section>'))
     return pages
+
+
+FN = re.compile(r'<span class="fn" data-key="[^"]*">(.*?)</span>', re.S)
+
+
+def footnotes(name, body):
+    """The author's notes as EPUB footnotes: a numbered call in the text and the note at the end of
+    its file, which Kindle shows as a pop-up. Left as the span, the note runs into the sentence."""
+    notes = []
+
+    def call(m):
+        notes.append(m.group(1))
+        n = len(notes)
+        return (f'<a epub:type="noteref" class="noteref" id="{name}-fnref-{n}" href="#{name}-fn-{n}">'
+                f'<sup>{n}</sup></a>')
+    body = FN.sub(call, body)
+    if notes:
+        body += "".join(f'<aside epub:type="footnote" class="footnote" id="{name}-fn-{n}"><p>'
+                        f'<a href="#{name}-fnref-{n}">{n}.</a> {t}</p></aside>'
+                        for n, t in enumerate(notes, 1))
+    return body
 
 
 def link(docs):
@@ -341,6 +380,7 @@ def main():
         docs.append(("references", "References", "backmatter",
                      f'<section epub:type="bibliography" id="references"><h1>References</h1>'
                      f'<div class="reference-list">{refs}</div></section>'))
+    docs = [(name, title, kind, footnotes(name, body)) for name, title, kind, body in docs]
     docs, broken, unlinked = link(docs)
     xhtml_nav, first = nav(meta, doc["chapters"], bool(doc.get("preface")), appx.get("parts"), appx.get("title"),
                              bool(doc.get("references")))

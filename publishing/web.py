@@ -239,16 +239,22 @@ class Inline(HTMLParser):
             self.out.append(html.escape(data, quote=False))
 
 
-FN = re.compile(r'<span class="fn" data-n="(\d+)"[^>]*>.*?</span>', re.S)
+FN = re.compile(r'<span class="fn" data-key="[^"]*">(.*?)</span>', re.S)
+NOTES = []  # the author's notes in the chapter being written, in call order
 EVI = re.compile(r'<a class="evi-ref" href="#([^"]+)">')
 XREF = re.compile(r'<a class="xref" href="#fig-')
 LINKS = {}  # appendix anchor -> its page on the site, set before the chapters are written
 
 
+def note_call(m):
+    NOTES.append(m.group(1))
+    return f'<sup><a href="#note-{len(NOTES)}">{len(NOTES)}</a></sup>'
+
+
 def site_links(fragment):
-    """A source marker becomes a superscript number linking to that source in the chapter's list; a
-    figure marker links to the figure (whose id here has no `fig-` prefix) and its appendix entry."""
-    fragment = FN.sub(lambda m: f'<sup><a href="#source-{m.group(1)}">{m.group(1)}</a></sup>', fragment)
+    """An author's note becomes a superscript number linking to the chapter's notes list; a figure
+    marker links to the figure (whose id here has no `fig-` prefix) and its appendix entry."""
+    fragment = FN.sub(note_call, fragment)
     fragment = XREF.sub('<a class="xref" href="#', fragment)
     return EVI.sub(lambda m: f'<a class="evi-ref" href="{LINKS.get(m.group(1), "#" + m.group(1))}">', fragment)
 
@@ -342,6 +348,7 @@ def examples(src, blocks):
 
 def chapter(c, assets, posts, references, evidence=None):
     ids = slug_ids([s["slug"] if s["title"] else "" for s in c["sections"]])
+    NOTES.clear()
     sections = []
     for s, sid in zip(c["sections"], ids):
         blocks = [block(b, assets, evidence) for b in s["blocks"]]
@@ -357,6 +364,7 @@ def chapter(c, assets, posts, references, evidence=None):
             "free": c["n"] in posts, "url": f"/blog/{BLOG_SECTION}/{posts[c['n']]['slug']}" if c["n"] in posts else None,
             # The chapter's share of the book's one reference list, under the book's numbers, so a [n]
             # here is the same source as [n] in print and in the paper.
+            "notes": [{"n": n, "html": clean(t)} for n, t in enumerate(list(NOTES), 1)],
             "sources": [{"n": n, "html": clean(references[n]["html"])} for n in c["refs"]],
             "minutes": max(1, round(words(text) / WORDS_PER_MINUTE))}
 

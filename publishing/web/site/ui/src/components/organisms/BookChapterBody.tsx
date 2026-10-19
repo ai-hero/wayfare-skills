@@ -75,6 +75,20 @@ export function BookChapterBody({ chapter }: { chapter: ChapterFile }) {
         </section>
       ))}
 
+      {chapter.notes.length > 0 && (
+        <section className="flex flex-col gap-5 border-t border-hairline pt-8">
+          <BookHeading id="notes" html="Notes" level={2} />
+          <ol className={`flex flex-col gap-3 text-sm text-muted-foreground ${LINKS}`}>
+            {chapter.notes.map((note) => (
+              <li key={note.n} id={`note-${note.n}`} className="flex gap-3 scroll-mt-24">
+                <span className="w-8 shrink-0 font-mono text-2xs leading-5">{note.n}.</span>
+                <BookHtml html={note.html} />
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
       {chapter.sources.length > 0 && (
         <section className="flex flex-col gap-5 border-t border-hairline pt-8">
           <BookHeading id="sources" html="Sources" level={2} />

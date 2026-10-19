@@ -44,3 +44,6 @@ a.cite, a.xref, a.evidence-ptr { text-decoration: none; }
 .entry img { width: 100%; height: auto; margin: 0.4em 0; }
 .cover { margin: 0; padding: 0; text-align: center; }
 .cover img { height: 100%; max-width: 100%; }
+.noteref { text-decoration: none; }
+.noteref sup { font-size: 0.7em; line-height: 0; }
+.footnote p { font-size: 0.85em; text-indent: 0; margin-top: 0.6em; }

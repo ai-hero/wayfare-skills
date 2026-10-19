@@ -23,6 +23,9 @@ spec = importlib.util.spec_from_file_location("audit", HERE / "audit.py")
 audit = importlib.util.module_from_spec(spec)
 sys.modules["audit"] = audit  # the fleet's checkers.py does `import audit`
 CLEAN_ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+# Without the override, every audit.py / consistency.py subprocess below runs
+# `git fetch` in the developer's real plugin checkout.
+CLEAN_ENV["HERO_SKILLS_PLUGIN"] = str(HERE.parent)
 spec.loader.exec_module(audit)
 
 
@@ -1236,6 +1239,80 @@ class CI20Owner(unittest.TestCase):
     def test_the_real_shared_workflow_is_exempt(self):
         owner = (HERE.parent / ".github" / "workflows" / "auto-approve.yaml").read_text()
         self.assertEqual(self._verdict(owner), audit.NA)
+
+
+class ReferenceAssets(unittest.TestCase):
+    """The asset reference is the plugin checkout's origin/main, whatever
+    branch the checkout is on: a stale branch's caller.yaml inverted CI-20
+    for the whole fleet."""
+
+    CALLER = ("on:\n  pull_request:\njobs:\n  approve:\n"
+              "    uses: ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@main  # {}\n")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = pathlib.Path(self.tmp.name)
+        upstream = git_repo(root, "upstream")
+        self.commit(upstream, "v1")
+        # Cloned before v2 lands, so only a fetch can see v2.
+        git(root, "clone", "-q", str(upstream), "wayfare-skills")
+        self.plugin = root / "wayfare-skills"
+        git(self.plugin, "config", "user.email", "t@example.com")
+        git(self.plugin, "config", "user.name", "t")
+        git(self.plugin, "checkout", "-q", "-b", "stale")
+        self.commit(self.plugin, "stale")
+        self.commit(upstream, "v2")
+        self.consumer = root / "consumer"
+        self.saved = audit._PLUGIN_HOME, os.environ.pop("HERO_SKILLS_PLUGIN", None)
+        audit._PLUGIN_HOME = self.plugin
+
+    def tearDown(self):
+        audit._PLUGIN_HOME, override = self.saved
+        if override is not None:
+            os.environ["HERO_SKILLS_PLUGIN"] = override
+        else:
+            os.environ.pop("HERO_SKILLS_PLUGIN", None)
+        self.tmp.cleanup()
+
+    def commit(self, repo, tag):
+        write(repo, "assets/auto-approve/caller.yaml", self.CALLER.format(tag))
+        git(repo, "add", "-A")
+        git(repo, "commit", "-q", "-m", tag)
+
+    def ci20(self, tag):
+        write(self.consumer, ".github/workflows/auto-approve.yaml", self.CALLER.format(tag))
+        return audit.CHECKS["CI-20"](self.consumer)[0]
+
+    def test_origin_main_not_the_checked_out_branch(self):
+        with audit.reference_assets() as note:
+            self.assertEqual(self.ci20("v2"), audit.PASS, "the caller on origin/main after a fetch")
+            self.assertEqual(self.ci20("stale"), audit.FAIL, "the checked-out branch is not the reference")
+            self.assertEqual(self.ci20("v1"), audit.FAIL, "origin/main as cloned, before the fetch")
+        self.assertRegex(note, r"^origin/main @ [0-9a-f]+ in ")
+        self.assertNotIn("fetch failed", note)
+        self.assertEqual(self.ci20("v2"), audit.MANUAL, "unbound outside reference_assets()")
+
+    def test_override_reads_the_working_tree(self):
+        os.environ["HERO_SKILLS_PLUGIN"] = str(self.plugin)
+        write(self.plugin, "assets/auto-approve/caller.yaml", self.CALLER.format("unmerged"))
+        with audit.reference_assets() as note:
+            self.assertEqual(self.ci20("unmerged"), audit.PASS)
+        self.assertIn("override", note)
+
+    def test_failed_fetch_is_reported_and_never_reads_the_working_tree(self):
+        git(self.plugin, "remote", "set-url", "origin", str(self.plugin.parent / "gone"))
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            with audit.reference_assets() as note:
+                self.assertEqual(self.ci20("v1"), audit.PASS, "origin/main as last fetched")
+                self.assertEqual(self.ci20("stale"), audit.FAIL)
+        self.assertIn("fetch failed", note)
+        self.assertIn("fetch", err.getvalue())
+
+    def test_absent_checkout_is_named(self):
+        audit._PLUGIN_HOME = self.plugin.parent / "nowhere"
+        with audit.reference_assets() as note:
+            self.assertEqual(self.ci20("v2"), audit.MANUAL)
+        self.assertIn("absent", note)
 
 
 class SCAN01(unittest.TestCase):

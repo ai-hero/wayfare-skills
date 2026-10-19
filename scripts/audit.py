@@ -37,12 +37,16 @@ repo alone, baseline only. --fleet PATH names the fleet root explicitly.
 
 Each repo is audited at --ref (default origin/main) in a detached worktree,
 not at whatever branch the checkout sits on; --no-snapshot audits the
-checkouts as they sit.
+checkouts as they sit. The plugin assets vendored checks compare against are
+read the same way, from ~/.claude/plugins/wayfare-skills at origin/main after a
+fetch; HERO_SKILLS_PLUGIN=<checkout> reads that checkout's working tree instead,
+to test an unmerged asset. The report header names which one was used.
 """
 
 import argparse
 import contextlib
 import importlib.util
+import io
 import json
 from datetime import datetime
 import os
@@ -52,6 +56,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 
 try:
@@ -2432,8 +2437,64 @@ _SHARED_WORKFLOW_OWNER = "wayfare-skills"
 # default here does NOT fail loudly: _matches_reference returns MANUAL for an
 # absent reference, and MANUAL cells are not printed in --json, so VNDR-02
 # would simply stop reporting drift.
-_PLUGIN_ASSETS = pathlib.Path(os.environ.get("HERO_SKILLS_PLUGIN")
-                              or os.path.expanduser("~/.claude/plugins/wayfare-skills")) / "assets"
+_PLUGIN_HOME = pathlib.Path(os.path.expanduser("~/.claude/plugins/wayfare-skills"))
+_PLUGIN_REMOTE, _PLUGIN_BRANCH = "origin", "main"
+_PLUGIN_ASSETS = pathlib.Path("<assets unbound: run checks inside reference_assets()>")
+
+
+@contextlib.contextmanager
+def reference_assets():
+    """Bind _PLUGIN_ASSETS for one audit run and yield a note naming where the
+    assets came from, for the report header.
+
+    The reference is the plugin checkout's origin/main, never its working
+    tree. The repos are read at origin/main, and the checkout is on whatever
+    branch the last session left it: a feature branch cut before a caller
+    change inverted CI-20 fleet-wide (the repos that took the change failed,
+    the rest passed). HERO_SKILLS_PLUGIN=<checkout> reads that checkout's
+    working tree instead, which is how an unmerged asset is tested."""
+    global _PLUGIN_ASSETS
+    saved, tmp = _PLUGIN_ASSETS, None
+    try:
+        override = os.environ.get("HERO_SKILLS_PLUGIN")
+        if override:
+            _PLUGIN_ASSETS = pathlib.Path(override) / "assets"
+            note = f"working tree {override} (HERO_SKILLS_PLUGIN override)"
+        else:
+            tmp = pathlib.Path(tempfile.mkdtemp(prefix="audit-assets-"))
+            _PLUGIN_ASSETS, note = _assets_at_origin(_PLUGIN_HOME, tmp)
+        yield note
+    finally:
+        _PLUGIN_ASSETS = saved
+        if tmp:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _assets_at_origin(plugin, dest):
+    """(assets dir, note) for `plugin`'s origin/main, extracted under `dest`.
+    A failed fetch is reported and the last-fetched origin/main is used:
+    falling back to the working tree is the defect reference_assets() fixes."""
+    ref = f"{_PLUGIN_REMOTE}/{_PLUGIN_BRANCH}"
+    assets = dest / "assets"
+    if not (plugin / ".git").exists():
+        return assets, f"absent ({plugin} is not a git checkout; asset checks read MANUAL)"
+    rc, _out, err = sh3(plugin, f"git fetch -q {_PLUGIN_REMOTE} {_PLUGIN_BRANCH}")
+    stale = ""
+    if rc:
+        stale = f"  (fetch failed: {err or f'rc={rc}'}; {ref} as last fetched)"
+        print(f"assets: git fetch in {plugin} failed: {err or f'rc={rc}'}", file=sys.stderr)
+    rc, sha, _err = sh3(plugin, f"git rev-parse --verify -q --short {ref}^{{commit}}")
+    if rc or not sha:
+        return assets, f"absent ({ref} does not resolve in {plugin}; asset checks read MANUAL){stale}"
+    p = subprocess.run(["git", "archive", "--format=tar", sha, "--", "assets"],
+                       cwd=plugin, capture_output=True, env=_ENV, timeout=60)
+    if p.returncode:
+        raise RuntimeError(f"git archive {ref} in {plugin} failed: {p.stderr.decode().strip()}")
+    with tarfile.open(fileobj=io.BytesIO(p.stdout)) as t:
+        # `filter` is 3.12+ (and late 3.9-3.11 patch releases); macOS's
+        # /usr/bin/python3 is 3.9.6 and raises TypeError on the keyword.
+        t.extractall(dest, **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
+    return assets, f"{ref} @ {sha} in {plugin}{stale}"
 
 
 class Unreadable(Exception):
@@ -3290,13 +3351,15 @@ def main():
                  if REGISTER is not None else
                  "no repos to audit: not inside a fleet and not inside a git repo")
 
-    if a.no_snapshot:
-        rows, fails, errors = run_matrix(checks, repos)
-    else:
-        with snapshot_family(a.ref, repos):
+    with reference_assets() as assets_note:
+        if a.no_snapshot:
             rows, fails, errors = run_matrix(checks, repos)
+        else:
+            with snapshot_family(a.ref, repos):
+                rows, fails, errors = run_matrix(checks, repos)
 
     w = max(len(r) for r in repos) + 2
+    print(f"assets: {assets_note}\n", file=sys.stderr if a.json else sys.stdout)
     if a.json:
         # ERROR cells go out too, flagged: a consumer that only saw FAILs would
         # read a broken checker as a passing one.

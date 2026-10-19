@@ -6,10 +6,12 @@ import index from "../ui/src/data/book/index.json";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-// The book's sign-in gate is enforced on the server: a locked chapter's text
-// must not be in the HTML a visitor without a session receives.
+// The book's sign-in gate is enforced on the server: beyond its opening
+// paragraph, a locked chapter's text must not be in the HTML a visitor without
+// a session receives. The signed-in side is covered by lib/server/book.test.ts:
+// a session this suite could seal would still be checked against the real
+// issuer, which refuses it.
 const locked = index.chapters.find((c) => !c.free)!;
-const posted = index.chapters.find((c) => c.url)!;
 
 function secondParagraph(slug: string): string {
   const chapter = JSON.parse(
@@ -32,14 +34,26 @@ test("a locked chapter's HTML carries no body text, and is noindex and no-store"
   expect(html).toContain("Sign in to continue reading.");
 });
 
-test("a chapter published as a blog post redirects to it, and the post carries the chapter", async ({ request }) => {
-  const res = await request.get(`/book/${posted.slug}`, { maxRedirects: 0 });
-  expect(res.status()).toBe(308);
-  expect(res.headers()["location"]).toBe(posted.url);
-  const html = await (await request.get(posted.url!)).text();
-  expect(html).toContain(secondParagraph(posted.slug));
-  expect(html).toContain('href="/book"');
-});
+for (const chapter of index.chapters) {
+  test(`/book/${chapter.slug} ${chapter.url ? "redirects to its blog post" : "is served in place"}`, async ({ request }) => {
+    const res = await request.get(`/book/${chapter.slug}`, { maxRedirects: 0 });
+    if (!chapter.url) {
+      expect(res.status()).toBe(200);
+      return;
+    }
+    expect(res.status()).toBe(308);
+    expect(res.headers()["location"]).toBe(chapter.url);
+    const html = await (await request.get(chapter.url)).text();
+    expect(html).toContain(secondParagraph(chapter.slug));
+    expect(html).toContain('href="/book"');
+  });
+}
+
+for (const path of ["/book/no-such-chapter", "/book/Not_A_Slug", "/book/evidence/no-such-chapter", "/book/evidence/Not_A_Slug"]) {
+  test(`${path} is a 404`, async ({ request }) => {
+    expect((await request.get(path, { maxRedirects: 0 })).status()).toBe(404);
+  });
+}
 
 function firstFinding(slug: string): string {
   const evidence = JSON.parse(
@@ -57,6 +71,7 @@ test("locked evidence carries no finding text, and is noindex and no-store", asy
   const res = await request.get(`/book/evidence/${ev.slug}`);
   expect(res.status()).toBe(200);
   expect(res.headers()["cache-control"]).toContain("no-store");
+  expect(res.headers()["vary"]).toContain("Cookie");
   const html = await res.text();
   expect(html).not.toContain(firstFinding(ev.slug));
   expect(html).toContain('content="noindex, nofollow"');

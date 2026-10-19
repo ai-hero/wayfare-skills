@@ -15,7 +15,8 @@ DPI = 110
 
 
 def pdf_for(edition):
-    return os.path.join(paths.DIST, {"slides": "slides.pdf"}.get(edition, f"{edition}.pdf"))
+    # `book.pdf` opens with the cover, which would put odd folios on the left of every spread.
+    return os.path.join(paths.DIST, {"slides": "slides.pdf", "book": "book-interior.pdf"}.get(edition, f"{edition}.pdf"))
 
 
 def sample(doc):

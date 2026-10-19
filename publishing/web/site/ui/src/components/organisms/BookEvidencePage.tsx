@@ -1,8 +1,7 @@
 // Copyright (c) 2026 A.I. Hero, Inc.
 // All Rights Reserved.
 
-import { useEffect, useState } from "react";
-import { useRouter } from "@tanstack/react-router";
+import { useState } from "react";
 import { ArrowLeft, Maximize2 } from "lucide-react";
 import Header from "@/components/organisms/header";
 import Footer from "@/components/organisms/footer";
@@ -12,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { BookHtml } from "@/components/molecules/BookHtml";
 import { BookHeading } from "@/components/molecules/BookHeading";
-import { SignInPrompt } from "@/components/molecules/SignInPrompt";
+import { SignInPrompt, useUnconfirmedSession } from "@/components/molecules/SignInPrompt";
 import AuthModal from "@/components/organisms/AuthModal";
 import { BODY, LINKS } from "@/components/organisms/BookChapterBody";
 import { useAuth } from "@/hooks/useAuth";
@@ -208,15 +207,12 @@ function Entry({ entry }: { entry: EvidenceEntry }) {
 }
 
 function Locked({ evidence }: { evidence: EvidenceChapter }) {
-  const router = useRouter();
-  const { isAuthenticated, refreshUser } = useAuth();
+  const { refreshUser } = useAuth();
   const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (isAuthenticated) void router.invalidate();
-  }, [isAuthenticated, router]);
+  const unconfirmed = useUnconfirmedSession(`/book/evidence/${evidence.slug}`);
   return (
     <>
-      <SignInPrompt onSignIn={() => setOpen(true)} />
+      <SignInPrompt onSignIn={() => setOpen(true)} unconfirmed={unconfirmed} />
       <AuthModal
         isOpen={open}
         onClose={() => setOpen(false)}

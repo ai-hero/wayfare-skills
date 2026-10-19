@@ -6,7 +6,8 @@ import time
 
 TARGETS = ["source", "book", "technical", "web", "slides"]
 # `book` draws the cover itself (the wrap's spine needs the page count); `cover` redraws it alone.
-EXTRA = ["cover"]
+# `kindle` is not in `all`: the store edition is built only when a KDP upload is being prepared.
+EXTRA = ["cover", "kindle"]
 
 
 def run(name):

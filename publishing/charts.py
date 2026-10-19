@@ -127,8 +127,16 @@ def _height(c):
     return 3.4
 
 
+def _plain(name):
+    """A repository label as the plain name the book uses (`repo-names.json`), any other label as is."""
+    from inline import repo_display
+    return repo_display(name)
+
+
 def draw(charts, base):
     """Every chart in the view, stacked top to bottom; returns {ext: filename}."""
+    charts = [dict(c, cats=[_plain(x) for x in c["cats"]],
+                   series=[dict(s, name=_plain(s["name"])) for s in c["series"]]) for c in charts]
     heights = [_height(c) + (0.28 * math.ceil(len(c["series"]) / 2) if len(c["series"]) > 1 else 0) for c in charts]
     fig, axes = F.fig(W, sum(heights), nrows=len(charts), gridspec_kw={"height_ratios": heights})
     axes = axes if len(charts) > 1 else [axes]

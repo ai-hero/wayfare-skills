@@ -17,7 +17,7 @@ from datetime import date, timedelta
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from ingest.fleet import REPO_ALIASES  # noqa: E402
-from record import SESSION_WINDOW, adoption, changeset_facts, commit_facts, in_session_window, rows, week_of  # noqa: E402
+from record import SESSION_WINDOW, STUDY_START, adoption, changeset_facts, commit_facts, in_session_window, rows, week_of  # noqa: E402
 
 WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 DATA_END = "2026-10-01"
@@ -75,7 +75,7 @@ def q_active_repo_heatmap(con):
     return {"weeks": WEEKS, "repos": repos, "active": active, "output": output, "per_active": per_active,
             "seventh_repo_week": seventh, "n_sets": len(cs),
             "before_july": sorted(r["repo"] for r in repos if r["first_active"] and r["first_active"] < "2026-W27"),
-            "split": {"h1_weeks": "W01-W26", "h2_weeks": "W27-W38", "active_h1": round(a1, 1), "active_h2": round(a2, 1),
+            "split": {"h1_weeks": "W01-W26", "h2_weeks": "W27-W39", "active_h1": round(a1, 1), "active_h2": round(a2, 1),
                       "output_h1": round(o1, 1), "output_h2": round(o2, 1), "per_active_h1": round(p1, 1),
                       "per_active_h2": round(p2, 1), "growth": round(growth, 2),
                       "share_from_more_repos": round(from_repos, 2) if from_repos is not None else None},
@@ -159,7 +159,8 @@ def q_rework_first_catch(con):
     cutoff = (date.fromisoformat(DATA_END) - timedelta(days=7)).isoformat()
     # Eligible: the PR's own commits were recovered (unit_kind pr), so an in-PR fix-up can be seen at all,
     # and it landed 7 or more days before the data ends, so the post-merge window is complete.
-    cs = [f for f in changeset_facts(con) if not f["dependabot"] and f["unit_kind"] == "pr" and f["day"] <= cutoff]
+    cs = [f for f in changeset_facts(con) if not f["dependabot"] and f["unit_kind"] == "pr"
+          and STUDY_START <= f["day"] <= cutoff]
     labels = {}
     for r in rows(con, "SELECT repo, sha, idx, trigger FROM mistakes.commit_labels WHERE fixup = 1"):
         labels[(r["repo"], r["sha"])] = (r["idx"], r["trigger"])

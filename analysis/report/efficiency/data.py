@@ -985,7 +985,8 @@ def state_gaps(con):
                 state = 6
             else:
                 state = 7
-            out.append({"s": s, "i": i, "minutes": m, "state": state, "week": week_of(a[0].date().isoformat())})
+            out.append({"s": s, "i": i, "minutes": m, "state": state, "week": week_of(a[0].date().isoformat()),
+                        "a": a[0], "b": b[0]})
     return tuple(out), closed
 
 

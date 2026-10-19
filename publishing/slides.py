@@ -57,7 +57,7 @@ def title(prs, doc, spec):
 def divider(prs, doc, spec):
     ch = chapter(doc, spec["chapter"])
     s = P.add(prs, "Section divider")
-    P.fill(s, 10, f"{ch['n']:02d} — Chapter {ONES[ch['n']]}")
+    P.fill(s, 10, f"{ch['n']:02d} · Chapter {ONES[ch['n']]}")
     P.fill(s, 0, ch["title"])
     opening = section(ch, "")
     return [s], [[md_plain(b["md"]) for b in opening["blocks"] if b["kind"] == "p"][:2]]

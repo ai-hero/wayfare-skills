@@ -423,6 +423,18 @@ def parse_name_status_log(out):
         yield sha, ts, subject, change_type, commit_path, old_path
 
 
+def skill_size(rp, rev, skill_md, content):
+    """Bytes and lines of a skill: SKILL.md plus the WORKFLOW.md beside it.
+
+    #142 moved the five pipeline skills' bodies into WORKFLOW.md; counting SKILL.md alone reads that as the
+    skills losing most of their length overnight.
+    """
+    parts = [content, show(rp, rev, skill_md[:-len("SKILL.md")] + "WORKFLOW.md") or ""]
+    b = sum(len(p.encode("utf-8")) for p in parts)
+    lines = sum(p.count("\n") + (0 if p.endswith("\n") or p == "" else 1) for p in parts)
+    return b, lines
+
+
 def ingest_skills(con):
     rp = path_of(PLUGIN_REPO_NAME)
     ref = ref_for(rp)
@@ -434,8 +446,7 @@ def ingest_skills(con):
         if content is None:
             continue
         skill = f.split("/")[1]
-        b = len(content.encode("utf-8"))
-        lines = content.count("\n") + (0 if content.endswith("\n") or content == "" else 1)
+        b, lines = skill_size(rp, ref, f, content)
         m = re.search(r"(?m)^description:\s*(.+)$", content)
         desc = m.group(1).strip() if m else ""
         n_skills += 1
@@ -464,13 +475,41 @@ def ingest_skills(con):
                 continue
             seen.add(key)
             content = None if change_type == "delete" else show(rp, sha, path_at_commit)
-            b = len(content.encode("utf-8")) if content else 0
-            lines = (content.count("\n") + (0 if content.endswith("\n") or content == "" else 1)) if content else 0
+            b, lines = skill_size(rp, sha, path_at_commit, content) if content else (0, 0)
             d = dims(ts)
             n_versions += 1
             con.execute(
                 "INSERT INTO skill_versions VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (skill, sha, d["ts"], d["day"], d["week"], d["month"], b, lines, change_type, subject, old_path),
+            )
+
+    # A commit that edits only WORKFLOW.md changes the skill's size but not its SKILL.md, so the walk above
+    # never sees it.
+    wf_out = run(rp, "log", ref, "--format=%x01%H\x09%aI\x09%s", "--name-status", "--diff-filter=ACMR",
+                 "--", "skills/*/WORKFLOW.md") or ""
+    for chunk in wf_out.split("\x01"):
+        chunk = chunk.strip("\n")
+        if not chunk:
+            continue
+        head, *changes = chunk.splitlines()
+        sha, ts, subject = head.split("\x09", 2)
+        for l in changes:
+            parts = l.split("\t")
+            if len(parts) < 2:
+                continue
+            skill_md = parts[-1].rsplit("/", 1)[0] + "/SKILL.md"
+            if (sha, skill_md) in seen:
+                continue
+            seen.add((sha, skill_md))
+            content = show(rp, sha, skill_md)
+            if content is None:
+                continue
+            b, lines = skill_size(rp, sha, skill_md, content)
+            d = dims(ts)
+            n_versions += 1
+            con.execute(
+                "INSERT INTO skill_versions VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (skill_md.split("/")[1], sha, d["ts"], d["day"], d["week"], d["month"], b, lines, "modify", subject, None),
             )
     return n_skills, n_versions
 

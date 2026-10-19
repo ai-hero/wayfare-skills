@@ -2,7 +2,6 @@
 // All Rights Reserved.
 
 import { useEffect, useState } from "react";
-import { useRouter } from "@tanstack/react-router";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import Header from "@/components/organisms/header";
 import Footer from "@/components/organisms/footer";
@@ -20,12 +19,12 @@ import {
 } from "@/components/ui/accordion";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { BookHtml } from "@/components/molecules/BookHtml";
-import { SignInPrompt } from "@/components/molecules/SignInPrompt";
+import { SignInPrompt, useUnconfirmedSession } from "@/components/molecules/SignInPrompt";
 import AuthModal from "@/components/organisms/AuthModal";
 import { BookChapterBody, BODY, LINKS } from "@/components/organisms/BookChapterBody";
 import { useAuth } from "@/hooks/useAuth";
 import { spelled } from "@/lib/book";
-import type { Chapter, ChapterLink } from "@/lib/book";
+import type { Chapter, ChapterLink, LockedChapter as Locked, OpenChapter as Open } from "@/lib/book";
 
 
 function useActiveSection(ids: string[]) {
@@ -54,7 +53,7 @@ function Contents({
   active,
   labelled = true,
 }: {
-  chapter: Chapter;
+  chapter: Open;
   active: string | null;
   labelled?: boolean;
 }) {
@@ -94,15 +93,10 @@ function Neighbour({ link, dir }: { link: ChapterLink; dir: "prev" | "next" }) {
   );
 }
 
-function LockedChapter({ chapter }: { chapter: Chapter }) {
-  const router = useRouter();
-  const { isAuthenticated, refreshUser } = useAuth();
+function LockedChapter({ chapter }: { chapter: Locked }) {
+  const { refreshUser } = useAuth();
   const [open, setOpen] = useState(false);
-  // A session the server did not honour on this render (it arrived after the
-  // page loaded): refetch, and the server decides again.
-  useEffect(() => {
-    if (isAuthenticated) void router.invalidate();
-  }, [isAuthenticated, router]);
+  const unconfirmed = useUnconfirmedSession(`/book/${chapter.slug}`);
   return (
     <>
       {chapter.teaserHtml && (
@@ -111,7 +105,7 @@ function LockedChapter({ chapter }: { chapter: Chapter }) {
           <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-b from-transparent to-background" />
         </div>
       )}
-      <SignInPrompt onSignIn={() => setOpen(true)} />
+      <SignInPrompt onSignIn={() => setOpen(true)} unconfirmed={unconfirmed} />
       <nav aria-labelledby="in-this-chapter" className="flex flex-col gap-4">
         <h2 id="in-this-chapter" className="text-h-2 text-foreground">
           In this chapter
@@ -178,7 +172,7 @@ function Neighbours({ chapter }: { chapter: Chapter }) {
   );
 }
 
-function OpenChapter({ chapter }: { chapter: Chapter }) {
+function OpenChapter({ chapter }: { chapter: Open }) {
   const ids = [
     ...chapter.sections.filter((s) => s.titleHtml).map((s) => s.id),
     ...(chapter.sources.length ? ["sources"] : []),

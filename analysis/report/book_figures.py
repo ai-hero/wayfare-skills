@@ -1,7 +1,7 @@
 """Print a chapter's figure appendix: one figure line per question the chapter lists, for the owner to move
 into the prose where a figure earns its place.
 
-    python report/book_figures.py [--book .analysis/book] [--decks .analysis/decks] --chapter N [--write]
+    python report/book_figures.py [--book analysis/manuscript/book] [--decks .analysis/decks] --chapter N [--write]
     python report/book_figures.py --all [--previous _old/pre-manuscript-2026-09-28]
 
 Each line is `[[Q slug | title]]` followed by an HTML comment with the question and its verdict; the page

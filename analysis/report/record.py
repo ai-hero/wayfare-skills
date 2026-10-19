@@ -55,6 +55,36 @@ def _span(a, b):
     return f"{a.day}–{_day(b)}" if a.month == b.month else f"{_day(a)}–{_day(b)}"
 
 
+# The study is 2026 only. infrastructure-root and infrastructure-environments carry 2025 history (commits, PRs,
+# CI runs and typed prompts from May and November 2025) that predates the factory; a query with no floor reaches it.
+STUDY_START = "2026-01-01"
+STUDY_END = date(2026, 10, 1)
+
+
+def coarse_day(d, long=False, year=False):
+    """The book's house style for a date: 'early Aug', 'mid-Sep', 'late Jul' (days 1-10, 11-20, 21-31), or
+    'mid-August' with long. The study's end, 1 October 2026, is the one date the book gives exactly."""
+    if isinstance(d, str):
+        d = date.fromisoformat(d[:10])
+    month = f"{d:%B}" if long else f"{d:%b}"
+    y = f" {d.year}" if year else ""
+    if d == STUDY_END:
+        return f"{d.day} {month}{y}"
+    part = "early" if d.day <= 10 else "mid" if d.day <= 20 else "late"
+    return f"{part}{'-' if part == 'mid' else ' '}{month}{y}"
+
+
+def coarse_span(a, b, long=False):
+    """A span of ten days or fewer is named by its middle, so 10-19 Aug reads 'mid-August', not
+    'early August–mid-August'."""
+    if isinstance(a, str):
+        a, b = date.fromisoformat(a[:10]), date.fromisoformat(b[:10])
+    if (b - a).days < 10 and STUDY_END not in (a, b):
+        return coarse_day(a + (b - a) / 2, long)
+    a, b = coarse_day(a, long), coarse_day(b, long)
+    return a if a == b else f"{a}–{b}"
+
+
 @lru_cache(maxsize=None)
 def session_gap():
     """What the logs hold before SESSION_WINDOW, split at the longest run of days with no session: the early
@@ -77,10 +107,12 @@ def session_gap():
             "partial": (partial[0], start - timedelta(1)) if partial else None}
 
 
-def gap_span(kind):
-    """'10–19 Aug' for kind 'missing', '20–24 Aug' for 'partial'."""
+def gap_span(kind, coarse=False):
+    """'10–19 Aug' for kind 'missing', '20–24 Aug' for 'partial'; 'mid-August' and 'late August' when coarse."""
     sp = session_gap()[kind]
-    return _span(*sp) if sp else ""
+    if not sp:
+        return ""
+    return coarse_span(*sp, long=True) if coarse else _span(*sp)
 
 
 def gap_days(kind):
@@ -95,8 +127,8 @@ def gap_range():
     return (m[0], (p or m)[1]) if m else None
 
 
-def gap_note():
-    return f"{gap_span('missing')} has no session logs and {gap_span('partial')} is only partly kept"
+def gap_note(coarse=False):
+    return f"{gap_span('missing', coarse)} has no session logs and {gap_span('partial', coarse)} is only partly kept"
 
 
 def gap_short():
@@ -125,23 +157,26 @@ def gap_events():
 
 
 @lru_cache(maxsize=None)
-def session_coverage():
+def session_coverage(coarse=False):
     """The note every chart built on the session logs carries, read from the logs themselves: the window,
-    then what the logs hold before it."""
+    then what the logs hold before it. Coarse gives the book diagrams' early/mid/late dates."""
     start, end = (date.fromisoformat(d) for d in SESSION_WINDOW)
-    note = f"Session data: {_span(start, end)} ({(end - start).days + 1} days)."
+    window = coarse_span(start, end) if coarse else _span(start, end)
+    note = f"Session data: {window} ({(end - start).days + 1} days)."
     g = session_gap()
     early = g["early"]
     if not early:
         return note + " Nothing is logged before it."
     words = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"]
     n = sum(k for _, k in early)
-    parts = [f"{words[n] if n < 10 else n} logged session{'s' if n != 1 else ''} on "
-             f"{_span(early[0][0], early[-1][0]) if len(early) > 1 else _day(early[0][0])}"]
+    on = "in" if coarse else "on"
+    when = (coarse_span(early[0][0], early[-1][0], long=True) if coarse
+            else _span(early[0][0], early[-1][0]) if len(early) > 1 else _day(early[0][0]))
+    parts = [f"{words[n] if n < 10 else n} logged session{'s' if n != 1 else ''} {on} {when}"]
     if g["missing"]:
-        parts.append(f"none on {gap_span('missing')}")
+        parts.append(f"none {on} {gap_span('missing', coarse)}")
     if g["partial"]:
-        parts.append(f"only partial records for {gap_span('partial')}")
+        parts.append(f"only partial records for {gap_span('partial', coarse)}")
     return note + " Before it: " + ", ".join(parts[:-1]) + (", and " if len(parts) > 2 else " and ") + parts[-1] + "."
 
 

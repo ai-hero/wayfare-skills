@@ -15,5 +15,5 @@ export const Route = createFileRoute("/book/")({
       path: "/book",
       ogType: "website",
     }),
-  component: () => <BookContentsPage meta={book.meta} chapters={book.chapters} />,
+  component: () => <BookContentsPage meta={book.meta} preface={book.preface} chapters={book.chapters} />,
 });

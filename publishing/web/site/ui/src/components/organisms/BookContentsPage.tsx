@@ -9,14 +9,17 @@ import {
 } from "@/components/blocks/article-page";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Badge } from "@/components/ui/badge";
+import { BookHtml } from "@/components/molecules/BookHtml";
 import { spelled } from "@/lib/book";
-import type { BookMeta, ContentsEntry } from "@/lib/book";
+import type { BookMeta, ContentsEntry, Preface } from "@/lib/book";
 
 export function BookContentsPage({
   meta,
+  preface,
   chapters,
 }: {
   meta: BookMeta;
+  preface?: Preface | null;
   chapters: ContentsEntry[];
 }) {
   return (
@@ -34,6 +37,17 @@ export function BookContentsPage({
         }
         meta={meta.date}
       />
+
+      {preface && (
+        <section aria-labelledby="preface" className="flex flex-col gap-4">
+          <h2 id="preface" className="text-h-1 text-foreground">
+            {preface.title}
+          </h2>
+          {preface.html.map((html, i) => (
+            <BookHtml key={i} as="p" html={html} className="text-foreground" />
+          ))}
+        </section>
+      )}
 
       <nav aria-labelledby="contents" className="flex flex-col gap-6">
         <h2 id="contents" className="text-h-1 text-foreground">

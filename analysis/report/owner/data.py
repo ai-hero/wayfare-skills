@@ -19,7 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 sys.path.insert(0, HERE)
-from record import SESSION_WINDOW, STAGES, adoption, changeset_facts, gap_short, in_session_window, rows, stage_of, week_of  # noqa: E402
+from record import SESSION_WINDOW, STAGES, STUDY_START, adoption, changeset_facts, gap_short, in_session_window, rows, stage_of, week_of  # noqa: E402
 from links import set_item_links  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE  # noqa: E402
 import actors  # noqa: E402
@@ -639,7 +639,7 @@ def q_who_really_reviews_reviews(con):
     by_pr = defaultdict(set)
     for r in ra:
         by_pr[(r["repo"], r["number"])].add(r["actor"])
-    prs = [r for r in rows(con, "SELECT repo, number, merged_ts, head_ref, author, hours_to_merge FROM github.prs WHERE merged_ts IS NOT NULL")
+    prs = [r for r in rows(con, "SELECT repo, number, merged_ts, head_ref, author, hours_to_merge FROM github.prs WHERE merged_ts >= ?", (STUDY_START,))
            if r["repo"] in adoption(con)]
     work = [p for p in prs if not (p["head_ref"] or "").startswith("dependabot/")]
     wk = defaultdict(Counter)
@@ -701,7 +701,7 @@ def q_one_way_door_changes_oneway(con):
         if r["reviewer"] == "github-actions" and r["state"] == "APPROVED":
             approved_by_ci.add((r["repo"], r["number"]))
     prs = [p for p in rows(con, "SELECT repo, number, title, author, merged_ts, head_ref, hours_to_merge FROM github.prs "
-                                "WHERE merged_ts IS NOT NULL") if p["repo"] in adoption(con)
+                                "WHERE merged_ts >= ?", (STUDY_START,)) if p["repo"] in adoption(con)
            and not (p["head_ref"] or "").startswith("dependabot/")]
     wk = defaultdict(Counter)
     cmp = {True: Counter(), False: Counter()}
@@ -758,7 +758,7 @@ def q_other_humans_people(con):
                         "ON p.repo = c.repo AND p.number = c.pr_number WHERE p.author IN ({})".format(",".join("?" * len(humans))), tuple(humans))[0]
     active = sorted(w for w in WEEKS if wk["PRs opened"].get(w) or wk["PRs merged"].get(w))
     top = sorted(repo, key=lambda k: -repo[k]["merged"] - repo[k]["opened"])
-    fleet_merged = rows(con, "SELECT COUNT(*) n FROM github.prs WHERE merged_ts IS NOT NULL")[0]["n"]
+    fleet_merged = rows(con, "SELECT COUNT(*) n FROM github.prs WHERE merged_ts >= ?", (STUDY_START,))[0]["n"]
     return {"weeks": WEEKS, "people": sorted(humans), "series": series(wk, ["PRs opened", "PRs merged"]),
             "repos": top, "repo_opened": [repo[k]["opened"] for k in top], "repo_merged": [repo[k]["merged"] for k in top],
             "opened": sum(wk["PRs opened"].values()), "merged": sum(wk["PRs merged"].values()), "fleet_merged": fleet_merged,
@@ -959,7 +959,7 @@ def fig_review_layers(con):
     for r in con.execute("SELECT c.repo, c.pr_number, f.path FROM git.commits c JOIN git.commit_files f "
                          "ON f.repo = c.repo AND f.sha = c.sha WHERE c.pr_number IS NOT NULL"):
         files[(r[0], r[1])].append(r[2])
-    prs = [p for p in rows(con, "SELECT repo, number, title, author, merged_ts, head_ref FROM github.prs WHERE merged_ts IS NOT NULL")
+    prs = [p for p in rows(con, "SELECT repo, number, title, author, merged_ts, head_ref FROM github.prs WHERE merged_ts >= ?", (STUDY_START,))
            if p["repo"] in adoption(con) and not (p["head_ref"] or "").startswith("dependabot/")]
     is_bot = lambda a: (a or "").endswith("[bot]") or (a or "").startswith("app/")
     out = []
@@ -992,7 +992,7 @@ def fig_review_layers(con):
                       "automated_or_none": round(sum(c[i] for i in INDEP[2:]) / len(v), 3),
                       "auto_approve_no_person": round(sum(1 for p in v if p["auto_approved"] and p["indep"] == INDEP[3]) / len(v), 3)}
     reviewed_since_jul = [p for p in out if p["merged_ts"] >= "2026-07-01"]
-    owner_acct = Counter(r["actor"] for r in ra if r["reviewer"] == OWNER)
+    owner_acct = Counter(r["actor"] for r in ra if r["reviewer"] == OWNER and (r["submitted_ts"] or "") >= STUDY_START)
     return {"n": n, "coverage": cov, "identity": {i: ident[i] for i in IDENTITY}, "independence": {i: indep[i] for i in INDEP},
             "identity_cats": IDENTITY, "indep_cats": INDEP, "side": side,
             "reviewed_since_jul": round(sum(1 for p in reviewed_since_jul if p["reviewed"]) / len(reviewed_since_jul), 3),

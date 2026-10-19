@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.dirname(HERE), os.path.dirname(os.path.dirname(HERE))]
 from cube.db import connect  # noqa: E402
-from record import adoption, changeset_facts, gap_range, gap_weeks, rows, stage_of, week_of  # noqa: E402
+from record import adoption, changeset_facts, gap_range, gap_weeks, in_session_window, rows, stage_of, week_of  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE, REPO_ALIASES, category_of  # noqa: E402
 
 WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
@@ -900,6 +900,65 @@ def q_pr_time_breakdown(con):
             "share_short": {k: share(tot_short[k], sum(tot_short.values())) for k in SPLIT}, "n_short": len(short),
             "median_share": med_share,
             "by_repo": {r: [share(by_repo[r][k], sum(by_repo[r].values())) for k in SPLIT] for r in repos}}
+
+
+# gap_kind calls a gap with a tool or subagent still running idle, so its idle share is mostly agent work.
+# Shares of PR time come from this split, which reads gaps through Q session-clock's classifier
+# (efficiency.state_gaps) as chapter 6 does.
+STATE_SPLIT = ["Agent working (incl. a tool or subagent running)", "Waiting on me", "Usage limit", "CI running",
+               "Reading or away", "Unclassified", "No session open"]
+STATE_OF = {0: 0, 1: 0, 2: 1, 3: 1, 4: 2, 5: 4, 6: 4, 7: 5}
+
+
+def _efficiency():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("efficiency_data", os.path.join(os.path.dirname(HERE), "efficiency", "data.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def q_pr_time_states(con):
+    """Q pr-time-breakdown under the session-clock classifier, for PRs opened and merged inside the
+    session-log window, so that no session open means no session, not a missing log."""
+    eff = _efficiency()
+    gaps, _ = eff.state_gaps(con)
+    by_sid = defaultdict(list)
+    for g in gaps:
+        by_sid[g["s"]].append(g)
+    ps = [p for p in pr_facts(con) if in_session_window(p["created"].date()) and in_session_window(p["merged"].date())]
+    links = session_links(con, ps)
+    ci = defaultdict(list)
+    for r in rows(con, "SELECT repo, head_branch, run_started_ts, created_ts, duration_s FROM github.ci_runs "
+                       "WHERE duration_s IS NOT NULL AND duration_s > 0"):
+        st = dt_(r["run_started_ts"] or r["created_ts"])
+        ci[(r["repo"], r["head_branch"])].append((st, st + timedelta(seconds=r["duration_s"])))
+    tot, n_prs = Counter(), 0
+    for p in ps:
+        sids = links.get((p["repo"], p["number"]))
+        if not sids:
+            continue
+        start, end = p["created"], p["merged"]
+        n = max(1, int((end - start).total_seconds() // 60))
+        lab = [len(STATE_SPLIT) - 1] * n
+
+        def paint(a, b, k):
+            i0 = max(0, int((a - start).total_seconds() // 60))
+            i1 = min(n, int((b - start).total_seconds() // 60) + 1)
+            for i in range(i0, i1):
+                lab[i] = min(lab[i], k)
+        for a, b in ci.get((p["repo"], p["head"]), []):
+            if b > start and a < end:
+                paint(a, b, 3)
+        for sid in sids:
+            for g in by_sid.get(sid, []):
+                if g["b"] > start and g["a"] < end:
+                    paint(g["a"], g["b"], STATE_OF[g["state"]])
+        tot.update(STATE_SPLIT[k] for k in lab)
+        n_prs += 1
+    total = sum(tot.values())
+    return {"cats": STATE_SPLIT, "n": n_prs, "n_prs": len(ps), "total_hours": round(total / 60),
+            "share": {k: share(tot[k], total) for k in STATE_SPLIT}}
 
 
 def q_sessions_per_pr(con):

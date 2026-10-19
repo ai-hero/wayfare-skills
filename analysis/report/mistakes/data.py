@@ -17,7 +17,7 @@ from functools import lru_cache
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.dirname(HERE), os.path.dirname(os.path.dirname(HERE))]
 from cube.db import connect as _connect  # noqa: E402
-from record import STAGES, adoption, changeset_facts, commit_facts, gap_events, gap_weeks, rows, stage_of, week_of  # noqa: E402
+from record import STAGES, STUDY_START, adoption, changeset_facts, commit_facts, gap_events, gap_weeks, rows, stage_of, week_of  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE  # noqa: E402
 from facts import fix_changesets, fix_method  # noqa: E402
 
@@ -96,7 +96,7 @@ def repo_ok(con, repo):
 
 @lru_cache(maxsize=None)
 def cs_nondep(con):
-    return tuple(f for f in changeset_facts(con) if not f["dependabot"])
+    return tuple(f for f in changeset_facts(con) if not f["dependabot"] and f["day"] >= STUDY_START)
 
 
 # ------------------------------------------------------------------ labelled facts
@@ -142,7 +142,7 @@ def pr_units(con):
     ncom = Counter((r["repo"], r["pr_number"]) for r in rows(con, "SELECT repo, pr_number FROM pr_commits.pr_commits "
                                                                    "WHERE is_merge = 0"))
     out = {}
-    for r in rows(con, "SELECT repo, number, day, author, author_is_bot FROM github.prs WHERE merged_ts IS NOT NULL"):
+    for r in rows(con, "SELECT repo, number, day, author, author_is_bot FROM github.prs WHERE merged_ts >= ?", (STUDY_START,)):
         if not repo_ok(con, r["repo"]) or r["author_is_bot"] or "dependabot" in (r["author"] or "").lower():
             continue
         out[(r["repo"], r["number"])] = {"day": r["day"], "week": week_of(r["day"]), "n_commits": ncom.get((r["repo"], r["number"]), 1),
@@ -314,7 +314,7 @@ def same_file_followups(con, days=7):
     """Filtered D5, the same definition report/conclusion uses: non-bot PRs whose own files (lockfiles,
     manifests and bookkeeping excluded) a later non-bot commit from another PR touches by half or more
     within `days` of the merge."""
-    prs = rows(con, "SELECT repo, number, merged_ts, author, author_is_bot FROM github.prs WHERE merged_ts IS NOT NULL")
+    prs = rows(con, "SELECT repo, number, merged_ts, author, author_is_bot FROM github.prs WHERE merged_ts >= ?", (STUDY_START,))
     files = defaultdict(set)
     for r in rows(con, "SELECT c.repo, c.pr_number pr, cf.path FROM git.commits c JOIN git.commit_files cf "
                        "ON cf.repo=c.repo AND cf.sha=c.sha WHERE c.pr_number IS NOT NULL"):
@@ -668,7 +668,7 @@ def q_done_not_done_overclaim(con):
     all_lm = [m for m in logged_mistakes(con) if m["is_mistake"]]
     # Overlap audit: an overclaim names its work item, never a PR; the item's recorded PR, branch or goal branch
     # leads to the merged PR, and that PR is checked against the judge's send-backs.
-    ghprs = rows(con, "SELECT repo, number, head_ref FROM github.prs WHERE merged_ts IS NOT NULL")
+    ghprs = rows(con, "SELECT repo, number, head_ref FROM github.prs WHERE merged_ts >= ?", (STUDY_START,))
     by_head = defaultdict(set)
     for r in ghprs:
         by_head[(r["repo"], r["head_ref"])].add(r["number"])

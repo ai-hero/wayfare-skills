@@ -1,6 +1,6 @@
 """Parse the owner's figures brief into the figure manifest, and check its anchors against the manuscript.
 
-    python report/book_spec.py [--book .analysis/book] [--write]
+    python report/book_spec.py [--book analysis/manuscript/book] [--write]
 
 `_FIGURES_BRIEF.md` in the book folder is the owner's specification: one `### Figure N.M — title`,
 `### Diagram N.M — title` or `### Table N.TM — title` entry per figure, each with an updated question, the
@@ -18,7 +18,11 @@ import os
 import re
 import sys
 
-BOOK = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".analysis", "book")
+# The manuscript master the editions build from. `.analysis/book-historical-2026-10-03` is the pre-3-October historical copy:
+# work read from or written there reaches no edition, which is how the owner's edits once forked.
+MANUSCRIPT = os.environ.get("MANUSCRIPT_DIR", os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "analysis", "manuscript"))
+BOOK = os.path.join(MANUSCRIPT, "book")
 BRIEF, MANIFEST = "_FIGURES_BRIEF.md", "figures.json"
 
 ENTRY_RE = re.compile(r"^### (Figure|Diagram|Table) (\d)\.(T?\d+) — (.+?)$", re.M)

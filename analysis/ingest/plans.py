@@ -233,12 +233,16 @@ def parse_item(repo, path, schema_era):
     parent = fm.get("parent")
     goal_id = str(parent) if parent not in (None, "") else None
 
-    priority = fm.get("rank")
+    # `rank` is an ordinal position; `priority` is the p0..p3 class added in #141. Different scales, so two columns.
+    blocked_on = fm.get("blocked_on")
+    blocked_since = fm.get("blocked_since")
 
     row = dict(
         repo=repo, item_id=item_id, title=fm.get("title"),
         type=ntype, type_raw=raw_type or "", status=status,
-        origin=fm.get("origin"), priority=priority, goal_id=goal_id,
+        origin=fm.get("origin"), priority=fm.get("priority") or None, rank=fm.get("rank"), goal_id=goal_id,
+        blocked_on=redact(str(blocked_on)) if blocked_on not in (None, "") else None,
+        blocked_since=str(blocked_since) if blocked_since not in (None, "") else None,
         created_ts=created_ts, updated_ts=updated_ts, ready_ts=ready_ts, done_ts=done_ts,
         schema_era=schema_era, file_path=path, body_chars=len(body),
         raw_frontmatter_json=json.dumps(fm, default=str, sort_keys=True),
@@ -340,7 +344,8 @@ def main():
     cur.executescript("""
     CREATE TABLE plan_items(
         repo TEXT, item_id TEXT, title TEXT, type TEXT, type_raw TEXT,
-        status TEXT, origin TEXT, priority TEXT, goal_id TEXT,
+        status TEXT, origin TEXT, priority TEXT, rank TEXT, goal_id TEXT,
+        blocked_on TEXT, blocked_since TEXT,
         created_ts TEXT, updated_ts TEXT, ready_ts TEXT, done_ts TEXT,
         day TEXT, week TEXT, month TEXT,
         schema_era TEXT, file_path TEXT, body_chars INTEGER, raw_frontmatter_json TEXT,
@@ -389,9 +394,10 @@ def main():
             row, edges, log_rows = result
             d = dims(row["created_ts"]) if row["created_ts"] else {"day": None, "week": None, "month": None}
             cur.execute(
-                "INSERT INTO plan_items VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO plan_items VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (row["repo"], row["item_id"], row["title"], row["type"], row["type_raw"],
-                 row["status"], row["origin"], row["priority"], row["goal_id"],
+                 row["status"], row["origin"], row["priority"], row["rank"], row["goal_id"],
+                 row["blocked_on"], row["blocked_since"],
                  row["created_ts"], row["updated_ts"], row["ready_ts"], row["done_ts"],
                  d["day"], d["week"], d["month"],
                  row["schema_era"], row["file_path"], row["body_chars"], row["raw_frontmatter_json"]),

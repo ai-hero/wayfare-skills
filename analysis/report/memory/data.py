@@ -359,7 +359,7 @@ def comment_rule_arrival():
 def q_stale_prose_fixes_prose():
     lab = {r["cs_key"]: r for r in rows("""SELECT l.cs_key, c.k, c.w, c.z, c.m FROM memory.prose_labels l
                                            JOIN memory.prose_cache c ON c.h = l.h""")}
-    facts = [s for s in F.changeset_facts(_con()) if not s["dependabot"]]
+    facts = [s for s in F.changeset_facts(_con()) if not s["dependabot"] and s["day"] >= F.STUDY_START]
     rule = comment_rule_arrival()
     kinds = {"i": "Agent instructions", "d": "Docs", "c": "Code comments"}
     by_kind = {v: defaultdict(int) for v in kinds.values()}
@@ -714,7 +714,7 @@ def fig34_prose(audit):
     denominator), and by record type split into standalone corrections and ones bundled in other work. `audit`
     is the deck's hand audit of the labels (findings stay in the gitignored deck, not here)."""
     x = q_stale_prose_fixes_prose()
-    facts = [s for s in F.changeset_facts(_con()) if not s["dependabot"]]
+    facts = [s for s in F.changeset_facts(_con()) if not s["dependabot"] and s["day"] >= F.STUDY_START]
     lab = {r["cs_key"]: r for r in rows("""SELECT l.cs_key, c.k, c.w FROM memory.prose_labels l
                                            JOIN memory.prose_cache c ON c.h = l.h""")}
     kinds = {"i": "Agent instructions", "d": "Docs", "c": "Code comments"}

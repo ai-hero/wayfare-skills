@@ -477,7 +477,8 @@ def chrome_pdf(svg, w_pt, h_pt, out):
     doc = fitz.open(out)
     if any(abs(pg.rect.width - w_pt) > 0.01 or abs(pg.rect.height - h_pt) > 0.01 for pg in doc):
         for pg in doc:
-            pg.set_cropbox(fitz.Rect(0, 0, w_pt, h_pt))
+            # set_mediabox resets the crop box to match. Never set the crop box after it: the media box is
+            # stored as a float32 that can land just under w_pt, and the same rect is then refused as a crop.
             pg.set_mediabox(fitz.Rect(0, 0, w_pt, h_pt))
         doc.save(out + ".tmp", garbage=3, deflate=True)
         doc.close()

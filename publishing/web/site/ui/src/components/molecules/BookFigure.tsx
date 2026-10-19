@@ -49,7 +49,7 @@ function Caption({ figure }: { figure: FigureBlock }) {
 // Every figure is drawn on white, so its plate stays white in dark mode
 // (`bg-ink-white` is constant across themes); on the page ground it would be
 // dark ink on dark ink.
-function Picture({ figure, full }: { figure: FigureBlock; full?: boolean }) {
+function Picture({ figure, full }: { figure: Extract<FigureBlock, { src: string }>; full?: boolean }) {
   return (
     <img
       src={figure.src}
@@ -67,11 +67,12 @@ function Picture({ figure, full }: { figure: FigureBlock; full?: boolean }) {
 // read inside the prose measure, so the page shows it as one block per row and
 // the real grid opens full width on demand. A row with only its first cell is
 // a group heading ("Control plane", "Work cell").
-function BookTable({ figure, rows }: { figure: FigureBlock; rows: string[][] }) {
+// A plain Markdown table has no figure: no id, no number, no caption.
+export function BookTable({ rows, figure }: { rows: [string[], ...string[][]]; figure?: FigureBlock }) {
   const [head, ...body] = rows;
-  const title = `${figure.label} ${figure.number}`.trim();
+  const title = figure ? `${figure.label} ${figure.number}` : "Table";
   return (
-    <figure id={figure.id || undefined} className="flex scroll-mt-24 flex-col gap-3">
+    <figure id={figure?.id} className="flex scroll-mt-24 flex-col gap-3">
       <div className="flex flex-col rounded-lg border border-hairline">
         {body.map((row, r) =>
           row.slice(1).every((c) => !c) ? (
@@ -81,25 +82,27 @@ function BookTable({ figure, rows }: { figure: FigureBlock; rows: string[][] }) 
               </Eyebrow>
             </div>
           ) : (
-            <dl key={r} className="grid gap-x-6 gap-y-3 border-b border-hairline px-5 py-4 last:border-b-0 sm:grid-cols-2">
-              <BookHtml as="dt" html={row[0]} className="text-base text-foreground sm:col-span-2" />
-              {row.slice(1).map((cell, c) =>
-                cell ? (
-                  <div key={c} className="flex flex-col gap-1">
-                    <dt>
-                      <Eyebrow>
-                        <BookHtml html={head[c + 1]} />
-                      </Eyebrow>
-                    </dt>
-                    <BookHtml as="dd" html={cell} className="text-sm text-foreground/80" />
-                  </div>
-                ) : null,
-              )}
-            </dl>
+            <div key={r} className="flex flex-col gap-3 border-b border-hairline px-5 py-4 last:border-b-0">
+              <BookHtml as="p" html={row[0]} className="text-base text-foreground" />
+              <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                {row.slice(1).map((cell, c) =>
+                  cell ? (
+                    <div key={c} className="flex flex-col gap-1">
+                      <dt>
+                        <Eyebrow>
+                          <BookHtml html={head[c + 1]} />
+                        </Eyebrow>
+                      </dt>
+                      <BookHtml as="dd" html={cell} className="text-sm text-foreground/80" />
+                    </div>
+                  ) : null,
+                )}
+              </dl>
+            </div>
           ),
         )}
       </div>
-      {figure.captionHtml && <Caption figure={figure} />}
+      {figure?.captionHtml && <Caption figure={figure} />}
       <Dialog>
         <DialogTrigger asChild>
           <Button variant="outline" size="sm" className="w-fit">
@@ -108,8 +111,8 @@ function BookTable({ figure, rows }: { figure: FigureBlock; rows: string[][] }) 
           </Button>
         </DialogTrigger>
         <DialogContent className="max-h-svh overflow-y-auto sm:max-w-7xl">
-          <DialogTitle className="pr-8">{title || "Table"}</DialogTitle>
-          {figure.captionHtml && (
+          <DialogTitle className="pr-8">{title}</DialogTitle>
+          {figure?.captionHtml && (
             <DialogDescription>
               <BookHtml html={figure.captionHtml} />
             </DialogDescription>
@@ -128,7 +131,10 @@ function BookTable({ figure, rows }: { figure: FigureBlock; rows: string[][] }) 
               {body.map((row, r) => (
                 <TableRow key={r}>
                   {row.map((cell, c) => (
-                    <TableCell key={c} className="align-top text-xs whitespace-normal text-foreground/80">
+                    <TableCell
+                      key={c}
+                      className="align-top text-xs whitespace-normal text-foreground/80 [&_code.repo]:whitespace-nowrap"
+                    >
                       <BookHtml html={cell} />
                     </TableCell>
                   ))}
@@ -143,11 +149,11 @@ function BookTable({ figure, rows }: { figure: FigureBlock; rows: string[][] }) 
 }
 
 export function BookFigure({ figure }: { figure: FigureBlock }) {
-  if (figure.type === "table" && figure.rows) {
+  if (figure.type === "table") {
     return <BookTable figure={figure} rows={figure.rows} />;
   }
 
-  if (!figure.src) {
+  if (figure.type === "missing") {
     return (
       <figure id={figure.id} className="flex flex-col gap-3">
         <Caption figure={figure} />

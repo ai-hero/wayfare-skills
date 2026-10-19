@@ -32,7 +32,7 @@ from PIL import Image
 
 import paths
 from html.parser import HTMLParser
-from inline import md_html
+from inline import EXAMPLE_TITLE, md_html
 
 WEBSITE = os.environ.get("WEBSITE_DIR", os.path.join(paths.WORKSPACE, "website", ".claude", "worktrees", "book"))
 TEMPLATES = os.path.join(paths.HERE, "web", "site")
@@ -40,7 +40,7 @@ WORDS_PER_MINUTE = 230
 MANIFEST = os.path.join(paths.EDITIONS, "web.json")
 # Registry components the templates compose; installed with the site's own
 # `just ui-add`, never copied from here, so they stay the registry's code.
-VENDORED = {"field.tsx": "@aihero/field", "input.tsx": "@aihero/input", "dialog.tsx": "@aihero/dialog",
+VENDORED = {"dialog.tsx": "@aihero/dialog",
             "table.tsx": "@aihero/table", "accordion.tsx": "@aihero/accordion", "quote.tsx": "@aihero/quote",
             "badge.tsx": "@aihero/badge", "eyebrow.tsx": "@aihero/eyebrow"}
 
@@ -80,7 +80,7 @@ import {{
 import {{ SocialShareFooter }} from "@/components/blog/SocialShareFooter";
 import {{ BookChapterBody }} from "@/components/organisms/BookChapterBody";
 import chapter from "@/data/book/chapters/{chapter_slug}.json";
-import type {{ Chapter }} from "@/lib/book";
+import type {{ ChapterFile }} from "@/lib/book";
 import type {{ ComponentMetadata }} from "../blogs";
 
 export const metadata = {{
@@ -109,7 +109,7 @@ export function {name}() {{
       </BlogHeader>
 
       <div className="mx-auto max-w-prose">
-        <BookChapterBody chapter={{chapter as Chapter}} />
+        <BookChapterBody chapter={{chapter as ChapterFile}} />
         <p className="border-t border-hairline pt-8 text-lg">
           <a href="/book" className="text-link underline underline-offset-4">
             Read the full book: {book_title} →
@@ -208,7 +208,7 @@ class Inline(HTMLParser):
     """Keep inline marks (a[href], em, strong, code, br) and escape everything else. The site
     renders these strings as HTML, and sanitizing here keeps a DOM implementation out of its
     server render path."""
-    KEEP = {"a", "em", "strong", "code", "br"}
+    KEEP = {"a", "em", "strong", "code", "br", "sup"}
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
@@ -224,6 +224,8 @@ class Inline(HTMLParser):
             if not re.match(r"^(https?:|mailto:|/|#)", href):
                 return self.out.append("<a>")
             return self.out.append(f'<a href="{html.escape(href, quote=True)}">')
+        if tag == "code" and dict(attrs).get("class") == "repo":
+            return self.out.append('<code class="repo">')
         self.out.append(f"<{tag}>")
 
     def handle_endtag(self, tag):
@@ -237,9 +239,23 @@ class Inline(HTMLParser):
             self.out.append(html.escape(data, quote=False))
 
 
+FN = re.compile(r'<span class="fn" data-n="(\d+)"[^>]*>.*?</span>', re.S)
+EVI = re.compile(r'<a class="evi-ref" href="#([^"]+)">')
+XREF = re.compile(r'<a class="xref" href="#fig-')
+LINKS = {}  # appendix anchor -> its page on the site, set before the chapters are written
+
+
+def site_links(fragment):
+    """A source marker becomes a superscript number linking to that source in the chapter's list; a
+    figure marker links to the figure (whose id here has no `fig-` prefix) and its appendix entry."""
+    fragment = FN.sub(lambda m: f'<sup><a href="#source-{m.group(1)}">{m.group(1)}</a></sup>', fragment)
+    fragment = XREF.sub('<a class="xref" href="#', fragment)
+    return EVI.sub(lambda m: f'<a class="evi-ref" href="{LINKS.get(m.group(1), "#" + m.group(1))}">', fragment)
+
+
 def clean(fragment):
     p = Inline()
-    p.feed(fragment or "")
+    p.feed(site_links(fragment or ""))
     p.close()
     return "".join(p.out)
 
@@ -314,7 +330,17 @@ def block(b, assets, evidence=None):
     return figure(b, assets, evidence)
 
 
-def chapter(c, assets, posts, evidence=None):
+def examples(src, blocks):
+    """Gather each worked example's blocks into one `example` block, which the page sets as a card."""
+    out = []
+    for b, built in zip(src, blocks):
+        if b.get("example_start"):
+            out.append({"kind": "example", "title": EXAMPLE_TITLE, "blocks": []})
+        (out[-1]["blocks"] if b.get("example") and out and out[-1]["kind"] == "example" else out).append(built)
+    return out
+
+
+def chapter(c, assets, posts, references, evidence=None):
     ids = slug_ids([s["slug"] if s["title"] else "" for s in c["sections"]])
     sections = []
     for s, sid in zip(c["sections"], ids):
@@ -325,9 +351,14 @@ def chapter(c, assets, posts, evidence=None):
             b["id"] = f"{sid}--{h3s.pop(0)}"
         sections.append({"id": sid, "titleHtml": clean(s["html"]), "blocks": blocks})
     text = " ".join(b.get("html", "") + " ".join(b.get("items", [])) for s in sections for b in s["blocks"])
+    for s, src in zip(sections, (s["blocks"] for s in c["sections"])):
+        s["blocks"] = examples(src, s["blocks"])
     return {"n": c["n"], "slug": c["slug"], "title": c["title"], "sections": sections,
             "free": c["n"] in posts, "url": f"/blog/{BLOG_SECTION}/{posts[c['n']]['slug']}" if c["n"] in posts else None,
-            "sources": [clean(s["html"]) for s in c["sources"]], "minutes": max(1, round(words(text) / WORDS_PER_MINUTE))}
+            # The chapter's share of the book's one reference list, under the book's numbers, so a [n]
+            # here is the same source as [n] in print and in the paper.
+            "sources": [{"n": n, "html": clean(references[n]["html"])} for n in c["refs"]],
+            "minutes": max(1, round(words(text) / WORDS_PER_MINUTE))}
 
 
 # The appendix's paragraphs open with a field name ("Finding:", "Method (slug):"); the page sets that
@@ -343,6 +374,7 @@ def evidence_links(appendix, slugs):
             for e in g["entries"]:
                 if e.get("rid"):
                     out[e["rid"]] = f"/book/evidence/{slugs[part['n']]}#{e['anchor']}"
+                LINKS[e["anchor"]] = f"/book/evidence/{slugs[part['n']]}#{e['anchor']}"
     return out
 
 
@@ -408,9 +440,12 @@ def main():
     appendix = book.get("appendix") or {"intro": [], "parts": []}
     slugs = {c["n"]: c["slug"] for c in book["chapters"]}
     links = evidence_links(appendix, slugs)
-    chapters = [chapter(c, assets, posts, links) for c in book["chapters"]]
+    references = {r["n"]: r for r in book["references"]}
+    chapters = [chapter(c, assets, posts, references, links) for c in book["chapters"]]
     meta = {k: book["meta"].get(k, "") for k in ("title", "subtitle", "author", "affiliation", "edition", "date")}
-    index = {"meta": meta, "chapters": []}
+    pre = book.get("preface")
+    index = {"meta": meta, "preface": {"title": pre["title"], "html": [clean(b["html"]) for b in pre["blocks"]]}
+             if pre else None, "chapters": []}
     for i, c in enumerate(chapters):
         link = lambda o: {"slug": o["slug"], "n": o["n"], "title": o["title"], "url": o["url"]}  # noqa: E731
         c["prev"] = link(chapters[i - 1]) if i else None
@@ -447,7 +482,8 @@ def main():
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copyfile(src, dst)
             copied += 1
-    figs = sum(1 for c in chapters for s in c["sections"] for b in s["blocks"] if b["kind"] == "figure")
+    figs = sum(1 for c in chapters for s in c["sections"] for b in s["blocks"]
+               for x in (b["blocks"] if b["kind"] == "example" else [b]) if x["kind"] == "figure")
     entries = sum(c["count"] for c in index["evidence"]["chapters"])
     print(f"web: {len(chapters)} chapters ({len(posts)} as blog posts), {figs} figures, "
           f"{entries} evidence entries, {copied} source files"

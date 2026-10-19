@@ -28,6 +28,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib import font_manager  # noqa: E402
 from matplotlib.text import Text  # noqa: E402
+from matplotlib.ticker import Formatter  # noqa: E402
 from matplotlib.transforms import Bbox  # noqa: E402
 from pptx.util import Inches  # noqa: E402
 
@@ -492,7 +493,61 @@ def finalize(figure, name):
     return crop
 
 
+def _repo_display():
+    """Repository name -> the plain name the book uses (analysis/manuscript/repo-names.json)."""
+    try:
+        with open(os.path.join(os.path.dirname(__file__), "..", "manuscript", "repo-names.json"), encoding="utf-8") as f:
+            pairs = {r["old"]: r["new"] for r in json.load(f)["repos"] if r["old"] != r["new"]}
+    except (OSError, KeyError, ValueError):
+        return None
+    if not pairs:
+        return None
+    pat = re.compile(r"(?<![\w-])(" + "|".join(re.escape(k) for k in sorted(pairs, key=len, reverse=True)) + r")(?![\w-])")
+    return lambda s: pat.sub(lambda m: pairs[m.group(1)], s)
+
+
+_DISPLAY = _repo_display()
+
+
+class _PlainNames(Formatter):
+    """Any formatter's labels with repository names made plain. It delegates every step, `set_locs`
+    included, so a numeric formatter's scaling and offset are untouched."""
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    def set_axis(self, axis):
+        super().set_axis(axis)
+        self.inner.set_axis(axis)
+
+    def set_locs(self, locs):
+        self.inner.set_locs(locs)
+
+    def __call__(self, x, pos=None):
+        return _DISPLAY(str(self.inner(x, pos)))
+
+    def format_ticks(self, values):
+        return [_DISPLAY(str(v)) for v in self.inner.format_ticks(values)]
+
+    def get_offset(self):
+        return self.inner.get_offset()
+
+
 def save(figure, path, dpi=300):
+    # Labels show the book's plain repository names; the data keeps the real ones. Done before the
+    # crop is measured, because a longer name can widen the picture.
+    if _DISPLAY:
+        for t in figure.findobj(Text):
+            if t.get_text():
+                t.set_text(_DISPLAY(t.get_text()))
+        # A tick label is redrawn from its axis's formatter on every draw, so renaming the Text alone
+        # reverts before the file is written; the formatter has to give the plain name.
+        for a in figure.axes:
+            for axis in (a.xaxis, a.yaxis):
+                for get, put in ((axis.get_major_formatter, axis.set_major_formatter),
+                                 (axis.get_minor_formatter, axis.set_minor_formatter)):
+                    if not isinstance(get(), _PlainNames):
+                        put(_PlainNames(get()))
     # The crop's padding is part of the picture the book scales to PRINT_W, so the canvas is that much narrower.
     w, h = figure.get_size_inches()
     if w > PRINT_W - 2 * PAD:

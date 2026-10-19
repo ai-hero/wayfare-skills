@@ -19,7 +19,7 @@ from functools import lru_cache
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.dirname(HERE), os.path.dirname(os.path.dirname(HERE))]
-from record import gap_weeks, rows, week_of  # noqa: E402
+from record import STUDY_START, gap_weeks, rows, week_of  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE, category_of, path_of  # noqa: E402
 
 ANALYSIS = os.path.dirname(os.path.dirname(HERE))
@@ -1056,12 +1056,13 @@ def q_unreachable_connections_failures(con):
 
 # ------------------------------------------------------------------ Q expired-logins credential waits
 
-MONTHS_LONG = ["2025-11", "2025-12"] + MONTHS
+MONTHS_LONG = MONTHS
 
 
 def q_expired_logins_credentials(con):
     lab = rows(con, """SELECT p.ts, p.day, p.repo, l.system FROM connectors.prompt_labels l
-                       JOIN harness.prompts p ON l.prompt_key = p.ts || '|' || p.repo WHERE l.cred = 1""")
+                       JOIN harness.prompts p ON l.prompt_key = p.ts || '|' || p.repo
+                       WHERE l.cred = 1 AND p.day >= ?""", (STUDY_START,))
     systems = ["aws-terraform", "github", "secrets-manager", "third-party", "browser-signin", "design-account", "other"]
     monthly = {s: [0] * len(MONTHS_LONG) for s in systems}
     for r in lab:

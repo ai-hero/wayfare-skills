@@ -36,7 +36,10 @@ import re
 import subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-OUT = os.path.join(ROOT, ".analysis", "diagrams", "book")
+# `DIAGRAM_EDITION=paper` draws the technical edition's copy, which says paper and Section where the book
+# says book and Chapter; `publishing/technical.py` prefers it. Other editions read `book/`.
+EDITION = os.environ.get("DIAGRAM_EDITION", "book")
+OUT = os.path.join(ROOT, ".analysis", "diagrams", EDITION)
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 # Light-theme values of the design system's tokens (design-system/src/styles.css, ds-version
@@ -96,6 +99,43 @@ def esc(s):
     return html.escape(str(s), quote=True)
 
 
+def _repo_names():
+    """Repository name -> the plain name the book uses, from the manuscript's map; empty without it.
+    Applied to drawn words only: modules keep looking data up by the real repository name."""
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "manuscript", "repo-names.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            pairs = {r["old"]: r["new"] for r in json.load(f)["repos"] if r["old"] != r["new"]}
+    except (OSError, KeyError, ValueError):
+        return None
+    if not pairs:
+        return None
+    pat = re.compile(r"(?<![\w-])(" + "|".join(re.escape(k) for k in sorted(pairs, key=len, reverse=True)) + r")(?![\w-])")
+    return lambda s: pat.sub(lambda m: pairs[m.group(1)], s)
+
+
+_DISPLAY = _repo_names()
+
+
+_ORDINAL = "One Two Three Four Five Six Seven Eight Nine Ten".split()
+_CHAPTER_N = re.compile(r"\b(Chapters?) (" + "|".join(_ORDINAL) + r")\b(?: (to|and) (" + "|".join(_ORDINAL) + r")\b)?")
+_TERM = re.compile(r"(?<!address )\b(book|chapter)(s?)\b", re.I)
+
+
+def _paper(s):
+    s = _CHAPTER_N.sub(lambda m: f"Section{'s' if m.group(1).endswith('s') else ''} {_ORDINAL.index(m.group(2)) + 1}"
+                       + (f" {m.group(3)} {_ORDINAL.index(m.group(4)) + 1}" if m.group(3) else ""), s)
+    def swap(m):
+        w = {"book": "paper", "chapter": "section"}[m.group(1).lower()] + m.group(2)
+        return w.capitalize() if m.group(1)[0].isupper() else w
+    return _TERM.sub(swap, s)
+
+
+def display(s):
+    s = _DISPLAY(str(s)) if _DISPLAY else str(s)
+    return _paper(s) if EDITION == "paper" else s
+
+
 def text_width(s, size, mono=False, tracking=0.0):
     """Geist is about 0.53 em per character, Geist Mono 0.6, plus any tracking; wide enough for wrapping, never trusted for overlap."""
     return len(s) * size * ((0.6 if mono else 0.53) + tracking)
@@ -104,6 +144,7 @@ def text_width(s, size, mono=False, tracking=0.0):
 def wrap(s, width, size, mono=False, tracking=0.0):
     """Greedy line breaks at spaces; a single word wider than the line also breaks after its hyphens
     (infrastructure-/environments), so a long repository name stays inside its box."""
+    s = display(s)
     pieces = []  # (text, joins to the previous piece without a space)
     for w in str(s).split():
         parts = re.findall(r"[^-]+-|[^-]+$|-", w) if text_width(w, size, mono, tracking) > width and "-" in w else [w]
@@ -176,16 +217,19 @@ class Canvas:
              line=1.25, halo=False, baseline="hanging", tracking=0.0, upper=False):
         """Text at (x, y); wrapped to `width` px when given. Returns the height used. `upper` is the
         design system's text-transform, not a change of words."""
-        s = str(s).upper() if upper else str(s)
-        lines = wrap(s, width, size, mono, tracking) if width else [s]
+        # Names and terms are swapped before the capitals, which the swaps would no longer match.
+        s = display(s).upper() if upper else str(s)
+        lines = wrap(s, width, size, mono, tracking) if width else [display(s)]
         fam = MONO if mono else FONT
-        extra = (f' stroke="{self.ground(x, y)}" stroke-width="10" paint-order="stroke" stroke-linejoin="round"'
-                 if halo else "")
         ls = f' letter-spacing="{tracking}em"' if tracking else ""
         for i, ln in enumerate(lines):
-            self.raw(f'<text x="{x:.1f}" y="{y + i * size * line:.1f}" font-family="{fam}" font-size="{size}" '
-                     f'font-weight="{weight}" fill="{color}" text-anchor="{anchor}" dominant-baseline="{baseline}"'
-                     f'{ls}{extra}>{esc(ln)}</text>')
+            attrs = (f'x="{x:.1f}" y="{y + i * size * line:.1f}" font-family="{fam}" font-size="{size}" '
+                     f'font-weight="{weight}" text-anchor="{anchor}" dominant-baseline="{baseline}"{ls}')
+            if halo:
+                # WeasyPrint ignores paint-order and otherwise draws the halo over the label.
+                self.raw(f'<text {attrs} fill="none" stroke="{self.ground(x, y)}" stroke-width="10" '
+                         f'stroke-linejoin="round">{esc(ln)}</text>')
+            self.raw(f'<text {attrs} fill="{color}">{esc(ln)}</text>')
         used = len(lines) * size * line
         if baseline == "hanging":
             # Text placed after a key that grew must stay on the canvas rather than run off its edge.
@@ -315,7 +359,7 @@ class Canvas:
             x += label_dx
             self.text(x, y + label_dy, label, size=ARROW_LABEL, anchor="middle", color=MUTED, halo=True,
                       baseline="middle", mono=True, tracking=TRACK_LABEL, upper=True)
-            lw = text_width(label.upper(), ARROW_LABEL, True, TRACK_LABEL)
+            lw = text_width(display(label).upper(), ARROW_LABEL, True, TRACK_LABEL)
             self.arrow_labels.append((label, (x - lw / 2, y + label_dy - ARROW_LABEL / 2, lw, ARROW_LABEL), pts))
 
     @staticmethod
@@ -340,12 +384,13 @@ class Canvas:
             want -= s
         return pts[-1]
 
-    def legend(self, x, y, kinds=(), arrows=(), target=False, cols=4, cell=300):
+    def legend(self, x, y, kinds=(), arrows=(), target=False, cols=4, cell=300, target_label="Proposed, not yet observed"):
         """Key in the system's DiagramLegend style: a 46x32 specimen (box, line) and a tracked mono label.
-        Returns the y below its last row, so text placed after a key follows it however many rows it took."""
+        Returns the y below its last row, so text placed after a key follows it however many rows it took.
+        `target_label` names what is dashed where the generic words would read as the whole diagram."""
         items = [("node", k) for k in kinds] + [("arrow", k) for k in arrows] + ([("target", None)] if target else [])
         # A cell fits its widest label; columns drop until the row fits the canvas.
-        longest = max((text_width(("Proposed, not yet observed" if t == "target" else k).upper(), ARROW_LABEL, True,
+        longest = max((text_width((target_label if t == "target" else k).upper(), ARROW_LABEL, True,
                                   TRACK_LABEL) for t, k in items), default=0)
         cell = max(cell, 58 + longest + 28)
         cols = max(1, min(cols, int((self.w - x - 16) // cell)))
@@ -354,7 +399,7 @@ class Canvas:
         self.h = max(self.h, math.ceil(bottom + 20))
         for i, (t, k) in enumerate(items):
             cx, cy = x + (i % cols) * cell, y + (i // cols) * 46
-            label = "Proposed, not yet observed" if t == "target" else k
+            label = target_label if t == "target" else k
             if t == "node":
                 fill, stroke, sw, _, dash = KINDS[k]
                 r = 16 if k == "delivery" else RADIUS - 3
@@ -448,10 +493,10 @@ def finish(canvas, id, name, caption, alt, source, kind="diagram"):
     svg_path = os.path.join(OUT, f"{name}.svg")
     if canvas.body:
         with open(svg_path, "w", encoding="utf-8") as f:
-            f.write(canvas.svg(alt))
+            f.write(canvas.svg(display(alt)))
         render(svg_path, svg_path[:-4] + ".png", svg_path[:-4] + ".pdf", canvas.w, canvas.h)
     with open(os.path.join(OUT, f"{name}.json"), "w", encoding="utf-8") as f:
-        json.dump({"id": id, "kind": kind, "name": name, "caption": caption, "alt": alt, "source": source,
+        json.dump({"id": id, "kind": kind, "name": name, "caption": display(caption), "alt": display(alt), "source": source,
                    "width": canvas.w, "height": canvas.h}, f, indent=1, ensure_ascii=False)
         f.write("\n")
     print(svg_path if canvas.body else os.path.join(OUT, f"{name}.json"))

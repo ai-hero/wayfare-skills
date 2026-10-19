@@ -42,6 +42,9 @@
             pdfusetitle,linktoc=page,bookmarksnumbered=true,bookmarksopen=true]{hyperref}
 \usepackage[nameinlink,noabbrev]{cleveref}
 \usepackage{caption}
+% With technical.py's \FloatBarrier before each subsection, a figure floats at most to the end of its
+% own subsection; without it a caption can land under an earlier subsection's heading.
+\usepackage{placeins}
 \captionsetup[table]{position=top,skip=4pt}
 
 \setlist{itemsep=1pt,topsep=3pt,parsep=0pt,leftmargin=*}
@@ -50,7 +53,7 @@
 \renewcommand{\bottomfraction}{0.6}
 \renewcommand{\floatpagefraction}{0.75}
 
-\newcommand{\sources}[1]{\par\smallskip\noindent{\small\textit{Sources for this section:}~\citep{#1}}\par}
+\newcommand{\sources}[1]{\par\smallskip\noindent{\small\textit{Further sources for this section:}~\citep{#1}}\par}
 \newcommand{\evidence}[1]{\hyperref[ev:#1]{Q~#1}}
 \hyphenation{Dependabot}
 \frenchspacing
@@ -60,3 +63,22 @@
 \emergencystretch=2em
 \widowpenalty=10000
 \clubpenalty=10000
+
+% A worked example from the factory is a ruled card; a repository name is a grey chip. A float
+% cannot sit inside a framed box, so technical.py sets an example's figures after its card closes.
+\usepackage{framed}
+% --line-hairline and --text-quiet from the design system's colors_and_type.css.
+\definecolor{dsline}{HTML}{C6C9D0}
+\definecolor{dsquiet}{HTML}{666D7B}
+\newenvironment{factoryexample}%
+  {\def\FrameCommand{\fboxrule=0.75pt\fboxsep=10pt\fcolorbox{dsline}{white}}%
+   \MakeFramed{\advance\hsize-\width\FrameRestore}%
+   \noindent{\ttfamily\scriptsize\color{dsquiet}\exampletitle}\par\smallskip}%
+  {\endMakeFramed}
+\newcommand{\repo}[1]{\colorbox{black!7}{#1}}
+% In a table column the chip is dropped but the name still never breaks: split at its hyphen,
+% `customer-community-app` reads as two names. column_weights reserves its full width instead.
+\usepackage{etoolbox}
+\AtBeginEnvironment{tabularx}{\renewcommand{\repo}[1]{\mbox{#1}}}
+\AtBeginEnvironment{xltabular}{\renewcommand{\repo}[1]{\mbox{#1}}}
+\newlength{\firstcol}  % the turned table's first column: its longest name, at least 2.4cm

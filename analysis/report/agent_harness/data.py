@@ -18,7 +18,7 @@ from functools import lru_cache
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
-from record import SESSION_WINDOW, adoption, changeset_facts, commit_facts, rows, week_of  # noqa: E402
+from record import SESSION_WINDOW, STUDY_START, adoption, changeset_facts, commit_facts, rows, week_of  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE, category_of  # noqa: E402
 
 LATEST_WEEK = 40
@@ -179,7 +179,7 @@ def pr_models(con):
         cfiles[(r["repo"], r["sha"])].add(r["path"])
     d5 = {(r["repo"], r["number"]): r["followup_within_14d_days"] for r in rows(con, "SELECT * FROM detectors.followups")}
     prs = {(r["repo"], r["number"]): r for r in rows(con, """SELECT repo, number, merged_ts, additions + deletions lines
-                                                              FROM github.prs WHERE merged_ts IS NOT NULL""")}
+                                                              FROM github.prs WHERE merged_ts >= ?""", (STUDY_START,))}
     try:
         judged = {(r["repo"], r["pr"], r["sha"]): bool(r["fixes"]) for r in rows(con, "SELECT * FROM agent_harness.fix_pairs")}
     except sqlite3.OperationalError as e:

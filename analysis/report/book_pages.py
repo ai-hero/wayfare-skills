@@ -1,6 +1,6 @@
 """Render the book: one page per chapter of a table of contents, not one per deck.
 
-    python report/book_pages.py [--book .analysis/book] [--decks .analysis/decks] --out FOLDER [--lessons TALK]
+    python report/book_pages.py [--book analysis/manuscript/book] [--decks .analysis/decks] --out FOLDER [--lessons TALK]
 
 Decks hold the evidence by topic; the book arranges it by argument. `chapters.json` in the book
 folder lists each chapter and the questions it shows, by id (Q work-sources), and the parts that
@@ -16,12 +16,13 @@ import os
 import re
 import sys
 
+import book_spec as SPEC
 import deck_html as D
 import html_views
 from pptx import Presentation
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BOOK = os.path.join(ROOT, ".analysis", "book")
+BOOK = SPEC.BOOK
 DECKS = os.path.join(ROOT, ".analysis", "decks")
 
 
@@ -185,7 +186,7 @@ def build(ch, text, questions, diagrams, deck_known):
     # Only a figure that resolves defers a card: one that fails must not keep its question off the page.
     drawn = {D.qkey(b["key"]) for b, v, _ in resolved.values() if v is not None}
     failed = {D.qkey(ref) for ref, (_, v, _) in resolved.items() if v is None}
-    fig, placed, out = 0, set(), []
+    fig, tab, placed, out = 0, 0, set(), []
     for s in book:
         blocks = []
         for blk in s["blocks"]:
@@ -196,13 +197,25 @@ def build(ch, text, questions, diagrams, deck_known):
                     continue
                 if deck:
                     known |= deck_known.get(deck, set())
-                fig += 1
+                # Numbered the way the print edition numbers them (publishing/source.py), so the editor's
+                # "Figure 6.2" is the same figure as the book's: cards and drawn figures share one count,
+                # tables keep their own, and a diagram keeps the number its author gave it.
+                kind, _, ident = blk["ref"].strip().partition(" ")
+                if kind == "Diagram":
+                    label, number = "Diagram", ident
+                elif kind == "Table":
+                    tab += 1
+                    label, number = "Table", f"{lab}.{tab}"
+                else:
+                    fig += 1
+                    label, number = "Figure", f"{lab}.{fig}"
                 k = D.qkey(b["key"])
                 if k in own and k not in placed:
                     placed.add(k)
-                    blk = card(b, f"{lab}.{fig}", blk["caption"], v, blk.get("inline", False))
+                    flags = {f: True for f in ("example", "example_start", "example_end") if blk.get(f)}
+                    blk = {**card(b, number, blk["caption"], v, blk.get("inline", False)), **flags}
                 else:
-                    blk.update({"number": f"{lab}.{fig}", "key": b["key"], "view": v,
+                    blk.update({"number": number, "label": label, "key": b["key"], "view": v,
                                 "caption": blk["caption"] or v["title"]})
             t = blk.get("text") or blk.get("caption", "") or " ".join(
                 c for r in blk.get("rows", []) for c in r) or " ".join(blk.get("items", []))
@@ -218,7 +231,9 @@ def build(ch, text, questions, diagrams, deck_known):
                     if k in own and k not in placed and k not in drawn:
                         placed.add(k)
                         fig += 1
-                        blocks.append(card(own[k], f"{lab}.{fig}", compact=compact))
+                        # A card cited from inside an example stays in its card, unless the citing block closes it.
+                        inside = {"example": True} if blk.get("example") and not blk.get("example_end") else {}
+                        blocks.append({**card(own[k], f"{lab}.{fig}", compact=compact), **inside})
         if blocks or s["title"]:
             out.append({**s, "blocks": blocks})
     # A question the prose never cites is left off the page, not appended: the warning is the
@@ -292,10 +307,83 @@ def render_part(part, template, toc, book_dir, out_dir, index_href="index.html")
     return out
 
 
+NOTE_RE = re.compile(r"\[\^([a-z0-9][a-z0-9-]*)\]")
+NOTES_AT = re.compile(r"((?:\[\^[a-z0-9][a-z0-9-]*\])+)")
+DEF_RE = re.compile(r"^\[\^([a-z0-9][a-z0-9-]*)\]:\s*(.+)$", re.S)
+XREF_RE = re.compile(r"\{\{(fig|diagram|figure|table|ev):([A-Za-z0-9.-]+)(\|name)?\}\}")
+
+
+def number_sources(book):
+    """Number `[^key]` markers [1], [2] in the order the chapter first cites them, and the `## Sources`
+    definitions to match, uncited ones last. The number moves inside the sentence's closing punctuation
+    (`advance.[^k]` reads `advance [1].`), the way the owner sets an in-text citation. A `note-` key is the
+    author's aside, a footnote in the editions: it reads `[note 1]` where it stands and is listed after the
+    sources."""
+    defs, order, notes = {}, [], []
+    srcs = next((s for s in book if s["title"].lower() == "sources"), None)
+    if srcs:
+        for b in srcs["blocks"]:
+            m = DEF_RE.match(b.get("text", ""))
+            if m:
+                defs[m.group(1)] = m.group(2).strip()
+    figs = {D.qkey(b["key"])[2:]: b["number"] for s in book for b in s["blocks"]
+            if b.get("number") and D.qkey(b.get("key") or "")}
+
+    def nums(keys):
+        for k in keys:
+            if k not in order and not k.startswith("note-"):
+                order.append(k)
+        return ", ".join(f"[{order.index(k) + 1}]" for k in keys)
+
+    def note(m):
+        out = []
+        for k in NOTE_RE.findall(m.group(0)):
+            if k not in notes:
+                notes.append(k)
+            out.append(f"[note {notes.index(k) + 1}]")
+        return " " + " ".join(out)
+
+    def xref(m):
+        kind, ref, bare = m.groups()
+        if kind == "ev":
+            return "(evidence)"
+        name = f"Figure {figs[ref]}" if kind == "fig" and ref in figs else \
+            f"{kind.capitalize()} {ref}" if kind != "fig" else "the figure"
+        return name if bare else f"({name})"
+
+    def fix(t):
+        t = XREF_RE.sub(xref, t)
+        t = re.sub(r"\s?(?:\[\^note-[a-z0-9-]+\])+", note, t)
+        t = re.sub(r"([.,;:!?]['’\"”)]?)" + NOTES_AT.pattern,
+                   lambda m: f" {nums(NOTE_RE.findall(m.group(2)))}{m.group(1)}", t)
+        return NOTES_AT.sub(lambda m: f" {nums(NOTE_RE.findall(m.group(1)))}", t)
+
+    for s in book:
+        if s is srcs:
+            continue
+        for b in s["blocks"]:
+            for f in ("text", "caption"):
+                if isinstance(b.get(f), str):
+                    b[f] = fix(b[f])
+            if "items" in b:
+                b["items"] = [fix(i) for i in b["items"]]
+            if "rows" in b:
+                b["rows"] = [[fix(c) for c in r] for r in b["rows"]]
+    if srcs:
+        keys = [k for k in order if k in defs] + [k for k in defs if k not in order and not k.startswith("note-")]
+        rest = [b for b in srcs["blocks"] if not DEF_RE.match(b.get("text", ""))]
+        srcs["blocks"] = [{"kind": "p", "text": f"[{i}] {defs[k]}"} for i, k in enumerate(keys, 1)] + \
+            [{"kind": "p", "text": f"[note {i}] {defs[k]}"} for i, k in enumerate(notes, 1) if k in defs] + rest
+    for k in order + notes:
+        if k not in defs:
+            D.warn(f"source [^{k}] is cited but not defined under Sources")
+
+
 def render(ch, template, questions, diagrams, deck_known, toc, book_dir, out_dir, index_href="index.html"):
     with open(os.path.join(book_dir, ch["book"]), encoding="utf-8") as f:
         text = f.read()
     book, sections = build(ch, text, questions, diagrams, deck_known)
+    number_sources(book)
     h1 = re.search(r"^# (.+)$", text, re.M)
     title = h1.group(1).strip() if h1 else ch["title"]
     subtitle = "Appendix" if ch.get("appendix") else f"Chapter {spelled(ch['n'])}"

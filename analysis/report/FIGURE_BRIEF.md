@@ -1,13 +1,13 @@
 # Figure brief: regenerating the book's evidence figures
 
-The owner's specification is `.analysis/book/_FIGURES_BRIEF.md` (Part One), parsed into
-`.analysis/book/figures.json` by `report/book_spec.py`. You own a set of figures and the decks their
+The owner's specification is `.analysis/book-historical-2026-10-03/_FIGURES_BRIEF.md` (Part One), parsed into
+`analysis/manuscript/book/figures.json` by `report/book_spec.py`. You own a set of figures and the decks their
 cards live in. For each figure you answer the **updated question** from the source records, revise the
 card so its answer view is that figure, leave a machine-readable summary, and write a results sidecar the
 placement script reads. You do not edit the manuscript.
 
 Read first: `analysis/report/CHAPTER_BRIEF.md` (the data, the rules, QA), `report/deck_lib.py`'s docstring,
-`report/figure_lib.py`, and the current card in `.analysis/book/_FIGURES_APPENDIX.md` (search `### Q slug`).
+`report/figure_lib.py`, and the current card in `.analysis/book-historical-2026-10-03/_FIGURES_APPENDIX.md` (search `### Q slug`).
 The dataviz rules that apply: one axis, never dual; categorical colours in fixed order (`figure_lib.CAT`);
 thin marks; direct labels on the few points that matter; sample sizes visible; a legend for two or more
 series; never a number on every point.
@@ -42,7 +42,7 @@ series; never a number on every point.
 7. **Summary table**: `F.summary(id, question=..., params={...}, columns=[...], table=[...rows...],
    notes=..., sources=[...])`, called from the deck build so the rows are the ones the chart drew. It
    lands in `.analysis/data/figures/<id>.json`.
-8. **Results sidecar** `.analysis/book/results/<id>.json`:
+8. **Results sidecar** `analysis/manuscript/book/results/<id>.json`:
 
    ```json
    {"id": "3.1", "ref": "Q fixes-by-model",
@@ -56,7 +56,7 @@ series; never a number on every point.
    ```
 
    `ref` is the card whose first view is the figure: `Q slug`, or `Q slug · Label` to draw a named view.
-   `changed` lists every manuscript sentence (search all nine `.analysis/book/0*.md` files for the old
+   `changed` lists every manuscript sentence (search all nine `analysis/manuscript/book/0*.md` files for the old
    numbers) that the regenerated values contradict, verbatim old and new; empty list if nothing moved.
 9. **Rebuild and look**: build your decks to `.analysis/decks/<topic>.pptx` (the build command is in each
    deck's docstring; use `/tmp/pptxenv/bin/python3`, which has matplotlib), validate, convert to PDF and

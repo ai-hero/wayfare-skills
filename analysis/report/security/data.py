@@ -21,7 +21,7 @@ REPORT = os.path.dirname(HERE)
 sys.path.insert(0, os.path.dirname(REPORT))
 sys.path.insert(0, REPORT)
 from cube.db import connect  # noqa: E402
-from record import adoption, changeset_facts, rows, stage_of, week_of  # noqa: E402
+from record import STUDY_START, adoption, changeset_facts, rows, stage_of, week_of  # noqa: E402
 from ingest.fleet import category_of  # noqa: E402
 
 WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
@@ -952,7 +952,8 @@ def fig_flaw_lifetimes(con):
     """5.3: days from the introducing commit to the merged fix for every traceable security flaw, by who wrote it,
     with production exposure and, where the fix's work item is linked, the detection date in between."""
     x = q_agent_security_defects_exposure(con)
-    traced = [dict(r, group=author_group(r)) for r in x["rows"] if r["traced"]]
+    # A flaw whose introducing commit predates the study would set its lifetime by pre-study history.
+    traced = [dict(r, group=author_group(r)) for r in x["rows"] if r["traced"] and (r["intro_day"] or "") >= STUDY_START]
     pi = pr_item(con)
     for r in traced:
         i = pi.get((r["repo"], r["pr"]))
@@ -965,7 +966,9 @@ def fig_flaw_lifetimes(con):
     EXPO = ["Deployed from main before the fix", "On main, no deploy in between", "On main, deploys not tracked"]
     groups = {g: sorted(r["days"] for r in traced if r["group"] == g) for g in AUTHOR_GROUPS}
     linked = [r for r in traced if r["detected"]]
-    return {"rows": traced, "n_fixes": x["n"], "n_traced": len(traced), "untraceable": x["n"] - len(traced),
+    n_traceable = sum(1 for r in x["rows"] if r["traced"])
+    return {"rows": traced, "n_fixes": x["n"], "n_traced": len(traced), "untraceable": x["n"] - n_traceable,
+            "pre_study": n_traceable - len(traced),
             "groups": groups, "median": {g: median(v) for g, v in groups.items()},
             "exposure": {g: {e: sum(1 for r in traced if r["group"] == g and exposure(r) == e) for e in EXPO} for g in AUTHOR_GROUPS},
             "expo_names": EXPO, "shipped": sum(1 for r in traced if r["shipped"]),

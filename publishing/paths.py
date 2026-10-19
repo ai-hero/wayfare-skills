@@ -7,12 +7,14 @@ HERE = os.path.join(ROOT, "publishing")
 REPORT = os.path.join(ROOT, "analysis", "report")
 ANALYSIS = os.path.join(ROOT, ".analysis")
 # The editor's master: edited chapters in `book/`, the curated evidence appendix in `appendix/`.
-# `.analysis/book` is the pre-edit working copy and must not be published from.
+# `.analysis/book-historical-2026-10-03` is the pre-edit working copy and must not be published from.
 MANUSCRIPT = os.environ.get("MANUSCRIPT_DIR", os.path.join(ROOT, "analysis", "manuscript"))
 BOOK = os.path.join(MANUSCRIPT, "book")
 APPENDIX = os.path.join(MANUSCRIPT, "appendix")
+PREFACE = os.path.join(MANUSCRIPT, "preface.md")
 DECKS = os.path.join(ANALYSIS, "decks")
 DIAGRAMS = os.path.join(ANALYSIS, "diagrams", "book")
+DIAGRAMS_PAPER = os.path.join(ANALYSIS, "diagrams", "paper")  # the same diagrams saying paper and Section
 OUT = os.environ.get("PUBLISH_OUT", os.path.join(ANALYSIS, "publish"))
 BUILD = os.path.join(OUT, "build")
 SOURCE = os.path.join(BUILD, "book.json")

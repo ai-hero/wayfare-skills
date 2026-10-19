@@ -142,6 +142,34 @@ wayfare-create-skill|Projects|*|per project: language and framework, which the n
 wayfare-write-handoff|Connections::issues|type|the tracker the distilled work-item is filed in
 wayfare-write-handoff|Connections::issues|at|the repo or workspace it is filed against
 wayfare-write-handoff|Connections::issues|issue-prefix|the ID shape the item is named with
+wayfare-sync-plan|Connections::issues|type|whether confirmed security and compliance findings reach a tracker at all, and the compliance route's tracker when compliance-type is unset
+wayfare-sync-plan|Connections::issues|reach|the tool the findings are filed through when compliance-reach is unset
+wayfare-sync-plan|Connections::issues|at|the repo a github route files confirmed security and compliance findings into
+wayfare-sync-plan|Connections::issues|compliance-type|the tracker confirmed security and compliance findings are filed in, when it is not the main one
+wayfare-sync-plan|Connections::issues|compliance-reach|the tool that reaches the compliance tracker
+wayfare-sync-plan|Connections::issues|compliance-team|the team confirmed security and compliance findings are filed under
+wayfare-sync-plan|Connections::issues|compliance-project|the project confirmed security and compliance findings belong to
+wayfare-sync-plan|Connections::issues|compliance-label|the label every finding ticket carries
+wayfare-audit-security|Connections::issues|type|whether confirmed CVE findings reach a tracker at all, and the compliance route's tracker when compliance-type is unset
+wayfare-audit-security|Connections::issues|reach|the tool the findings are filed through when compliance-reach is unset
+wayfare-audit-security|Connections::issues|at|the repo a github route files confirmed CVE findings into
+wayfare-audit-security|Connections::issues|compliance-type|the tracker confirmed CVE findings are filed in, when it is not the main one
+wayfare-audit-security|Connections::issues|compliance-reach|the tool that reaches the compliance tracker
+wayfare-audit-security|Connections::issues|compliance-team|the team confirmed CVE findings are filed under
+wayfare-audit-security|Connections::issues|compliance-project|the project confirmed CVE findings belong to
+wayfare-audit-security|Connections::issues|compliance-label|the label every finding ticket carries
+wayfare-audit-compliance|Connections::issues|type|whether confirmed control findings reach a tracker at all, and the compliance route's tracker when compliance-type is unset
+wayfare-audit-compliance|Connections::issues|reach|the tool the findings are filed through when compliance-reach is unset
+wayfare-audit-compliance|Connections::issues|at|the repo a github route files confirmed control findings into
+wayfare-audit-compliance|Connections::issues|compliance-type|the tracker confirmed control findings are filed in, when it is not the main one
+wayfare-audit-compliance|Connections::issues|compliance-reach|the tool that reaches the compliance tracker
+wayfare-audit-compliance|Connections::issues|compliance-team|the team confirmed control findings are filed under
+wayfare-audit-compliance|Connections::issues|compliance-project|the project confirmed control findings belong to
+wayfare-audit-compliance|Connections::issues|compliance-label|the label every finding ticket carries
+wayfare-ship-pr|Connections::issues|type|the tracker a merged fix's finding ticket is moved to In Review in, when compliance-type is unset
+wayfare-ship-pr|Connections::issues|reach|the tool that comments on that ticket, when compliance-reach is unset
+wayfare-ship-pr|Connections::issues|compliance-type|the tracker the finding tickets live in
+wayfare-ship-pr|Connections::issues|compliance-reach|the tool that comments on a finding ticket and moves it to In Review
 ROWS
 }
 
@@ -245,7 +273,23 @@ while IFS='|' read -r _skill section key decides; do
       # Not piped into `tr`: a pipeline reports the LAST command's rc, so
       # hero_md_field's refusal would arrive as 0 and a rejected discriminator
       # would read as an unmigrated block.
-      conn_type=$(hero_md_field "$TARGET" type "### ${section#*::}" "## ${section%%::*}" 2>/dev/null); type_rc=$?
+      # The issues block's compliance route has its own discriminator, and it
+      # defaults to the main `type`. Judging `compliance-team` against `type`
+      # alone reports a Linear route under `type: none` as moot, and judging
+      # a set `compliance-type` at all reports the route's own answer as n/a.
+      disc="type"
+      case "$key" in
+        compliance-type)
+          hero_md_field "$TARGET" compliance-type "### ${section#*::}" "## ${section%%::*}" >/dev/null 2>&1
+          [ "$?" = 1 ] || disc="" ;;
+        compliance-*)
+          hero_md_field "$TARGET" compliance-type "### ${section#*::}" "## ${section%%::*}" >/dev/null 2>&1
+          [ "$?" = 1 ] || disc=compliance-type ;;
+      esac
+      conn_type=""; type_rc=1
+      if [ -n "$disc" ]; then
+        conn_type=$(hero_md_field "$TARGET" "$disc" "### ${section#*::}" "## ${section%%::*}" 2>/dev/null); type_rc=$?
+      fi
       conn_type=$(printf '%s' "$conn_type" | tr '[:upper:]' '[:lower:]')
       if [ "$key" != type ] && [ "$type_rc" = 2 ]; then
         # The discriminator holds something the reader refuses. Asking about

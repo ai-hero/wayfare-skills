@@ -148,9 +148,9 @@ hero_connection_guard() { # KIND KEY VALUE [TYPE]
     # that it is there: `command -v $REACH`, `$REACH --version`. A value
     # carrying `;`, `|`, `$(` or a space is a command that probe would run, and
     # refusing a leading `-` (all hero_md_field does) does not stop it.
-    reach)
+    reach|compliance-reach)
       printf '%s' "$3" | grep -qE '^[A-Za-z0-9._-]+$' && return 0
-      echo "hero_connection: refusing $1.reach '$3'; a reach names one tool, [A-Za-z0-9._-] only" >&2
+      echo "hero_connection: refusing $1.$2 '$3'; a reach names one tool, [A-Za-z0-9._-] only" >&2
       return 2 ;;
     at)
       [ "$1" = issues ] || return 0

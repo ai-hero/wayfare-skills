@@ -30,6 +30,8 @@ translate any client-specific invocation language without changing behavior.
 - Treat a zero-job approval run as a failed startup, not a passing verdict.
 - A deployment check is advisory after merge and never rewrites history.
 - Cleanup occurs only after the merged head is identified exactly.
+- A merged fix moves its finding ticket to In Review, never to Done. Only the
+  audit or a person closes it, after the scanner confirms.
 
 Return the approved head and verdict, merge result, cleanup result, post-merge
 CI and deployment evidence, and any deferred verification.

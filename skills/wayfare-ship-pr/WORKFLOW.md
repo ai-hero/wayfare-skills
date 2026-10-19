@@ -34,9 +34,10 @@ Mapping to the steps below: Step 3 = `gates`, Step 4 = `trigger`, Steps 5-6 =
 then reports post-merge CI and platform-agnostic deployment health). Steps 1-2a
 are pre-flight (PR identification, workflow-on-default-branch check, draining
 any deferred deploy probe) and Step 8 is the summary. Neither appears in the
-DAG. Steps 7c (REQUEST_CHANGES) and 7d (WORKFLOW_FAILED) are alternative end
-states that *replace* `merge`, `reset`, and `verify-deploy`: there is no merge
-to verify deployment health for. On those paths render
+DAG, and neither does Step 7f, which moves a finding ticket to In Review after
+the merge. Steps 7c (REQUEST_CHANGES) and 7d (WORKFLOW_FAILED) are alternative
+end states that *replace* `merge`, `reset`, and `verify-deploy`: there is no
+merge to verify deployment health for. On those paths render
 `(✗) merge → ( ) reset → ( ) verify-deploy` and stop, never
 `(✓) merge → (✓) reset → (✓) verify-deploy`.
 
@@ -101,6 +102,8 @@ Read `HERO.md` if it exists. This skill uses:
 - **CI/CD** -> workflow names (to identify the auto-approve run)
 - **Deployment** -> platform (kubernetes | vm | serverless | paas | none),
   namespaces/hosts, health endpoints
+- **The `issues` connection** -> the compliance route a finding ticket lives on
+  (Step 7f)
 
 If `HERO.md` is missing, suggest `wayfare:wayfare-init-repo` but proceed with
 defaults.
@@ -1421,6 +1424,28 @@ that errored) so the user can act on it directly. Never suggest un-merging. End
 a DEGRADED result with a note like "Deployment looks DEGRADED. Investigate, but
 the merge itself stands."
 
+#### Step 7f: Move a finding ticket to In Review (post-merge)
+
+Runs only when `MERGED == "true"` and the merged PR fixes a finding an audit
+filed. Find the ticket on the `.plans/` item whose `pr:` is this PR (the `filed`
+or `updated` line in its `## Log`), or a `Relates to:` trailer that names one.
+No finding ticket: skip silently.
+
+Reach it on the `issues` connection's compliance route
+(`../../references/finding-tickets.md`). An unavailable `reach` is reported, and
+the ticket is left for the next audit. Then:
+
+1. Comment on the ticket: the PR merged (its URL and merge SHA), and the
+   versions now on the default branch, read from the lockfile or the file the
+   fix changed at the merge commit, not from the PR description.
+2. Move it to In Review. In Linear that is the team's In Review state; a GitHub
+   issue has no such state, so it stays open with the comment.
+
+**Never move a finding ticket to Done, and never close it.** A merged fix is not
+a cleared scanner: the alert can stay open and the image may not be rebuilt.
+Only the audit, or a person, closes it, after the scanner confirms. Report
+`Finding ticket: TICKET_ID moved to In Review` in the summary.
+
 ### Step 8: Summary
 
 Render the Pipeline DAG line **conditionally on the verdict, whether the user
@@ -1477,6 +1502,7 @@ Run:       RUN_URL
 
 Post-merge CI: passed | failed | unknown
 Deployment: HEALTHY | DEGRADED | UNKNOWN | skipped
+Finding ticket: TICKET_ID moved to In Review | not reached (REASON)   # only when 7f ran
 
 Action taken:
   - Merged with MERGE_METHOD (sha SHORT_SHA)            # APPROVE + user said yes

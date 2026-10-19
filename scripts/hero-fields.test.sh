@@ -337,6 +337,30 @@ OUT_P=$("$FIELDS" wayfare-check-preflight "$CR")
 check "a heading containing a slash still resolves to its section" \
   "(unset)" "$(printf '%s' "$OUT_P" | awk -F'\t' '$1 == "CI/CD" && $2 == "auto-approve-installed" { print $3 }')"
 
+# The issues block's compliance route is judged against its own type. A main
+# `type: none` with a Linear compliance route is the case that matters: read
+# against `type`, every compliance row is (n/a) and recalibrate never asks.
+printf '# Hero\n\n## Connections\n\n### issues\n\n- type: none\n- compliance-type: linear\n- compliance-team: Company\n' > "$CR2/HERO.md"
+OUT_R=$("$FIELDS" wayfare-audit-compliance "$CR2")
+check "a set compliance-type reports its value under type none" \
+  "linear" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-type" { print $3 }')"
+check "a compliance key is read against compliance-type" \
+  "Company" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-team" { print $3 }')"
+check "an unset compliance key under a set route is a question" \
+  "(unset)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-label" { print $3 }')"
+printf '# Hero\n\n## Connections\n\n### issues\n\n- type: none\n' > "$CR2/HERO.md"
+OUT_R=$("$FIELDS" wayfare-audit-security "$CR2")
+check "no compliance-type defaults to the main type" \
+  "(n/a: type=none)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-type" { print $3 }')"
+check "and so do the route's other keys" \
+  "(n/a: type=none)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-project" { print $3 }')"
+printf '# Hero\n\n## Connections\n\n### issues\n\n- type: github\n- at: acme/web\n- compliance-type: -linear\n- compliance-reach: linear\n' > "$CR2/HERO.md"
+OUT_R=$("$FIELDS" wayfare-sync-plan "$CR2")
+check "a refused compliance-type is (refused)" \
+  "(refused)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-type" { print $3 }')"
+check "a refused compliance-type blocks the route's other keys" \
+  "(n/a: type=refused)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-reach" { print $3 }')"
+
 if [ "$FAIL" -gt 0 ]; then
   echo "hero-fields: $PASS passed, $FAIL FAILED"
   exit 1

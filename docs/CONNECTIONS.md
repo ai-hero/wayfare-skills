@@ -82,6 +82,11 @@ and a repo routinely has one without the other.
 - at: acme/web
 - reach: gh
 - issue-prefix: none
+- compliance-type: linear # the compliance route; absent means the main route
+- compliance-reach: linear
+- compliance-team: Company
+- compliance-project: Compliance
+- compliance-label: Security
 
 ### infrastructure
 
@@ -117,9 +122,39 @@ than a comparison:
   `wayfare-init-repo` itself writes. Passing a shape is not being the right
   destination: an outward-facing filing still has the user name it in-session.
 
+`compliance-reach` is a `reach` and has the same shape, for the same reason.
+
 Both rules live in one place, `hero_connection_guard`, and every reader calls
 it. The listing and the field reader each carrying their own copy is not
 hypothetical: they disagreed about `at: None` until a review caught it.
+
+## The compliance route inside `issues`
+
+Security and compliance findings can go to a different tracker from the repo's
+work: a team, project and label that the compliance evidence is read from. That
+is still one kind, `issues`, with a second destination, so it is five flat keys
+in the `### issues` block, the way `design` carries `ux-flow`. A separate block
+would be a seventh kind that only routes.
+
+| Key | Holds | When absent |
+| -- | -- | -- |
+| `compliance-type` | the route's tracker (`linear`, `github`, `none`) | the main `type` |
+| `compliance-reach` | the tool that reaches it | the main `reach` |
+| `compliance-team` | the team the tickets are filed in, read against `compliance-type` | the tracker's default |
+| `compliance-project` | the project they belong to | none |
+| `compliance-label` | the label every ticket carries | none |
+
+The route names its own tracker because the main one need not match it: a repo
+whose work is in GitHub issues can file its compliance tickets in Linear, and
+team, project and label alone would read as a GitHub issue under a team called
+`Company`. With no `compliance-*` key at all, findings take the main route. A
+`github` route has no repo key of its own and files into the main `at`, so it
+needs a main `type: github`.
+
+CVE findings take this route too, not only control findings: Vanta reads both as
+SOC 2 evidence. What gets filed, how a re-run updates instead of duplicating,
+and who may close a ticket are in `references/finding-tickets.md`. The three
+states below apply to the route's own type and reach.
 
 ## Absent, unset, and unreachable are three states
 
@@ -263,11 +298,12 @@ is what carries it.
 A kind earns its place by being something a skill knows how to use, so it is
 worth saying plainly which are wired and which are declared ahead of their
 consumer. `design`, `design-system` and `issues` are read today (Step 0,
-`wayfare-sync-plan`'s config gate, `wayfare-recomponentize-ui`, `preflight`).
-`reference`, `architecture` and `infrastructure` are declared and reported and
-nothing branches on them yet: their consumers are `wayfare-audit-compliance`
-(which finds its template through `FLEET.md` today), the architecture stage, and
-the harden stage.
+`wayfare-sync-plan`'s config gate, `wayfare-recomponentize-ui`, `preflight`, and
+the audits that file findings through `issues`' compliance route). `reference`,
+`architecture` and `infrastructure` are declared and reported and nothing
+branches on them yet: their consumers are `wayfare-audit-compliance` (which
+finds its template through `FLEET.md` today), the architecture stage, and the
+harden stage.
 
 That gap is the anti-pattern below with a deadline on it, not an exception to
 it. A kind still unread by the time its named consumer ships is config behaving

@@ -189,7 +189,11 @@ parts ran. Read its summary back by its fixed spellings: a
 `Dependabot alerts: skipped (unavailable)` line, a
 `Trivy: skipped (unavailable)` or `Docker/Scout: skipped (unavailable)` line,
 and every `Deferred:` line. Each becomes an `unverified` row in this run's
-report (a part that ran on one scanner is partial, not clean), never "clean".
+report (a part that ran on one scanner is partial, not clean), never "clean". It
+also files its confirmed CVE findings to the `issues` connection's compliance
+route ([finding-tickets.md](finding-tickets.md)). Carry its `Tracker:` line into
+this run's report as written: `skipped (no issues connection)` is a report line,
+and `FAILED` is a failure row for the lane, never dropped.
 
 **The `comments` stage: prose that has gone false about the code.** Runs after
 `wayfare-audit-security`, before `compliance`, in both modes.
@@ -294,6 +298,25 @@ an item like any other: the copy goes, the register lives in the fleet's
 checkout. An `ERROR` cell is `unverified`, the checker broke, which is a finding
 about the engine, not about this repo, and never a proposed item. A repo outside
 any fleet says so in one line and audits against the baseline only.
+
+**After the accepted items are written, file the confirmed control findings**
+through [finding-tickets.md](finding-tickets.md), on the `issues` connection's
+compliance route. The run above reads the checkout as it sits, so it proposes
+candidates. Confirm them at merged state before filing:
+
+```bash
+"$WAYFARE_ROOT/scripts/audit.py" \
+  --repo . --json > "$SCRATCH/compliance-main.jsonl" 2> "$SCRATCH/compliance-main.err"; COMPLIANCE_MAIN_RC=$?
+```
+
+That run snapshots `origin/main`, the engine's default. File only the checks
+that are `FAIL` in it, one ticket per **check** (the items above stay one per
+control), and write each ticket back onto the item for its control. A check that
+passes at origin/main removes this repo's line from its ticket. Closing a
+control ticket is the family audit's in a fleet (`improve.md`), because only it
+sees the whole failing set; outside a fleet this repo is the whole set, and this
+stage closes it. A non-zero `COMPLIANCE_MAIN_RC` files nothing: report
+`Tracker: FAILED (engine at origin/main: REASON)`.
 
 **The `local` stage: this repo's own `wayfare: sync` skills.** For each line
 `hero_local_skills "$ROOT" sync` printed **and accepted at the trust prompt**

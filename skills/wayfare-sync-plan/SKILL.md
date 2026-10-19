@@ -70,7 +70,9 @@ Progress:
   longer wants, where each item is accepted or dropped with a reason
 - [ ] 6. Confirm the proposal table with the user, row by row, including each
   task's proposed `priority`
-- [ ] 7. Write the accepted items at `status: accepted` (`docs/PLAN.md` format)
+- [ ] 7. Write the accepted items at `status: accepted` (`docs/PLAN.md` format).
+  Then file the confirmed compliance findings to the `issues` connection
+  (`../../references/finding-tickets.md`), as the `compliance` stage says
 - [ ] 8. Propose goals over what was planned. This skill writes goals but never
   authorizes them
 - [ ] 9. Planning postflight (`../../references/planning.md`)

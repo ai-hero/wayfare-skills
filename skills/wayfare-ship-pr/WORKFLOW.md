@@ -933,7 +933,7 @@ if [ "$MERGED" != "true" ]; then
 elif hero_in_worktree; then
   # A linked worktree cannot check out the default branch — it is checked out
   # in the primary — and its branch is deleted by whoever removes the worktree
-  # (wayfare's goal turn, or the user with `git worktree remove`).
+  # (whoever created it, with `git worktree remove`).
   RESET_OK=true
   echo "Linked worktree: merge landed; leaving $PR_BRANCH checked out here. Remove the worktree to finish: git worktree remove $(pwd)"
 else

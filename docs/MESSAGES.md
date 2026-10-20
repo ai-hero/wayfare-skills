@@ -11,11 +11,10 @@ and wayfare-grill-idea reports what is waiting.
 ## The principle
 
 A fleet is a folder of sibling checkouts ([FLEET-MD.md](./FLEET-MD.md)). Agents
-work in them concurrently, wayfare's goal turns run one worktree subagent per
-feature, and several people merge underneath every PR. Until now an agent that
-needed something from a sibling had two options: file an issue (right, but slow
-and outward-facing) or edit the sibling directly (fast, and invisible to
-everyone who owns that repo).
+work in them concurrently, and several people merge underneath every PR. Until
+now an agent that needed something from a sibling had two options: file an issue
+(right, but slow and outward-facing) or edit the sibling directly (fast, and
+invisible to everyone who owns that repo).
 
 The second one is now banned. In its place:
 
@@ -64,8 +63,8 @@ that is waiting (below). One artifact per message, one owner for it, no second
 copy to drift.
 
 A message to your own repo is the same deposit into your own inbox. Nothing
-special is needed for a worktree subagent handing back to its parent, or for a
-note to the session after this one.
+special is needed for a subagent handing back to its parent, or for a note to
+the session after this one.
 
 ## The mailbox
 
@@ -78,11 +77,11 @@ inbox rides that same exclusion, and a fresh clone that never wrote that entry
 would let an inbound message get committed like any other file.
 
 **Hash-named, never numbered.** `.plans/` item ids are a sequential integer
-namespace, and goal turns run concurrent subagents. A sender allocating an id
-inside the recipient's namespace races with the recipient allocating its own,
-and `hero_ready_items` reports the result as a duplicate id, *"dependents may
-resolve against the wrong item"*, a silent mis-resolution, not a failure. Hashes
-cannot collide across senders and cannot be depended on.
+namespace. A sender allocating an id inside the recipient's namespace races with
+the recipient allocating its own, and `hero_ready_items` reports the result as a
+duplicate id, *"dependents may resolve against the wrong item"*, a silent
+mis-resolution, not a failure. Hashes cannot collide across senders and cannot
+be depended on.
 
 Allocate with real entropy, portably:
 
@@ -421,10 +420,10 @@ sessions in one repo is ordinary.
   slowly, on both sides. Cheap to detect at send time, glob the target's store
   for a suspended item awaiting this repo, and worth a warning even when nothing
   enforces it.
-- **Fan-out amplification.** N worktree subagents each suspending on the same
-  target produce N messages one session must claim and answer serially. Not
-  incorrect; it is how the mailbox becomes the bottleneck, and it is the reason
-  to prefer one broadcast over N independent asks.
+- **Fan-out amplification.** N agents each suspending on the same target produce
+  N messages one session must claim and answer serially. Not incorrect; it is
+  how the mailbox becomes the bottleneck, and it is the reason to prefer one
+  broadcast over N independent asks.
 
 ## What this changes
 

@@ -81,8 +81,7 @@ while `auto-approve.yaml` is the fleet's.
   for it in Step 0 and fans out instead of running against the folder. New
   skills get the check from `scripts/new-skill.sh`.
 
-- **Work is concurrent, so rebase before you judge.** Several features build at
-  once (wayfare's goal turns run one worktree subagent per feature), and other
+- **Work is concurrent, so rebase before you judge.** Other sessions and other
   people merge underneath every PR. Before a review, an approval, or a merge,
   rebase the PR onto the current default branch with `hero_rebase_on_base` and
   confirm it went through: no conflict, and checks green on the rebased head. A
@@ -154,14 +153,13 @@ local and unversioned, so clone this repo beside the others and run
 `wayfare:wayfare-review-fleet`. The host port this dev stack publishes is
 claimed in that map, not chosen here: take the next free port there first, then
 set it in every place this repo names it (compose defaults, health checks). Any
-hero skill run from the fleet folder fans out to the repos you pick.
+wayfare skill run from the fleet folder fans out to the repos you pick.
 
-Work here is concurrent: other branches, including worktree subagents building
-features in parallel, merge underneath every open PR. Before a review, an
-approval, or a merge, rebase the PR onto the current default branch and confirm
-it can be done (no conflict, checks green on the rebased head); never review,
-approve, or merge a stale head. Rebase before the approval, not after it:
-approvals are dismissed on push.
+Work here is concurrent: other branches, other sessions and other people merge
+underneath every open PR. Before a review, an approval, or a merge, rebase the
+PR onto the current default branch and confirm it can be done (no conflict,
+checks green on the rebased head); never review, approve, or merge a stale head.
+Rebase before the approval, not after it: approvals are dismissed on push.
 
 An agent working in one checkout that needs something from a sibling sends a
 message rather than reaching into that repo directly; see

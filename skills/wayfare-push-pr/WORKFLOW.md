@@ -960,9 +960,11 @@ git commit -m "$MSG"
 A commit body, when written, is humanized (3c) before the commit.
 
 **If issue ID in branch name:** Add `Fixes: PROJ-123` or `Relates to: PROJ-123`.
-A finding ticket (one an audit filed, named in the item's `## Log`) always gets
-`Relates to:`. A closing keyword lets the tracker close it at merge, and only
-the audit may close it (`../../references/finding-tickets.md`).
+A finding ticket (one the item's `## Log` names on a `ticket:` line) goes only
+in a `Relates to:` trailer: never `Fixes:`, never the branch name, never the PR
+title. A closing keyword, or the id in a branch or title, lets GitHub or
+Linear's GitHub automation close it at merge, and only the audit may close it
+(`../../references/finding-tickets.md`).
 
 #### 3g: Post-Commit Pre-Push Dry-Run
 

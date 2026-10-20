@@ -24,8 +24,8 @@
 # `- default-branch: unset` cannot be mistaken for a field that has none.
 #
 #   (present) (absent)      a `*` row's section heading, found or not
-#   (n/a: type=...)         a connection whose `type` answered (none, self) or
-#                           was refused; its other keys are moot or blocked
+#   (n/a: KEY=...)          a connection whose `type` or `compliance-type`
+#                           answered (none, self) or was refused; keys moot
 #   (unset)                 the file does not carry this field, or carries it empty
 #   (no-section)            the heading this field lives under is missing
 #   (refused)               the reader rejected the value as unsafe
@@ -170,6 +170,9 @@ wayfare-ship-pr|Connections::issues|type|the tracker a merged fix's finding tick
 wayfare-ship-pr|Connections::issues|reach|the tool that comments on that ticket, when compliance-reach is unset
 wayfare-ship-pr|Connections::issues|compliance-type|the tracker the finding tickets live in
 wayfare-ship-pr|Connections::issues|compliance-reach|the tool that comments on a finding ticket and moves it to In Review
+wayfare-ship-pr|Connections::issues|at|the repo a github route's finding ticket must be in before Step 7f touches it
+wayfare-ship-pr|Connections::issues|compliance-team|the team a linear route's finding ticket must be in before Step 7f touches it
+wayfare-ship-pr|Connections::issues|compliance-label|the label a ticket must carry before Step 7f treats it as a finding ticket
 ROWS
 }
 
@@ -288,25 +291,38 @@ while IFS='|' read -r _skill section key decides; do
         # Not piped into `tr`: a pipeline reports the LAST command's rc, so
         # hero_md_field's refusal would arrive as 0 and a rejected
         # discriminator would read as an unmigrated block.
-        conn_type=$(hero_md_field "$TARGET" "$disc" "### ${section#*::}" "## ${section%%::*}" 2>/dev/null); type_rc=$?
+        if [ "$disc" = compliance-type ]; then
+          # Through the guard: `jira`, or `github` under a non-github main
+          # type, is a route nothing can file into, and its keys are blocked.
+          conn_type=$(hero_connection "${section#*::}" compliance-type "$ROOT" 2>/dev/null); type_rc=$?
+        else
+          conn_type=$(hero_md_field "$TARGET" "$disc" "### ${section#*::}" "## ${section%%::*}" 2>/dev/null); type_rc=$?
+        fi
       fi
       conn_type=$(printf '%s' "$conn_type" | tr '[:upper:]' '[:lower:]')
       if [ "$key" != type ] && [ "$type_rc" = 2 ]; then
         # The discriminator holds something the reader refuses. Asking about
         # this block's other keys invites recalibrate to interview the user
         # about a connection nothing can act on until the `type` is fixed.
-        current="(n/a: type=refused)"; rc=0
+        current="(n/a: $disc=refused)"; rc=0
       elif [ "$key" != type ] && { [ "$conn_type" = none ] || [ "$conn_type" = self ]; }; then
         # The block answered. `none` has nothing to locate and `self` is
         # located by being here, so `(unset)` on their other keys would read as
         # a question the repo already settled.
-        current="(n/a: type=$conn_type)"; rc=0
+        current="(n/a: $disc=$conn_type)"; rc=0
       else
         # Through hero_connection for a connection's own keys: it carries the
         # shape rules for `reach` and `issues.at`, and a table that reports a
         # value every runtime reader refuses is a table recalibrate never asks
         # about.
         current=$(hero_connection "${section#*::}" "$key" "$ROOT" 2>"$ERRF"); rc=$?
+        # A github route has no team or project: unset there is the answer.
+        # Set, the guard refuses it, which is the defect to report.
+        if [ "$rc" = 1 ] && [ "$conn_type" = github ]; then
+          case "$key" in
+            compliance-team|compliance-project) current="(n/a: $disc=github)"; rc=0 ;;
+          esac
+        fi
       fi
     fi
     case "$rc" in

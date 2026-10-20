@@ -339,12 +339,15 @@ def check_counts(root):
         text = read(root, rel)
         if text is None:
             continue
-        for n, line in enumerate(text.splitlines(), 1):
-            for fact, pat in claims:
-                for m in re.finditer(pat, line, re.I):
-                    word = m.group(1).lower()
-                    if word in NUMBER_WORDS and NUMBER_WORDS[word] != facts[fact]:
-                        error(rel, n, "count", f"says {word} but the count is {facts[fact]}")
+        # Matched across single line breaks, as check_chains does: mdformat
+        # wraps "about the / twelve fields" and a per-line match never sees it.
+        joined = re.sub(r"\n(?!\n)", " ", text)
+        for fact, pat in claims:
+            for m in re.finditer(pat, joined, re.I):
+                word = m.group(1).lower()
+                if word in NUMBER_WORDS and NUMBER_WORDS[word] != facts[fact]:
+                    n = text.count("\n", 0, m.start(1)) + 1
+                    error(rel, n, "count", f"says {word} but the count is {facts[fact]}")
 
 
 def check_links(root, rel, text):

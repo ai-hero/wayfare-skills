@@ -33,7 +33,8 @@ plan against the fleet folder itself. Add the line
 `launched as a fan-out agent: return finding keys, file no tickets` to each
 repo's launch prompt. After every agent has reported, this session is the single
 writer: file the CVE and control `Finding key:` lines once, through *In a
-fan-out* in `../../references/finding-tickets.md`.
+fan-out* in `../../references/finding-tickets.md`. It changes a repo's line on a
+ticket only when that repo's `Finding lane:` line says `ran`.
 
 Progress:
 

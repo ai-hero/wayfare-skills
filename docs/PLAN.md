@@ -499,6 +499,7 @@ kept consistent by hand. They are one section with a tag.
 | `turn` | one goal turn: what was spent, what stopped it | the next turn |
 | `decision` | a choice made and the reason, where the file cannot show it | reviewers |
 | `signal` | a divergence captured mid-build, before `wayfare-sync-plan` promotes it to a `signal` item | `wayfare-sync-plan` |
+| `ticket` | a finding ticket an audit filed, updated, reopened or linked for this item: `ticket: filed\|updated\|reopened\|linked TICKET_ID URL` (`references/finding-tickets.md`) | `wayfare-build-task`'s close-out, which never closes it; `wayfare-push-pr`; `wayfare-ship-pr` Step 7f; the next audit |
 
 A `signal` line carries the capture id and a state marker after the tag, and the
 marker is the one part of a log line that changes after it is written:

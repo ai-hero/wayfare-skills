@@ -399,12 +399,13 @@ audit hands it the CVE finding groups that an open alert (Part A) confirms, or a
 Scout or Trivy result on the deployed image (the Deployment `registry` tag built
 from the default branch). Base images scanned from a Dockerfile in the checkout,
 and Part C findings, stay plans only. Write each ticket back onto its Step 3
-item. Re-check the tickets this store's items carry, and show the route and
-counts before writing. Print the `Tracker:` line in the Step 4 summary.
+item as a `ticket:` line. Re-check the tickets this store's items name, and show
+the route and counts before writing. Print the `Tracker:` line in the Step 4
+summary.
 
-**Launched with `launched as a fan-out agent`** (passed down by `sync`): file,
-search and ask nothing. Print a `Finding key:` line per confirmed group instead,
-in the reference's format, for the fleet-root writer.
+**Launched with `launched as a fan-out agent`** (passed down by `sync`): write
+no ticket and ask nothing. Return the `cve` lane's `Finding lane:` line and the
+`Finding key:` lines instead, per the reference's *In a fan-out*.
 
 ### Self-Check: Confirm Nothing Tracked Was Touched
 
@@ -434,7 +435,7 @@ Docker:       3 images scanned (Scout + Trivy), 10 fixable CVEs → 1 plan item
             (same), OS generation debian13 (same), variant (n/a) → no fix upstream
 Code audit:   4 findings (2 important) → 2 plan items
 Tracker:      compliance route linear (Company / Compliance / Security): filed 1, updated 1, reopened 0, closed 0
-  # or "Tracker: skipped (no issues connection)"; or "Tracker: FAILED (REASON)"; no line for type none
+  # or "Tracker: none (route type none)"; "Tracker: skipped (no issues connection)"; "Tracker: FAILED (REASON): filed N, updated N, reopened N, closed N"
 
 Automated scanning: NONE (no dependabot config, no CI scan)
   -> this audit is a snapshot; pinned tags rot unwatched. Note in the plan

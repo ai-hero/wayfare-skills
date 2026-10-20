@@ -107,13 +107,13 @@ documented where the kind is used.
 lines, same reader, same guards. A value that starts with `-` or carries a
 control character is refused and never used.
 
-Two keys get a shape on top of that, because they reach a command line rather
-than a comparison:
+Some keys get a shape on top of that, because they reach a command line or a
+tracker parameter rather than a comparison:
 
-- **`reach` is `[A-Za-z0-9._-]+`.** It names one tool, and this file tells the
-  agent to go check that the tool is there. A value carrying `;`, `|`, `$(` or a
-  space is a command that probe would run, and refusing a leading `-` does not
-  stop it.
+- **`reach` and `compliance-reach` are `[A-Za-z0-9._-]+`.** Each names one tool,
+  and this file tells the agent to go check that the tool is there. A value
+  carrying `;`, `|`, `$(` or a space is a command that probe would run, and
+  refusing a leading `-` does not stop it.
 - **`issues.at` is shaped by its `type`.** `github` puts a repo there and it
   reaches `gh --repo`, so it is `OWNER/NAME`, a shape that also excludes a host
   qualifier, which would file this repo's work into someone else's GitHub
@@ -121,10 +121,15 @@ than a comparison:
   instead, and holding those to `OWNER/NAME` would refuse the config
   `wayfare-init-repo` itself writes. Passing a shape is not being the right
   destination: an outward-facing filing still has the user name it in-session.
+- **`compliance-type` is `linear`, `github` or `none`**, and `github` only under
+  a main `type: github`, since that route files into the main `at`.
+- **`compliance-team`, `compliance-project` and `compliance-label` are
+  `[A-Za-z0-9 ._:/-]`**, starting with a letter or digit. They reach
+  `gh --label` and `--search` and tracker parameters, and a search runs before
+  the user confirms any write. On a `github` route team and project are refused:
+  GitHub has neither.
 
-`compliance-reach` is a `reach` and has the same shape, for the same reason.
-
-Both rules live in one place, `hero_connection_guard`, and every reader calls
+All of these live in one place, `hero_connection_guard`, and every reader calls
 it. The listing and the field reader each carrying their own copy is not
 hypothetical: they disagreed about `at: None` until a review caught it.
 
@@ -139,17 +144,19 @@ would be a seventh kind that only routes.
 | Key | Holds | When absent |
 | -- | -- | -- |
 | `compliance-type` | the route's tracker (`linear`, `github`, `none`) | the main `type` |
-| `compliance-reach` | the tool that reaches it | the main `reach` |
-| `compliance-team` | the team the tickets are filed in, read against `compliance-type` | the tracker's default |
-| `compliance-project` | the project they belong to | none |
-| `compliance-label` | the label every ticket carries | none |
+| `compliance-reach` | the tool that reaches it | the main `reach`, only when the route's type is the main type; otherwise the lane fails |
+| `compliance-team` | the Linear team the tickets are filed in | the tracker's default; refused on `github` |
+| `compliance-project` | the Linear project they belong to | none; refused on `github` |
+| `compliance-label` | the label every ticket carries and every search filters by | required: a route that files without it fails |
 
 The route names its own tracker because the main one need not match it: a repo
 whose work is in GitHub issues can file its compliance tickets in Linear, and
 team, project and label alone would read as a GitHub issue under a team called
-`Company`. With no `compliance-*` key at all, findings take the main route. A
-`github` route has no repo key of its own and files into the main `at`, so it
-needs a main `type: github`.
+`Company`. That is also why `compliance-reach` does not borrow the main `reach`
+across trackers: `gh` cannot reach Linear. With no `compliance-*` key at all,
+findings take the main tracker, and the label is still required. A `github`
+route has no repo key of its own and files into the main `at`, so it needs a
+main `type: github`. `jira` is not a route type: nothing files there yet.
 
 CVE findings take this route too, not only control findings: Vanta reads both as
 SOC 2 evidence. What gets filed, how a re-run updates instead of duplicating,

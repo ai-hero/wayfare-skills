@@ -1405,12 +1405,13 @@ Close any cross-linked tracker issue with
 `gh issue close ISSUE_NUMBER --repo TARGET_REPO --comment "Merged in PR_URL"`,
 or the Linear MCP equivalent. Use the item's **recorded** repo; for a
 `handoff --repo` item that is not this one. **Never close a finding ticket**:
-one the item's `## Log` names on a `filed` or `updated` line. An audit filed it,
-and a merge is not a cleared scanner. `wayfare-ship-pr`'s Step 7f has already
-commented on it and moved it to In Review, which is as far as a merge takes it
-(`../../references/finding-tickets.md`). 3. Run `hero_ready_items` and report
-what the merge unblocked. Items whose `depends_on` just went green are the
-natural next run.
+one the item's `## Log` names on a `ticket:` line (`docs/PLAN.md`). An audit
+filed it, and a merge is not a cleared scanner. `wayfare-ship-pr`'s Step 7f has
+already commented on it, and moved it to In Review when this repo was the last
+one it lists (Linear only; a GitHub issue stays open). That is as far as a merge
+takes it (`../../references/finding-tickets.md`). 3. Run `hero_ready_items` and
+report what the merge unblocked. Items whose `depends_on` just went green are
+the natural next run.
 
 ### Final Summary
 

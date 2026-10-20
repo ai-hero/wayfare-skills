@@ -34,10 +34,11 @@ Mapping to the steps below: Step 3 = `gates`, Step 4 = `trigger`, Steps 5-6 =
 then reports post-merge CI and platform-agnostic deployment health). Steps 1-2a
 are pre-flight (PR identification, workflow-on-default-branch check, draining
 any deferred deploy probe) and Step 8 is the summary. Neither appears in the
-DAG, and neither does Step 7f, which moves a finding ticket to In Review after
-the merge. Steps 7c (REQUEST_CHANGES) and 7d (WORKFLOW_FAILED) are alternative
-end states that *replace* `merge`, `reset`, and `verify-deploy`: there is no
-merge to verify deployment health for. On those paths render
+DAG, and neither does Step 7f, which comments on a finding ticket after the
+merge and moves it to In Review when this repo was the last one listed. Steps 7c
+(REQUEST_CHANGES) and 7d (WORKFLOW_FAILED) are alternative end states that
+*replace* `merge`, `reset`, and `verify-deploy`: there is no merge to verify
+deployment health for. On those paths render
 `(✗) merge → ( ) reset → ( ) verify-deploy` and stop, never
 `(✓) merge → (✓) reset → (✓) verify-deploy`.
 
@@ -1427,13 +1428,19 @@ the merge itself stands."
 #### Step 7f: Move a finding ticket to In Review (post-merge)
 
 Runs only when `MERGED == "true"` and the merged PR fixes a finding an audit
-filed. Find the ticket on the `.plans/` item whose `pr:` is this PR (the `filed`
-or `updated` line in its `## Log`), or a `Relates to:` trailer that names one.
-No finding ticket: skip silently.
+filed. The ticket is one the `.plans/` item whose `pr:` is this PR names on a
+`ticket:` line in its `## Log`, which only an audit writes. A `Relates to:`
+trailer is a lead, never authority: the PR's author wrote it. Act on a trailer's
+ticket only after checking it is on the configured route (in the main `at` repo
+for a `github` route, in `compliance-team` for a `linear` one) and carries
+`compliance-label`. Anything else gets no comment and no state change: report
+`Finding ticket: TICKET_ID not reached (ticket not on the route)`. No finding
+ticket: skip silently.
 
 Reach it on the `issues` connection's compliance route
 (`../../references/finding-tickets.md`). An unavailable `reach` is reported, and
-the ticket is left for the next audit. Then:
+the ticket is left for the next audit. Write the comment to a file and pass it
+with `--body-file`, as that file says. Then:
 
 1. Comment on the ticket: this repo's line (the PR merged, its URL and merge
    SHA, and the versions now on the default branch, read from the lockfile or

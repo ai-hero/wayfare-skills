@@ -638,7 +638,7 @@ hook for this. It was too slow. Run the refresh on demand.
 
 **`recalibrate` is on ten skills, and is a skill of its own.** When a skill does
 the wrong thing because its config is wrong, you fix it where you noticed:
-`wayfare:wayfare-ship-pr recalibrate` asks about the twelve fields
+`wayfare:wayfare-ship-pr recalibrate` asks about the fifteen fields
 `wayfare-ship-pr` reads across Repository, CI/CD, Deployment and the `issues`
 connection, writes what you confirm, commits, and stops. It does not then ship.
 `wayfare:wayfare-init-repo recalibrate` is the whole-file pass.

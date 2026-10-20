@@ -33,9 +33,10 @@ them in this session's working tree.
 
 **This skill never edits source code, dependency files, Dockerfiles, or
 workflows. Read-only, always.** Its only writes are plan items under the
-git-ignored `.plans/` store. If you catch yourself about to run `npm install`,
-edit a Dockerfile, or `git commit`, stop. That command belongs *inside* a plan
-item's execution recipe.
+git-ignored `.plans/` store and the finding tickets Step 3a files through the
+`issues` connection. If you catch yourself about to run `npm install`, edit a
+Dockerfile, or `git commit`, stop. That command belongs *inside* a plan item's
+execution recipe.
 
 ## Arguments
 
@@ -74,8 +75,9 @@ hero_ready_items "$(hero_work_store)"
 Read `HERO.md` for **Deployment** (registry for Docker Scout), **Projects**
 (languages/frameworks → which dependency files and which code-audit angles
 apply), and **Code Quality** (existing tooling so plans don't re-propose what a
-linter already enforces). Read existing .plans items so new plans reference or
-supersede rather than duplicate.
+linter already enforces). Read the **`issues` connection** and its compliance
+route (`../../docs/CONNECTIONS.md`) for Step 3a. Read existing .plans items so
+new plans reference or supersede rather than duplicate.
 
 ### Step 1: Detect Repository Context
 
@@ -389,6 +391,22 @@ What can break, and the rollback (e.g., major-bump risk: pin back and mark block
 A plan an executor cannot follow without asking questions is not done. Rewrite
 it rather than handing it off vague.
 
+## Step 3a: File Confirmed Findings to the Tracker
+
+Read `../../references/finding-tickets.md` in full first. It owns the route,
+search, ticket body, risk-acceptance and workaround tickets, and closing. This
+audit hands it the CVE finding groups that an open alert (Part A) confirms, or a
+Scout or Trivy result on the deployed image (the Deployment `registry` tag built
+from the default branch). Base images scanned from a Dockerfile in the checkout,
+and Part C findings, stay plans only. Write each ticket back onto its Step 3
+item as a `ticket:` line. Re-check the tickets this store's items name, and show
+the route and counts before writing. Print the `Tracker:` line in the Step 4
+summary.
+
+**Launched with `launched as a fan-out agent`** (passed down by `sync`): write
+no ticket and ask nothing. Return the `cve` lane's `Finding lane:` line and the
+`Finding key:` lines instead, per the reference's *In a fan-out*.
+
 ### Self-Check: Confirm Nothing Tracked Was Touched
 
 Before printing the Step 4 summary, verify the Hard Rule actually held. Do not
@@ -416,6 +434,8 @@ Docker:       3 images scanned (Scout + Trivy), 10 fixable CVEs → 1 plan item
   Deferred: CVE-XXXX-XXXXX — axes checked: tag refresh (same), runtime major
             (same), OS generation debian13 (same), variant (n/a) → no fix upstream
 Code audit:   4 findings (2 important) → 2 plan items
+Tracker:      compliance route linear (Company / Compliance / Security): filed 1, updated 1, reopened 0, closed 0
+  # or "Tracker: none (route type none)"; "Tracker: skipped (no issues connection)"; "Tracker: FAILED (REASON): filed N, updated N, reopened N, closed N"
 
 Automated scanning: NONE (no dependabot config, no CI scan)
   -> this audit is a snapshot; pinned tags rot unwatched. Note in the plan
@@ -428,11 +448,11 @@ Source files modified: NONE (read-only by contract)
 
 Then return to wayfare. The summary above is what its `wayfare-audit-security`
 stage reads back: every `skipped (unavailable)` and every `Deferred:` line
-becomes an `unverified` row in the sync report, and the emitted items are
-ready-marked in its planning postflight. Print no terminal next step of your
-own, because the stage after this one is wayfare's to announce. (Run standalone,
-the next step is `wayfare:wayfare-sync-plan`, which is also what ready-marks the
-items.)
+becomes an `unverified` row in the sync report, a `Tracker: FAILED` line becomes
+a failure row, and the emitted items are ready-marked in its planning
+postflight. Print no terminal next step of your own, because the stage after
+this one is wayfare's to announce. (Run standalone, the next step is
+`wayfare:wayfare-sync-plan`, which is also what ready-marks the items.)
 
 ## Safety Notes
 
@@ -448,6 +468,8 @@ items.)
 - Always specify rescanning with **both** Scout and Trivy in a Docker plan
   item's verification. Neither scanner alone is sufficient (see B1).
 - `.plans/` is private and git-ignored. Never commit or push it.
+- Never close a finding ticket on a part that was skipped. Absence of a result
+  from a scanner that did not run is not evidence the CVE is gone.
 
 ### Before a plan says "no fix available"
 

@@ -179,7 +179,8 @@ subtasks, never tasks.** Task order comes from the journey.
 
 **The `wayfare-audit-security` stage, in both modes, after the map.** Invoke
 `wayfare:wayfare-audit-security all` through the active client's skill mechanism
-with the line `launched by wayfare`. It is read-only and writes `type: task` +
+with the line `launched by wayfare`, and with `launched as a fan-out agent` too
+when this run was launched with it. It edits no source: it writes `type: task` +
 `shape: dependency` (or `architecture`) items at `status: planning`, each
 carrying an execution recipe, a verification, and its failure modes, so those
 items skip the grill in *Plan the set* and go straight to the ready-mark. It
@@ -189,7 +190,13 @@ parts ran. Read its summary back by its fixed spellings: a
 `Dependabot alerts: skipped (unavailable)` line, a
 `Trivy: skipped (unavailable)` or `Docker/Scout: skipped (unavailable)` line,
 and every `Deferred:` line. Each becomes an `unverified` row in this run's
-report (a part that ran on one scanner is partial, not clean), never "clean".
+report (a part that ran on one scanner is partial, not clean), never "clean". It
+also files its confirmed CVE findings to the `issues` connection's compliance
+route ([finding-tickets.md](finding-tickets.md)). Carry its `Tracker:` line into
+this run's report as written: `skipped (no issues connection)` and
+`none (route type none)` are report lines, and `FAILED` is a failure row for the
+lane, never dropped. Launched as a fan-out agent, it returns `Finding lane:` and
+`Finding key:` lines instead; carry them into the report unchanged.
 
 **The `comments` stage: prose that has gone false about the code.** Runs after
 `wayfare-audit-security`, before `compliance`, in both modes.
@@ -294,6 +301,34 @@ an item like any other: the copy goes, the register lives in the fleet's
 checkout. An `ERROR` cell is `unverified`, the checker broke, which is a finding
 about the engine, not about this repo, and never a proposed item. A repo outside
 any fleet says so in one line and audits against the baseline only.
+
+**After the accepted items are written, file the confirmed control findings**
+through [finding-tickets.md](finding-tickets.md), on the `issues` connection's
+compliance route. The run above reads the checkout as it sits, so it proposes
+candidates. Confirm them at merged state before filing:
+
+```bash
+"$WAYFARE_ROOT/scripts/audit.py" \
+  --repo . --json > "$SCRATCH/compliance-main.jsonl" 2> "$SCRATCH/compliance-main.err"; COMPLIANCE_MAIN_RC=$?
+```
+
+That run snapshots `origin/main`, the engine's default. Read its rc the way the
+first call's is read: rc 0, or rc 2 (a checker raised), files the `FAIL` cells
+and lists every `ERROR` cell as `unverified`, never filed and never cleared; any
+other rc means the engine did not run, so file nothing and report
+`Tracker: FAILED (engine at origin/main: REASON)` with the zero count tuple.
+
+File only the checks that are `FAIL` there, one ticket per **check** (the items
+above stay one per control), and write each ticket back onto the item for its
+control as a `ticket:` line. A check that passes at origin/main removes this
+repo's line from its ticket. Closing a control ticket is the family audit's in a
+fleet (`improve.md`), because only it sees the whole failing set; outside a
+fleet this repo is the whole set, and this stage closes it.
+
+**Launched with `launched as a fan-out agent`**: run the origin/main engine call
+above, then write no ticket and ask nothing. Return the `Finding lane:` line for
+the `check` lane and a `Finding key:` line per failing check and per `cleared`
+ticket (finding-tickets.md, *In a fan-out*), beside the security stage's lines.
 
 **The `local` stage: this repo's own `wayfare: sync` skills.** For each line
 `hero_local_skills "$ROOT" sync` printed **and accepted at the trust prompt**

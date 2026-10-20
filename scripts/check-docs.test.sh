@@ -176,6 +176,13 @@ check "a kinds count in another wording is not a claim" "" "$(run)"
 fixture; printf '\nEleven skills carry the verb.\n' >> "$R/README.md"
 check "recalibrate count claim" "count" "$(checks_of)"
 
+# mdformat wraps a count claim across lines; a per-line match never saw the
+# ship-pr claim in README.md, so it drifted unchecked.
+fixture; printf '\nIt asks about the\nthree fields `wayfare-ship-pr` reads.\n' >> "$R/README.md"
+check "a count claim wrapped across lines is still checked" "count" "$(checks_of)"
+fixture; printf '\nIt asks about the\none fields `wayfare-ship-pr` reads.\n' >> "$R/README.md"
+check "a correct count claim wrapped across lines is clean" "" "$(run)"
+
 fixture; printf 'caf\xe9\n' > "$R/latin1.md"
 check "a non-UTF-8 file is reported, not a crash" "read" "$(checks_of)"
 

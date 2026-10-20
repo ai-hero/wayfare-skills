@@ -29,7 +29,12 @@ The fleet check is first and is a hard stop:
 
 If the command prints `FLEET_ROOT`, stop this repo procedure. Follow **At the
 fleet root** in `../../docs/FLEET-MD.md` for the repos the user selects. Do not
-plan against the fleet folder itself.
+plan against the fleet folder itself. Add the line
+`launched as a fan-out agent: return finding keys, file no tickets` to each
+repo's launch prompt. After every agent has reported, this session is the single
+writer: file the CVE and control `Finding key:` lines once, through *In a
+fan-out* in `../../references/finding-tickets.md`. It changes a repo's line on a
+ticket only when that repo's `Finding lane:` line says `ran`.
 
 Progress:
 
@@ -70,7 +75,9 @@ Progress:
   longer wants, where each item is accepted or dropped with a reason
 - [ ] 6. Confirm the proposal table with the user, row by row, including each
   task's proposed `priority`
-- [ ] 7. Write the accepted items at `status: accepted` (`docs/PLAN.md` format)
+- [ ] 7. Write the accepted items at `status: accepted` (`docs/PLAN.md` format).
+  Then file the confirmed compliance findings to the `issues` connection
+  (`../../references/finding-tickets.md`), as the `compliance` stage says
 - [ ] 8. Propose goals over what was planned. This skill writes goals but never
   authorizes them
 - [ ] 9. Planning postflight (`../../references/planning.md`)

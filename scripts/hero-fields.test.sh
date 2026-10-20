@@ -337,6 +337,67 @@ OUT_P=$("$FIELDS" wayfare-check-preflight "$CR")
 check "a heading containing a slash still resolves to its section" \
   "(unset)" "$(printf '%s' "$OUT_P" | awk -F'\t' '$1 == "CI/CD" && $2 == "auto-approve-installed" { print $3 }')"
 
+# The issues block's compliance route is judged against its own type. A main
+# `type: none` with a Linear compliance route is the case that matters: read
+# against `type`, every compliance row is (n/a) and recalibrate never asks.
+printf '# Hero\n\n## Connections\n\n### issues\n\n- type: none\n- compliance-type: linear\n- compliance-team: Company\n' > "$CR2/HERO.md"
+OUT_R=$("$FIELDS" wayfare-audit-compliance "$CR2")
+check "a set compliance-type reports its value under type none" \
+  "linear" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-type" { print $3 }')"
+check "a compliance key is read against compliance-type" \
+  "Company" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-team" { print $3 }')"
+check "an unset compliance key under a set route is a question" \
+  "(unset)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-label" { print $3 }')"
+printf '# Hero\n\n## Connections\n\n### issues\n\n- type: none\n' > "$CR2/HERO.md"
+OUT_R=$("$FIELDS" wayfare-audit-security "$CR2")
+check "no compliance-type defaults to the main type" \
+  "(n/a: type=none)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-type" { print $3 }')"
+check "and so do the route's other keys" \
+  "(n/a: type=none)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-project" { print $3 }')"
+printf '# Hero\n\n## Connections\n\n### issues\n\n- type: github\n- at: acme/web\n- compliance-type: -linear\n- compliance-reach: linear\n' > "$CR2/HERO.md"
+OUT_R=$("$FIELDS" wayfare-sync-plan "$CR2")
+check "a refused compliance-type is (refused)" \
+  "(refused)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-type" { print $3 }')"
+check "a refused compliance-type blocks the route's other keys" \
+  "(n/a: compliance-type=refused)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-reach" { print $3 }')"
+
+# A main tracker with the compliance route declared absent: the route's keys
+# are moot, and the label names the key that answered.
+printf '# Hero\n\n## Connections\n\n### issues\n\n- type: linear\n- at: acme\n- compliance-type: none\n' > "$CR2/HERO.md"
+OUT_R=$("$FIELDS" wayfare-sync-plan "$CR2")
+check "compliance-type none answers for the route under a linear main type" \
+  "(n/a: compliance-type=none)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-team" { print $3 }')"
+check "and the main block's keys are still read" \
+  "acme" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "at" { print $3 }')"
+# A refused main type with no route of its own blocks the route too.
+printf '# Hero\n\n## Connections\n\n### issues\n\n- type: -github\n' > "$CR2/HERO.md"
+OUT_R=$("$FIELDS" wayfare-sync-plan "$CR2")
+check "a refused main type blocks an unset compliance-type" \
+  "(n/a: type=refused)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-type" { print $3 }')"
+# compliance-reach is probed as a command, so the table reports its refusal.
+printf '# Hero\n\n## Connections\n\n### issues\n\n- type: linear\n- at: acme\n- compliance-reach: linear;sh\n' > "$CR2/HERO.md"
+OUT_R=$("$FIELDS" wayfare-sync-plan "$CR2")
+check "a compliance-reach carrying a command reports (refused)" \
+  "(refused)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-reach" { print $3 }')"
+# A github route has no team or project: unset is the answer, set is a defect.
+printf '# Hero\n\n## Connections\n\n### issues\n\n- type: github\n- at: acme/web\n- compliance-type: github\n- compliance-project: Compliance\n' > "$CR2/HERO.md"
+OUT_R=$("$FIELDS" wayfare-sync-plan "$CR2")
+check "a github route's unset team is n/a" \
+  "(n/a: compliance-type=github)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-team" { print $3 }')"
+check "a github route's set project is refused" \
+  "(refused)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-project" { print $3 }')"
+# A github route under a linear main type has no repo to file into.
+printf '# Hero\n\n## Connections\n\n### issues\n\n- type: linear\n- at: acme\n- compliance-type: github\n' > "$CR2/HERO.md"
+OUT_R=$("$FIELDS" wayfare-sync-plan "$CR2")
+check "a github route under a non-github main type is refused" \
+  "(refused)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-type" { print $3 }')"
+check "and blocks the route's other keys" \
+  "(n/a: compliance-type=refused)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-label" { print $3 }')"
+printf '# Hero\n\n## Connections\n\n### issues\n\n- type: linear\n- at: acme\n- compliance-type: jira\n' > "$CR2/HERO.md"
+OUT_R=$("$FIELDS" wayfare-sync-plan "$CR2")
+check "a compliance-type outside linear, github, none is refused" \
+  "(refused)" "$(printf '%s' "$OUT_R" | awk -F'\t' '$1 == "Connections::issues" && $2 == "compliance-type" { print $3 }')"
+
 if [ "$FAIL" -gt 0 ]; then
   echo "hero-fields: $PASS passed, $FAIL FAILED"
   exit 1
@@ -344,7 +405,7 @@ fi
 # Floor on the case count, for the reason hero-lib.test.sh carries one: the
 # suite runs without `set -e`, so a block that stops executing reports zero
 # failures and exits 0.
-MIN_CASES=40
+MIN_CASES=47
 if [ "$PASS" -lt "$MIN_CASES" ]; then
   echo "hero-fields: only $PASS cases ran, expected >= $MIN_CASES — a block stopped executing" >&2
   exit 1

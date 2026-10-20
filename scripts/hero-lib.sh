@@ -148,9 +148,9 @@ hero_connection_guard() { # KIND KEY VALUE [TYPE]
     # that it is there: `command -v $REACH`, `$REACH --version`. A value
     # carrying `;`, `|`, `$(` or a space is a command that probe would run, and
     # refusing a leading `-` (all hero_md_field does) does not stop it.
-    reach)
+    reach|compliance-reach)
       printf '%s' "$3" | grep -qE '^[A-Za-z0-9._-]+$' && return 0
-      echo "hero_connection: refusing $1.reach '$3'; a reach names one tool, [A-Za-z0-9._-] only" >&2
+      echo "hero_connection: refusing $1.$2 '$3'; a reach names one tool, [A-Za-z0-9._-] only" >&2
       return 2 ;;
     at)
       [ "$1" = issues ] || return 0
@@ -174,6 +174,33 @@ hero_connection_guard() { # KIND KEY VALUE [TYPE]
           echo "hero_connection: refusing issues.at '$3'; it reaches 'gh --repo' and must be OWNER/NAME" >&2
           return 2 ;;
       esac ;;
+    compliance-type)
+      # A closed list, because the filing procedure knows exactly these.
+      # `jira` is out: nothing files there yet, and a route nothing can file
+      # into must fail loudly, not read as configured.
+      case "$(printf '%s' "$3" | tr '[:upper:]' '[:lower:]')" in
+        none|linear) return 0 ;;
+        github)
+          # A github route has no repo key of its own; it files into the main
+          # `at`, which is only an OWNER/NAME under a main `type: github`.
+          [ "$(printf '%s' "${4:-}" | tr '[:upper:]' '[:lower:]')" = github ] && return 0
+          echo "hero_connection: refusing issues.compliance-type 'github'; a github route files into the main 'at', so the main type must be github" >&2
+          return 2 ;;
+      esac
+      echo "hero_connection: refusing issues.compliance-type '$3'; it is linear, github or none" >&2
+      return 2 ;;
+    compliance-team|compliance-project|compliance-label)
+      # These reach `gh --label` and `--search` argv and tracker parameters,
+      # from a HERO.md a clone controls, and are used before the destination
+      # is confirmed: a search runs first. A closed charset keeps `$(`, a
+      # backtick, `;`, `|` and quotes out of every one of those.
+      if [ "$2" != compliance-label ] && [ "$(printf '%s' "${4:-}" | tr '[:upper:]' '[:lower:]')" = github ]; then
+        echo "hero_connection: refusing issues.$2 '$3'; a github route has no team or project" >&2
+        return 2
+      fi
+      printf '%s' "$3" | grep -qE '^[A-Za-z0-9][A-Za-z0-9 ._:/-]*$' && return 0
+      echo "hero_connection: refusing issues.$2 '$3'; a name is [A-Za-z0-9 ._:/-]" >&2
+      return 2 ;;
   esac
   return 0
 }
@@ -184,9 +211,15 @@ hero_connection() { # KIND KEY [ROOT]
   value=$(hero_md_field "$root/HERO.md" "$2" "### $1" "## Connections") || return $?
   # The block's own `type` decides what shape `at` may take. Read straight from
   # hero_md_field, never back through hero_connection, which would recurse.
-  if [ "$2" = at ]; then
-    ctype=$(hero_md_field "$root/HERO.md" type "### $1" "## Connections" 2>/dev/null)
-  fi
+  # The compliance route's names are judged against the route's own type,
+  # which defaults to the main one.
+  case "$2" in
+    at|compliance-type)
+      ctype=$(hero_md_field "$root/HERO.md" type "### $1" "## Connections" 2>/dev/null) ;;
+    compliance-team|compliance-project|compliance-label)
+      ctype=$(hero_md_field "$root/HERO.md" compliance-type "### $1" "## Connections" 2>/dev/null) ||
+        ctype=$(hero_md_field "$root/HERO.md" type "### $1" "## Connections" 2>/dev/null) ;;
+  esac
   hero_connection_guard "$1" "$2" "$value" "${ctype:-}" || return 2
   printf '%s' "$value"
 }
@@ -2278,5 +2311,9 @@ ISSUE ID — when the task starts with an issue ID matching
   appears in the diff or draft commit message, prefer ISSUE-ID-SLUG.
   The match must be anchored at position 0, so "Fix CVE-2024-1234 in auth"
   is NOT an issue ID and falls through to TYPE/SLUG.
+  A finding ticket (an audit filed it; the item's Log names it on a
+  `ticket:` line) is never the ISSUE ID, in the branch or the PR title:
+  Linear's GitHub automation moves a ticket named there to Done at merge.
+  It goes in the `Relates to:` trailer only.
 POLICY
 }

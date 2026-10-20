@@ -15,6 +15,7 @@ import pathlib
 import json
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 
@@ -1326,6 +1327,53 @@ class ReferenceAssets(unittest.TestCase):
         with audit.reference_assets() as note:
             self.assertEqual(self.ci20("v2"), audit.MANUAL)
         self.assertIn("absent", note)
+
+
+class ExtractTar(unittest.TestCase):
+    """_extract_tar is the only guard on 3.9.6, where `filter="data"` does not
+    exist; run this suite under /usr/bin/python3 as well."""
+
+    @staticmethod
+    def tar(*entries):
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as t:
+            for name, kind in entries:
+                info = tarfile.TarInfo(name)
+                info.type = kind
+                info.mode = 0o755 if kind == tarfile.DIRTYPE else 0o644
+                if kind == tarfile.SYMTYPE:
+                    info.linkname = "/etc/passwd"
+                data = b"x" if kind == tarfile.REGTYPE else b""
+                info.size = len(data)
+                t.addfile(info, io.BytesIO(data))
+        return buf.getvalue()
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.tmp.name)
+        self.dest = self.root / "dest"
+        self.dest.mkdir()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_normal_assets_archive_extracts(self):
+        data = self.tar(("assets/", tarfile.DIRTYPE), ("assets/a/", tarfile.DIRTYPE),
+                        ("assets/a/caller.yaml", tarfile.REGTYPE))
+        audit._extract_tar(data, self.dest, "test")
+        self.assertTrue((self.dest / "assets" / "a" / "caller.yaml").is_file())
+
+    def test_traversal_member_raises_and_writes_nothing(self):
+        data = self.tar(("assets/ok.yaml", tarfile.REGTYPE), ("../escape.txt", tarfile.REGTYPE))
+        with self.assertRaisesRegex(RuntimeError, "escape.txt"):
+            audit._extract_tar(data, self.dest, "test")
+        self.assertFalse((self.root / "escape.txt").exists())
+        self.assertEqual(list(self.dest.iterdir()), [], "validated before anything is written")
+
+    def test_absolute_and_link_members_raise(self):
+        for entry in (("/tmp/abs.txt", tarfile.REGTYPE), ("assets/link", tarfile.SYMTYPE)):
+            with self.assertRaises(RuntimeError, msg=entry):
+                audit._extract_tar(self.tar(entry), self.dest, "test")
 
 
 class SCAN01(unittest.TestCase):

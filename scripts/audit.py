@@ -2496,11 +2496,26 @@ def _assets_at_origin(plugin, dest):
                        cwd=plugin, capture_output=True, env=_ENV, timeout=60)
     if p.returncode:
         raise RuntimeError(f"git archive {ref} in {plugin} failed: {p.stderr.decode().strip()}")
-    with tarfile.open(fileobj=io.BytesIO(p.stdout)) as t:
-        # `filter` is 3.12+ (and late 3.9-3.11 patch releases); macOS's
-        # /usr/bin/python3 is 3.9.6 and raises TypeError on the keyword.
-        t.extractall(dest, **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
+    _extract_tar(p.stdout, dest, f"git archive {ref} in {plugin}")
     return assets, f"{ref} @ {sha} in {plugin}{stale}"
+
+
+def _extract_tar(data, dest, origin):
+    """Extract the tar `data` under `dest`, refusing anything but regular files
+    and directories with relative names that stay inside `dest`.
+
+    The member check is the guard on every Python: `filter="data"` exists only
+    on 3.12+ and late 3.9-3.11 patch releases, and macOS's /usr/bin/python3 is
+    3.9.6, where passing it raises TypeError. Do not drop `members=` for the
+    filter alone; that leaves 3.9.6 unguarded and semgrep flags it."""
+    with tarfile.open(fileobj=io.BytesIO(data)) as t:
+        members = t.getmembers()
+        for m in members:
+            parts = pathlib.PurePosixPath(m.name).parts
+            if not (m.isreg() or m.isdir()) or m.name.startswith("/") or ".." in parts:
+                raise RuntimeError(f"{origin} holds an unsafe member {m.name!r}; nothing extracted")
+        t.extractall(dest, members=members,
+                     **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
 
 
 class Unreadable(Exception):

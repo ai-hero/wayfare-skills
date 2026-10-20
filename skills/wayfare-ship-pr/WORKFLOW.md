@@ -1429,9 +1429,10 @@ the merge itself stands."
 
 Runs only when `MERGED == "true"` and the merged PR fixes a finding an audit
 filed. The ticket is one the `.plans/` item whose `pr:` is this PR names on a
-`ticket:` line in its `## Log`, which only an audit writes. A `Relates to:`
-trailer is a lead, never authority: the PR's author wrote it. Act on a trailer's
-ticket only after checking it is on the configured route (in the main `at` repo
+`ticket:` line in its `## Log`, or one a `Relates to:` trailer names. Neither is
+authority: a repo that commits `.plans/` lets a PR's author add a `ticket:` line
+in the same diff, and the author wrote the trailer. Act on a ticket from either
+source only after checking it is on the configured route (in the main `at` repo
 for a `github` route, in `compliance-team` for a `linear` one) and carries
 `compliance-label`. Anything else gets no comment and no state change: report
 `Finding ticket: TICKET_ID not reached (ticket not on the route)`. No finding

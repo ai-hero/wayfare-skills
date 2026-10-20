@@ -1358,12 +1358,12 @@ def _node_majors(r):
 _SCRIPT_PATH = re.compile(r"(?<![\w./-])((?:\./)?[\w.-]+(?:/[\w.-]+)*\.(?:sh|bash|py|mjs|cjs|js|ts))\b")
 
 
-def _run_lines(w):
+def _run_lines(text):
     """The `run:` bodies of a workflow, or its whole text when it will not
     parse (a script path in a comment then counts, which only widens what is
     read, never what passes)."""
     try:
-        doc = yaml.safe_load(w.read_text())
+        doc = yaml.safe_load(text)
         jobs = doc.get("jobs") or {}
         return [
             st["run"]
@@ -1371,7 +1371,7 @@ def _run_lines(w):
             for st in j.get("steps") or [] if isinstance(st, dict) and isinstance(st.get("run"), str)
         ]
     except (yaml.YAMLError, AttributeError):
-        return [w.read_text()]
+        return [text]
 
 
 def _recipe_body(justfile, name):
@@ -1404,7 +1404,7 @@ def _ci_asserts_node(r):
         if "node majors agree" in text:
             return True
         units = [text]
-        for run in _run_lines(w):
+        for run in _run_lines(text):
             units += _script_texts(r, run)
             for name in re.findall(r"(?<![\w-])just\s+(?:--\S+\s+)*([\w-]+)", run):
                 body = _recipe_body(justfile, name)

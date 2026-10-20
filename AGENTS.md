@@ -79,7 +79,9 @@ while `auto-approve.yaml` is the fleet's.
 - **A folder of sibling checkouts is a fleet, not a project.** `FLEET.md` at its
   top maps it ([docs/FLEET-MD.md](./docs/FLEET-MD.md)); every repo skill tests
   for it in Step 0 and fans out instead of running against the folder. New
-  skills get the check from `scripts/new-skill.sh`.
+  skills get the check from `scripts/new-skill.sh`. An agent that needs
+  something from a sibling sends a message rather than reaching into that repo
+  directly; see [docs/MESSAGES.md](./docs/MESSAGES.md).
 
 - **Work is concurrent, so rebase before you judge.** Other sessions and other
   people merge underneath every PR. Before a review, an approval, or a merge,
@@ -160,7 +162,3 @@ underneath every open PR. Before a review, an approval, or a merge, rebase the
 PR onto the current default branch and confirm it can be done (no conflict,
 checks green on the rebased head); never review, approve, or merge a stale head.
 Rebase before the approval, not after it: approvals are dismissed on push.
-
-An agent working in one checkout that needs something from a sibling sends a
-message rather than reaching into that repo directly; see
-[docs/MESSAGES.md](./docs/MESSAGES.md).

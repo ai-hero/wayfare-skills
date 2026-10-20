@@ -397,8 +397,8 @@ withdrawn instead of finding an empty inbox and no explanation.
 
 ## Races
 
-Concurrency here is not hypothetical: goal turns fan out subagents, and two
-sessions in one repo is ordinary.
+Concurrency here is not hypothetical: two sessions in one repo is ordinary, and
+other people merge underneath every PR.
 
 - **Torn reads.** A recipient globbing `inbox/*.md` can read a file mid-write.
   Write to a temp name in the same directory and `mv` it into place, rename is

@@ -1026,16 +1026,68 @@ def _(r):
     return (FAIL, f"{len(bad)}/{len(wfs)} workflows lack it") if bad else (PASS, "")
 
 
+# What makes two runs of one workflow race: each of these writes somewhere
+# both runs share (a registry, a tag, a cache, a deploy target).
+_RACE_SIGNAL = re.compile(
+    r"\bpush:\s*true\b|\bdocker\s+push\b|\bgit\s+push\b|\bgit\s+tag\b"
+    r"|\bcache-to:|\bactions/cache@"
+)
+
+
+def _job_races(job):
+    """Does this job carry a signal that two concurrent runs would collide?"""
+    if not isinstance(job, dict):
+        return False
+    if job.get("environment") or "deploy" in str(job.get("uses", "")).lower():
+        return True
+    return bool(_RACE_SIGNAL.search(yaml.safe_dump(job, width=10**9)))
+
+
 @check("CI-08")
 def _(r):
     wfs = workflows(r)
     if not wfs:
         return NA, "no workflows"
-    missing = [
-        w.name for w in wfs
-        if not re.search(r"^concurrency:", w.read_text(), re.M) and w.stem != "auto-approve"
-    ]
-    return (FAIL, ",".join(missing)) if missing else (PASS, "")
+    # Concurrency is the rule's remedy for a race, not a virtue of its own: a
+    # workflow that only reads has nothing to serialise, and demanding the key
+    # there buys a block that exists to satisfy a grep. So it is required only
+    # where a race signal is present. GitHub accepts the key at the workflow
+    # top or on a job, and a repo that scopes it per racing job is following
+    # the rule. The auto-approve exemption is the same reasoning applied by
+    # name: it is a reusable caller with no signal of its own.
+    missing, racing = [], 0
+    for w in wfs:
+        text = w.read_text()
+        if w.stem == "auto-approve":
+            continue
+        try:
+            doc = yaml.safe_load(text)
+        except yaml.YAMLError:
+            doc = None
+        if not isinstance(doc, dict):
+            # Unparsable: judge the text, which is what this check did before.
+            if _RACE_SIGNAL.search(uncommented(text)):
+                racing += 1
+                if not re.search(r"^concurrency:", text, re.M):
+                    missing.append(w.name)
+            continue
+        jobs = doc.get("jobs") if isinstance(doc.get("jobs"), dict) else {}
+        racers = [j for j in jobs.values() if _job_races(j)]
+        if not racers:
+            continue
+        racing += 1
+        if doc.get("concurrency"):
+            continue
+        if not all(isinstance(j, dict) and j.get("concurrency") for j in racers):
+            missing.append(w.name)
+    if missing:
+        return FAIL, ",".join(missing)
+    if not racing:
+        # Nothing races. A repo that declares concurrency anyway follows the
+        # rule, so it keeps its PASS; only a repo with neither is n/a.
+        declared = any(re.search(r"^\s*concurrency:", uncommented(w.read_text()), re.M) for w in wfs)
+        return (PASS, "") if declared else (NA, "no workflow carries a race signal")
+    return PASS, ""
 
 
 @check("CI-09")
@@ -1152,17 +1204,21 @@ def _(r):
         return NA, "no Justfile"
     t = f.read_text()
     # Split by what the recipe presupposes, not by importance. test/lint/
-    # typecheck/clean/format describe work any repo has; dev-stack, health and
-    # build describe a service you can stand up, probe, and compile. A repo
-    # with neither a UI nor a backend has nothing to put in those three, so
-    # demanding them buys an empty recipe that exists to satisfy a grep —
-    # which is worse than the gap, because the next reader believes it.
+    # typecheck/clean/format describe work any repo has. build describes
+    # something you compile, so it keeps the ui/backend/image predicate.
+    # dev-stack and health describe a stack you can stand up and probe, which
+    # exists only where a dev compose file or a prod image does: a Go library
+    # with a CLI has a backend by has_backend's reckoning and nothing to put
+    # in them, so demanding them buys an empty recipe that exists to satisfy a
+    # grep, which is worse than the gap because the next reader believes it.
     #
     # Same shape as the AUTH-01 / UI-01 / HLT-01 guards: absent subsystem is
     # n/a, not a violation.
     need = ["test", "lint", "typecheck", "clean", "format"]
     if has_ui(r) or has_backend(r) or (r / "Dockerfile.prod").is_file():
-        need += ["dev-stack", "health", "build"]
+        need.append("build")
+    if yml(r, "docker-compose.dev").is_file() or (r / "Dockerfile.prod").is_file():
+        need += ["dev-stack", "health"]
     missing = [n for n in need if not re.search(rf"^{re.escape(n)}\b.*:", t, re.M)]
     return (FAIL, "no " + ",".join(missing)) if missing else (PASS, "")
 
@@ -1299,6 +1355,66 @@ def _node_majors(r):
     return out
 
 
+_SCRIPT_PATH = re.compile(r"(?<![\w./-])((?:\./)?[\w.-]+(?:/[\w.-]+)*\.(?:sh|bash|py|mjs|cjs|js|ts))\b")
+
+
+def _run_lines(w):
+    """The `run:` bodies of a workflow, or its whole text when it will not
+    parse (a script path in a comment then counts, which only widens what is
+    read, never what passes)."""
+    try:
+        doc = yaml.safe_load(w.read_text())
+        jobs = doc.get("jobs") or {}
+        return [
+            st["run"]
+            for j in jobs.values() if isinstance(j, dict)
+            for st in j.get("steps") or [] if isinstance(st, dict) and isinstance(st.get("run"), str)
+        ]
+    except (yaml.YAMLError, AttributeError):
+        return [w.read_text()]
+
+
+def _recipe_body(justfile, name):
+    """The indented body of one Justfile recipe, "" when it is not there."""
+    m = re.search(rf"^{re.escape(name)}\b[^\n]*:[^\n]*\n((?:[ \t]+[^\n]*\n?|\n)*)", justfile, re.M)
+    return m.group(1) if m else ""
+
+
+def _script_texts(r, text):
+    """Contents of repo files that `text` invokes by path, one hop."""
+    out = []
+    for m in _SCRIPT_PATH.finditer(text):
+        f = (r / m.group(1)).resolve()
+        if f.is_file() and r.resolve() in f.parents:
+            out.append(f.read_text(errors="replace"))
+    return out
+
+
+def _ci_asserts_node(r):
+    """Does CI assert that the Node pins agree? The literal phrase is one
+    spelling. The rule is that some step in CI reads the .nvmrc and compares
+    it with the distroless/nodejs image, wherever that step lives: in the
+    workflow, in a script a `run:` line invokes, or in a `just` recipe it
+    calls. One hop, so a wrapper script that shells out to another is not
+    followed, and an agreeing repo with no such comparison still fails."""
+    jf = r / "Justfile"
+    justfile = jf.read_text() if jf.is_file() else ""
+    for w in workflows(r):
+        text = w.read_text()
+        if "node majors agree" in text:
+            return True
+        units = [text]
+        for run in _run_lines(w):
+            units += _script_texts(r, run)
+            for name in re.findall(r"(?<![\w-])just\s+(?:--\S+\s+)*([\w-]+)", run):
+                body = _recipe_body(justfile, name)
+                units.append(body)
+                units += _script_texts(r, body)
+        if any(".nvmrc" in u and "distroless/nodejs" in u for u in units):
+            return True
+    return False
+
+
 @check("CTR-01")
 def _(r):
     pins = _node_majors(r)
@@ -1310,7 +1426,7 @@ def _(r):
         return FAIL, f"majors disagree: {detail}"
     # Agreement is necessary but not sufficient: CI must ASSERT it, or the
     # next edit silently re-splits build-on-N / run-on-M.
-    asserts = any("node majors agree" in w.read_text() for w in workflows(r))
+    asserts = _ci_asserts_node(r)
     if not asserts:
         return FAIL, f"all on {vals.pop()}, but CI does not assert it"
     return PASS, f"node {vals.pop()}, asserted in CI"
@@ -1441,7 +1557,7 @@ _ROOT_OK = re.compile(
     r"(README|CLAUDE|AGENTS|HERO|DESIGN|CONTROLS|CHECKS|CONSISTENCY|CONTRIBUTING|SECURITY|CHANGELOG|LICENSE)"
     r"(\.(md|yaml|yml|txt))?"
     # Harness + build files.
-    r"|Justfile|Dockerfile.*|docker-compose.*|go\.work.*|dev\.sh|supervisor\.mjs"
+    r"|Justfile|Dockerfile.*|docker-compose.*|go\.work.*|go\.(mod|sum)|dev\.sh|supervisor\.mjs"
     r"|package(-lock)?\.json|tsconfig.*\.json|components\.json|registry\.json"
     r"|vite\.config\.ts|playwright\.config\.ts|eslint.*\.(js|mjs|ts)|firebase\.json"
     r"|uv\.lock|pyproject\.toml|terraform\.auto\.tfvars\.example|.*\.code-workspace"
@@ -1452,12 +1568,17 @@ _ROOT_OK = re.compile(
 @check("PLACE-04")
 def _(r):
     _rc, out = sh(r, "git ls-files --full-name -- ':(exclude)*/*'")
+    files = [f.strip() for f in out.splitlines() if f.strip()]
+    # A root .go file is a module's own source only when a root go.mod makes
+    # it one; _ROOT_OK is a regex over names and cannot see the repo.
+    root_module = "go.mod" in files
     loose = []
-    for f in out.splitlines():
-        f = f.strip()
-        if not f or f.startswith("."):
+    for f in files:
+        if f.startswith("."):
             continue
         if _ROOT_OK.match(f):
+            continue
+        if root_module and re.fullmatch(r"[^/]+\.go", f):
             continue
         loose.append(f)
     return (FAIL, ", ".join(sorted(loose))) if loose else (PASS, "root is clean")
@@ -1667,6 +1788,90 @@ def _(r):
     return PASS, out.splitlines()[0].split(":")[0] + " calls Migrate at boot"
 
 
+_TEST_SRC = re.compile(r"\.(test|spec|stories)\.tsx?$|(^|/)(__tests__|__mocks__)/")
+# A file the framework mounts without anyone importing it: an entry point or a
+# file-routed page. Rendering from one of these is rendering in the app.
+_ENTRY_SRC = re.compile(r"(^|/)(main|index|App|app|root|__root|_app|layout|page)\.tsx$|(^|/)(routes?|pages?)/[^\n]*\.tsx$")
+_EXPORT_NAMES = (
+    re.compile(r"^export\s+(?:default\s+)?(?:async\s+)?(?:function\*?|const|let|class)\s+([A-Z]\w*)", re.M),
+    re.compile(r"^export\s+default\s+([A-Z]\w*)\s*;?\s*$", re.M),
+)
+
+
+def _component_exports(text):
+    names = {n for rx in _EXPORT_NAMES for n in rx.findall(text)}
+    for body in re.findall(r"^export\s*\{([^}]*)\}", text, re.M):
+        for part in body.split(","):
+            n = part.split(" as ")[-1].strip()
+            if n[:1].isupper():
+                names.add(n)
+    return names
+
+
+def _import_graph(r, files):
+    """{file: set of files it imports}, resolving relative specifiers by path
+    and aliased ones (`@/x`, `~/x`) by trailing path, which is all a grep-level
+    audit can know about a tsconfig it does not read."""
+    key = {}
+    for f in files:
+        k = re.sub(r"\.(tsx?|jsx?)$", "", f)
+        key[re.sub(r"/index$", "", k)] = f
+    graph = {}
+    for f in files:
+        text = (r / f).read_text(errors="replace")
+        deps = set()
+        for spec in re.findall(r"""(?:from|import)\s*\(?\s*['"]([^'"]+)['"]""", text):
+            if spec.startswith("."):
+                k = os.path.normpath(os.path.join(os.path.dirname(f), spec))
+                hit = key.get(k)
+            else:
+                rest = re.sub(r"^[@~#]/", "", spec)
+                hit = next((v for kk, v in key.items() if kk == rest or kk.endswith("/" + rest)), None)
+            if hit and hit != f:
+                deps.add(hit)
+        graph[f] = deps
+    return graph
+
+
+def _mounted_gate(r, hooks):
+    """The file that renders a component sitting on the import chain above the
+    version-check hook, or None. The chain is the hook's importers up to three
+    hops, tests excluded. A component counts as mounted when a non-test .tsx
+    other than its own file renders it and that file is an entry point or
+    exports a component that is itself mounted within the hop budget. An
+    organism that renders the gate, imported by a route that never renders the
+    organism, is the unmounted gate this check exists for."""
+    files = [f for f in tracked(r, "*.ts", "*.tsx") if not _TEST_SRC.search(f)]
+    graph = _import_graph(r, files)
+    level = {h: 0 for h in hooks if h in graph}
+    frontier = set(level)
+    for hop in (1, 2, 3):
+        frontier = {f for f, deps in graph.items() if f not in level and deps & frontier}
+        level.update({f: hop for f in frontier})
+    text = {f: (r / f).read_text(errors="replace") for f in level if f.endswith(".tsx")}
+    exports = {f: _component_exports((r / f).read_text(errors="replace")) for f in level}
+
+    def renders(f, g):
+        return f != g and any(re.search(rf"<{n}[\s/>]", text[f]) for n in exports[g])
+
+    def mounted(g, left):
+        for f in text:
+            if renders(f, g):
+                if _ENTRY_SRC.search(f):
+                    return f
+                top = left and mounted(f, left - 1)
+                if top:
+                    return top
+        return None
+
+    for g in level:
+        if level[g] >= 1 and exports[g]:
+            hit = mounted(g, 2)
+            if hit:
+                return hit
+    return None
+
+
 @check("UI-01")
 def _(r):
     if not has_ui(r):
@@ -1686,11 +1891,17 @@ def _(r):
         "git grep -l '<VersionGate' -- '*.tsx' "
         "':(exclude)*version-gate*' ':(exclude)*.test.tsx' ':(exclude)*.spec.tsx'",
     )
-    if not used:
-        return FAIL, "version-gate exists but nothing renders it — a gate that cannot fire"
-    return PASS, f"{len(out.splitlines())} files, mounted in {used.splitlines()[0]}"
-
-
+    if used:
+        return PASS, f"{len(out.splitlines())} files, mounted in {used.splitlines()[0]}"
+    # The gate need not be called VersionGate: a repo can wrap the hook in a
+    # banner or a shell component. Follow the hook's importers and accept a
+    # render of anything on that chain, at the same standard: JSX in a file
+    # that mounts, not an import.
+    hooks = [f for f in out.splitlines() if "use-version-check" in f]
+    hit = _mounted_gate(r, hooks)
+    if hit:
+        return PASS, f"{len(out.splitlines())} files, mounted via {hit}"
+    return FAIL, "version-gate exists but nothing renders it — a gate that cannot fire"
 
 
 # A name that IS a credential. Anything matching this belongs in `secrets`.
@@ -3017,12 +3228,20 @@ def _(r):
     return (PASS, "") if "version.json" in uncommented(f.read_text()) else (FAIL, "version.json not excluded")
 
 
+_SEMGREP_CONFIG = re.compile(r"--config(?:=|[\s,\"']+(?:-\s+)?)(?!-)[^\s,\"'\]]")
+
+
 @check("PRE-06")
 def _(r):
     seg = _hook_segment(uncommented(precommit(r)), "semgrep")
     if not seg:
         return NA, "no semgrep hook"
-    missing = [w for w in ("--config=auto", "--error", "--skip-unknown-extensions") if w not in seg]
+    # Any --config value is a ruleset: `auto` is one spelling, an explicit pack
+    # list with --metrics=off is another, and the second is the one that stays
+    # offline. Without a value semgrep scans with no rules and exits 0.
+    missing = [w for w in ("--error", "--skip-unknown-extensions") if w not in seg]
+    if not _SEMGREP_CONFIG.search(seg):
+        missing.insert(0, "--config=<ruleset>")
     return (FAIL, "missing " + " ".join(missing)) if missing else (PASS, "")
 
 

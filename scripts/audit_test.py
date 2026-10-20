@@ -1565,5 +1565,240 @@ class SCAN01(unittest.TestCase):
         self.assertEqual(self.verdict(), (audit.PASS, ""))
 
 
+class RuleNotSpelling(unittest.TestCase):
+    """Each pair: a repo following the rule by another spelling passes, and a
+    true violation still fails. The pass half fails on the literal-matching
+    checkers this class replaced."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = pathlib.Path(self._tmp.name)
+
+    def repo(self, files):
+        r = git_repo(self.root, "r")
+        for rel, text in files.items():
+            write(r, rel, text)
+        git(r, "add", "-A")
+        git(r, "commit", "-q", "-m", "x")
+        return r
+
+    def verdict(self, cid, r):
+        return audit.CHECKS[cid](r)
+
+    # PRE-06
+    SEMGREP = "repos:\n- repo: b\n  hooks:\n  - id: semgrep\n    args:\n{args}"
+
+    def pre06(self, args):
+        r = self.root / "p"
+        write(r, ".pre-commit-config.yaml", self.SEMGREP.format(args="".join(f"    - {a}\n" for a in args)))
+        return self.verdict("PRE-06", r)[0]
+
+    def test_pre06_any_config_value(self):
+        flags = ["--error", "--skip-unknown-extensions"]
+        self.assertEqual(self.pre06(["--config=auto"] + flags), audit.PASS)
+        self.assertEqual(self.pre06(["--config=p/default", "--config=p/golang", "--metrics=off"] + flags), audit.PASS)
+        self.assertEqual(self.pre06(["--config", "p/default"] + flags), audit.PASS)
+
+    def test_pre06_still_fails_violations(self):
+        self.assertEqual(self.pre06(["--error", "--skip-unknown-extensions"]), audit.FAIL)
+        self.assertEqual(self.pre06(["--config=", "--error", "--skip-unknown-extensions"]), audit.FAIL)
+        self.assertEqual(self.pre06(["--config", "--error", "--skip-unknown-extensions"]), audit.FAIL)
+        self.assertEqual(self.pre06(["--config=p/default", "--skip-unknown-extensions"]), audit.FAIL)
+        self.assertEqual(self.pre06(["--config=p/default", "--error"]), audit.FAIL)
+
+    # PLACE-04
+    def test_place04_go_module_at_root(self):
+        r = self.repo({"go.mod": "module x\n", "go.sum": "", "main.go": "package main\n"})
+        self.assertEqual(self.verdict("PLACE-04", r)[0], audit.PASS)
+
+    def test_place04_stray_go_file_without_go_mod_fails(self):
+        r = self.repo({"main.go": "package main\n", "go.sum": ""})
+        st, detail = self.verdict("PLACE-04", r)
+        self.assertEqual(st, audit.FAIL)
+        self.assertIn("main.go", detail)
+        self.assertNotIn("go.sum", detail)
+
+    def test_place04_other_stray_file_fails_beside_go_mod(self):
+        r = self.repo({"go.mod": "module x\n", "notes.txt": "x\n"})
+        st, detail = self.verdict("PLACE-04", r)
+        self.assertEqual((st, detail), (audit.FAIL, "notes.txt"))
+
+    # JUST-01
+    BASE = "".join(f"{n}:\n    echo\n" for n in ("test", "lint", "typecheck", "clean", "format"))
+
+    def test_just01_go_library_without_a_dev_stack(self):
+        r = self.root / "j"
+        write(r, "go.mod", "module x\n")
+        write(r, "Justfile", self.BASE + "build:\n    go build\n")
+        self.assertEqual(self.verdict("JUST-01", r), (audit.PASS, ""))
+
+    def test_just01_dev_stack_demands_health_and_dev_stack(self):
+        r = self.root / "j"
+        write(r, "go.mod", "module x\n")
+        write(r, "docker-compose.dev.yaml", "services: {}\n")
+        write(r, "Justfile", self.BASE + "build:\n    go build\ndev-stack:\n    up\n")
+        self.assertEqual(self.verdict("JUST-01", r), (audit.FAIL, "no health"))
+
+    def test_just01_prod_image_demands_dev_stack(self):
+        r = self.root / "j"
+        write(r, "Dockerfile.prod", "FROM scratch\n")
+        write(r, "Justfile", self.BASE + "build:\n    x\nhealth:\n    x\n")
+        self.assertEqual(self.verdict("JUST-01", r), (audit.FAIL, "no dev-stack"))
+
+    def test_just01_build_keeps_the_backend_predicate(self):
+        r = self.root / "j"
+        write(r, "go.mod", "module x\n")
+        write(r, "Justfile", self.BASE)
+        self.assertEqual(self.verdict("JUST-01", r), (audit.FAIL, "no build"))
+
+    # CI-08
+    def ci08(self, files):
+        r = self.root / "c"
+        for name, text in files.items():
+            write(r, f".github/workflows/{name}", text)
+        return self.verdict("CI-08", r)
+
+    PUSH_JOB = "jobs:\n  b:\n{conc}    steps:\n      - run: docker push img\n"
+
+    def test_ci08_signal_without_concurrency_fails(self):
+        st, detail = self.ci08({"build.yaml": self.PUSH_JOB.format(conc="")})
+        self.assertEqual((st, detail), (audit.FAIL, "build.yaml"))
+
+    def test_ci08_every_concurrency_placement_passes(self):
+        top = "concurrency:\n  group: g\n" + self.PUSH_JOB.format(conc="")
+        job = self.PUSH_JOB.format(conc="    concurrency:\n      group: g\n")
+        for text in (top, job):
+            self.assertEqual(self.ci08({"build.yaml": text}), (audit.PASS, ""))
+
+    def test_ci08_job_level_must_cover_every_racing_job(self):
+        two = (
+            "jobs:\n  a:\n    concurrency: {group: g}\n    steps:\n      - run: git push\n"
+            "  b:\n    steps:\n      - run: git tag v1\n"
+        )
+        self.assertEqual(self.ci08({"build.yaml": two}), (audit.FAIL, "build.yaml"))
+
+    def test_ci08_each_signal_races(self):
+        for body in (
+            "      - uses: docker/build-push-action@x\n        with:\n          push: true\n",
+            "      - uses: docker/build-push-action@x\n        with:\n          cache-to: type=gha\n",
+            "      - uses: actions/cache@x\n",
+            "      - run: git tag v1\n",
+        ):
+            st, _ = self.ci08({"w.yaml": "jobs:\n  j:\n    steps:\n" + body})
+            self.assertEqual(st, audit.FAIL, body)
+        for head in ("    environment: prod\n", "    uses: org/repo/.github/workflows/deploy.yaml@x\n"):
+            st, _ = self.ci08({"w.yaml": "jobs:\n  j:\n" + head})
+            self.assertEqual(st, audit.FAIL, head)
+
+    def test_ci08_read_only_workflows_are_not_applicable(self):
+        st, _ = self.ci08({"ci.yaml": "jobs:\n  t:\n    steps:\n      - run: just test\n"})
+        self.assertEqual(st, audit.NA)
+
+    def test_ci08_concurrency_without_a_signal_keeps_its_pass(self):
+        st, _ = self.ci08({"ci.yaml": "concurrency:\n  group: g\njobs:\n  t:\n    steps:\n      - run: just test\n"})
+        self.assertEqual(st, audit.PASS)
+
+    def test_ci08_a_comment_is_not_a_signal(self):
+        st, _ = self.ci08({"ci.yaml": "# we used to git push here\njobs:\n  t:\n    steps:\n      - run: just test\n"})
+        self.assertEqual(st, audit.NA)
+
+    # CTR-01
+    NODE_CI = (
+        "jobs:\n  a:\n    steps:\n"
+        "      - uses: actions/setup-node@v4\n        with:\n          node-version: '20'\n"
+        "{extra}"
+    )
+
+    def ctr01(self, files, extra=""):
+        r = self.root / "n"
+        write(r, ".nvmrc", "20\n")
+        write(r, ".github/workflows/ci.yaml", self.NODE_CI.format(extra=extra))
+        for rel, text in files.items():
+            write(r, rel, text)
+        return self.verdict("CTR-01", r)
+
+    ASSERT_SH = "#!/bin/sh\nwant=$(cat .nvmrc)\ngrep -q \"distroless/nodejs$want\" Dockerfile\n"
+
+    def test_ctr01_script_run_by_ci_asserts(self):
+        st, _ = self.ctr01({"scripts/check-node.sh": self.ASSERT_SH}, "      - run: scripts/check-node.sh\n")
+        self.assertEqual(st, audit.PASS)
+
+    def test_ctr01_just_recipe_run_by_ci_asserts(self):
+        jf = "check-node:\n    sh scripts/check-node.sh\n\ntest:\n    echo\n"
+        st, _ = self.ctr01({"Justfile": jf, "scripts/check-node.sh": self.ASSERT_SH}, "      - run: just check-node\n")
+        self.assertEqual(st, audit.PASS)
+        jf = "check-node:\n    grep distroless/nodejs20 Dockerfile && cat .nvmrc\n"
+        st, _ = self.ctr01({"Justfile": jf}, "      - run: just check-node\n")
+        self.assertEqual(st, audit.PASS)
+
+    def test_ctr01_agreeing_but_unasserted_still_fails(self):
+        st, detail = self.ctr01({"scripts/other.sh": "echo hi\n"}, "      - run: scripts/other.sh\n")
+        self.assertEqual(st, audit.FAIL)
+        self.assertIn("does not assert", detail)
+
+    def test_ctr01_an_assertion_ci_never_runs_does_not_count(self):
+        st, _ = self.ctr01({"scripts/check-node.sh": self.ASSERT_SH, "Justfile": "check-node:\n    sh scripts/check-node.sh\n"})
+        self.assertEqual(st, audit.FAIL)
+
+    # UI-01
+    HOOK = "export function useVersionCheck() { return false }\n"
+    BANNER = "import { useVersionCheck } from '../hooks/use-version-check'\nexport function UpdateBanner() { useVersionCheck(); return null }\n"
+    SHELL = "import { UpdateBanner } from './update-banner'\nexport function Shell() { return <UpdateBanner /> }\n"
+
+    def ui01(self, files):
+        base = {"package.json": "{}\n", "src/hooks/use-version-check.ts": self.HOOK}
+        return self.verdict("UI-01", self.repo({**base, **files}))
+
+    def test_ui01_gate_mounted_through_the_chain(self):
+        st, detail = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/components/shell.tsx": self.SHELL,
+            "src/routes/__root.tsx": "import { Shell } from '@/components/shell'\nexport const Route = { component: () => <Shell /> }\n",
+        })
+        self.assertEqual(st, audit.PASS, detail)
+        self.assertIn("__root.tsx", detail)
+
+    def test_ui01_chain_imported_but_never_rendered_fails(self):
+        st, _ = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/components/shell.tsx": self.SHELL,
+            "src/routes/__root.tsx": "import { Shell } from '@/components/shell'\nexport const Route = { shell: Shell }\n",
+        })
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ui01_chain_never_imported_by_the_app_fails(self):
+        st, _ = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/components/shell.tsx": self.SHELL,
+        })
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ui01_chain_rendered_only_in_a_test_fails(self):
+        st, _ = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/components/shell.test.tsx": self.SHELL,
+            "src/routes/__root.tsx": "export const Route = {}\n",
+        })
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ui01_chain_longer_than_three_hops_fails(self):
+        st, _ = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/components/a.tsx": "import { UpdateBanner } from './update-banner'\nexport function A() { return <UpdateBanner /> }\n",
+            "src/components/b.tsx": "import { A } from './a'\nexport function B() { return <A /> }\n",
+            "src/components/c.tsx": "import { B } from './b'\nexport function C() { return <B /> }\n",
+            "src/routes/__root.tsx": "import { C } from '@/components/c'\nexport const Route = { component: () => <C /> }\n",
+        })
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ui01_literal_version_gate_still_passes(self):
+        st, _ = self.ui01({
+            "src/components/version-gate.tsx": "export function VersionGate() { return null }\n",
+            "src/app.tsx": "import { VersionGate } from './components/version-gate'\nexport const A = () => <VersionGate />\n",
+        })
+        self.assertEqual(st, audit.PASS)
+
+
 if __name__ == "__main__":
     unittest.main()

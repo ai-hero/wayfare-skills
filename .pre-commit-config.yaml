@@ -81,7 +81,7 @@ repos:
           - mdformat-gfm==1.0.0
           - mdformat-frontmatter==2.1.2
           - mdformat-tables==1.0.0
-        exclude: ^(analysis|memory|docs/superpowers)/
+        exclude: ^analysis/
 
   # ===========================================================================
   # Typo detection

@@ -34,8 +34,7 @@ import re
 import subprocess
 import sys
 
-# docs/superpowers/ holds dated plans: a record of what was true then.
-EXCLUDE_DIRS = ("analysis/", "memory/", "docs/superpowers/")
+EXCLUDE_DIRS = ("analysis/",)
 
 NUMBER_WORDS = {w: i for i, w in enumerate(
     "zero one two three four five six seven eight nine ten eleven twelve "

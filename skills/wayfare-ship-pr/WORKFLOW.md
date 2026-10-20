@@ -932,10 +932,11 @@ if [ "$MERGED" != "true" ]; then
   echo "Merge not yet recorded — skipping branch reset."
 elif hero_in_worktree; then
   # A linked worktree cannot check out the default branch — it is checked out
-  # in the primary — and its branch is deleted by whoever removes the worktree
-  # (whoever created it, with `git worktree remove`).
+  # in the primary. Step 4 below skips a checked-out branch, and
+  # `git worktree remove` never deletes one, so the message names both steps
+  # or the local branch outlives the worktree.
   RESET_OK=true
-  echo "Linked worktree: merge landed; leaving $PR_BRANCH checked out here. Remove the worktree to finish: git worktree remove $(pwd)"
+  echo "Linked worktree: merge landed; leaving $PR_BRANCH checked out here. To finish: git worktree remove $(pwd), then git branch -d $PR_BRANCH from the primary checkout"
 else
   # 1. Switch to BASE_BRANCH first if we are still on the merged head.
   #    Hard-failing checkout post-merge would leave the user stuck on the

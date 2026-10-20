@@ -80,12 +80,13 @@ every planning run as the frame its proposals have to fit.
 `wayfare-sync-plan` updates `source.head`, `target.head` and `next_id`; nothing
 else writes the frontmatter.
 
-**`next_id` is a hint, never the allocator.** Worktree subagents run
-concurrently (`AGENTS.md`, *Fleet*), and a counter in a file races between them.
-The authoritative local allocation stays what it is today: the maximum `id` in
-`items/` plus one, re-read immediately before the write. `next_id` exists so the
-server-side store has a column to make authoritative when the allocation moves
-behind a single writer. A local run that trusts it over the scan will collide.
+**`next_id` is a hint, never the allocator.** Separate sessions write one store
+(`hero_work_store` resolves every worktree to the primary checkout's `.plans/`),
+and a counter in a file races between them. The authoritative local allocation
+stays what it is today: the maximum `id` in `items/` plus one, re-read
+immediately before the write. `next_id` exists so the server-side store has a
+column to make authoritative when the allocation moves behind a single writer. A
+local run that trusts it over the scan will collide.
 
 **Target is optional.** With no `target` key the plan is in **self-review
 mode**: `wayfare-sync-plan` reconciles the source against `DESIGN.md`, its own

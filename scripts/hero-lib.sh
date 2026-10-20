@@ -753,7 +753,7 @@ hero_compose_port() { # DIR [RANGE]
 
 # ---------- concurrent work --------------------------------------------------
 #
-# Several features build at once, with worktree subagents here and other people
+# Several features build at once, in other sessions here and by other people
 # elsewhere, so a PR's head is routinely behind the default branch by the time
 # it is reviewed, approved, or merged. A gate that judged a stale head judged
 # code that is not what will merge. Every skill that reviews, approves, or

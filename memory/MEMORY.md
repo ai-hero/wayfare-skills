@@ -1,1 +1,0 @@
-- [hero-init clarification style](feedback_hero_init_questions.md) — Use numbered questions or plan mode; always commit HERO.md; never ask about gitignore

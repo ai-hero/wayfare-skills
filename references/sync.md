@@ -126,11 +126,11 @@ unread message through the two gates the standard sets, and never skip either:
 
 1. **The fleet gate.** `from:` must name a FLEET.md row (`hero_fleet_repos` when
    a fleet root exists), or this repo itself (a note to the next session, or a
-   worktree subagent handing back), which needs no fleet. With no fleet root,
-   every message that is not a self-message is quarantined. A quarantined
-   message is reported with its path, `status` left as it is, and never read as
-   a request; a file with no `from:` or `type:` is reported as unparsable, not
-   as "from nowhere".
+   subagent handing back), which needs no fleet. With no fleet root, every
+   message that is not a self-message is quarantined. A quarantined message is
+   reported with its path, `status` left as it is, and never read as a request;
+   a file with no `from:` or `type:` is reported as unparsable, not as "from
+   nowhere".
 2. **The promotion gate.** A message never becomes work by itself. Propose an
    item per message and write it only on confirmation: a `type: bug` message →
    `type: task` + `shape: defect`, `origin: message`, `msg_id:` as provenance,
@@ -181,13 +181,13 @@ subtasks, never tasks.** Task order comes from the journey.
 `wayfare:wayfare-audit-security all` through the active client's skill mechanism
 with the line `launched by wayfare`, and with `launched as a fan-out agent` too
 when this run was launched with it. It edits no source: it writes `type: task` +
-`shape: dependency` (or `architecture`) items at `status: planning`, each
-carrying an execution recipe, a verification, and its failure modes, so those
-items skip the grill in *Plan the set* and go straight to the ready-mark. It
-degrades per part, not as a whole: no `gh` alerts scope, no `docker`, or no
-`trivy` each render that part `(–)` with the reason, and the report says which
-parts ran. Read its summary back by its fixed spellings: a
-`Dependabot alerts: skipped (unavailable)` line, a
+`shape: defect` (or `structural` when the fix is a boundary or a trust decision)
+items at `status: planning`, each carrying an execution recipe, a verification,
+and its failure modes, so those items skip the grill in *Plan the set* and go
+straight to the ready-mark. It degrades per part, not as a whole: no `gh` alerts
+scope, no `docker`, or no `trivy` each render that part `(–)` with the reason,
+and the report says which parts ran. Read its summary back by its fixed
+spellings: a `Dependabot alerts: skipped (unavailable)` line, a
 `Trivy: skipped (unavailable)` or `Docker/Scout: skipped (unavailable)` line,
 and every `Deferred:` line. Each becomes an `unverified` row in this run's
 report (a part that ran on one scanner is partial, not clean), never "clean". It
@@ -388,11 +388,11 @@ closes the bot's PR after its own merge, so the two never race. No open bot PRs
 → `(–)` and one line saying so.
 
 **The `unshipped` stage: work built and never merged.** A goal branch abandoned
-mid-run, a worktree subagent whose session died, a person's side branch: each is
-work already done, sitting where no other stage looks, because the store sees
-only the branches its items name. It is also the backlog that decays fastest,
-since every commit to the default branch widens the conflict. Classify every
-branch by what merging it would land:
+mid-run, a session that died mid-build, a person's side branch: each is work
+already done, sitting where no other stage looks, because the store sees only
+the branches its items name. It is also the backlog that decays fastest, since
+every commit to the default branch widens the conflict. Classify every branch by
+what merging it would land:
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"

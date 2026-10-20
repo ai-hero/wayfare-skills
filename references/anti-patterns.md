@@ -122,9 +122,9 @@ and each one reads as an odd rule until the failure behind it is known.
 - **`ready` is the user's word, never wayfare's.** Every route to it goes
   through `planning`, and the flip is an explicit human act. An item parked at
   `accepted` expecting to be picked up is one that never will be.
-- **Rebase before you judge.** Other branches, worktree subagents included,
-  merge underneath every open PR. Rebase with `hero_rebase_on_base` and confirm
-  it went through before a review, an approval or a merge, and rebase *before*
+- **Rebase before you judge.** Other branches and other sessions merge
+  underneath every open PR. Rebase with `hero_rebase_on_base` and confirm it
+  went through before a review, an approval or a merge, and rebase *before*
   `@auto-approve`, never between the verdict and the merge: branch protection
   dismisses approvals on push.
 - **A `committed` dependency is not satisfied.** The commit is on a goal branch

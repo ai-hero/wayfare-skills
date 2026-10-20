@@ -144,7 +144,7 @@ repos:
         stages: [pre-push]
         # analysis/ is research code, out of this gate like the other hooks
         # above; its raw-SQL and dynamic-import findings fail the push
-        # otherwise. Five more SHA1 findings there are stored label-cache keys:
+        # otherwise. Its SHA1 findings are stored label-cache keys:
         # autofixing one re-labels every cached row, so lifting the exclusion
         # must not autofix them. Running semgrep by hand needs the same exclusion
         # plus the CLAUDE.md symlink, which pre-commit already filters out and

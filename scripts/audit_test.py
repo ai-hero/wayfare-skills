@@ -1402,6 +1402,7 @@ class EngineAtOrigin(unittest.TestCase):
         self.assertNotIn("ran-origin-engine", p.stderr)
         self.assertIn("engine: working tree", p.stdout)
         self.assertIn("HERO_SKILLS_PLUGIN override", p.stdout)
+        self.assertIn(f"assets from {self.plugin}", p.stdout, "the engine named is the one that ran")
 
     def test_marker_stops_a_second_reexec(self):
         p = self.run_script("audit.py", "--md", WAYFARE_ENGINE_AT="origin/main @ abc1234 in X")
@@ -1423,7 +1424,20 @@ class EngineAtOrigin(unittest.TestCase):
 
 class ExtractTar(unittest.TestCase):
     """_extract_tar is the only guard on 3.9.6, where `filter="data"` does not
-    exist; run this suite under /usr/bin/python3 as well."""
+    exist. Each case also runs with `data_filter` removed, so the 3.9 branch
+    is exercised on whatever Python runs the suite."""
+
+    def both_branches(self, fn):
+        fn()
+        if hasattr(tarfile, "data_filter"):
+            saved = tarfile.data_filter
+            del tarfile.data_filter
+            try:
+                for p in self.dest.iterdir():
+                    shutil.rmtree(p) if p.is_dir() else p.unlink()
+                fn()
+            finally:
+                tarfile.data_filter = saved
 
     @staticmethod
     def tar(*entries):
@@ -1433,7 +1447,7 @@ class ExtractTar(unittest.TestCase):
                 info = tarfile.TarInfo(name)
                 info.type = kind
                 info.mode = 0o755 if kind == tarfile.DIRTYPE else 0o644
-                if kind == tarfile.SYMTYPE:
+                if kind in (tarfile.SYMTYPE, tarfile.LNKTYPE):
                     info.linkname = "/etc/passwd"
                 data = b"x" if kind == tarfile.REGTYPE else b""
                 info.size = len(data)
@@ -1452,20 +1466,29 @@ class ExtractTar(unittest.TestCase):
     def test_normal_assets_archive_extracts(self):
         data = self.tar(("assets/", tarfile.DIRTYPE), ("assets/a/", tarfile.DIRTYPE),
                         ("assets/a/caller.yaml", tarfile.REGTYPE))
-        audit._extract_tar(data, self.dest, "test")
-        self.assertTrue((self.dest / "assets" / "a" / "caller.yaml").is_file())
+
+        def run():
+            audit._extract_tar(data, self.dest, "test")
+            self.assertTrue((self.dest / "assets" / "a" / "caller.yaml").is_file())
+        self.both_branches(run)
 
     def test_traversal_member_raises_and_writes_nothing(self):
         data = self.tar(("assets/ok.yaml", tarfile.REGTYPE), ("../escape.txt", tarfile.REGTYPE))
-        with self.assertRaisesRegex(RuntimeError, "escape.txt"):
-            audit._extract_tar(data, self.dest, "test")
-        self.assertFalse((self.root / "escape.txt").exists())
-        self.assertEqual(list(self.dest.iterdir()), [], "validated before anything is written")
+
+        def run():
+            with self.assertRaisesRegex(RuntimeError, "escape.txt"):
+                audit._extract_tar(data, self.dest, "test")
+            self.assertFalse((self.root / "escape.txt").exists())
+            self.assertEqual(list(self.dest.iterdir()), [], "validated before anything is written")
+        self.both_branches(run)
 
     def test_absolute_and_link_members_raise(self):
-        for entry in (("/tmp/abs.txt", tarfile.REGTYPE), ("assets/link", tarfile.SYMTYPE)):
-            with self.assertRaises(RuntimeError, msg=entry):
-                audit._extract_tar(self.tar(entry), self.dest, "test")
+        def run():
+            for entry in (("/tmp/abs.txt", tarfile.REGTYPE), ("assets/link", tarfile.SYMTYPE),
+                          ("assets/hard", tarfile.LNKTYPE)):
+                with self.assertRaises(RuntimeError, msg=entry):
+                    audit._extract_tar(self.tar(entry), self.dest, "test")
+        self.both_branches(run)
 
 
 class SCAN01(unittest.TestCase):
@@ -1567,8 +1590,7 @@ class SCAN01(unittest.TestCase):
 
 class RuleNotSpelling(unittest.TestCase):
     """Each pair: a repo following the rule by another spelling passes, and a
-    true violation still fails. The pass half fails on the literal-matching
-    checkers this class replaced."""
+    true violation still fails."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -1606,6 +1628,10 @@ class RuleNotSpelling(unittest.TestCase):
         self.assertEqual(self.pre06(["--config", "--error", "--skip-unknown-extensions"]), audit.FAIL)
         self.assertEqual(self.pre06(["--config=p/default", "--skip-unknown-extensions"]), audit.FAIL)
         self.assertEqual(self.pre06(["--config=p/default", "--error"]), audit.FAIL)
+        r = self.root / "p"
+        write(r, ".pre-commit-config.yaml", self.SEMGREP.format(
+            args="    - --error\n    - --skip-unknown-extensions\n    - --config\n") + "    stages: [pre-push]\n")
+        self.assertEqual(self.verdict("PRE-06", r)[0], audit.FAIL, "a trailing bare --config has no value")
 
     # PLACE-04
     def test_place04_go_module_at_root(self):
@@ -1684,6 +1710,13 @@ class RuleNotSpelling(unittest.TestCase):
             "      - uses: docker/build-push-action@x\n        with:\n          cache-to: type=gha\n",
             "      - uses: actions/cache@x\n",
             "      - run: git tag v1\n",
+            "      - uses: docker/build-push-action@x\n        with:\n"
+            "          push: ${{ github.event_name != 'pull_request' }}\n",
+            "      - uses: google-github-actions/deploy-cloudrun@v2\n",
+            "      - run: gcloud run deploy svc\n",
+            "      - run: npm publish\n",
+            "      - run: gh release create v1\n",
+            "      - run: kubectl apply -f k8s/\n",
         ):
             st, _ = self.ci08({"w.yaml": "jobs:\n  j:\n    steps:\n" + body})
             self.assertEqual(st, audit.FAIL, body)
@@ -1693,6 +1726,9 @@ class RuleNotSpelling(unittest.TestCase):
 
     def test_ci08_read_only_workflows_are_not_applicable(self):
         st, _ = self.ci08({"ci.yaml": "jobs:\n  t:\n    steps:\n      - run: just test\n"})
+        self.assertEqual(st, audit.NA)
+        st, _ = self.ci08({"ci.yaml": "jobs:\n  t:\n    steps:\n      - uses: docker/build-push-action@x\n"
+                           "        with:\n          push: false\n"})
         self.assertEqual(st, audit.NA)
 
     def test_ci08_concurrency_without_a_signal_keeps_its_pass(self):
@@ -1736,6 +1772,21 @@ class RuleNotSpelling(unittest.TestCase):
         st, detail = self.ctr01({"scripts/other.sh": "echo hi\n"}, "      - run: scripts/other.sh\n")
         self.assertEqual(st, audit.FAIL)
         self.assertIn("does not assert", detail)
+
+    def test_ctr01_two_mentions_are_not_a_comparison(self):
+        build = ("      - uses: actions/setup-node@v4\n        with:\n          node-version-file: .nvmrc\n"
+                 "      - run: docker build --build-arg BASE=gcr.io/distroless/nodejs20 .\n")
+        self.assertEqual(self.ctr01({}, build)[0], audit.FAIL)
+        todo = "      # TODO: compare .nvmrc with distroless/nodejs\n      - run: echo\n"
+        self.assertEqual(self.ctr01({}, todo)[0], audit.FAIL)
+        commented = "#!/bin/sh\n# should read .nvmrc and grep distroless/nodejs\necho ok\n"
+        st, _ = self.ctr01({"scripts/check-node.sh": commented}, "      - run: scripts/check-node.sh\n")
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ctr01_recipe_name_is_matched_whole(self):
+        jf = "check-node:\n    grep distroless/nodejs20 Dockerfile && cat .nvmrc\n\ncheck:\n    echo\n"
+        st, _ = self.ctr01({"Justfile": jf}, "      - run: just check\n")
+        self.assertEqual(st, audit.FAIL)
 
     def test_ctr01_an_assertion_ci_never_runs_does_not_count(self):
         st, _ = self.ctr01({"scripts/check-node.sh": self.ASSERT_SH, "Justfile": "check-node:\n    sh scripts/check-node.sh\n"})
@@ -1789,6 +1840,31 @@ class RuleNotSpelling(unittest.TestCase):
             "src/components/b.tsx": "import { A } from './a'\nexport function B() { return <A /> }\n",
             "src/components/c.tsx": "import { B } from './b'\nexport function C() { return <B /> }\n",
             "src/routes/__root.tsx": "import { C } from '@/components/c'\nexport const Route = { component: () => <C /> }\n",
+        })
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ui01_component_folder_index_is_not_an_entry(self):
+        st, _ = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/components/shell/index.tsx": "import { UpdateBanner } from '../update-banner'\n"
+                                              "export function Shell() { return <UpdateBanner /> }\n",
+        })
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ui01_commented_out_render_fails(self):
+        st, _ = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/routes/__root.tsx": "import { UpdateBanner } from '@/components/update-banner'\n"
+                                     "// TODO render <UpdateBanner />\nexport const Route = {}\n",
+        })
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ui01_package_import_does_not_resolve_to_a_local_file(self):
+        st, _ = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/lib/react.tsx": "import { UpdateBanner } from '../components/update-banner'\n"
+                                 "export function R() { return <UpdateBanner /> }\n",
+            "src/routes/__root.tsx": "import { R } from 'react'\nexport const Route = { component: () => <R /> }\n",
         })
         self.assertEqual(st, audit.FAIL)
 

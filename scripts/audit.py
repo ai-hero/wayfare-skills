@@ -1028,9 +1028,15 @@ def _(r):
 
 # What makes two runs of one workflow race: each of these writes somewhere
 # both runs share (a registry, a tag, a cache, a deploy target).
+# `push:` counts unless it is literally false: build-push-action's usual
+# spelling is an expression (`push: ${{ github.event_name != 'pull_request' }}`),
+# and matching only `true` reads that publishing workflow as n/a.
 _RACE_SIGNAL = re.compile(
-    r"\bpush:\s*true\b|\bdocker\s+push\b|\bgit\s+push\b|\bgit\s+tag\b"
+    r"\bpush:[ \t]*(?:true\b|['\"]?\$\{\{)|\bdocker\s+push\b|\bgit\s+push\b|\bgit\s+tag\b"
     r"|\bcache-to:|\bactions/cache@"
+    r"|\b(?:npm|pnpm|yarn)\s+publish\b|\bgh\s+release\s+create\b|\bgcloud\b[^\n]*\bdeploy\b"
+    r"|\bfirebase\s+deploy\b|\bkubectl\s+apply\b|\bhelm\s+(?:upgrade|install)\b|\bterraform\s+apply\b"
+    r"|\buses:[^\n]*deploy"
 )
 
 
@@ -1065,7 +1071,7 @@ def _(r):
         except yaml.YAMLError:
             doc = None
         if not isinstance(doc, dict):
-            # Unparsable: judge the text, which is what this check did before.
+            # Unparsable: a YAML error must not hide a race, so match the text.
             if _RACE_SIGNAL.search(uncommented(text)):
                 racing += 1
                 if not re.search(r"^concurrency:", text, re.M):
@@ -1359,9 +1365,8 @@ _SCRIPT_PATH = re.compile(r"(?<![\w./-])((?:\./)?[\w.-]+(?:/[\w.-]+)*\.(?:sh|bas
 
 
 def _run_lines(text):
-    """The `run:` bodies of a workflow, or its whole text when it will not
-    parse (a script path in a comment then counts, which only widens what is
-    read, never what passes)."""
+    """The `run:` bodies of a workflow, or its uncommented text when it will
+    not parse."""
     try:
         doc = yaml.safe_load(text)
         jobs = doc.get("jobs") or {}
@@ -1371,12 +1376,12 @@ def _run_lines(text):
             for st in j.get("steps") or [] if isinstance(st, dict) and isinstance(st.get("run"), str)
         ]
     except (yaml.YAMLError, AttributeError):
-        return [text]
+        return [uncommented(text)]
 
 
 def _recipe_body(justfile, name):
     """The indented body of one Justfile recipe, "" when it is not there."""
-    m = re.search(rf"^{re.escape(name)}\b[^\n]*:[^\n]*\n((?:[ \t]+[^\n]*\n?|\n)*)", justfile, re.M)
+    m = re.search(rf"^{re.escape(name)}(?![\w-])[^\n:=]*:(?!=)[^\n]*\n((?:[ \t]+[^\n]*\n?|\n)*)", justfile, re.M)
     return m.group(1) if m else ""
 
 
@@ -1395,22 +1400,25 @@ def _ci_asserts_node(r):
     spelling. The rule is that some step in CI reads the .nvmrc and compares
     it with the distroless/nodejs image, wherever that step lives: in the
     workflow, in a script a `run:` line invokes, or in a `just` recipe it
-    calls. One hop, so a wrapper script that shells out to another is not
-    followed, and an agreeing repo with no such comparison still fails."""
+    calls. Both pins must appear in one of those, comments stripped: a build
+    step reading .nvmrc and a docker step naming the image are two mentions,
+    not a comparison. One hop, so a wrapper script that shells out to another
+    is not followed."""
     jf = r / "Justfile"
     justfile = jf.read_text() if jf.is_file() else ""
     for w in workflows(r):
         text = w.read_text()
         if "node majors agree" in text:
             return True
-        units = [text]
+        units = []
         for run in _run_lines(text):
+            units.append(run)
             units += _script_texts(r, run)
             for name in re.findall(r"(?<![\w-])just\s+(?:--\S+\s+)*([\w-]+)", run):
                 body = _recipe_body(justfile, name)
                 units.append(body)
                 units += _script_texts(r, body)
-        if any(".nvmrc" in u and "distroless/nodejs" in u for u in units):
+        if any(".nvmrc" in u and "distroless/nodejs" in u for u in map(uncommented, units)):
             return True
     return False
 
@@ -1789,9 +1797,14 @@ def _(r):
 
 
 _TEST_SRC = re.compile(r"\.(test|spec|stories)\.tsx?$|(^|/)(__tests__|__mocks__)/")
-# A file the framework mounts without anyone importing it: an entry point or a
-# file-routed page. Rendering from one of these is rendering in the app.
-_ENTRY_SRC = re.compile(r"(^|/)(main|index|App|app|root|__root|_app|layout|page)\.tsx$|(^|/)(routes?|pages?)/[^\n]*\.tsx$")
+# A file the framework mounts without anyone importing it: an entry point at a
+# source root, or a file-routed page. An `index.tsx` deeper down is a component
+# folder's barrel, imported like any other file, so it does not count.
+_ENTRY_SRC = re.compile(
+    r"(^|/)src/(main|index|App|app|root|_app)\.tsx$|^(main|index|App|app)\.tsx$"
+    r"|(^|/)(__root|layout|page)\.tsx$|(^|/)(routes?|pages?)/[^\n]*\.tsx$"
+)
+_JS_COMMENT = re.compile(r"/\*[\s\S]*?\*/|(?<![:\w])//[^\n]*")
 _EXPORT_NAMES = (
     re.compile(r"^export\s+(?:default\s+)?(?:async\s+)?(?:function\*?|const|let|class)\s+([A-Z]\w*)", re.M),
     re.compile(r"^export\s+default\s+([A-Z]\w*)\s*;?\s*$", re.M),
@@ -1810,8 +1823,9 @@ def _component_exports(text):
 
 def _import_graph(r, files):
     """{file: set of files it imports}, resolving relative specifiers by path
-    and aliased ones (`@/x`, `~/x`) by trailing path, which is all a grep-level
-    audit can know about a tsconfig it does not read."""
+    and aliased ones (`@/x`, `~/x`, `#/x`) by trailing path, which is all a
+    grep-level audit can know about a tsconfig it does not read. A bare
+    specifier is a package: `react` must not resolve to a local `.../react`."""
     key = {}
     for f in files:
         k = re.sub(r"\.(tsx?|jsx?)$", "", f)
@@ -1824,9 +1838,11 @@ def _import_graph(r, files):
             if spec.startswith("."):
                 k = os.path.normpath(os.path.join(os.path.dirname(f), spec))
                 hit = key.get(k)
-            else:
-                rest = re.sub(r"^[@~#]/", "", spec)
+            elif re.match(r"[@~#]/", spec):
+                rest = spec[2:]
                 hit = next((v for kk, v in key.items() if kk == rest or kk.endswith("/" + rest)), None)
+            else:
+                hit = None
             if hit and hit != f:
                 deps.add(hit)
         graph[f] = deps
@@ -1836,9 +1852,10 @@ def _import_graph(r, files):
 def _mounted_gate(r, hooks):
     """The file that renders a component sitting on the import chain above the
     version-check hook, or None. The chain is the hook's importers up to three
-    hops, tests excluded. A component counts as mounted when a non-test .tsx
-    other than its own file renders it and that file is an entry point or
-    exports a component that is itself mounted within the hop budget. An
+    hops, tests excluded, and both the gate and what renders it are drawn from
+    that chain. A component counts as mounted when another .tsx on the chain
+    renders it outside a comment and that file is an entry point, or exports a
+    component that is itself mounted, at most two more renders up. An
     organism that renders the gate, imported by a route that never renders the
     organism, is the unmounted gate this check exists for."""
     files = [f for f in tracked(r, "*.ts", "*.tsx") if not _TEST_SRC.search(f)]
@@ -1848,7 +1865,7 @@ def _mounted_gate(r, hooks):
     for hop in (1, 2, 3):
         frontier = {f for f, deps in graph.items() if f not in level and deps & frontier}
         level.update({f: hop for f in frontier})
-    text = {f: (r / f).read_text(errors="replace") for f in level if f.endswith(".tsx")}
+    text = {f: _JS_COMMENT.sub("", (r / f).read_text(errors="replace")) for f in level if f.endswith(".tsx")}
     exports = {f: _component_exports((r / f).read_text(errors="replace")) for f in level}
 
     def renders(f, g):
@@ -2683,7 +2700,7 @@ def run_at_origin(script):
     global _ENGINE_NOTE
     override = os.environ.get("HERO_SKILLS_PLUGIN")
     if override:
-        _ENGINE_NOTE = f"working tree {override} (HERO_SKILLS_PLUGIN override)"
+        _ENGINE_NOTE = f"working tree {HERE} (HERO_SKILLS_PLUGIN override; assets from {override})"
         return None
     if os.environ.get(_ENGINE_MARKER):
         _ENGINE_NOTE = os.environ[_ENGINE_MARKER]
@@ -2771,8 +2788,10 @@ def _extract_tar(data, dest, origin):
 
     The member check is the guard on every Python: `filter="data"` exists only
     on 3.12+ and late 3.9-3.11 patch releases, and macOS's /usr/bin/python3 is
-    3.9.6, where passing it raises TypeError. Do not drop `members=` for the
-    filter alone; that leaves 3.9.6 unguarded and semgrep flags it."""
+    3.9.6, where passing it raises TypeError. Do not replace the member loop
+    with the filter: 3.9.6 would be unguarded. `members=` is passed so semgrep
+    sees the extraction is vetted. Links are refused on purpose, so a symlink
+    added under assets/ or the scripts makes every audit raise."""
     with tarfile.open(fileobj=io.BytesIO(data)) as t:
         members = t.getmembers()
         for m in members:
@@ -3228,7 +3247,7 @@ def _(r):
     return (PASS, "") if "version.json" in uncommented(f.read_text()) else (FAIL, "version.json not excluded")
 
 
-_SEMGREP_CONFIG = re.compile(r"--config(?:=|[\s,\"']+(?:-\s+)?)(?!-)[^\s,\"'\]]")
+_SEMGREP_CONFIG = re.compile(r"--config(?:=|[ \t,\"']+|[ \t\"']*\n\s*-\s+)(?!-)[^\s,\"'\]]")
 
 
 @check("PRE-06")
@@ -3236,9 +3255,9 @@ def _(r):
     seg = _hook_segment(uncommented(precommit(r)), "semgrep")
     if not seg:
         return NA, "no semgrep hook"
-    # Any --config value is a ruleset: `auto` is one spelling, an explicit pack
-    # list with --metrics=off is another, and the second is the one that stays
-    # offline. Without a value semgrep scans with no rules and exits 0.
+    # Any --config value names a ruleset: `auto` is one spelling and an
+    # explicit pack list is another (`auto` refuses --metrics=off, so a repo
+    # that turns metrics off has to list packs). The hook needs one.
     missing = [w for w in ("--error", "--skip-unknown-extensions") if w not in seg]
     if not _SEMGREP_CONFIG.search(seg):
         missing.insert(0, "--config=<ruleset>")

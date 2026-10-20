@@ -88,6 +88,9 @@ def main():
 
     global _ORG
     audit = load_audit()
+    rc = audit.run_at_origin("consistency.py")
+    if rc is not None:
+        sys.exit(rc)
     audit.configure(a.fleet or None)
     _ORG = audit.read_fleet(audit.ROOT)[0].get("org") if audit.REGISTER is not None else None
     if audit.REGISTER is None:
@@ -98,6 +101,7 @@ def main():
     controls, checks = audit.load_register()
     repos = audit.family_repos()
     with audit.reference_assets() as assets_note:
+        print(f"engine: {audit.engine_note()}", file=sys.stderr)
         print(f"assets: {assets_note}", file=sys.stderr)
         if a.no_snapshot:
             matrix, _fails, errors = audit.run_matrix(checks, repos)

@@ -27,7 +27,9 @@ Usage:
     scripts/audit.py --fail-on high         # non-zero exit for CI
 
 Where things live: the ENGINE and a generic BASELINE register ship with
-the wayfare plugin (this file, assets/compliance/); the fleet's own OVERLAY — its
+the wayfare plugin (this file, assets/compliance/), and run from the plugin
+checkout's origin/main, not from whatever branch it sits on (see below); the
+fleet's own OVERLAY — its
 incident history and any checks of its own — lives in the
 fleet folder's register checkout, named by FLEET.md's `register:` key
 (default .fleet/). The two are merged by id, overlay winning. Run inside a
@@ -37,10 +39,13 @@ repo alone, baseline only. --fleet PATH names the fleet root explicitly.
 
 Each repo is audited at --ref (default origin/main) in a detached worktree,
 not at whatever branch the checkout sits on; --no-snapshot audits the
-checkouts as they sit. The plugin assets vendored checks compare against are
-read the same way, from ~/.claude/plugins/wayfare-skills at origin/main after a
-fetch; HERO_SKILLS_PLUGIN=<checkout> reads that checkout's working tree instead,
-to test an unmerged asset. The report header names which one was used.
+checkouts as they sit. The engine, the register and the plugin assets vendored
+checks compare against are read the same way, from ~/.claude/plugins/wayfare-skills
+at origin/main after a fetch: main() extracts that commit and re-runs itself from
+it, so checkers and register come from one sha. HERO_SKILLS_PLUGIN=<checkout>
+runs the invoked engine and reads that checkout's working tree instead, to test
+unmerged work. The report header names which one was used (`engine:` and
+`assets:`).
 """
 
 import argparse
@@ -2442,6 +2447,49 @@ _PLUGIN_REMOTE, _PLUGIN_BRANCH = "origin", "main"
 _PLUGIN_ASSETS = pathlib.Path("<assets unbound: run checks inside reference_assets()>")
 
 
+# Set in the child of run_at_origin(): the note naming the commit it was
+# extracted from. Its presence is what stops the child re-executing again.
+_ENGINE_MARKER = "WAYFARE_ENGINE_AT"
+_ENGINE_NOTE = f"working tree {HERE} (engine not yet resolved)"
+
+
+def engine_note():
+    """The report header's `engine:` text: where the running engine came from."""
+    return _ENGINE_NOTE
+
+
+def run_at_origin(script):
+    """Re-run `scripts/<script>` from the plugin checkout's origin/main as a
+    child process and return its exit code, or None when this process should
+    carry on as the engine.
+
+    Register and checkers have to come from one commit: loading origin/main's
+    register under a stale engine pairs new ids with old checkers. The child
+    finds its own tree via HERE, so engine, register and assets cannot
+    straddle two fetches. HERO_SKILLS_PLUGIN or an existing marker means
+    no re-exec; so does a plugin home with no resolvable origin/main, where the
+    invoked engine runs and the header says it may be stale."""
+    global _ENGINE_NOTE
+    override = os.environ.get("HERO_SKILLS_PLUGIN")
+    if override:
+        _ENGINE_NOTE = f"working tree {override} (HERO_SKILLS_PLUGIN override)"
+        return None
+    if os.environ.get(_ENGINE_MARKER):
+        _ENGINE_NOTE = os.environ[_ENGINE_MARKER]
+        return None
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="audit-engine-"))
+    try:
+        sha, note = _plugin_at_origin(_PLUGIN_HOME, tmp, ("scripts/audit.py", "scripts/consistency.py", "assets"))
+        if not sha:
+            _ENGINE_NOTE = f"working tree {HERE} ({note}; register and checkers may be stale)"
+            return None
+        rc = subprocess.run([sys.executable, str(tmp / "scripts" / script), *sys.argv[1:]],
+                            env={**os.environ, _ENGINE_MARKER: note}).returncode
+        return rc if rc >= 0 else 128 - rc
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 @contextlib.contextmanager
 def reference_assets():
     """Bind _PLUGIN_ASSETS for one audit run and yield a note naming where the
@@ -2452,7 +2500,9 @@ def reference_assets():
     branch the last session left it: a feature branch cut before a caller
     change inverted CI-20 fleet-wide (the repos that took the change failed,
     the rest passed). HERO_SKILLS_PLUGIN=<checkout> reads that checkout's
-    working tree instead, which is how an unmerged asset is tested."""
+    working tree instead, which is how an unmerged asset is tested. Inside the
+    child of run_at_origin() the assets are the ones extracted beside the
+    running engine."""
     global _PLUGIN_ASSETS
     saved, tmp = _PLUGIN_ASSETS, None
     try:
@@ -2460,9 +2510,13 @@ def reference_assets():
         if override:
             _PLUGIN_ASSETS = pathlib.Path(override) / "assets"
             note = f"working tree {override} (HERO_SKILLS_PLUGIN override)"
+        elif os.environ.get(_ENGINE_MARKER):
+            _PLUGIN_ASSETS = HERE / "assets"
+            note = os.environ[_ENGINE_MARKER]
         else:
             tmp = pathlib.Path(tempfile.mkdtemp(prefix="audit-assets-"))
-            _PLUGIN_ASSETS, note = _assets_at_origin(_PLUGIN_HOME, tmp)
+            _sha, note = _plugin_at_origin(_PLUGIN_HOME, tmp, ("assets",))
+            _PLUGIN_ASSETS = tmp / "assets"
         yield note
     finally:
         _PLUGIN_ASSETS = saved
@@ -2470,14 +2524,14 @@ def reference_assets():
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _assets_at_origin(plugin, dest):
-    """(assets dir, note) for `plugin`'s origin/main, extracted under `dest`.
-    A failed fetch is reported and the last-fetched origin/main is used:
+def _plugin_at_origin(plugin, dest, paths):
+    """(sha, note) for `plugin`'s origin/main, with `paths` extracted under
+    `dest`; sha is None, and nothing extracted, when there is no origin/main to
+    read. A failed fetch is reported and the last-fetched origin/main is used:
     falling back to the working tree is the defect reference_assets() fixes."""
     ref = f"{_PLUGIN_REMOTE}/{_PLUGIN_BRANCH}"
-    assets = dest / "assets"
     if not (plugin / ".git").exists():
-        return assets, f"absent ({plugin} is not a git checkout; asset checks read MANUAL)"
+        return None, f"absent ({plugin} is not a git checkout; asset checks read MANUAL)"
     # A hung fetch or a credential prompt must fall back like any failed fetch,
     # not end the audit in a TimeoutExpired traceback.
     try:
@@ -2491,13 +2545,13 @@ def _assets_at_origin(plugin, dest):
         print(f"assets: git fetch in {plugin} failed: {err or f'rc={rc}'}", file=sys.stderr)
     rc, sha, _err = sh3(plugin, f"git rev-parse --verify -q --short {ref}^{{commit}}")
     if rc or not sha:
-        return assets, f"absent ({ref} does not resolve in {plugin}; asset checks read MANUAL){stale}"
-    p = subprocess.run(["git", "archive", "--format=tar", sha, "--", "assets"],
+        return None, f"absent ({ref} does not resolve in {plugin}; asset checks read MANUAL){stale}"
+    p = subprocess.run(["git", "archive", "--format=tar", sha, "--", *paths],
                        cwd=plugin, capture_output=True, env=_ENV, timeout=60)
     if p.returncode:
         raise RuntimeError(f"git archive {ref} in {plugin} failed: {p.stderr.decode().strip()}")
     _extract_tar(p.stdout, dest, f"git archive {ref} in {plugin}")
-    return assets, f"{ref} @ {sha} in {plugin}{stale}"
+    return sha, f"{ref} @ {sha} in {plugin}{stale}"
 
 
 def _extract_tar(data, dest, origin):
@@ -3343,6 +3397,9 @@ def main():
     ap.add_argument("--json", action="store_true", help="one JSON object per failing (check x repo) cell, for skills")
     a = ap.parse_args()
 
+    rc = run_at_origin("audit.py")
+    if rc is not None:
+        sys.exit(rc)
     configure(a.fleet or None)
     # --repo is a FLEET.md ROW NAME inside a fleet. `.` (or a path) resolves the
     # checkout it names to its row, so a skill can say "this repo" without
@@ -3380,7 +3437,7 @@ def main():
                 rows, fails, errors = run_matrix(checks, repos)
 
     w = max(len(r) for r in repos) + 2
-    print(f"assets: {assets_note}\n", file=sys.stderr if a.json else sys.stdout)
+    print(f"engine: {engine_note()}\nassets: {assets_note}\n", file=sys.stderr if a.json else sys.stdout)
     if a.json:
         # ERROR cells go out too, flagged: a consumer that only saw FAILs would
         # read a broken checker as a passing one.

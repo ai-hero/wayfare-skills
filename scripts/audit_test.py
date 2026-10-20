@@ -13,6 +13,8 @@ import io
 import os
 import pathlib
 import json
+import shutil
+import site
 import subprocess
 import sys
 import tarfile
@@ -1327,6 +1329,96 @@ class ReferenceAssets(unittest.TestCase):
         with audit.reference_assets() as note:
             self.assertEqual(self.ci20("v2"), audit.MANUAL)
         self.assertIn("absent", note)
+
+
+class EngineAtOrigin(unittest.TestCase):
+    """The engine, register and assets run from the plugin checkout's
+    origin/main, whatever branch it sits on. The fixture's origin/main carries
+    one extra check and a line the stale branch's engine lacks."""
+
+    NEW_CHECK = ("\n- id: ZZ-NEW\n  control: C-SUPPLY\n  scope: repo\n  title: only on main\n"
+                 "  example: |\n    x\n  detect:\n    method: manual\n")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.tmp.name).resolve()
+        upstream = git_repo(self.root, "upstream")
+        for rel in ("scripts/audit.py", "scripts/consistency.py",
+                    "assets/compliance/CONTROLS.yaml", "assets/compliance/CHECKS.yaml"):
+            write(upstream, rel, (HERE.parent / rel).read_text())
+        git(upstream, "add", "-A")
+        git(upstream, "commit", "-q", "-m", "v1")
+        git(self.root, "clone", "-q", str(upstream), "home/.claude/plugins/wayfare-skills")
+        self.plugin = self.root / "home/.claude/plugins/wayfare-skills"
+        git(self.plugin, "config", "user.email", "t@example.com")
+        git(self.plugin, "config", "user.name", "t")
+        git(self.plugin, "checkout", "-q", "-b", "stale")
+        write(upstream, "assets/compliance/CHECKS.yaml",
+              (upstream / "assets/compliance/CHECKS.yaml").read_text() + self.NEW_CHECK)
+        audit_py = upstream / "scripts/audit.py"
+        audit_py.write_text(audit_py.read_text().replace(
+            "def main():\n", "def main():\n    print('ran-origin-engine', file=sys.stderr)\n", 1))
+        git(upstream, "add", "-A")
+        git(upstream, "commit", "-q", "-m", "v2")
+        self.fleet = self.root / "fleet"
+        self.fleet.mkdir()
+        fleet_fixture(self.fleet, "## Fleet\n- name: fx\n- org: fx\n## Repos\n### a\n- group: apps\n")
+        git_repo(self.fleet, "a")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_script(self, script, *args, **env):
+        e = {k: v for k, v in CLEAN_ENV.items() if k != "HERO_SKILLS_PLUGIN"}
+        # HOME moves so _PLUGIN_HOME is the fixture; the user site (where a
+        # developer's pyyaml may live) is found through HOME, so pin it.
+        e.update(HOME=str(self.root / "home"), PYTHONUSERBASE=site.getuserbase(), **env)
+        return subprocess.run([sys.executable, str(self.plugin / "scripts" / script),
+                               "--fleet", str(self.fleet), "--no-snapshot", *args],
+                              capture_output=True, text=True, env=e)
+
+    def test_stale_checkout_runs_origin_main(self):
+        p = self.run_script("audit.py", "--md")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("ZZ-NEW", p.stdout, "a check added on origin/main is listed")
+        self.assertIn("ran-origin-engine", p.stderr, "origin/main's engine code ran")
+        self.assertRegex(p.stdout, r"engine: origin/main @ ([0-9a-f]+) in .*\nassets: origin/main @ \1 in ")
+
+    def test_json_header_goes_to_stderr(self):
+        p = self.run_script("audit.py", "--json")
+        self.assertNotIn("engine:", p.stdout)
+        self.assertIn("engine: origin/main @ ", p.stderr)
+
+    def test_consistency_reads_origin_main_register(self):
+        p = self.run_script("consistency.py")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("ZZ-NEW", (self.fleet / ".fleet" / "CONSISTENCY.md").read_text())
+        self.assertIn("engine: origin/main @ ", p.stderr)
+
+    def test_override_runs_the_invoked_tree(self):
+        p = self.run_script("audit.py", "--md", HERO_SKILLS_PLUGIN=str(self.plugin))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn("ZZ-NEW", p.stdout)
+        self.assertNotIn("ran-origin-engine", p.stderr)
+        self.assertIn("engine: working tree", p.stdout)
+        self.assertIn("HERO_SKILLS_PLUGIN override", p.stdout)
+
+    def test_marker_stops_a_second_reexec(self):
+        p = self.run_script("audit.py", "--md", WAYFARE_ENGINE_AT="origin/main @ abc1234 in X")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn("ZZ-NEW", p.stdout, "the invoked tree ran, nothing was extracted")
+        self.assertIn("engine: origin/main @ abc1234 in X", p.stdout)
+
+    def test_no_plugin_checkout_runs_the_invoked_engine(self):
+        shutil.rmtree(self.plugin / ".git")
+        p = self.run_script("audit.py", "--md")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn("ZZ-NEW", p.stdout)
+        self.assertRegex(p.stdout, r"engine: working tree .*is not a git checkout.*may be stale")
+
+    def test_exit_code_is_the_childs(self):
+        p = self.run_script("audit.py", "--md", "--fail-on", "high,medium,low")
+        self.assertNotEqual(p.returncode, 0, "the bare fixture repo fails checks, and the child's code propagates")
 
 
 class ExtractTar(unittest.TestCase):

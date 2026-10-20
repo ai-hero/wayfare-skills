@@ -24,5 +24,11 @@ Results are never stored: a stored result is a copy, and copies drift.
 `scripts/consistency.py` writes the fleet's human table into the register
 checkout, never here.
 
+The audit reads this register, and the engine that checks it, at the plugin
+checkout's origin/main rather than the branch it sits on, so both come from one
+commit; the report header's `engine:` line names it.
+`HERO_SKILLS_PLUGIN=<checkout>` runs the invoked tree instead, to test unmerged
+work.
+
 Unlike the other assets, nothing here is installed into a repo. A repo that
 carries a copy of the register fails REG-01.

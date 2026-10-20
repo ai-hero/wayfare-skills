@@ -27,7 +27,9 @@ Usage:
     scripts/audit.py --fail-on high         # non-zero exit for CI
 
 Where things live: the ENGINE and a generic BASELINE register ship with
-the wayfare plugin (this file, assets/compliance/); the fleet's own OVERLAY — its
+the wayfare plugin (this file, assets/compliance/), and run from the plugin
+checkout's origin/main, not from whatever branch it sits on (see below); the
+fleet's own OVERLAY — its
 incident history and any checks of its own — lives in the
 fleet folder's register checkout, named by FLEET.md's `register:` key
 (default .fleet/). The two are merged by id, overlay winning. Run inside a
@@ -37,10 +39,13 @@ repo alone, baseline only. --fleet PATH names the fleet root explicitly.
 
 Each repo is audited at --ref (default origin/main) in a detached worktree,
 not at whatever branch the checkout sits on; --no-snapshot audits the
-checkouts as they sit. The plugin assets vendored checks compare against are
-read the same way, from ~/.claude/plugins/wayfare-skills at origin/main after a
-fetch; HERO_SKILLS_PLUGIN=<checkout> reads that checkout's working tree instead,
-to test an unmerged asset. The report header names which one was used.
+checkouts as they sit. The engine, the register and the plugin assets vendored
+checks compare against are read the same way, from ~/.claude/plugins/wayfare-skills
+at origin/main after a fetch: main() extracts that commit and re-runs itself from
+it, so checkers and register come from one sha. HERO_SKILLS_PLUGIN=<checkout>
+runs the invoked engine and reads that checkout's working tree instead, to test
+unmerged work. The report header names which one was used (`engine:` and
+`assets:`).
 """
 
 import argparse
@@ -1021,16 +1026,74 @@ def _(r):
     return (FAIL, f"{len(bad)}/{len(wfs)} workflows lack it") if bad else (PASS, "")
 
 
+# What makes two runs of one workflow race: each of these writes somewhere
+# both runs share (a registry, a tag, a cache, a deploy target).
+# `push:` counts unless it is literally false: build-push-action's usual
+# spelling is an expression (`push: ${{ github.event_name != 'pull_request' }}`),
+# and matching only `true` reads that publishing workflow as n/a.
+_RACE_SIGNAL = re.compile(
+    r"\bpush:[ \t]*(?:true\b|['\"]?\$\{\{)|\bdocker\s+push\b|\bgit\s+push\b|\bgit\s+tag\b"
+    r"|\bcache-to:|\bactions/cache@"
+    r"|\b(?:npm|pnpm|yarn)\s+publish\b|\bgh\s+release\s+create\b|\bgcloud\b[^\n]*\bdeploy\b"
+    r"|\bfirebase\s+deploy\b|\bkubectl\s+apply\b|\bhelm\s+(?:upgrade|install)\b|\bterraform\s+apply\b"
+    r"|\buses:[^\n]*deploy"
+)
+
+
+def _job_races(job):
+    """Does this job carry a signal that two concurrent runs would collide?"""
+    if not isinstance(job, dict):
+        return False
+    if job.get("environment") or "deploy" in str(job.get("uses", "")).lower():
+        return True
+    return bool(_RACE_SIGNAL.search(yaml.safe_dump(job, width=10**9)))
+
+
 @check("CI-08")
 def _(r):
     wfs = workflows(r)
     if not wfs:
         return NA, "no workflows"
-    missing = [
-        w.name for w in wfs
-        if not re.search(r"^concurrency:", w.read_text(), re.M) and w.stem != "auto-approve"
-    ]
-    return (FAIL, ",".join(missing)) if missing else (PASS, "")
+    # Concurrency is the rule's remedy for a race, not a virtue of its own: a
+    # workflow that only reads has nothing to serialise, and demanding the key
+    # there buys a block that exists to satisfy a grep. So it is required only
+    # where a race signal is present. GitHub accepts the key at the workflow
+    # top or on a job, and a repo that scopes it per racing job is following
+    # the rule. The auto-approve exemption is the same reasoning applied by
+    # name: it is a reusable caller with no signal of its own.
+    missing, racing = [], 0
+    for w in wfs:
+        text = w.read_text()
+        if w.stem == "auto-approve":
+            continue
+        try:
+            doc = yaml.safe_load(text)
+        except yaml.YAMLError:
+            doc = None
+        if not isinstance(doc, dict):
+            # Unparsable: a YAML error must not hide a race, so match the text.
+            if _RACE_SIGNAL.search(uncommented(text)):
+                racing += 1
+                if not re.search(r"^concurrency:", text, re.M):
+                    missing.append(w.name)
+            continue
+        jobs = doc.get("jobs") if isinstance(doc.get("jobs"), dict) else {}
+        racers = [j for j in jobs.values() if _job_races(j)]
+        if not racers:
+            continue
+        racing += 1
+        if doc.get("concurrency"):
+            continue
+        if not all(isinstance(j, dict) and j.get("concurrency") for j in racers):
+            missing.append(w.name)
+    if missing:
+        return FAIL, ",".join(missing)
+    if not racing:
+        # Nothing races. A repo that declares concurrency anyway follows the
+        # rule, so it keeps its PASS; only a repo with neither is n/a.
+        declared = any(re.search(r"^\s*concurrency:", uncommented(w.read_text()), re.M) for w in wfs)
+        return (PASS, "") if declared else (NA, "no workflow carries a race signal")
+    return PASS, ""
 
 
 @check("CI-09")
@@ -1147,17 +1210,21 @@ def _(r):
         return NA, "no Justfile"
     t = f.read_text()
     # Split by what the recipe presupposes, not by importance. test/lint/
-    # typecheck/clean/format describe work any repo has; dev-stack, health and
-    # build describe a service you can stand up, probe, and compile. A repo
-    # with neither a UI nor a backend has nothing to put in those three, so
-    # demanding them buys an empty recipe that exists to satisfy a grep —
-    # which is worse than the gap, because the next reader believes it.
+    # typecheck/clean/format describe work any repo has. build describes
+    # something you compile, so it keeps the ui/backend/image predicate.
+    # dev-stack and health describe a stack you can stand up and probe, which
+    # exists only where a dev compose file or a prod image does: a Go library
+    # with a CLI has a backend by has_backend's reckoning and nothing to put
+    # in them, so demanding them buys an empty recipe that exists to satisfy a
+    # grep, which is worse than the gap because the next reader believes it.
     #
     # Same shape as the AUTH-01 / UI-01 / HLT-01 guards: absent subsystem is
     # n/a, not a violation.
     need = ["test", "lint", "typecheck", "clean", "format"]
     if has_ui(r) or has_backend(r) or (r / "Dockerfile.prod").is_file():
-        need += ["dev-stack", "health", "build"]
+        need.append("build")
+    if yml(r, "docker-compose.dev").is_file() or (r / "Dockerfile.prod").is_file():
+        need += ["dev-stack", "health"]
     missing = [n for n in need if not re.search(rf"^{re.escape(n)}\b.*:", t, re.M)]
     return (FAIL, "no " + ",".join(missing)) if missing else (PASS, "")
 
@@ -1294,6 +1361,68 @@ def _node_majors(r):
     return out
 
 
+_SCRIPT_PATH = re.compile(r"(?<![\w./-])((?:\./)?[\w.-]+(?:/[\w.-]+)*\.(?:sh|bash|py|mjs|cjs|js|ts))\b")
+
+
+def _run_lines(text):
+    """The `run:` bodies of a workflow, or its uncommented text when it will
+    not parse."""
+    try:
+        doc = yaml.safe_load(text)
+        jobs = doc.get("jobs") or {}
+        return [
+            st["run"]
+            for j in jobs.values() if isinstance(j, dict)
+            for st in j.get("steps") or [] if isinstance(st, dict) and isinstance(st.get("run"), str)
+        ]
+    except (yaml.YAMLError, AttributeError):
+        return [uncommented(text)]
+
+
+def _recipe_body(justfile, name):
+    """The indented body of one Justfile recipe, "" when it is not there."""
+    m = re.search(rf"^{re.escape(name)}(?![\w-])[^\n:=]*:(?!=)[^\n]*\n((?:[ \t]+[^\n]*\n?|\n)*)", justfile, re.M)
+    return m.group(1) if m else ""
+
+
+def _script_texts(r, text):
+    """Contents of repo files that `text` invokes by path, one hop."""
+    out = []
+    for m in _SCRIPT_PATH.finditer(text):
+        f = (r / m.group(1)).resolve()
+        if f.is_file() and r.resolve() in f.parents:
+            out.append(f.read_text(errors="replace"))
+    return out
+
+
+def _ci_asserts_node(r):
+    """Does CI assert that the Node pins agree? The literal phrase is one
+    spelling. The rule is that some step in CI reads the .nvmrc and compares
+    it with the distroless/nodejs image, wherever that step lives: in the
+    workflow, in a script a `run:` line invokes, or in a `just` recipe it
+    calls. Both pins must appear in one of those, comments stripped: a build
+    step reading .nvmrc and a docker step naming the image are two mentions,
+    not a comparison. One hop, so a wrapper script that shells out to another
+    is not followed."""
+    jf = r / "Justfile"
+    justfile = jf.read_text() if jf.is_file() else ""
+    for w in workflows(r):
+        text = w.read_text()
+        if "node majors agree" in text:
+            return True
+        units = []
+        for run in _run_lines(text):
+            units.append(run)
+            units += _script_texts(r, run)
+            for name in re.findall(r"(?<![\w-])just\s+(?:--\S+\s+)*([\w-]+)", run):
+                body = _recipe_body(justfile, name)
+                units.append(body)
+                units += _script_texts(r, body)
+        if any(".nvmrc" in u and "distroless/nodejs" in u for u in map(uncommented, units)):
+            return True
+    return False
+
+
 @check("CTR-01")
 def _(r):
     pins = _node_majors(r)
@@ -1305,7 +1434,7 @@ def _(r):
         return FAIL, f"majors disagree: {detail}"
     # Agreement is necessary but not sufficient: CI must ASSERT it, or the
     # next edit silently re-splits build-on-N / run-on-M.
-    asserts = any("node majors agree" in w.read_text() for w in workflows(r))
+    asserts = _ci_asserts_node(r)
     if not asserts:
         return FAIL, f"all on {vals.pop()}, but CI does not assert it"
     return PASS, f"node {vals.pop()}, asserted in CI"
@@ -1436,7 +1565,7 @@ _ROOT_OK = re.compile(
     r"(README|CLAUDE|AGENTS|HERO|DESIGN|CONTROLS|CHECKS|CONSISTENCY|CONTRIBUTING|SECURITY|CHANGELOG|LICENSE)"
     r"(\.(md|yaml|yml|txt))?"
     # Harness + build files.
-    r"|Justfile|Dockerfile.*|docker-compose.*|go\.work.*|dev\.sh|supervisor\.mjs"
+    r"|Justfile|Dockerfile.*|docker-compose.*|go\.work.*|go\.(mod|sum)|dev\.sh|supervisor\.mjs"
     r"|package(-lock)?\.json|tsconfig.*\.json|components\.json|registry\.json"
     r"|vite\.config\.ts|playwright\.config\.ts|eslint.*\.(js|mjs|ts)|firebase\.json"
     r"|uv\.lock|pyproject\.toml|terraform\.auto\.tfvars\.example|.*\.code-workspace"
@@ -1447,12 +1576,17 @@ _ROOT_OK = re.compile(
 @check("PLACE-04")
 def _(r):
     _rc, out = sh(r, "git ls-files --full-name -- ':(exclude)*/*'")
+    files = [f.strip() for f in out.splitlines() if f.strip()]
+    # A root .go file is a module's own source only when a root go.mod makes
+    # it one; _ROOT_OK is a regex over names and cannot see the repo.
+    root_module = "go.mod" in files
     loose = []
-    for f in out.splitlines():
-        f = f.strip()
-        if not f or f.startswith("."):
+    for f in files:
+        if f.startswith("."):
             continue
         if _ROOT_OK.match(f):
+            continue
+        if root_module and re.fullmatch(r"[^/]+\.go", f):
             continue
         loose.append(f)
     return (FAIL, ", ".join(sorted(loose))) if loose else (PASS, "root is clean")
@@ -1662,6 +1796,99 @@ def _(r):
     return PASS, out.splitlines()[0].split(":")[0] + " calls Migrate at boot"
 
 
+_TEST_SRC = re.compile(r"\.(test|spec|stories)\.tsx?$|(^|/)(__tests__|__mocks__)/")
+# A file the framework mounts without anyone importing it: an entry point at a
+# source root, or a file-routed page. An `index.tsx` deeper down is a component
+# folder's barrel, imported like any other file, so it does not count.
+_ENTRY_SRC = re.compile(
+    r"(^|/)src/(main|index|App|app|root|_app)\.tsx$|^(main|index|App|app)\.tsx$"
+    r"|(^|/)(__root|layout|page)\.tsx$|(^|/)(routes?|pages?)/[^\n]*\.tsx$"
+)
+_JS_COMMENT = re.compile(r"/\*[\s\S]*?\*/|(?<![:\w])//[^\n]*")
+_EXPORT_NAMES = (
+    re.compile(r"^export\s+(?:default\s+)?(?:async\s+)?(?:function\*?|const|let|class)\s+([A-Z]\w*)", re.M),
+    re.compile(r"^export\s+default\s+([A-Z]\w*)\s*;?\s*$", re.M),
+)
+
+
+def _component_exports(text):
+    names = {n for rx in _EXPORT_NAMES for n in rx.findall(text)}
+    for body in re.findall(r"^export\s*\{([^}]*)\}", text, re.M):
+        for part in body.split(","):
+            n = part.split(" as ")[-1].strip()
+            if n[:1].isupper():
+                names.add(n)
+    return names
+
+
+def _import_graph(r, files):
+    """{file: set of files it imports}, resolving relative specifiers by path
+    and aliased ones (`@/x`, `~/x`, `#/x`) by trailing path, which is all a
+    grep-level audit can know about a tsconfig it does not read. A bare
+    specifier is a package: `react` must not resolve to a local `.../react`."""
+    key = {}
+    for f in files:
+        k = re.sub(r"\.(tsx?|jsx?)$", "", f)
+        key[re.sub(r"/index$", "", k)] = f
+    graph = {}
+    for f in files:
+        text = (r / f).read_text(errors="replace")
+        deps = set()
+        for spec in re.findall(r"""(?:from|import)\s*\(?\s*['"]([^'"]+)['"]""", text):
+            if spec.startswith("."):
+                k = os.path.normpath(os.path.join(os.path.dirname(f), spec))
+                hit = key.get(k)
+            elif re.match(r"[@~#]/", spec):
+                rest = spec[2:]
+                hit = next((v for kk, v in key.items() if kk == rest or kk.endswith("/" + rest)), None)
+            else:
+                hit = None
+            if hit and hit != f:
+                deps.add(hit)
+        graph[f] = deps
+    return graph
+
+
+def _mounted_gate(r, hooks):
+    """The file that renders a component sitting on the import chain above the
+    version-check hook, or None. The chain is the hook's importers up to three
+    hops, tests excluded, and both the gate and what renders it are drawn from
+    that chain. A component counts as mounted when another .tsx on the chain
+    renders it outside a comment and that file is an entry point, or exports a
+    component that is itself mounted, at most two more renders up. An
+    organism that renders the gate, imported by a route that never renders the
+    organism, is the unmounted gate this check exists for."""
+    files = [f for f in tracked(r, "*.ts", "*.tsx") if not _TEST_SRC.search(f)]
+    graph = _import_graph(r, files)
+    level = {h: 0 for h in hooks if h in graph}
+    frontier = set(level)
+    for hop in (1, 2, 3):
+        frontier = {f for f, deps in graph.items() if f not in level and deps & frontier}
+        level.update({f: hop for f in frontier})
+    text = {f: _JS_COMMENT.sub("", (r / f).read_text(errors="replace")) for f in level if f.endswith(".tsx")}
+    exports = {f: _component_exports((r / f).read_text(errors="replace")) for f in level}
+
+    def renders(f, g):
+        return f != g and any(re.search(rf"<{n}[\s/>]", text[f]) for n in exports[g])
+
+    def mounted(g, left):
+        for f in text:
+            if renders(f, g):
+                if _ENTRY_SRC.search(f):
+                    return f
+                top = left and mounted(f, left - 1)
+                if top:
+                    return top
+        return None
+
+    for g in level:
+        if level[g] >= 1 and exports[g]:
+            hit = mounted(g, 2)
+            if hit:
+                return hit
+    return None
+
+
 @check("UI-01")
 def _(r):
     if not has_ui(r):
@@ -1681,11 +1908,17 @@ def _(r):
         "git grep -l '<VersionGate' -- '*.tsx' "
         "':(exclude)*version-gate*' ':(exclude)*.test.tsx' ':(exclude)*.spec.tsx'",
     )
-    if not used:
-        return FAIL, "version-gate exists but nothing renders it — a gate that cannot fire"
-    return PASS, f"{len(out.splitlines())} files, mounted in {used.splitlines()[0]}"
-
-
+    if used:
+        return PASS, f"{len(out.splitlines())} files, mounted in {used.splitlines()[0]}"
+    # The gate need not be called VersionGate: a repo can wrap the hook in a
+    # banner or a shell component. Follow the hook's importers and accept a
+    # render of anything on that chain, at the same standard: JSX in a file
+    # that mounts, not an import.
+    hooks = [f for f in out.splitlines() if "use-version-check" in f]
+    hit = _mounted_gate(r, hooks)
+    if hit:
+        return PASS, f"{len(out.splitlines())} files, mounted via {hit}"
+    return FAIL, "version-gate exists but nothing renders it — a gate that cannot fire"
 
 
 # A name that IS a credential. Anything matching this belongs in `secrets`.
@@ -2442,6 +2675,49 @@ _PLUGIN_REMOTE, _PLUGIN_BRANCH = "origin", "main"
 _PLUGIN_ASSETS = pathlib.Path("<assets unbound: run checks inside reference_assets()>")
 
 
+# Set in the child of run_at_origin(): the note naming the commit it was
+# extracted from. Its presence is what stops the child re-executing again.
+_ENGINE_MARKER = "WAYFARE_ENGINE_AT"
+_ENGINE_NOTE = f"working tree {HERE} (engine not yet resolved)"
+
+
+def engine_note():
+    """The report header's `engine:` text: where the running engine came from."""
+    return _ENGINE_NOTE
+
+
+def run_at_origin(script):
+    """Re-run `scripts/<script>` from the plugin checkout's origin/main as a
+    child process and return its exit code, or None when this process should
+    carry on as the engine.
+
+    Register and checkers have to come from one commit: loading origin/main's
+    register under a stale engine pairs new ids with old checkers. The child
+    finds its own tree via HERE, so engine, register and assets cannot
+    straddle two fetches. HERO_SKILLS_PLUGIN or an existing marker means
+    no re-exec; so does a plugin home with no resolvable origin/main, where the
+    invoked engine runs and the header says it may be stale."""
+    global _ENGINE_NOTE
+    override = os.environ.get("HERO_SKILLS_PLUGIN")
+    if override:
+        _ENGINE_NOTE = f"working tree {HERE} (HERO_SKILLS_PLUGIN override; assets from {override})"
+        return None
+    if os.environ.get(_ENGINE_MARKER):
+        _ENGINE_NOTE = os.environ[_ENGINE_MARKER]
+        return None
+    tmp = pathlib.Path(tempfile.mkdtemp(prefix="audit-engine-"))
+    try:
+        sha, note = _plugin_at_origin(_PLUGIN_HOME, tmp, ("scripts/audit.py", "scripts/consistency.py", "assets"))
+        if not sha:
+            _ENGINE_NOTE = f"working tree {HERE} ({note}; register and checkers may be stale)"
+            return None
+        rc = subprocess.run([sys.executable, str(tmp / "scripts" / script), *sys.argv[1:]],
+                            env={**os.environ, _ENGINE_MARKER: note}).returncode
+        return rc if rc >= 0 else 128 - rc
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 @contextlib.contextmanager
 def reference_assets():
     """Bind _PLUGIN_ASSETS for one audit run and yield a note naming where the
@@ -2452,7 +2728,9 @@ def reference_assets():
     branch the last session left it: a feature branch cut before a caller
     change inverted CI-20 fleet-wide (the repos that took the change failed,
     the rest passed). HERO_SKILLS_PLUGIN=<checkout> reads that checkout's
-    working tree instead, which is how an unmerged asset is tested."""
+    working tree instead, which is how an unmerged asset is tested. Inside the
+    child of run_at_origin() the assets are the ones extracted beside the
+    running engine."""
     global _PLUGIN_ASSETS
     saved, tmp = _PLUGIN_ASSETS, None
     try:
@@ -2460,9 +2738,13 @@ def reference_assets():
         if override:
             _PLUGIN_ASSETS = pathlib.Path(override) / "assets"
             note = f"working tree {override} (HERO_SKILLS_PLUGIN override)"
+        elif os.environ.get(_ENGINE_MARKER):
+            _PLUGIN_ASSETS = HERE / "assets"
+            note = os.environ[_ENGINE_MARKER]
         else:
             tmp = pathlib.Path(tempfile.mkdtemp(prefix="audit-assets-"))
-            _PLUGIN_ASSETS, note = _assets_at_origin(_PLUGIN_HOME, tmp)
+            _sha, note = _plugin_at_origin(_PLUGIN_HOME, tmp, ("assets",))
+            _PLUGIN_ASSETS = tmp / "assets"
         yield note
     finally:
         _PLUGIN_ASSETS = saved
@@ -2470,14 +2752,14 @@ def reference_assets():
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _assets_at_origin(plugin, dest):
-    """(assets dir, note) for `plugin`'s origin/main, extracted under `dest`.
-    A failed fetch is reported and the last-fetched origin/main is used:
+def _plugin_at_origin(plugin, dest, paths):
+    """(sha, note) for `plugin`'s origin/main, with `paths` extracted under
+    `dest`; sha is None, and nothing extracted, when there is no origin/main to
+    read. A failed fetch is reported and the last-fetched origin/main is used:
     falling back to the working tree is the defect reference_assets() fixes."""
     ref = f"{_PLUGIN_REMOTE}/{_PLUGIN_BRANCH}"
-    assets = dest / "assets"
     if not (plugin / ".git").exists():
-        return assets, f"absent ({plugin} is not a git checkout; asset checks read MANUAL)"
+        return None, f"absent ({plugin} is not a git checkout; asset checks read MANUAL)"
     # A hung fetch or a credential prompt must fall back like any failed fetch,
     # not end the audit in a TimeoutExpired traceback.
     try:
@@ -2491,16 +2773,33 @@ def _assets_at_origin(plugin, dest):
         print(f"assets: git fetch in {plugin} failed: {err or f'rc={rc}'}", file=sys.stderr)
     rc, sha, _err = sh3(plugin, f"git rev-parse --verify -q --short {ref}^{{commit}}")
     if rc or not sha:
-        return assets, f"absent ({ref} does not resolve in {plugin}; asset checks read MANUAL){stale}"
-    p = subprocess.run(["git", "archive", "--format=tar", sha, "--", "assets"],
+        return None, f"absent ({ref} does not resolve in {plugin}; asset checks read MANUAL){stale}"
+    p = subprocess.run(["git", "archive", "--format=tar", sha, "--", *paths],
                        cwd=plugin, capture_output=True, env=_ENV, timeout=60)
     if p.returncode:
         raise RuntimeError(f"git archive {ref} in {plugin} failed: {p.stderr.decode().strip()}")
-    with tarfile.open(fileobj=io.BytesIO(p.stdout)) as t:
-        # `filter` is 3.12+ (and late 3.9-3.11 patch releases); macOS's
-        # /usr/bin/python3 is 3.9.6 and raises TypeError on the keyword.
-        t.extractall(dest, **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
-    return assets, f"{ref} @ {sha} in {plugin}{stale}"
+    _extract_tar(p.stdout, dest, f"git archive {ref} in {plugin}")
+    return sha, f"{ref} @ {sha} in {plugin}{stale}"
+
+
+def _extract_tar(data, dest, origin):
+    """Extract the tar `data` under `dest`, refusing anything but regular files
+    and directories with relative names that stay inside `dest`.
+
+    The member check is the guard on every Python: `filter="data"` exists only
+    on 3.12+ and late 3.9-3.11 patch releases, and macOS's /usr/bin/python3 is
+    3.9.6, where passing it raises TypeError. Do not replace the member loop
+    with the filter: 3.9.6 would be unguarded. `members=` is passed so semgrep
+    sees the extraction is vetted. Links are refused on purpose, so a symlink
+    added under assets/ or the scripts makes every audit raise."""
+    with tarfile.open(fileobj=io.BytesIO(data)) as t:
+        members = t.getmembers()
+        for m in members:
+            parts = pathlib.PurePosixPath(m.name).parts
+            if not (m.isreg() or m.isdir()) or m.name.startswith("/") or ".." in parts:
+                raise RuntimeError(f"{origin} holds an unsafe member {m.name!r}; nothing extracted")
+        t.extractall(dest, members=members,
+                     **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
 
 
 class Unreadable(Exception):
@@ -2948,12 +3247,20 @@ def _(r):
     return (PASS, "") if "version.json" in uncommented(f.read_text()) else (FAIL, "version.json not excluded")
 
 
+_SEMGREP_CONFIG = re.compile(r"--config(?:=|[ \t,\"']+|[ \t\"']*\n\s*-\s+)(?!-)[^\s,\"'\]]")
+
+
 @check("PRE-06")
 def _(r):
     seg = _hook_segment(uncommented(precommit(r)), "semgrep")
     if not seg:
         return NA, "no semgrep hook"
-    missing = [w for w in ("--config=auto", "--error", "--skip-unknown-extensions") if w not in seg]
+    # Any --config value names a ruleset: `auto` is one spelling and an
+    # explicit pack list is another (`auto` refuses --metrics=off, so a repo
+    # that turns metrics off has to list packs). The hook needs one.
+    missing = [w for w in ("--error", "--skip-unknown-extensions") if w not in seg]
+    if not _SEMGREP_CONFIG.search(seg):
+        missing.insert(0, "--config=<ruleset>")
     return (FAIL, "missing " + " ".join(missing)) if missing else (PASS, "")
 
 
@@ -3328,6 +3635,9 @@ def main():
     ap.add_argument("--json", action="store_true", help="one JSON object per failing (check x repo) cell, for skills")
     a = ap.parse_args()
 
+    rc = run_at_origin("audit.py")
+    if rc is not None:
+        sys.exit(rc)
     configure(a.fleet or None)
     # --repo is a FLEET.md ROW NAME inside a fleet. `.` (or a path) resolves the
     # checkout it names to its row, so a skill can say "this repo" without
@@ -3365,7 +3675,7 @@ def main():
                 rows, fails, errors = run_matrix(checks, repos)
 
     w = max(len(r) for r in repos) + 2
-    print(f"assets: {assets_note}\n", file=sys.stderr if a.json else sys.stdout)
+    print(f"engine: {engine_note()}\nassets: {assets_note}\n", file=sys.stderr if a.json else sys.stdout)
     if a.json:
         # ERROR cells go out too, flagged: a consumer that only saw FAILs would
         # read a broken checker as a passing one.

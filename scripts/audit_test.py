@@ -13,8 +13,11 @@ import io
 import os
 import pathlib
 import json
+import shutil
+import site
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
 
@@ -1328,6 +1331,166 @@ class ReferenceAssets(unittest.TestCase):
         self.assertIn("absent", note)
 
 
+class EngineAtOrigin(unittest.TestCase):
+    """The engine, register and assets run from the plugin checkout's
+    origin/main, whatever branch it sits on. The fixture's origin/main carries
+    one extra check and a line the stale branch's engine lacks."""
+
+    NEW_CHECK = ("\n- id: ZZ-NEW\n  control: C-SUPPLY\n  scope: repo\n  title: only on main\n"
+                 "  example: |\n    x\n  detect:\n    method: manual\n")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.tmp.name).resolve()
+        upstream = git_repo(self.root, "upstream")
+        for rel in ("scripts/audit.py", "scripts/consistency.py",
+                    "assets/compliance/CONTROLS.yaml", "assets/compliance/CHECKS.yaml"):
+            write(upstream, rel, (HERE.parent / rel).read_text())
+        git(upstream, "add", "-A")
+        git(upstream, "commit", "-q", "-m", "v1")
+        git(self.root, "clone", "-q", str(upstream), "home/.claude/plugins/wayfare-skills")
+        self.plugin = self.root / "home/.claude/plugins/wayfare-skills"
+        git(self.plugin, "config", "user.email", "t@example.com")
+        git(self.plugin, "config", "user.name", "t")
+        git(self.plugin, "checkout", "-q", "-b", "stale")
+        write(upstream, "assets/compliance/CHECKS.yaml",
+              (upstream / "assets/compliance/CHECKS.yaml").read_text() + self.NEW_CHECK)
+        audit_py = upstream / "scripts/audit.py"
+        audit_py.write_text(audit_py.read_text().replace(
+            "def main():\n", "def main():\n    print('ran-origin-engine', file=sys.stderr)\n", 1))
+        git(upstream, "add", "-A")
+        git(upstream, "commit", "-q", "-m", "v2")
+        self.fleet = self.root / "fleet"
+        self.fleet.mkdir()
+        fleet_fixture(self.fleet, "## Fleet\n- name: fx\n- org: fx\n## Repos\n### a\n- group: apps\n")
+        git_repo(self.fleet, "a")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_script(self, script, *args, **env):
+        e = {k: v for k, v in CLEAN_ENV.items() if k != "HERO_SKILLS_PLUGIN"}
+        # HOME moves so _PLUGIN_HOME is the fixture; the user site (where a
+        # developer's pyyaml may live) is found through HOME, so pin it.
+        e.update(HOME=str(self.root / "home"), PYTHONUSERBASE=site.getuserbase(), **env)
+        return subprocess.run([sys.executable, str(self.plugin / "scripts" / script),
+                               "--fleet", str(self.fleet), "--no-snapshot", *args],
+                              capture_output=True, text=True, env=e)
+
+    def test_stale_checkout_runs_origin_main(self):
+        p = self.run_script("audit.py", "--md")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("ZZ-NEW", p.stdout, "a check added on origin/main is listed")
+        self.assertIn("ran-origin-engine", p.stderr, "origin/main's engine code ran")
+        self.assertRegex(p.stdout, r"engine: origin/main @ ([0-9a-f]+) in .*\nassets: origin/main @ \1 in ")
+
+    def test_json_header_goes_to_stderr(self):
+        p = self.run_script("audit.py", "--json")
+        self.assertNotIn("engine:", p.stdout)
+        self.assertIn("engine: origin/main @ ", p.stderr)
+
+    def test_consistency_reads_origin_main_register(self):
+        p = self.run_script("consistency.py")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("ZZ-NEW", (self.fleet / ".fleet" / "CONSISTENCY.md").read_text())
+        self.assertIn("engine: origin/main @ ", p.stderr)
+
+    def test_override_runs_the_invoked_tree(self):
+        p = self.run_script("audit.py", "--md", HERO_SKILLS_PLUGIN=str(self.plugin))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn("ZZ-NEW", p.stdout)
+        self.assertNotIn("ran-origin-engine", p.stderr)
+        self.assertIn("engine: working tree", p.stdout)
+        self.assertIn("HERO_SKILLS_PLUGIN override", p.stdout)
+        self.assertIn(f"assets from {self.plugin}", p.stdout, "the engine named is the one that ran")
+
+    def test_marker_stops_a_second_reexec(self):
+        p = self.run_script("audit.py", "--md", WAYFARE_ENGINE_AT="origin/main @ abc1234 in X")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn("ZZ-NEW", p.stdout, "the invoked tree ran, nothing was extracted")
+        self.assertIn("engine: origin/main @ abc1234 in X", p.stdout)
+
+    def test_no_plugin_checkout_runs_the_invoked_engine(self):
+        shutil.rmtree(self.plugin / ".git")
+        p = self.run_script("audit.py", "--md")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn("ZZ-NEW", p.stdout)
+        self.assertRegex(p.stdout, r"engine: working tree .*is not a git checkout.*may be stale")
+
+    def test_exit_code_is_the_childs(self):
+        p = self.run_script("audit.py", "--md", "--fail-on", "high,medium,low")
+        self.assertNotEqual(p.returncode, 0, "the bare fixture repo fails checks, and the child's code propagates")
+
+
+class ExtractTar(unittest.TestCase):
+    """_extract_tar is the only guard on 3.9.6, where `filter="data"` does not
+    exist. Each case also runs with `data_filter` removed, so the 3.9 branch
+    is exercised on whatever Python runs the suite."""
+
+    def both_branches(self, fn):
+        fn()
+        if hasattr(tarfile, "data_filter"):
+            saved = tarfile.data_filter
+            del tarfile.data_filter
+            try:
+                for p in self.dest.iterdir():
+                    shutil.rmtree(p) if p.is_dir() else p.unlink()
+                fn()
+            finally:
+                tarfile.data_filter = saved
+
+    @staticmethod
+    def tar(*entries):
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as t:
+            for name, kind in entries:
+                info = tarfile.TarInfo(name)
+                info.type = kind
+                info.mode = 0o755 if kind == tarfile.DIRTYPE else 0o644
+                if kind in (tarfile.SYMTYPE, tarfile.LNKTYPE):
+                    info.linkname = "/etc/passwd"
+                data = b"x" if kind == tarfile.REGTYPE else b""
+                info.size = len(data)
+                t.addfile(info, io.BytesIO(data))
+        return buf.getvalue()
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.tmp.name)
+        self.dest = self.root / "dest"
+        self.dest.mkdir()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_normal_assets_archive_extracts(self):
+        data = self.tar(("assets/", tarfile.DIRTYPE), ("assets/a/", tarfile.DIRTYPE),
+                        ("assets/a/caller.yaml", tarfile.REGTYPE))
+
+        def run():
+            audit._extract_tar(data, self.dest, "test")
+            self.assertTrue((self.dest / "assets" / "a" / "caller.yaml").is_file())
+        self.both_branches(run)
+
+    def test_traversal_member_raises_and_writes_nothing(self):
+        data = self.tar(("assets/ok.yaml", tarfile.REGTYPE), ("../escape.txt", tarfile.REGTYPE))
+
+        def run():
+            with self.assertRaisesRegex(RuntimeError, "escape.txt"):
+                audit._extract_tar(data, self.dest, "test")
+            self.assertFalse((self.root / "escape.txt").exists())
+            self.assertEqual(list(self.dest.iterdir()), [], "validated before anything is written")
+        self.both_branches(run)
+
+    def test_absolute_and_link_members_raise(self):
+        def run():
+            for entry in (("/tmp/abs.txt", tarfile.REGTYPE), ("assets/link", tarfile.SYMTYPE),
+                          ("assets/hard", tarfile.LNKTYPE)):
+                with self.assertRaises(RuntimeError, msg=entry):
+                    audit._extract_tar(self.tar(entry), self.dest, "test")
+        self.both_branches(run)
+
+
 class SCAN01(unittest.TestCase):
     """The expiry gate is the only thing that reads a VEX `expired_at`, so a
     repo holding exceptions without it running on PRs and in every scan that
@@ -1423,6 +1586,294 @@ class SCAN01(unittest.TestCase):
         self.assertEqual(self.verdict()[0], audit.FAIL)
         self.wf("build.yaml", self.PR_GATE.format(arg=" .trivyignore.yaml"))
         self.assertEqual(self.verdict(), (audit.PASS, ""))
+
+
+class RuleNotSpelling(unittest.TestCase):
+    """Each pair: a repo following the rule by another spelling passes, and a
+    true violation still fails."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = pathlib.Path(self._tmp.name)
+
+    def repo(self, files):
+        r = git_repo(self.root, "r")
+        for rel, text in files.items():
+            write(r, rel, text)
+        git(r, "add", "-A")
+        git(r, "commit", "-q", "-m", "x")
+        return r
+
+    def verdict(self, cid, r):
+        return audit.CHECKS[cid](r)
+
+    # PRE-06
+    SEMGREP = "repos:\n- repo: b\n  hooks:\n  - id: semgrep\n    args:\n{args}"
+
+    def pre06(self, args):
+        r = self.root / "p"
+        write(r, ".pre-commit-config.yaml", self.SEMGREP.format(args="".join(f"    - {a}\n" for a in args)))
+        return self.verdict("PRE-06", r)[0]
+
+    def test_pre06_any_config_value(self):
+        flags = ["--error", "--skip-unknown-extensions"]
+        self.assertEqual(self.pre06(["--config=auto"] + flags), audit.PASS)
+        self.assertEqual(self.pre06(["--config=p/default", "--config=p/golang", "--metrics=off"] + flags), audit.PASS)
+        self.assertEqual(self.pre06(["--config", "p/default"] + flags), audit.PASS)
+
+    def test_pre06_still_fails_violations(self):
+        self.assertEqual(self.pre06(["--error", "--skip-unknown-extensions"]), audit.FAIL)
+        self.assertEqual(self.pre06(["--config=", "--error", "--skip-unknown-extensions"]), audit.FAIL)
+        self.assertEqual(self.pre06(["--config", "--error", "--skip-unknown-extensions"]), audit.FAIL)
+        self.assertEqual(self.pre06(["--config=p/default", "--skip-unknown-extensions"]), audit.FAIL)
+        self.assertEqual(self.pre06(["--config=p/default", "--error"]), audit.FAIL)
+        r = self.root / "p"
+        write(r, ".pre-commit-config.yaml", self.SEMGREP.format(
+            args="    - --error\n    - --skip-unknown-extensions\n    - --config\n") + "    stages: [pre-push]\n")
+        self.assertEqual(self.verdict("PRE-06", r)[0], audit.FAIL, "a trailing bare --config has no value")
+
+    # PLACE-04
+    def test_place04_go_module_at_root(self):
+        r = self.repo({"go.mod": "module x\n", "go.sum": "", "main.go": "package main\n"})
+        self.assertEqual(self.verdict("PLACE-04", r)[0], audit.PASS)
+
+    def test_place04_stray_go_file_without_go_mod_fails(self):
+        r = self.repo({"main.go": "package main\n", "go.sum": ""})
+        st, detail = self.verdict("PLACE-04", r)
+        self.assertEqual(st, audit.FAIL)
+        self.assertIn("main.go", detail)
+        self.assertNotIn("go.sum", detail)
+
+    def test_place04_other_stray_file_fails_beside_go_mod(self):
+        r = self.repo({"go.mod": "module x\n", "notes.txt": "x\n"})
+        st, detail = self.verdict("PLACE-04", r)
+        self.assertEqual((st, detail), (audit.FAIL, "notes.txt"))
+
+    # JUST-01
+    BASE = "".join(f"{n}:\n    echo\n" for n in ("test", "lint", "typecheck", "clean", "format"))
+
+    def test_just01_go_library_without_a_dev_stack(self):
+        r = self.root / "j"
+        write(r, "go.mod", "module x\n")
+        write(r, "Justfile", self.BASE + "build:\n    go build\n")
+        self.assertEqual(self.verdict("JUST-01", r), (audit.PASS, ""))
+
+    def test_just01_dev_stack_demands_health_and_dev_stack(self):
+        r = self.root / "j"
+        write(r, "go.mod", "module x\n")
+        write(r, "docker-compose.dev.yaml", "services: {}\n")
+        write(r, "Justfile", self.BASE + "build:\n    go build\ndev-stack:\n    up\n")
+        self.assertEqual(self.verdict("JUST-01", r), (audit.FAIL, "no health"))
+
+    def test_just01_prod_image_demands_dev_stack(self):
+        r = self.root / "j"
+        write(r, "Dockerfile.prod", "FROM scratch\n")
+        write(r, "Justfile", self.BASE + "build:\n    x\nhealth:\n    x\n")
+        self.assertEqual(self.verdict("JUST-01", r), (audit.FAIL, "no dev-stack"))
+
+    def test_just01_build_keeps_the_backend_predicate(self):
+        r = self.root / "j"
+        write(r, "go.mod", "module x\n")
+        write(r, "Justfile", self.BASE)
+        self.assertEqual(self.verdict("JUST-01", r), (audit.FAIL, "no build"))
+
+    # CI-08
+    def ci08(self, files):
+        r = self.root / "c"
+        for name, text in files.items():
+            write(r, f".github/workflows/{name}", text)
+        return self.verdict("CI-08", r)
+
+    PUSH_JOB = "jobs:\n  b:\n{conc}    steps:\n      - run: docker push img\n"
+
+    def test_ci08_signal_without_concurrency_fails(self):
+        st, detail = self.ci08({"build.yaml": self.PUSH_JOB.format(conc="")})
+        self.assertEqual((st, detail), (audit.FAIL, "build.yaml"))
+
+    def test_ci08_every_concurrency_placement_passes(self):
+        top = "concurrency:\n  group: g\n" + self.PUSH_JOB.format(conc="")
+        job = self.PUSH_JOB.format(conc="    concurrency:\n      group: g\n")
+        for text in (top, job):
+            self.assertEqual(self.ci08({"build.yaml": text}), (audit.PASS, ""))
+
+    def test_ci08_job_level_must_cover_every_racing_job(self):
+        two = (
+            "jobs:\n  a:\n    concurrency: {group: g}\n    steps:\n      - run: git push\n"
+            "  b:\n    steps:\n      - run: git tag v1\n"
+        )
+        self.assertEqual(self.ci08({"build.yaml": two}), (audit.FAIL, "build.yaml"))
+
+    def test_ci08_each_signal_races(self):
+        for body in (
+            "      - uses: docker/build-push-action@x\n        with:\n          push: true\n",
+            "      - uses: docker/build-push-action@x\n        with:\n          cache-to: type=gha\n",
+            "      - uses: actions/cache@x\n",
+            "      - run: git tag v1\n",
+            "      - uses: docker/build-push-action@x\n        with:\n"
+            "          push: ${{ github.event_name != 'pull_request' }}\n",
+            "      - uses: google-github-actions/deploy-cloudrun@v2\n",
+            "      - run: gcloud run deploy svc\n",
+            "      - run: npm publish\n",
+            "      - run: gh release create v1\n",
+            "      - run: kubectl apply -f k8s/\n",
+        ):
+            st, _ = self.ci08({"w.yaml": "jobs:\n  j:\n    steps:\n" + body})
+            self.assertEqual(st, audit.FAIL, body)
+        for head in ("    environment: prod\n", "    uses: org/repo/.github/workflows/deploy.yaml@x\n"):
+            st, _ = self.ci08({"w.yaml": "jobs:\n  j:\n" + head})
+            self.assertEqual(st, audit.FAIL, head)
+
+    def test_ci08_read_only_workflows_are_not_applicable(self):
+        st, _ = self.ci08({"ci.yaml": "jobs:\n  t:\n    steps:\n      - run: just test\n"})
+        self.assertEqual(st, audit.NA)
+        st, _ = self.ci08({"ci.yaml": "jobs:\n  t:\n    steps:\n      - uses: docker/build-push-action@x\n"
+                           "        with:\n          push: false\n"})
+        self.assertEqual(st, audit.NA)
+
+    def test_ci08_concurrency_without_a_signal_keeps_its_pass(self):
+        st, _ = self.ci08({"ci.yaml": "concurrency:\n  group: g\njobs:\n  t:\n    steps:\n      - run: just test\n"})
+        self.assertEqual(st, audit.PASS)
+
+    def test_ci08_a_comment_is_not_a_signal(self):
+        st, _ = self.ci08({"ci.yaml": "# we used to git push here\njobs:\n  t:\n    steps:\n      - run: just test\n"})
+        self.assertEqual(st, audit.NA)
+
+    # CTR-01
+    NODE_CI = (
+        "jobs:\n  a:\n    steps:\n"
+        "      - uses: actions/setup-node@v4\n        with:\n          node-version: '20'\n"
+        "{extra}"
+    )
+
+    def ctr01(self, files, extra=""):
+        r = self.root / "n"
+        write(r, ".nvmrc", "20\n")
+        write(r, ".github/workflows/ci.yaml", self.NODE_CI.format(extra=extra))
+        for rel, text in files.items():
+            write(r, rel, text)
+        return self.verdict("CTR-01", r)
+
+    ASSERT_SH = "#!/bin/sh\nwant=$(cat .nvmrc)\ngrep -q \"distroless/nodejs$want\" Dockerfile\n"
+
+    def test_ctr01_script_run_by_ci_asserts(self):
+        st, _ = self.ctr01({"scripts/check-node.sh": self.ASSERT_SH}, "      - run: scripts/check-node.sh\n")
+        self.assertEqual(st, audit.PASS)
+
+    def test_ctr01_just_recipe_run_by_ci_asserts(self):
+        jf = "check-node:\n    sh scripts/check-node.sh\n\ntest:\n    echo\n"
+        st, _ = self.ctr01({"Justfile": jf, "scripts/check-node.sh": self.ASSERT_SH}, "      - run: just check-node\n")
+        self.assertEqual(st, audit.PASS)
+        jf = "check-node:\n    grep distroless/nodejs20 Dockerfile && cat .nvmrc\n"
+        st, _ = self.ctr01({"Justfile": jf}, "      - run: just check-node\n")
+        self.assertEqual(st, audit.PASS)
+
+    def test_ctr01_agreeing_but_unasserted_still_fails(self):
+        st, detail = self.ctr01({"scripts/other.sh": "echo hi\n"}, "      - run: scripts/other.sh\n")
+        self.assertEqual(st, audit.FAIL)
+        self.assertIn("does not assert", detail)
+
+    def test_ctr01_two_mentions_are_not_a_comparison(self):
+        build = ("      - uses: actions/setup-node@v4\n        with:\n          node-version-file: .nvmrc\n"
+                 "      - run: docker build --build-arg BASE=gcr.io/distroless/nodejs20 .\n")
+        self.assertEqual(self.ctr01({}, build)[0], audit.FAIL)
+        todo = "      # TODO: compare .nvmrc with distroless/nodejs\n      - run: echo\n"
+        self.assertEqual(self.ctr01({}, todo)[0], audit.FAIL)
+        commented = "#!/bin/sh\n# should read .nvmrc and grep distroless/nodejs\necho ok\n"
+        st, _ = self.ctr01({"scripts/check-node.sh": commented}, "      - run: scripts/check-node.sh\n")
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ctr01_recipe_name_is_matched_whole(self):
+        jf = "check-node:\n    grep distroless/nodejs20 Dockerfile && cat .nvmrc\n\ncheck:\n    echo\n"
+        st, _ = self.ctr01({"Justfile": jf}, "      - run: just check\n")
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ctr01_an_assertion_ci_never_runs_does_not_count(self):
+        st, _ = self.ctr01({"scripts/check-node.sh": self.ASSERT_SH, "Justfile": "check-node:\n    sh scripts/check-node.sh\n"})
+        self.assertEqual(st, audit.FAIL)
+
+    # UI-01
+    HOOK = "export function useVersionCheck() { return false }\n"
+    BANNER = "import { useVersionCheck } from '../hooks/use-version-check'\nexport function UpdateBanner() { useVersionCheck(); return null }\n"
+    SHELL = "import { UpdateBanner } from './update-banner'\nexport function Shell() { return <UpdateBanner /> }\n"
+
+    def ui01(self, files):
+        base = {"package.json": "{}\n", "src/hooks/use-version-check.ts": self.HOOK}
+        return self.verdict("UI-01", self.repo({**base, **files}))
+
+    def test_ui01_gate_mounted_through_the_chain(self):
+        st, detail = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/components/shell.tsx": self.SHELL,
+            "src/routes/__root.tsx": "import { Shell } from '@/components/shell'\nexport const Route = { component: () => <Shell /> }\n",
+        })
+        self.assertEqual(st, audit.PASS, detail)
+        self.assertIn("__root.tsx", detail)
+
+    def test_ui01_chain_imported_but_never_rendered_fails(self):
+        st, _ = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/components/shell.tsx": self.SHELL,
+            "src/routes/__root.tsx": "import { Shell } from '@/components/shell'\nexport const Route = { shell: Shell }\n",
+        })
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ui01_chain_never_imported_by_the_app_fails(self):
+        st, _ = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/components/shell.tsx": self.SHELL,
+        })
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ui01_chain_rendered_only_in_a_test_fails(self):
+        st, _ = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/components/shell.test.tsx": self.SHELL,
+            "src/routes/__root.tsx": "export const Route = {}\n",
+        })
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ui01_chain_longer_than_three_hops_fails(self):
+        st, _ = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/components/a.tsx": "import { UpdateBanner } from './update-banner'\nexport function A() { return <UpdateBanner /> }\n",
+            "src/components/b.tsx": "import { A } from './a'\nexport function B() { return <A /> }\n",
+            "src/components/c.tsx": "import { B } from './b'\nexport function C() { return <B /> }\n",
+            "src/routes/__root.tsx": "import { C } from '@/components/c'\nexport const Route = { component: () => <C /> }\n",
+        })
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ui01_component_folder_index_is_not_an_entry(self):
+        st, _ = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/components/shell/index.tsx": "import { UpdateBanner } from '../update-banner'\n"
+                                              "export function Shell() { return <UpdateBanner /> }\n",
+        })
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ui01_commented_out_render_fails(self):
+        st, _ = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/routes/__root.tsx": "import { UpdateBanner } from '@/components/update-banner'\n"
+                                     "// TODO render <UpdateBanner />\nexport const Route = {}\n",
+        })
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ui01_package_import_does_not_resolve_to_a_local_file(self):
+        st, _ = self.ui01({
+            "src/components/update-banner.tsx": self.BANNER,
+            "src/lib/react.tsx": "import { UpdateBanner } from '../components/update-banner'\n"
+                                 "export function R() { return <UpdateBanner /> }\n",
+            "src/routes/__root.tsx": "import { R } from 'react'\nexport const Route = { component: () => <R /> }\n",
+        })
+        self.assertEqual(st, audit.FAIL)
+
+    def test_ui01_literal_version_gate_still_passes(self):
+        st, _ = self.ui01({
+            "src/components/version-gate.tsx": "export function VersionGate() { return null }\n",
+            "src/app.tsx": "import { VersionGate } from './components/version-gate'\nexport const A = () => <VersionGate />\n",
+        })
+        self.assertEqual(st, audit.PASS)
 
 
 if __name__ == "__main__":

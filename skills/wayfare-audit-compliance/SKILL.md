@@ -18,7 +18,7 @@ results for each check and repo from the register in
 ### Step 0: load
 
 ```bash
-[ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
+[ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && ! git -C "$PWD" rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo "FLEET_ROOT" || true
 ```
 
 If the command prints `FLEET_ROOT`, select the family audit below. Otherwise,

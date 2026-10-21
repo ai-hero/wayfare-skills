@@ -92,8 +92,8 @@ Rules:
 
 | Function (`scripts/hero-lib.sh`) | Returns |
 | -- | -- |
-| `hero_fleet_root [START]` | nearest ancestor of `START` (default `$PWD`) holding `FLEET.md` without `HERO.md` beside it, a committed FLEET.md is passed over |
-| `hero_at_fleet_root [DIR]` | true when `DIR` (default `$PWD`) has `FLEET.md` and no `HERO.md`, a fleet folder, not a repo |
+| `hero_fleet_root [START]` | nearest ancestor of `START` (default `$PWD`) holding `FLEET.md` with no `HERO.md` beside it, outside any git work tree; a committed FLEET.md is passed over |
+| `hero_at_fleet_root [DIR]` | true when `DIR` (default `$PWD`) has `FLEET.md`, no `HERO.md`, and sits outside any git work tree: a fleet folder, not a repo |
 | `hero_fleet_field KEY [FLEET_ROOT]` | a `## Fleet` value |
 | `hero_fleet_repo_field NAME KEY [FLEET_ROOT]` | a value from `### NAME` under `## Repos` |
 | `hero_fleet_repos [FLEET_ROOT]` | `NAME<TAB>ABSOLUTE_PATH<TAB>GROUP<TAB>PORT` per trusted row, one parse; untrusted rows go to stderr and the function returns 3 |
@@ -175,7 +175,13 @@ whose subject is the folder rather than a repo.
 - **Committing it.** A `FLEET.md` inside a repo is one person's checkout layout
   imposed on everyone who clones, and, in a cloned repo, attacker content. Every
   reader treats a folder holding both files as a repo: `hero_fleet_root` passes
-  it over and keeps walking, `review` exits 2, so a committed one is inert.
+  it over and keeps walking, `review` exits 2, so a committed one is inert. A
+  folder inside a git work tree is never a fleet root, HERO.md or not, because
+  the audit would execute the clone's `.fleet/checkers.py`; both
+  `hero_fleet_root` and the audit's `fleet_root()` pass it over with a stderr
+  note. The test is on the folder holding `FLEET.md`, never the register, so a
+  `.fleet/` that is its own git checkout under a plain fleet folder still loads.
+  Keeping the fleet folder itself under git stops it resolving.
 - **Reading it as the org inventory.** `gh repo list ORG` is what exists;
   `FLEET.md` is what you have. `sync` may print the difference; it never adds a
   row for a repo that is not on disk.

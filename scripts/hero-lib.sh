@@ -597,6 +597,20 @@ hero_check_staleness() {
 # repo content, not the operator's map, so it is passed over (stderr note)
 # and the walk continues upward.
 # shellcheck disable=SC2120  # in-file callers take the default; the tests pass START
+# True when DIR or any ancestor holds a .git entry (a directory, or the file a
+# worktree or submodule leaves). Walks the filesystem rather than asking git:
+# GIT_DIR in a hook's environment would make `git rev-parse` call everything a
+# work tree.
+hero_in_git_worktree() { # DIR
+  local d="$1"
+  while [ -n "$d" ]; do
+    [ -e "$d/.git" ] && return 0
+    [ "$d" = "/" ] && return 1
+    d=${d%/*}; d=${d:-/}
+  done
+  return 1
+}
+
 hero_fleet_root() { # [START]
   local d
   d=$(cd "${1:-$PWD}" && pwd -P) || return 1
@@ -606,6 +620,10 @@ hero_fleet_root() { # [START]
     if [ -f "$d/FLEET.md" ]; then
       if [ -f "$d/HERO.md" ]; then
         echo "hero_fleet_root: passing over $d; FLEET.md beside HERO.md is a repo, not a fleet" >&2
+      elif hero_in_git_worktree "$d"; then
+        # Tests the folder holding FLEET.md, never the register: the real
+        # fleet's .fleet/ is its own checkout and must keep loading.
+        echo "hero_fleet_root: passing over $d; a folder inside a git work tree is never a fleet root" >&2
       else
         printf '%s' "$d"; return 0
       fi
@@ -617,12 +635,12 @@ hero_fleet_root() { # [START]
 }
 
 # True when DIR (default $PWD) is a fleet folder rather than a repo: it holds
-# FLEET.md and no HERO.md. Skills test this in Step 0 and hand off to "At the
+# FLEET.md, no HERO.md, and sits outside any git work tree. Skills test this in Step 0 and hand off to "At the
 # fleet root" in docs/FLEET-MD.md instead of treating the folder as a project.
 hero_at_fleet_root() { # [DIR]
   local d
   d="${1:-$PWD}"
-  [ -f "$d/FLEET.md" ] && [ ! -f "$d/HERO.md" ]
+  [ -f "$d/FLEET.md" ] && [ ! -f "$d/HERO.md" ] && ! hero_in_git_worktree "$(cd "$d" && pwd -P)"
 }
 
 # A fleet-level `- key: value` from the `## Fleet` section.

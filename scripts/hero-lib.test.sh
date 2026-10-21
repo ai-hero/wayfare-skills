@@ -230,9 +230,24 @@ check "fleet-root: passes over a FLEET.md inside a repo and keeps walking" \
 rm "$F/auth/FLEET.md" "$F/auth/HERO.md"
 check "fleet-root: prints the physical path from a symlinked start" \
   "$F" "$(hero_fleet_root "$TMP/fleet/web/deep")"
-check "fleet-root: defaults to PWD, not the git toplevel" \
-  "$F" "$(cd "$F" && git init -q . 2>/dev/null; cd "$F/web" && hero_fleet_root)"
-rm -rf "$F/.git"
+check "fleet-root: defaults to PWD" \
+  "$F" "$(cd "$F/web" && hero_fleet_root)"
+
+# A FLEET.md inside a git work tree is a clone's content: its register would run
+# the clone's checkers.py. The folder holding FLEET.md is tested, never the
+# register, so a git-checkout .fleet/ under a plain folder still resolves.
+mkdir -p "$F/.fleet" "$TMP/clone/sub"; git init -q "$TMP/clone" 2>/dev/null
+printf '## Repos\n' > "$TMP/clone/FLEET.md"
+CLONE="$(cd "$TMP/clone" && pwd -P)"
+hero_fleet_root "$CLONE/sub" >/dev/null 2>&1; check "fleet-root: a FLEET.md in a git work tree is never the fleet" "1" "$?"
+check "fleet-root: the pass-over is named on stderr" \
+  "1" "$(hero_fleet_root "$CLONE/sub" 2>&1 >/dev/null | grep -c "inside a git work tree")"
+hero_at_fleet_root "$CLONE"; check "at-fleet-root: a git work tree is not" "1" "$?"
+git init -q "$F/.fleet" 2>/dev/null
+check "fleet-root: a git-checkout .fleet/ does not stop a plain folder resolving" \
+  "$F" "$(hero_fleet_root "$F/web/deep" 2>/dev/null)"
+hero_at_fleet_root "$F"; check "at-fleet-root: a plain folder with a git .fleet/ is" "0" "$?"
+rm -rf "$F/.fleet" "$TMP/clone"
 
 # ---------- hero_normalize_repo_ref ----------------------------------------
 #

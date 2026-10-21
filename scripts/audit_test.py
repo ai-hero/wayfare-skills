@@ -895,6 +895,30 @@ class Configured(unittest.TestCase):
         write(self.root, "HERO.md", "# HERO\n")
         self.assertIsNone(audit.fleet_root(inner), "FLEET.md beside HERO.md is a repo, not a fleet")
 
+    def test_fleet_root_passes_over_a_git_work_tree(self):
+        git_repo(self.root, "clone")
+        clone = self.root / "clone"
+        fleet_fixture(clone, "## Fleet\n- name: fx\n")
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertIsNone(audit.fleet_root(clone), "a committed FLEET.md is not a fleet")
+        self.assertIn("inside a git work tree", err.getvalue())
+
+    def test_fleet_root_ignores_a_git_register(self):
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n")
+        git(self.root / ".fleet", "init", "-q")
+        sub = self.root / "repo"
+        sub.mkdir()
+        self.assertEqual(audit.fleet_root(sub), self.root)
+
+    def test_audit_in_a_clone_runs_no_committed_checkers(self):
+        clone = git_repo(self.root, "clone")
+        marker = self.root / "ran"
+        fleet_fixture(clone, "## Fleet\n- name: fx\n", checkers=f"open({str(marker)!r}, 'w').close()\n")
+        p = subprocess.run([sys.executable, str(HERE / "audit.py")], cwd=str(clone),
+                           capture_output=True, text=True, env=CLEAN_ENV)
+        self.assertFalse(marker.exists(), "the clone's .fleet/checkers.py executed")
+        self.assertIn("inside a git work tree", p.stderr)
+
     def test_missing_register_is_an_error(self):
         write(self.root, "FLEET.md", "## Fleet\n- name: fx\n- register: .flet/\n## Repos\n### a\n- group: apps\n")
         (self.root / "a").mkdir()

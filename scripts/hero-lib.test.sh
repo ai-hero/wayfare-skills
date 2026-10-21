@@ -215,6 +215,44 @@ check "repos: skipped rows return 3, never a clean 0" "3" "$?"
 check "repos: the outside-the-fleet reason names the resolved path" \
   "1" "$(hero_fleet_repos "$F" 2>&1 >/dev/null | grep -c "outside the fleet")"
 
+# A path written absolute is trusted wherever it points; a relative one that
+# escapes the root, by `..` or by a symlink, is not. Decided on the path as
+# written, so a relative path through a symlink to the same place stays out.
+G="$TMP/gfleet"; mkdir -p "$G/inside" "$TMP/gout/abs" "$TMP/ghome/.plug/tilde"
+G="$(cd "$G" && pwd -P)"; GOUT="$(cd "$TMP/gout" && pwd -P)"; GHOME="$(cd "$TMP/ghome" && pwd -P)"
+ln -s "$GOUT/abs" "$G/linked"
+cat > "$G/FLEET.md" <<EOF
+## Repos
+
+### inside
+
+- group: apps
+
+### abs
+
+- path: $GOUT/abs
+- group: apps
+
+### tilde
+
+- path: ~/.plug/tilde
+- group: apps
+
+### linked
+
+- group: apps
+
+### dotdot
+
+- path: ../gout/abs
+- group: apps
+EOF
+check "repos: absolute and ~/ paths outside the root are listed, relative escapes are not" \
+  "$(printf 'inside\t%s/inside\tapps\t\nabs\t%s/abs\tapps\t\ntilde\t%s/.plug/tilde\tapps\t\n' "$G" "$GOUT" "$GHOME")" \
+  "$(HOME="$GHOME" hero_fleet_repos "$G" 2>/dev/null)"
+check "repos: a relative path escaping by symlink or .. is skipped with the outside reason (rc 3)" \
+  "2 3" "$(HOME="$GHOME" hero_fleet_repos "$G" 2>&1 >/dev/null | grep -c "outside the fleet") $(HOME="$GHOME" hero_fleet_repos "$G" >/dev/null 2>&1; echo $?)"
+
 # zsh ties `path` to PATH: a `local path` in the lib empties it for the
 # function and awk vanishes, an empty registry with rc 0. Sourcing from
 # zsh is how every SKILL.md bash block runs on macOS.

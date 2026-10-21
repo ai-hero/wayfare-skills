@@ -76,12 +76,17 @@ Rules:
 2. **`## Groups`**, names are yours, one line each saying what membership means.
    `none` is reserved and always means not-fleet.
 3. **`## Repos`**, one `### NAME` block per checkout. `NAME` is the folder name,
-   `[A-Za-z0-9._-]` only. `path` defaults to `./NAME`; `group` defaults to
-   `none`; `what` is one line. `port` is the **assignment**: a new dev stack
-   claims the next free port in this file first and implements it in the repo
-   second: the row is where the choice is made, and the compose default is where
-   it takes effect, and `review` reports the two disagreeing. Anything else the
-   repo needs belongs in the repo.
+   `[A-Za-z0-9._-]` only. `path` defaults to `./NAME`, and a `path` written
+   absolute (`/…`, or `~/…` with `~` read as `$HOME`) is trusted wherever it
+   points, which is how a plugin checkout outside the folder joins the fleet; a
+   relative `path` that resolves outside the folder, by `..` or by a symlink, is
+   a bad row and is skipped (`BAD_ROW`). The test is on the path as written,
+   never on where it resolves. `group` defaults to `none`; `what` is one line.
+   `port` is the **assignment**: a new dev stack claims the next free port in
+   this file first and implements it in the repo second: the row is where the
+   choice is made, and the compose default is where it takes effect, and
+   `review` reports the two disagreeing. Anything else the repo needs belongs in
+   the repo.
 4. **Prose after `## Repos` is fine**, conventions, known cross-repo issues, a
    change-routing table. The reader only parses `- key: value` lines under the
    headings it is asked for and skips code fences, so examples are safe.

@@ -235,10 +235,14 @@ def configure(root=None):
     for row in repos:
         if row["group"] == "none":
             continue
-        path = (root / (row["path"] or row["name"])).resolve()
-        # A row whose path escapes the fleet is not this fleet's repo, whatever
-        # its name says; hero_fleet_repos skips it for the same reason.
-        if root not in path.parents:
+        raw = row["path"] or row["name"]
+        # Decided on the path as written, as hero_fleet_repos does: `/…` and
+        # `~/…` are the operator naming a place, trusted wherever they point;
+        # a relative path that escapes by `..` or a symlink is not this
+        # fleet's repo, whatever its name says.
+        written_absolute = raw == "~" or raw.startswith(("/", "~/"))
+        path = (root / os.path.expanduser(raw)).resolve()
+        if not written_absolute and root not in path.parents:
             print(f"configure: skipping '{row['name']}' — path resolves outside the fleet: {path}", file=sys.stderr)
             continue
         if path in REPO_DIR.values():

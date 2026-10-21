@@ -20,6 +20,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = pathlib.Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("audit", HERE / "audit.py")
@@ -886,6 +887,52 @@ class Configured(unittest.TestCase):
         self.assertIn("skipping 'escapee'", err.getvalue())
         self.assertIn("skipping '../evil'", err.getvalue())
         self.assertEqual(audit.repo_path("alpha"), self.root / "apps" / "alpha")
+
+    def test_absolute_path_outside_is_trusted_relative_escape_is_not(self):
+        outside = pathlib.Path(tempfile.mkdtemp()).resolve()
+        home = pathlib.Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, outside, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        (home / ".plug" / "tilde").mkdir(parents=True)
+        (self.root / "inside").mkdir()
+        (self.root / "linked").symlink_to(outside)
+        fleet_fixture(self.root, f"""## Fleet
+
+- name: fx
+
+## Repos
+
+### inside
+
+- group: apps
+
+### abs
+
+- path: {outside}
+- group: apps
+
+### tilde
+
+- path: ~/.plug/tilde
+- group: apps
+
+### linked
+
+- group: apps
+
+### dotdot
+
+- path: ../{outside.name}
+- group: apps
+""")
+        with mock.patch.dict(os.environ, {"HOME": str(home)}), \
+                contextlib.redirect_stderr(io.StringIO()) as err:
+            audit.configure(self.root)
+        self.assertEqual(audit.FAMILY, ("inside", "abs", "tilde"))
+        self.assertEqual(audit.REPO_DIR["abs"], outside)
+        self.assertEqual(audit.REPO_DIR["tilde"], home / ".plug" / "tilde")
+        self.assertIn("skipping 'linked'", err.getvalue())
+        self.assertIn("skipping 'dotdot'", err.getvalue())
 
     def test_fleet_root(self):
         fleet_fixture(self.root, "## Fleet\n- name: fx\n")

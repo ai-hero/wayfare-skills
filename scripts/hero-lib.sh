@@ -670,11 +670,18 @@ hero_fleet_repo_field() { # NAME KEY [FLEET_ROOT]
 #
 # A row that cannot be trusted is SKIPPED, not defaulted: a leading `-` or a
 # control character in a value, a non-numeric port, a name that is not
-# [A-Za-z0-9._-] or is `.`/`..`, a path resolving outside the fleet, or a
-# duplicate name. Substituting a default path would point the caller's `cd` at
-# a different directory than the one the row names. Each skip is one stderr
-# line `hero_fleet_repos: skipping 'NAME' — REASON` (fleet-scan.sh reads
+# [A-Za-z0-9._-] or is `.`/`..`, a relative path resolving outside the fleet,
+# or a duplicate name. Substituting a default path would point the caller's
+# `cd` at a different directory than the one the row names. Each skip is one
+# stderr line `hero_fleet_repos: skipping 'NAME' — REASON` (fleet-scan.sh reads
 # them back as BAD_ROW), and the function returns 3 when any row was skipped.
+#
+# The containment check is decided on the path AS WRITTEN: `/…` and `~/…` (the
+# `~` expanded to $HOME) are the operator naming a
+# place and are trusted wherever they resolve; `..` and symlink escapes in a
+# relative path are not. That is safe only because a FLEET.md inside a git work
+# tree is never a fleet root, so the file is never a cloned repo's. audit.py's
+# `configure` makes the same call.
 #
 # Locals are rpath/rgroup/rport, never `path`: sourced from zsh, `local path`
 # empties the PATH-tied array and awk becomes "command not found", leaving an empty
@@ -701,7 +708,7 @@ hero_fleet_repos() { # [FLEET_ROOT]
     }
     END { flush() }
   ' "$root/FLEET.md" | {
-    local name rpath rgroup rport v reason seen nbad real
+    local name rpath rgroup rport v reason seen nbad real abs
     seen=" "; nbad=0
     while IFS=$'\034' read -r name rpath rgroup rport; do
       reason=""
@@ -724,13 +731,20 @@ hero_fleet_repos() { # [FLEET_ROOT]
       rgroup=$(printf '%s' "${rgroup:-none}" | tr '[:upper:]' '[:lower:]')
       [ -n "$rpath" ] || rpath="./$name"
       rpath=${rpath%/}
-      case "$rpath" in /*) ;; *) rpath="$root/${rpath#./}" ;; esac
+      abs=0
+      case "$rpath" in
+        \~|\~/*) rpath="$HOME${rpath#\~}"; abs=1 ;;
+        /*) abs=1 ;;
+        *) rpath="$root/${rpath#./}" ;;
+      esac
       if [ -d "$rpath" ]; then
         real=$(cd "$rpath" && pwd -P)
-        case "$real" in "$root"/*) rpath=$real ;; *)
-          echo "hero_fleet_repos: skipping '$name': path resolves outside the fleet: $real" >&2
-          nbad=$((nbad + 1)); continue ;;
-        esac
+        if [ "$abs" = 1 ]; then rpath=$real; else
+          case "$real" in "$root"/*) rpath=$real ;; *)
+            echo "hero_fleet_repos: skipping '$name': path resolves outside the fleet: $real" >&2
+            nbad=$((nbad + 1)); continue ;;
+          esac
+        fi
       fi
       printf '%s\t%s\t%s\t%s\n' "$name" "$rpath" "$rgroup" "$rport"
     done

@@ -233,7 +233,7 @@ def parse_item(repo, path, schema_era):
     parent = fm.get("parent")
     goal_id = str(parent) if parent not in (None, "") else None
 
-    # `rank` is an ordinal position; `priority` is the p0..p3 class added in #141. Different scales, so two columns.
+    # `rank` is an ordinal position; `priority` is the p0..p3 class. Different scales, so two columns.
     blocked_on = fm.get("blocked_on")
     blocked_since = fm.get("blocked_since")
 

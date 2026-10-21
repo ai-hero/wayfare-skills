@@ -206,7 +206,7 @@ def register_posts(posts, chapters):
 
 
 class Inline(HTMLParser):
-    """Keep inline marks (a[href], em, strong, code, br) and escape everything else. The site
+    """Keep inline marks (a[href], em, strong, code, br, sup) and escape everything else. The site
     renders these strings as HTML, and sanitizing here keeps a DOM implementation out of its
     server render path."""
     KEEP = {"a", "em", "strong", "code", "br", "sup"}
@@ -364,9 +364,9 @@ def chapter(c, assets, posts, references, evidence=None):
         s["blocks"] = examples(src, s["blocks"])
     return {"n": c["n"], "slug": c["slug"], "title": c["title"], "sections": sections,
             "free": c["n"] in posts, "url": f"/blog/{BLOG_SECTION}/{posts[c['n']]['slug']}" if c["n"] in posts else None,
+            "notes": [{"n": n, "html": clean(t)} for n, t in enumerate(list(NOTES), 1)],
             # The chapter's share of the book's one reference list, under the book's numbers, so a [n]
             # here is the same source as [n] in print and in the paper.
-            "notes": [{"n": n, "html": clean(t)} for n, t in enumerate(list(NOTES), 1)],
             "sources": [{"n": n, "html": clean(references[n]["html"])} for n in c["refs"]],
             "minutes": max(1, round(words(text) / WORDS_PER_MINUTE))}
 

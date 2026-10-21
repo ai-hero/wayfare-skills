@@ -3,8 +3,8 @@
     ./publish technical
 
 Chapters become sections, figures and diagrams one numbered figure series, the chapters' Sources
-one deduplicated bibliography, and every evidence card an appendix entry with its question,
-source and validation. Writes a self-contained arXiv source bundle to `build/technical/`, then
+one deduplicated bibliography, and each curated appendix entry with its question, source and
+validation. Writes a self-contained arXiv source bundle to `build/technical/`, then
 `dist/technical.pdf` and `dist/technical-arxiv.tar.gz`. The abstract and keywords come from
 `editions/technical.json` and must be verbatim from the text.
 """
@@ -248,7 +248,7 @@ def figure_tex(b, refs):
 
 
 def table_tex(b, refs, cap):
-    """Seven text columns do not fit portrait at a legible size, so the part-by-part table turns."""
+    """A drawn table is too wide for portrait at a legible size, so it turns."""
     rows = b["rows"]
     ncol = len(rows[0])
     spec = "@{}>{\\raggedright\\arraybackslash}p{\\firstcol}" + \

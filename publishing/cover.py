@@ -285,7 +285,6 @@ class Machine:
             tk = screen_d(g, self.loops, lambda x, y: (tu + x * 0.64, tv + y * 0.64, 0))
             g.raw(f'<path d="{tk}" fill="none" stroke="{LINE}" stroke-width="{sw * 0.8:.2f}"'
                   f' stroke-linejoin="round"/></g>')
-        # Pedestal.
         bx, by = g.p(u + PED[0], v + PED[1], 0)
         rx, ry, hb = 0.5 * s, 0.25 * s, 0.85 * s
         g.raw(f'<path d="M{bx - rx:.2f},{by - hb:.2f} L{bx - rx:.2f},{by:.2f} A{rx:.2f},{ry:.2f} 0 0 0 {bx + rx:.2f},{by:.2f}'
@@ -297,7 +296,6 @@ class Machine:
         g.raw(f'<rect x="{bx - nx:.2f}" y="{top:.2f}" width="{2 * nx:.2f}" height="{by - hb - top:.2f}" fill="{PAGE}"/>'
               f'<line x1="{bx - nx:.2f}" y1="{top:.2f}" x2="{bx - nx:.2f}" y2="{by - hb:.2f}" stroke="{ICON}" stroke-width="{sw}"/>'
               f'<line x1="{bx + nx:.2f}" y1="{top:.2f}" x2="{bx + nx:.2f}" y2="{by - hb:.2f}" stroke="{ICON}" stroke-width="{sw}"/>')
-        # The software box and what is being etched on it.
         g.box(u + box_u, v + box_v, e, e, h)
         cu, cv, _ = self.face(0, 0)
         g.raw(f'<ellipse{cls("wash")} cx="{g.p(cu, cv, h)[0]:.2f}" cy="{g.p(cu, cv, h)[1]:.2f}" rx="{0.55 * e * s:.2f}"'
@@ -646,7 +644,7 @@ def main():
     raster(os.path.join(d, "cover-front.pdf"), os.path.join(d, "cover-front.png"), dpi=300)
     trim, _ = front_svg(meta, bleed=0)
     chrome_pdf(trim, TRIM_W, TRIM_H, os.path.join(paths.BUILD, "cover-trim.pdf"))
-    # Store covers are 1:1.6, taller than the 7 x 10 trim: the same layout recomposed, not stretched.
+    # Store covers are 1:1.6, taller than the trim: the same layout recomposed, not stretched.
     eh = TRIM_W * 2560 / 1600
     ebook, _ = front_svg(meta, bleed=0, h=eh)
     chrome_pdf(ebook, TRIM_W, eh, os.path.join(paths.BUILD, "cover-ebook.pdf"))

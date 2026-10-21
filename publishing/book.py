@@ -1,4 +1,4 @@
-"""The print book: book.json set as a 7 x 10 in colour book through WeasyPrint.
+"""The print book: book.json set as a colour book at the cover.TRIM_IN trim through WeasyPrint.
 
     ./publish book          -> $PUBLISH_OUT/dist/book.pdf
 
@@ -59,7 +59,7 @@ _TABLES = {}
 
 def table_svg(b, cap):
     """A table too wide for the measure, set on its own landscape page and turned a quarter
-    counter-clockwise (its top toward the spine on a verso, the book convention) as vector SVG.
+    counter-clockwise (its top at the page's left edge, the book convention) as vector SVG.
     A long table runs on to further turned pages with its header repeated."""
     if fig_id(b) in _TABLES:
         return _TABLES[fig_id(b)]

@@ -39,11 +39,10 @@ def _bar(ax, c):
             for b, v in zip(bars, vals):
                 if not v or (stacked and v < 0.09 * max(totals)):
                     continue
-                if True:
-                    x, y = (b.get_x() + b.get_width() / 2, b.get_y() + b.get_height() / 2)
-                    dark = sum(int(kw["color"][k:k + 2], 16) for k in (1, 3, 5)) < 420
-                    ax.text(x, y, fmt(v), ha="center", va="center", fontsize=7.5, fontfamily=F.MONO_FONT,
-                            color="white" if dark else F.INK)
+                x, y = (b.get_x() + b.get_width() / 2, b.get_y() + b.get_height() / 2)
+                dark = sum(int(kw["color"][k:k + 2], 16) for k in (1, 3, 5)) < 420
+                ax.text(x, y, fmt(v), ha="center", va="center", fontsize=7.5, fontfamily=F.MONO_FONT,
+                        color="white" if dark else F.INK)
         if stacked:
             base = [a + b for a, b in zip(base, vals)]
     ticks = list(range(len(cats)))

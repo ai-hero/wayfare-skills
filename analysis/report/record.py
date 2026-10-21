@@ -31,7 +31,7 @@ SESSION_WINDOW_LABEL = "25 Aug–1 Oct"
 SESSION_FULL_WEEKS = ["2026-W36", "2026-W37", "2026-W38", "2026-W39"]
 
 # A chart's source line names where its numbers come from; one naming the session logs (or what is derived
-# from them: turns, asks, subagent runs, D6 segments, D9 spend, limit events) carries SESSION_COVERAGE.
+# from them: turns, asks, subagent runs, D6 segments, D9 spend, limit events) carries the session_coverage() note.
 # "prompt history" is ~/.claude/history.jsonl, which reaches back to 2025 and is not session data.
 SESSION_SOURCE_RE = re.compile(r"\bsessions?\b|\bturns\b|\basks\b|subagent|tool[ _]calls|\bD[69]\b|time segments"
                                r"|limit (events|messages)|\bspend\b|list price|Claude Code logs", re.I)

@@ -1014,7 +1014,7 @@ def _subject_class(subjects):
 INFRA = ["infrastructure-root", "infrastructure-environments"]
 INFRA_FEATURE = "infrastructure feature"
 def fig_features_vs_structure(con):
-    """Weekly mix of app change sets with the customer-facing share and its interval; the July-to-September fall
+    """Weekly mix of app and infrastructure change sets with the customer-facing share and its interval; the July-to-September fall
     raw, then standardised to July's repo mix and to July's workflow mix; the commit-subject label as a check."""
     wt = {(r["repo"], r["unit_kind"], r["unit_id"], r["set_idx"]): (r["work_type"], r["theme"])
           for r in rows(con, "SELECT * FROM detectors.cs_worktype")}

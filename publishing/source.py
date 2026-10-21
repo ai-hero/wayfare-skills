@@ -1,7 +1,7 @@
 """Build the one source every edition renders from: the manuscript parsed, every figure resolved
 to a static file, and the metadata.
 
-    publishing/publish source
+    ./publish source
 
 Writes `$PUBLISH_OUT/build/book.json` and `$PUBLISH_OUT/build/assets/`. The manuscript is read
 with the editor's own parser (`deck_html.parse_book`), so a figure line means here exactly what it
@@ -514,7 +514,7 @@ def plain_figure_text(chapters, appendix):
     """The text written around a figure (its alt, source line and question notes, and the appendix's
     paragraphs) names repositories by their plain names, as the pictures do. The manuscript's prose is the
     owner's and is left as written; tables keep their cells, since there the original names are quoted
-    data (and Chapter 1's table lists them on purpose). An appendix table's prose cells are mapped; a cell
+    data (and the repository table lists them on purpose). An appendix table's prose cells are mapped; a cell
     holding a JSON list or record is raw data and stays as recorded."""
     def fix(d, keys):
         for k in keys:

@@ -46,7 +46,7 @@ BRAND = "A.I. HERO, INC.  /  RESEARCH FINDINGS"
 # add one here.
 INK, BODY, MUTED, RULE = "0B0D14", "383D49", "666D7B", "C6C9D0"  # ink-figure, ink-body, ink-meta, ink-line
 PINK, PINK_LIGHT, PINK_MID, PINK_DARK = "E93A61", "F1839A", "ED5F7E", "C62249"  # pal-300, -100, -200, -400
-INK_STRONG, INK_QUIET, INK_RAISE, TINT = "1A1E29", "7B8290", "F4F5F8", "FEF1F4"  # ..., accent-tint
+INK_STRONG, INK_QUIET, INK_RAISE, TINT = "1A1E29", "7B8290", "F4F5F8", "FEF1F4"  # ink-strong, ink-quiet, ink-raise, accent-tint
 GREY, GREY_DARK, GREY_LIGHT = "C6C9D0", "383D49", "EDEEF1"  # ink-line, ink-body, track
 SANS, MONO = "Geist Light", "Geist Mono Light"
 # The palette a chart walks when it names no colours: the system's chart order without its repeats.

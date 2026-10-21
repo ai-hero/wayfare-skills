@@ -2,7 +2,7 @@
 
     ./publish kindle        -> $PUBLISH_OUT/dist/book.epub
 
-The same text, figures, case records and references as the print book, one XHTML file per
+The same text, figures and references as the print book (no appendix: `book.without_appendix`), one XHTML file per
 chapter. `editions/kindle.json`, when present, overrides fields of `meta.json` for this edition
 only. The cover is `dist/cover-ebook.png`, which `./publish cover` draws.
 """

@@ -904,7 +904,7 @@ def q_pr_time_breakdown(con):
 
 # gap_kind calls a gap with a tool or subagent still running idle, so its idle share is mostly agent work.
 # Shares of PR time come from this split, which reads gaps through Q session-clock's classifier
-# (efficiency.state_gaps) as chapter 6 does.
+# (efficiency.state_gaps), as the book's session-clock figures do.
 STATE_SPLIT = ["Agent working (incl. a tool or subagent running)", "Waiting on me", "Usage limit", "CI running",
                "Reading or away", "Unclassified", "No session open"]
 STATE_OF = {0: 0, 1: 0, 2: 1, 3: 1, 4: 2, 5: 4, 6: 4, 7: 5}

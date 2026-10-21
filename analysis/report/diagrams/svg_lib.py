@@ -87,7 +87,7 @@ ARROWS = {  # colour, width, dash: DiagramArrow strokes in muted-foreground; aut
 TARGET_DASH = "12 7"
 
 
-# Inner padding per kind: the policy bar and the check's angled ends take room the words must not enter.
+# Inner padding per kind: check and evidence carry a corner glyph (GLYPH) that the words must clear.
 PAD = {"check": 34, "evidence": 34}
 
 # Boxes whose words do not fit, collected while drawing and reported by `finish`.

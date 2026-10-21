@@ -36,7 +36,7 @@
 @page rotated:left { @top-left { content: none; } }
 @page rotated:right { @top-right { content: none; } }
 
-/* The design system sets Geist at 300; on paper at 9.7 pt that greys out, so the body takes the
+/* The design system sets Geist at 300; on paper at body size that greys out, so the body takes the
    variable axis to 360. Headings and display stay at the system's 300 and 200. */
 html { font-family: "Geist", sans-serif; font-weight: 360; font-size: 10.2pt;
   line-height: 15.4pt; color: var(--ink-900); hyphens: auto; -weasy-hyphenate-limit-chars: 7 3 3;

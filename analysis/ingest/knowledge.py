@@ -426,8 +426,8 @@ def parse_name_status_log(out):
 def skill_size(rp, rev, skill_md, content):
     """Bytes and lines of a skill: SKILL.md plus the WORKFLOW.md beside it.
 
-    #142 moved the five pipeline skills' bodies into WORKFLOW.md; counting SKILL.md alone reads that as the
-    skills losing most of their length overnight.
+    The pipeline skills keep their bodies in WORKFLOW.md; counting SKILL.md alone reads the move there as
+    the skills losing most of their length overnight.
     """
     parts = [content, show(rp, rev, skill_md[:-len("SKILL.md")] + "WORKFLOW.md") or ""]
     b = sum(len(p.encode("utf-8")) for p in parts)

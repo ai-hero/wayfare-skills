@@ -56,7 +56,8 @@ def manifest():
         with open(MANIFEST, encoding="utf-8") as f:
             return {**DEFAULT_MANIFEST, **json.load(f)}
     except FileNotFoundError:
-        return DEFAULT_MANIFEST
+        # The defaults would silently redate and retitle the published posts.
+        raise SystemExit(f"web: no {MANIFEST}; it sets the blog posts' dates, titles and slugs")
 
 
 def component_name(slug):
@@ -304,8 +305,10 @@ def figure(b, assets, evidence=None):
     out = {"kind": "figure", "type": b["type"], "label": b.get("label", "Figure"), "number": b.get("number", ""),
            "id": f"{b.get('label', 'figure').lower()}-{b.get('number', '').replace('.', '-')}",
            "captionHtml": clean(b["caption_html"]), "alt": b.get("alt") or re.sub(r"<[^>]+>", "", b["caption_html"])}
-    if evidence and b.get("rid") in evidence:
-        out["evidence"] = evidence[b["rid"]]
+    # A card names its entry by `rid`; a drawn figure lists the entries it rests on in `evidence_ids`.
+    rid = next((r for r in [b.get("rid"), *b.get("evidence_ids", [])] if evidence and r in evidence), None)
+    if rid:
+        out["evidence"] = evidence[rid]
     if b["type"] == "table":
         out["rows"] = [[clean(c["html"]) for c in r] for r in b["rows"]]
         return out
@@ -419,7 +422,8 @@ def evidence_chapter(part, c, assets):
             entries.append({"anchor": e["anchor"], "label": e.get("label"), "slugs": e["slugs"],
                             "title": e.get("title"),
                             "charts": charts, "blocks": blocks})
-        groups.append({"title": g["title"], "entries": entries})
+        # `title` is Markdown, kept for the anchor; the page sets the sanitized `titleHtml`.
+        groups.append({"title": g["title"], "titleHtml": clean(g["html"]), "entries": entries})
     return {"n": part["n"], "slug": c["slug"], "title": c["title"], "free": c["free"],
             "count": sum(len(g["entries"]) for g in groups), "groups": groups}
 

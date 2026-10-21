@@ -111,7 +111,7 @@ export type EvidenceEntry = {
   blocks: EvidenceBlock[];
 };
 
-export type EvidenceGroup = { title: string; entries: EvidenceEntry[] };
+export type EvidenceGroup = { title: string; titleHtml: string; entries: EvidenceEntry[] };
 
 export type EvidenceContentsEntry = { n: number; slug: string; title: string; free: boolean; count: number };
 

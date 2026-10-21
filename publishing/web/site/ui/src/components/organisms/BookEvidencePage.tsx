@@ -245,7 +245,7 @@ export function BookEvidencePage({ evidence, meta }: { evidence: EvidenceChapter
             <section key={group.title} className="flex flex-col gap-8">
               <BookHeading
                 id={group.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}
-                html={group.title}
+                html={group.titleHtml}
                 level={2}
               />
               {group.entries.map((entry) => (

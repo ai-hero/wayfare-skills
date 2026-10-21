@@ -290,41 +290,14 @@ def appendix(a):
     return "\n".join(out)
 
 
-CASE_RECORDS_INTRO = ("This appendix holds the four case records the chapters draw on. The findings behind every "
-                      "figure, with their questions, methods and sources, are in the technical edition.")
 EVI_REF = re.compile(r'(\s*\(|; )<a class="evi-ref" href="#([^"]+)">evidence</a>\)')
 
 
-PRIVATE_LINK = re.compile(r'^<a href="\.\./evidence/[^"]*">[^<]*</a>\.\s*')
-
-
-def is_case_record(e):
-    # Methods and study limits also carry no question slug; only a case record opens on its finding.
-    return not e["slugs"] and bool(e["blocks"]) and e["blocks"][0].get("html", "").startswith("Finding:")
-
-
-def public(e):
-    """The case record without its pointer to the private query results, which a reader can't open."""
-    blocks = [{**b, "html": PRIVATE_LINK.sub("", b["html"])} if "html" in b else b for b in e["blocks"]]
-    return {**e, "blocks": [b for b in blocks if b.get("html", True)]}
-
-
-def case_records_only(doc):
-    """The book prints only the case records; the question-backed findings, methods and study
-    limits live in the technical edition. Their "evidence" links go too, or each would point at a
-    page that is not printed."""
-    app = doc.get("appendix") or {}
-    parts = []
-    for p in app.get("parts", []):
-        groups = [{**g, "entries": [public(e) for e in g["entries"] if is_case_record(e)]} for g in p["groups"]]
-        groups = [g for g in groups if g["entries"]]
-        if groups:
-            parts.append({**p, "groups": groups})
-    kept = {e["anchor"] for p in parts for g in p["groups"] for e in g["entries"]}
-
+def without_appendix(doc):
+    """The book and the store edition print no appendix; the findings, methods, study limits and
+    case records live in the technical edition. Their "evidence" links go too, or each would point
+    at a page that is not printed."""
     def unlink(m):
-        if m.group(2) in kept:
-            return m.group(0)
         return ")" if m.group(1) == "; " else ""
 
     def walk(x):
@@ -334,8 +307,7 @@ def case_records_only(doc):
         if isinstance(x, list):
             return [walk(v) for v in x]
         return x
-    return {**doc, "chapters": walk(doc["chapters"]),
-            "appendix": {**app, "title": "Case records", "intro": [{"html": CASE_RECORDS_INTRO}], "parts": parts}}
+    return {**doc, "chapters": walk(doc["chapters"]), "appendix": None}
 
 
 def references(refs):
@@ -813,7 +785,7 @@ def with_cover(interior):
 def main():
     from weasyprint import HTML
     with open(paths.SOURCE, encoding="utf-8") as f:
-        doc = case_records_only(json.load(f))
+        doc = without_appendix(json.load(f))
     # Every chapter opens on a new recto, so a chapter's pages lay out the same alone as in the
     # book; seating its figures against a render of that chapter only is a tenth of the work per try.
     defer, splits, shrink, solved = {}, {}, {}, {}

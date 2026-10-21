@@ -18,7 +18,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 import paths
-from book import ONES, case_records_only, esc, example, fig_id
+from book import ONES, without_appendix, esc, example, fig_id
 from inline import md_plain
 
 HERE = os.path.join(paths.HERE, "kindle")
@@ -353,7 +353,7 @@ def check(files):
 
 def main():
     with open(paths.SOURCE, encoding="utf-8") as f:
-        doc = case_records_only(json.load(f))
+        doc = without_appendix(json.load(f))
     meta = {**doc["meta"], **DEFAULTS}
     if os.path.exists(OVERRIDES):
         with open(OVERRIDES, encoding="utf-8") as f:

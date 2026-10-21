@@ -22,28 +22,20 @@ CITE_MAP = {}  # source key -> bibliography key, set by the technical edition
 NOTES = {}  # `note-` source key -> footnote LaTeX: the author's aside rather than a source
 
 
-def repo_names():
-    """Repository names (plain and original) that the book sets as a grey chip, from the manuscript's
-    `repo-names.json`; empty when the file is absent."""
+def _repo_pairs():
+    """The manuscript's `repo-names.json` as (real name, plain name) pairs. A missing or malformed
+    map stops the build: without it the book prints the real repository names."""
+    path = os.path.join(paths.MANUSCRIPT, "repo-names.json")
     try:
-        with open(os.path.join(paths.MANUSCRIPT, "repo-names.json"), encoding="utf-8") as f:
-            return {n for r in json.load(f)["repos"] for n in (r["old"], r["new"])}
-    except (OSError, KeyError, ValueError):
-        return set()
+        with open(path, encoding="utf-8") as f:
+            return [(r["old"], r["new"]) for r in json.load(f)["repos"]]
+    except (OSError, KeyError, ValueError) as e:
+        raise SystemExit(f"cannot read {path}: {e}")
 
 
-REPOS = repo_names()
-
-
-def _repo_map():
-    try:
-        with open(os.path.join(paths.MANUSCRIPT, "repo-names.json"), encoding="utf-8") as f:
-            return {r["old"]: r["new"] for r in json.load(f)["repos"]}
-    except (OSError, KeyError, ValueError):
-        return {}
-
-
-REPO_MAP = _repo_map()
+_PAIRS = _repo_pairs()
+REPOS = {n for pair in _PAIRS for n in pair}  # names, plain and original, set as a grey chip
+REPO_MAP = dict(_PAIRS)
 
 
 # Inside a longer label only a hyphenated name is swapped: `auth` and `website` are also ordinary words.

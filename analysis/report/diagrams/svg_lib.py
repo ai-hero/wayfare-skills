@@ -34,6 +34,7 @@ import math
 import os
 import re
 import subprocess
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 # `DIAGRAM_EDITION=paper` draws the technical edition's copy, which says paper and Section where the book
@@ -100,14 +101,19 @@ def esc(s):
 
 
 def _repo_names():
-    """Repository name -> the plain name the book uses, from the manuscript's map; empty without it.
+    """Repository name -> the plain name the book uses, from the manuscript's map; None, with a warning, without it.
     Applied to drawn words only: modules keep looking data up by the real repository name."""
-    path = os.path.join(os.path.dirname(__file__), "..", "..", "manuscript", "repo-names.json")
+    # MANUSCRIPT_DIR, as the publishing pipeline reads it, so charts and prose take names from one map.
+    folder = os.environ.get("MANUSCRIPT_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "manuscript"))
+    path = os.path.join(folder, "repo-names.json")
+    if not os.path.exists(path):
+        print(f"warning: no {path}; drawn labels keep the real repository names", file=sys.stderr)
+        return None
     try:
         with open(path, encoding="utf-8") as f:
             pairs = {r["old"]: r["new"] for r in json.load(f)["repos"] if r["old"] != r["new"]}
-    except (OSError, KeyError, ValueError):
-        return None
+    except (OSError, KeyError, ValueError) as e:
+        raise SystemExit(f"cannot read {path}: {e}")
     if not pairs:
         return None
     pat = re.compile(r"(?<![\w-])(" + "|".join(re.escape(k) for k in sorted(pairs, key=len, reverse=True)) + r")(?![\w-])")

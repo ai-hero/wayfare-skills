@@ -1,9 +1,9 @@
 """Place each finished figure and diagram in the manuscript, right after the paragraph its brief names.
 
-    python report/book_place.py [--book .analysis/book] [--write] [--purge-old] [--check] [--only N ...]
+    python report/book_place.py [--book analysis/manuscript/book] [--write] [--purge-old] [--check] [--only N ...]
 
 Reads `figures.json` (the manifest `book_spec.py` writes from the owner's brief) and the results each
-agent left: `.analysis/book/results/<id>.json` for an evidence figure ({"ref": "Q fixes-by-model",
+agent left: `results/<id>.json` in the book folder for an evidence figure ({"ref": "Q fixes-by-model",
 "caption": ..., "alt": ..., "changed": ...}) and `.analysis/diagrams/book/<name>.json` for a diagram or
 table (written by `svg_lib.finish`). For every entry with a result it finds the anchor paragraph in the
 chapter and puts the figure line after it:
@@ -185,7 +185,7 @@ def check(book, manifest, results, chaps, only=None):
                 problems += 1
                 print(f"{fname}: {e['kind']} {e['id']} has no result")
                 continue
-            if e["kind"] == "figure" and not r.get("name") and not os.path.exists(os.path.join(SPEC.BOOK, "..", "data", "figures", f"{e['id']}.json")):
+            if e["kind"] == "figure" and not r.get("name") and not os.path.exists(os.path.join(ROOT, ".analysis", "data", "figures", f"{e['id']}.json")):
                 problems += 1
                 print(f"{fname}: figure {e['id']} has no summary table in .analysis/data/figures")
             at = find_anchor(lines, e["anchor"], e["section"])

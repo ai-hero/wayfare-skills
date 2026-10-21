@@ -19,8 +19,8 @@ sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 import register as R  # noqa: E402
 
-WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
-NOW = "2026-09-24"
+WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
+NOW = "2026-10-01"
 SEVS = ["high", "medium", "low"]
 # `critical` has a deadline although no control carries it, so a control raised to it is scored, not dropped.
 DEADLINES = {"critical": 3, "high": 14, "medium": 30, "low": 90}
@@ -821,7 +821,7 @@ def q_rule_files_self_check():
     from record import adoption
     months = [f"2026-{m:02d}" for m in range(1, 10)]
     ends = [date(2026, m + 1, 1).isoformat() if m < 12 else "2027-01-01" for m in range(1, 10)]
-    ends[-1] = "2026-09-25"
+    ends[-1] = "2026-10-01"
     per_month, rule_now, repo_now = [], Counter(), {}
     for m, end in zip(months, ends):
         n_ok = n = 0

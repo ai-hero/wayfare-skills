@@ -9,9 +9,10 @@ from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import figure_lib as F  # noqa: E402
+from record import SESSION_WINDOW_LABEL  # noqa: E402
 from deck_lib import wlabel  # noqa: E402
 
-WINDOW_TEXT = "25 Aug to 25 Sep 2026"
+WINDOW_TEXT = f"{SESSION_WINDOW_LABEL} 2026"
 
 
 def _usd(v):
@@ -34,7 +35,7 @@ def fig_6_5(x):
                     ha="left", va="center", fontsize=8.5, color=F.MUTED)
     ax.set_yticks(ys)
     ax.set_yticklabels([f"{r['unit']}\nn={r['n_costed']} of {r['n_units']} ({r['coverage']:.0%} costed)" for r in rows])
-    ax.set_ylim(-0.7, len(rows) - 0.3)
+    ax.set_ylim(-1.9, len(rows) - 0.3)  # the band under the last row holds the legend
     ax.set_xscale("log")
     ax.set_xlim(1, 400)
     ax.xaxis.set_major_locator(mt.FixedLocator([1, 3, 10, 30, 100, 300]))
@@ -45,10 +46,10 @@ def fig_6_5(x):
     ax.plot([], [], color=F.GREY, linewidth=7, label="Interquartile range")
     ax.plot([], [], "o", color=F.PINK, label="Median")
     ax.plot([], [], color=F.PINK_DARK, linewidth=1.4, label="95% interval for the median (bootstrap)")
-    ax.legend(loc="upper right", ncol=1)
-    ax.text(0, -0.14, f"Units merged or closed {WINDOW_TEXT}; costed = reached any attributed session spend.\n"
-                      f"{x['unreached_share']:.0%} of the window's spend (\\${x['unreached_usd']:,}) reached no merged PR and is "
-                      "reported, not spread over units.", transform=ax.transAxes, fontsize=8.5, color=F.MUTED, va="top")
+    ax.legend(loc="lower right")
+    F.coverage(fig, f"Units merged or closed {WINDOW_TEXT}; costed = reached any attributed session spend. "
+                    f"{x['unreached_share']:.0%} of the window's spend (\\${x['unreached_usd']:,}) reached no merged PR and is "
+                    "reported, not spread over units.")
     png = F.save(fig, F.asset("6.5"))
     F.summary("6.5", question="What were the distributions and attribution coverage of list-price-equivalent cost per change set, "
                               "pull request, work item and goal, with failed, shared and unshipped work attributed consistently?",
@@ -84,7 +85,9 @@ def fig_6_6(x, weeks):
     k = x["hung_n"]
     ax.plot([k], [cum[k - 1]], "o", color=F.PINK, markersize=9, zorder=4)
     ax.fill_between(ranks[:k], 0, cum[:k], color=F.PINK, alpha=0.15, step="pre")
-    ax.annotate(f"{k} hung runs\n= {cum[k - 1]:.0%} of all minutes", (k, cum[k - 1]), xytext=(14, -30),
+    # Three short lines below and right of the point: on two lines it ran into the next panel, and above
+    # and to the left it ran into the axis.
+    ax.annotate(f"{k} hung runs\n= {cum[k - 1]:.0%} of all\nminutes", (k, cum[k - 1]), xytext=(12, -40), ha="left",
                 textcoords="offset points", fontsize=9.5, color=F.INK,
                 arrowprops=dict(arrowstyle="-", color=F.MUTED, linewidth=0.8))
     ax.set_xscale("log")
@@ -111,14 +114,15 @@ def fig_6_6(x, weeks):
     bx.set_xticklabels(labels, rotation=60, ha="right", fontsize=8.5)
     bx.set_xlabel("Week of 2026, from July (Jan to Jun: under 500 in all)")
     bx.set_ylabel("Wall-clock CI minutes per week (symlog above 5,000)")
-    for name, key, col, va in (("before hang", "before", F.GREY_DARK, "top"), ("after fix", "after_fix", F.TEAL, "bottom")):
+    for name, key, col, va in (("before hang", "before", F.GREY_DARK, "top"), ("after fix", "after_fix", F.CONTRAST, "bottom")):
         v = x[key]["per_week"]
         bx.axhline(v, color=col, linewidth=1, linestyle=(0, (3, 3)))
         bx.text(-0.4, v, f"{name}: {v:,} a week", ha="left", va=va, fontsize=8.5, color=col,
                 bbox=dict(facecolor="white", edgecolor="none", pad=1.5))
     hung_i = weeks.index("2026-W35")
-    bx.annotate(f"26 Aug: {k} runs hang {x['hung_hours'][0]}-{x['hung_hours'][1]} h,\ncancelled 28 Aug",
-                (hung_i, 40000), xytext=(-150, 0), textcoords="offset points", va="center",
+    # To the right of the hung bar, above the ordinary weeks: to its left the note ran over the axis.
+    bx.annotate(f"26 Aug: {k} runs hang\n{x['hung_hours'][0]}-{x['hung_hours'][1]} h, cancelled\n28 Aug",
+                (hung_i, 40000), xytext=(10, 0), textcoords="offset points", va="center",
                 fontsize=9, color=F.INK, arrowprops=dict(arrowstyle="-", color=F.MUTED, linewidth=0.8))
     for day, txt, dx in ((x["fix_day"], "fix 29 Aug", -3), (x["cut_day"], "cut 17 Sep", 3)):
         y, w, wd = date.fromisoformat(day).isocalendar()
@@ -131,7 +135,7 @@ def fig_6_6(x, weeks):
     png = F.save(fig, F.asset("6.6"))
     F.summary("6.6", question="How much CI consumption came from normal runs versus hung runs, in billable and wall-clock minutes, "
                               "what caused the outliers and what baseline remained after the fix?",
-              params={"window": ["2026-01-01", "2026-09-25"], "wall_clock": "github.ci_runs.duration_s (created to updated)",
+              params={"window": ["2026-01-01", "2026-10-01"], "wall_clock": "github.ci_runs.duration_s (created to updated)",
                       "billable": "not in the data: ci_jobs.billable_ms is 0 on every row; billable_lb_min = per-run minutes rounded up, "
                                   "a lower bound on GitHub's per-job whole-minute billing",
                       "hung": "created 26 Aug, ran over 6 h, ended cancelled (no other 2026 run exceeded 1 h)",
@@ -142,4 +146,58 @@ def fig_6_6(x, weeks):
                     f"after cut {x['after_cut']}. Monthly: {x['months']}. Runs over an hour outside the hang day: {x['long_other']}.",
               extra={"weekly": x["weekly"]},
               sources=["github.ci_runs", "github.ci_jobs (billable_ms all zero)", "wayfare-skills history: db701b7 (29 Aug), 17 Sep CI cut"])
+    return png
+
+
+def fig_4_7(x):
+    """Left: weekly CI minutes against weekly change sets, July to September, with the fit. Right: minutes per change set
+    by month, with what drove it (repos running CI, build minutes per run)."""
+    fig, (ax, bx) = F.fig(ncols=2, gridspec_kw={"width_ratios": [1.35, 1]})
+    colors = {"07": F.GREY, "08": F.GREY_DARK, "09": F.PINK}
+    for w, cs, m in zip(x["weeks"], x["change_sets"], x["ci_min"]):
+        mon = date.fromisocalendar(int(w[:4]), int(w[-2:]), 1).strftime("%m")  # the label is the Monday
+        ax.plot([cs], [m], "o", color=colors[mon], markersize=8, zorder=3)
+        # The rightmost point's label goes on its left, or it runs into the next panel.
+        right = cs == max(x["change_sets"])
+        ax.annotate(wlabel(w), (cs, m), xytext=(-5 if right else 5, 4), textcoords="offset points", fontsize=8,
+                    color=F.MUTED, ha="right" if right else "left")
+    lo, hi = min(x["change_sets"]), max(x["change_sets"])
+    ax.plot([lo, hi], [x["intercept"] + x["slope"] * lo, x["intercept"] + x["slope"] * hi], color=F.GREY_DARK, linewidth=1.2)
+    # Headroom above the points: at print width the note would otherwise sit on the top-left points.
+    ax.set_ylim(top=ax.get_ylim()[1] * 1.22)
+    ax.text(0.02, 0.98, f"r = {x['r_sets']:.2f} (rank {x['rho_sets']:.2f}), n = {len(x['weeks'])} weeks\n"
+                        f"about {x['slope']:.0f} more minutes a week\nper added change set",
+            transform=ax.transAxes, ha="left", va="top", fontsize=8, color=F.MUTED)
+    for mon, name in (("07", "July"), ("08", "August"), ("09", "September")):
+        ax.plot([], [], "o", color=colors[mon], label=name)
+    ax.legend(loc="lower right")
+    ax.set_xlabel("Change sets merged in the week")
+    ax.set_ylabel("Wall-clock CI minutes in the week")
+    ax.set_title("Each week, Jul to Sep", loc="left", fontsize=10.5, color=F.BODY)
+
+    ms = x["months"]
+    idx = range(len(ms))
+    bx.bar(idx, [m["min_per_set"] for m in ms], color=[F.GREY, F.GREY_DARK, F.PINK], width=0.6)
+    for i, m in zip(idx, ms):
+        bx.annotate(f"{m['min_per_set']:.1f}", (i, m["min_per_set"]), xytext=(0, 4), textcoords="offset points",
+                    ha="center", fontsize=10, color=F.INK)
+    bx.set_xticks(list(idx))
+    bx.set_xticklabels([f"{n}\n{m['change_sets']:,} sets\n{m['ci_min']:,} min\n{m['repos_with_ci']} repos\n"
+                        f"{m['build_min_per_run']:.1f} min a build"
+                        for n, m in zip(("Jul", "Aug", "Sep"), ms)], fontsize=8.5)
+    bx.set_ylabel("CI minutes per change set")
+    bx.grid(axis="x", visible=False)
+    bx.set_title("Per change set, by month", loc="left", fontsize=10.5, color=F.BODY)
+    png = F.save(fig, F.asset("4.7"))
+    F.summary("4.7", question="Do GitHub Actions minutes rise with the number of change sets the factory ships, and does the "
+                              "cost of one change set stay flat as volume grows?",
+              params={"weeks": [x["weeks"][0], x["weeks"][-1]], "measure": "wall-clock minutes (github.ci_runs.duration_s); "
+                      "billed minutes are not in the data", "excluded": "the 26 Aug hung runs; W40 (partial, ends 1 Oct)",
+                      "change_sets": "every change set including Dependabot's, since its CI minutes count"},
+              columns=["month", "change_sets", "prs", "ci_min", "min_per_set", "repos_with_ci", "build_min_per_run",
+                       "deploy_min_per_run", "by_group"], table=ms,
+              notes=f"Weekly r with change sets {x['r_sets']}, with merged PRs {x['r_prs']}; fit {x['intercept']} + "
+                    f"{x['slope']} x change sets. July to September: change sets x{x['sets_growth']}, CI minutes x{x['min_growth']}.",
+              extra={"weekly": dict(zip(x["weeks"], zip(x["change_sets"], x["prs"], x["ci_min"])))},
+              sources=["github.ci_runs", "github.prs", "detectors.cs_sets, detectors.cs_units"])
     return png

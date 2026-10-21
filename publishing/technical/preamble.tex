@@ -1,0 +1,95 @@
+% Built by publishing/technical.py; edit this file, never the generated paper.tex.
+% NeurIPS 2025 style, vendored unmodified as neurips_2025.sty beside this file.
+\documentclass{article}
+% The style loads natbib in author-year mode; the unkeyed \bibitem list needs numeric [n].
+\PassOptionsToPackage{numbers,sort&compress}{natbib}
+\usepackage[preprint]{neurips_2025}
+% The style prints "Preprint." in the first-page footer; the reference paper (arXiv 2607.25398)
+% suppresses it, so the notice is emptied here rather than by editing the vendored .sty.
+\makeatletter
+\renewcommand{\@noticestring}{}
+% The reference title has no rules: keep the bars' spacing, drop their \hrule.
+\renewcommand{\@toptitlebar}{\vskip 0.25in\vskip -\parskip}
+\renewcommand{\@bottomtitlebar}{\vskip 0.29in\vskip -\parskip\vskip 0.09in}
+\makeatother
+\usepackage{iftex}
+\ifPDFTeX
+  % arXiv compiles with pdfLaTeX, which has no fontspec: the same TeX Gyre faces as Type 1 fonts.
+  % T1 with utf8 input maps the curly quotes and dashes to glyphs the T1 fonts carry.
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{tgtermes}
+  \usepackage{tgheros}
+  \usepackage{tgcursor}
+\else
+  % tectonic is XeTeX: the legacy `times` package would take T1 Type 1 fonts that drop every curly
+  % quote and dash in this Unicode text. TeX Gyre Termes/Heros/Cursor are the URW Nimbus/Helvetica/
+  % Courier clones the reference embeds, loaded as OpenType so the text's characters survive.
+  \usepackage{fontspec}
+  \setmainfont{texgyretermes}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,
+    ItalicFont=*-italic,BoldItalicFont=*-bolditalic]
+  \setsansfont{texgyreheros}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,
+    ItalicFont=*-italic,BoldItalicFont=*-bolditalic]
+  \setmonofont{texgyrecursor}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,
+    ItalicFont=*-italic,BoldItalicFont=*-bolditalic]
+\fi
+\usepackage{newunicodechar}
+\newunicodechar{λ}{\ensuremath{\lambda}}
+\newunicodechar{→}{\ensuremath{\rightarrow}}
+\newunicodechar{−}{\ensuremath{-}}
+\newunicodechar{×}{\ensuremath{\times}}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{xltabular}
+\usepackage{pdflscape}
+\usepackage{array}
+\usepackage{xurl}
+\usepackage[shortlabels]{enumitem}
+\usepackage{xcolor}
+\definecolor{citeblue}{HTML}{000099}
+\usepackage[colorlinks=true,linkcolor=citeblue,citecolor=citeblue,urlcolor=citeblue,
+            pdfusetitle,linktoc=page,bookmarksnumbered=true,bookmarksopen=true]{hyperref}
+\usepackage[nameinlink,noabbrev]{cleveref}
+\usepackage{caption}
+% With technical.py's \FloatBarrier before each subsection, a figure floats at most to the end of its
+% own subsection; without it a caption can land under an earlier subsection's heading.
+\usepackage{placeins}
+\captionsetup[table]{position=top,skip=4pt}
+
+\setlist{itemsep=1pt,topsep=3pt,parsep=0pt,leftmargin=*}
+\renewcommand{\textfraction}{0.08}
+\renewcommand{\topfraction}{0.9}
+\renewcommand{\bottomfraction}{0.6}
+\renewcommand{\floatpagefraction}{0.75}
+
+\newcommand{\sources}[1]{\par\smallskip\noindent{\small\textit{Further sources for this section:}~\citep{#1}}\par}
+\newcommand{\evidence}[1]{\hyperref[ev:#1]{Q~#1}}
+\hyphenation{Dependabot}
+\frenchspacing
+% NeurIPS separates paragraphs with space; the reference paper indents them instead.
+\setlength{\parskip}{0pt}
+\setlength{\parindent}{1.5em}
+\emergencystretch=2em
+\widowpenalty=10000
+\clubpenalty=10000
+
+% A worked example from the factory is a ruled card; a repository name is a grey chip. A float
+% cannot sit inside a framed box, so technical.py sets an example's figures after its card closes.
+\usepackage{framed}
+% --line-hairline and --text-quiet from the design system's colors_and_type.css.
+\definecolor{dsline}{HTML}{C6C9D0}
+\definecolor{dsquiet}{HTML}{666D7B}
+\newenvironment{factoryexample}%
+  {\def\FrameCommand{\fboxrule=0.75pt\fboxsep=10pt\fcolorbox{dsline}{white}}%
+   \MakeFramed{\advance\hsize-\width\FrameRestore}%
+   \noindent{\ttfamily\scriptsize\color{dsquiet}\exampletitle}\par\smallskip}%
+  {\endMakeFramed}
+\newcommand{\repo}[1]{\colorbox{black!7}{#1}}
+% In a table column the chip is dropped but the name still never breaks: split at its hyphen,
+% `customer-community-app` reads as two names. column_weights reserves its full width instead.
+\usepackage{etoolbox}
+\AtBeginEnvironment{tabularx}{\renewcommand{\repo}[1]{\mbox{#1}}}
+\AtBeginEnvironment{xltabular}{\renewcommand{\repo}[1]{\mbox{#1}}}
+\newlength{\firstcol}  % the turned table's first column: its longest name, at least 2.4cm

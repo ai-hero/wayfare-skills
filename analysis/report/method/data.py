@@ -17,11 +17,11 @@ from datetime import date, timedelta
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from ingest.fleet import REPO_ALIASES  # noqa: E402
-from record import adoption, changeset_facts, commit_facts, rows, week_of  # noqa: E402
+from record import SESSION_WINDOW, STUDY_START, adoption, changeset_facts, commit_facts, in_session_window, rows, week_of  # noqa: E402
 
-WEEKS = [f"2026-W{w:02d}" for w in range(1, 40)]
-DATA_END = "2026-09-24"
-# Sessions are logged continuously from 25 Aug (W35); 9 Aug holds one session and 10-24 Aug none.
+WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
+DATA_END = "2026-10-01"
+# Sessions are logged continuously from 25 Aug (W35); 9 Aug holds one session, 10-19 Aug none and 20-24 Aug part.
 COMPLETE_LOG_WEEKS = [w for w in WEEKS if w >= "2026-W35"]
 FROM_JULY = "2026-07-01"
 ACTIVE_MIN_SETS = 1
@@ -64,9 +64,9 @@ def q_active_repo_heatmap(con):
         ever |= {r["repo"] for r in repos if r["cells"][i] >= ACTIVE_MIN_SETS}
         if len(ever) > 6 and seventh is None:
             seventh = w
-    # W39 runs only to 24 Sep, so the growth split compares complete weeks: W01-W26 against W27-W38.
+    # W40 runs only to 1 Oct, so the growth split compares complete weeks: W01-W26 against W27-W39.
     h1 = [i for i, w in enumerate(WEEKS) if w <= "2026-W26"]
-    h2 = [i for i, w in enumerate(WEEKS) if "2026-W27" <= w <= "2026-W38"]
+    h2 = [i for i, w in enumerate(WEEKS) if "2026-W27" <= w <= "2026-W39"]
     a1, a2 = mean([active[i] for i in h1]), mean([active[i] for i in h2])
     o1, o2 = mean([output[i] for i in h1]), mean([output[i] for i in h2])
     p1, p2 = o1 / a1, o2 / a2
@@ -75,7 +75,7 @@ def q_active_repo_heatmap(con):
     return {"weeks": WEEKS, "repos": repos, "active": active, "output": output, "per_active": per_active,
             "seventh_repo_week": seventh, "n_sets": len(cs),
             "before_july": sorted(r["repo"] for r in repos if r["first_active"] and r["first_active"] < "2026-W27"),
-            "split": {"h1_weeks": "W01-W26", "h2_weeks": "W27-W38", "active_h1": round(a1, 1), "active_h2": round(a2, 1),
+            "split": {"h1_weeks": "W01-W26", "h2_weeks": "W27-W39", "active_h1": round(a1, 1), "active_h2": round(a2, 1),
                       "output_h1": round(o1, 1), "output_h2": round(o2, 1), "per_active_h1": round(p1, 1),
                       "per_active_h2": round(p2, 1), "growth": round(growth, 2),
                       "share_from_more_repos": round(from_repos, 2) if from_repos is not None else None},
@@ -159,7 +159,8 @@ def q_rework_first_catch(con):
     cutoff = (date.fromisoformat(DATA_END) - timedelta(days=7)).isoformat()
     # Eligible: the PR's own commits were recovered (unit_kind pr), so an in-PR fix-up can be seen at all,
     # and it landed 7 or more days before the data ends, so the post-merge window is complete.
-    cs = [f for f in changeset_facts(con) if not f["dependabot"] and f["unit_kind"] == "pr" and f["day"] <= cutoff]
+    cs = [f for f in changeset_facts(con) if not f["dependabot"] and f["unit_kind"] == "pr"
+          and STUDY_START <= f["day"] <= cutoff]
     labels = {}
     for r in rows(con, "SELECT repo, sha, idx, trigger FROM mistakes.commit_labels WHERE fixup = 1"):
         labels[(r["repo"], r["sha"])] = (r["idx"], r["trigger"])
@@ -224,8 +225,8 @@ PLAN_CATS = ["Goal", "Work item, no goal", "One-shot, session names the PR", "On
 
 
 def q_observable_plan(con):
-    """Every non-Dependabot change set that landed in the complete logging window (25 Aug to the end of the data; W35 is
-    its Tuesday to Sunday), by
+    """Every non-Dependabot change set that landed in record.SESSION_WINDOW (25 Aug to 1 Oct; W35 is its Tuesday to
+    Sunday, W40 its Monday to Thursday), by
     what records its plan; the uncertain link (a session on the PR's branch, not naming the PR) is its own
     category. Weekly rows and one row for the window."""
     ad = adoption(con)
@@ -257,19 +258,19 @@ def q_observable_plan(con):
             return 3
         return 4
     cs = [f for f in changeset_facts(con) if not f["dependabot"]]
-    window = [f for f in cs if f["day"] >= "2026-08-25"]
+    window = [f for f in cs if in_session_window(f["day"])]
     kinds = [kind(f) for f in window]
     counts = [kinds.count(i) for i in range(len(PLAN_CATS))]
     weekly = {w: [0] * len(PLAN_CATS) for w in COMPLETE_LOG_WEEKS}
     for f, k in zip(window, kinds):
         weekly[f["week"]][k] += 1
-    # The card's earlier population, for the notes: ISO weeks from W32 with the unlogged weeks (10-24 Aug) left
+    # The card's earlier population, for the notes: ISO weeks from W32 with the gap weeks (10-24 Aug) left
     # out. W32 is 3-9 Aug, of which only 9 Aug has a session, so that cut kept a week of unlogged work.
     earlier = [kind(f) for f in cs if f["week"] >= "2026-W32" and f["week"] not in ("2026-W33", "2026-W34")]
     return {"cats": PLAN_CATS, "counts": counts, "n": len(window), "rates": [round(c / len(window), 3) for c in counts],
             "weeks": COMPLETE_LOG_WEEKS, "weekly": weekly,
             "since_9aug": {"n": len(earlier), "rates": [round(earlier.count(i) / len(earlier), 3) for i in range(len(PLAN_CATS))]},
-            "window": ("2026-08-25", DATA_END), "linked_via": via}
+            "window": SESSION_WINDOW, "linked_via": via}
 
 
 def grouping_audit():

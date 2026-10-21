@@ -25,6 +25,9 @@ from collections import defaultdict
 from datetime import datetime
 from functools import lru_cache
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from record import STUDY_START  # noqa: E402
+
 OWNER = "rparundekar"
 AGENT_CMD = re.compile(r"respond|review|ship|one-shot|goal|push|wayfare|build-task|advance")
 WINDOW_S = 3 * 3600
@@ -93,9 +96,9 @@ def human_reviews_upper(con):
 def _flags(con, humans):
     got = defaultdict(bool)
     for r in review_actors(con):
-        if r["merged_ts"]:
+        if (r["merged_ts"] or "") >= STUDY_START:
             got[(r["repo"], r["number"])] |= r["actor"] in humans
-    for r in con.execute("SELECT repo, number FROM github.prs WHERE merged_ts IS NOT NULL"):
+    for r in con.execute("SELECT repo, number FROM github.prs WHERE merged_ts >= ?", (STUDY_START,)):
         got.setdefault((r[0], r[1]), False)
     return dict(got)
 
@@ -107,7 +110,7 @@ def merge_actors(con):
     out = {}
     for r in con.execute("""SELECT p.repo, p.number, p.merged_ts, t.actor FROM github.prs p
                             LEFT JOIN github.pr_timeline t ON t.repo = p.repo AND t.number = p.number AND t.event = 'merged'
-                            WHERE p.merged_ts IS NOT NULL"""):
+                            WHERE p.merged_ts >= ?""", (STUDY_START,)):
         if r[3] and r[3] != OWNER and not r[3].endswith("[bot]"):
             out[(r[0], r[1])] = "human"
         elif _command_before(cmds, r[0], _t(r[2])):

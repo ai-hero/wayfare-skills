@@ -1,14 +1,14 @@
 # Diagram brief: redrawing the book's conceptual diagrams
 
-The owner's specification is `.analysis/book/_FIGURES_BRIEF.md` (Part Two, and the Chapter 1 entries of
-Part One that are conceptual), parsed into `.analysis/book/figures.json`. You own a set of diagrams. For
+The owner's specification is `.analysis/book-historical-2026-10-03/_FIGURES_BRIEF.md` (Part Two, and the Chapter 1 entries of
+Part One that are conceptual), parsed into `analysis/manuscript/book/figures.json`. You own a set of diagrams. For
 each you write one module `analysis/report/diagrams/d_NN_MM_slug.py` that draws it with `svg_lib` and
 finishes it, which writes the SVG, PDF, 2x PNG and a sidecar with caption, alt text and source to
 `.analysis/diagrams/book/`. The placement script reads the sidecar; you do not edit the manuscript.
 
 Read first: `report/diagrams/svg_lib.py` (the grammar, in its docstring), the chapter and section the
-diagram sits in (`.analysis/book/0N-*.md`; the anchor paragraph is in the manifest), and the Origin
-diagram's entry at the end of `.analysis/book/_FIGURES_APPENDIX.md` (`### TAG`, its `Shows:` line) plus its
+diagram sits in (`analysis/manuscript/book/0N-*.md`; the anchor paragraph is in the manifest), and the Origin
+diagram's entry at the end of `.analysis/book-historical-2026-10-03/_FIGURES_APPENDIX.md` (`### TAG`, its `Shows:` line) plus its
 drawn PNG in `.analysis/diagrams/` where the deck had one (`Deck X, with a drawn image`; the file names
 there are `<deck>-<slug>.png`). The Origin diagram is what the owner drew before; the brief says what
 changes.

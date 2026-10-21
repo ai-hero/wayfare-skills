@@ -1,6 +1,6 @@
 """Write the book's outline: every part and chapter, its section headings, and the questions it owns.
 
-    python report/book_outline.py [--book .analysis/book]
+    python report/book_outline.py [--book analysis/manuscript/book]
 
 The outline is generated from the chapter files, so it is a check on the book, not a plan for it:
 a rewrite is done when the outline this prints matches the one written for it.
@@ -11,7 +11,7 @@ import os
 import re
 import sys
 
-BOOK = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".analysis", "book")
+from book_spec import BOOK
 NUMBERS = "One Two Three Four Five".split()
 
 

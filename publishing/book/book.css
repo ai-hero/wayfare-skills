@@ -1,0 +1,232 @@
+/* Trim from cover.TRIM_IN (book.py fills in `size`). The text block is 5.1 in: about 68 characters
+   of 10.2 pt Geist, the most a sans body holds before the eye loses the next line. The outer margin is wider than the inner
+   because figures break out into it. Margins mirror on left and right pages. */
+:root {
+  --ink-900: #11141C; --ink-800: #1E222D; --ink-700: #383D49; --ink-600: #5A6070;
+  --ink-500: #7B8290; --ink-300: #C5C9D1; --ink-200: #E2E4E8; --ink-100: #F2F3F5;
+  --rose: #E93A61; --rose-dark: #BA1B45;
+  /* --ink-raise at about half strength: the panel fill, light enough to print behind body text. */
+  --panel: #F9FAFB;
+}
+
+@page {
+  size: TRIM;
+  background: white;
+  margin: 0.8in 1.3in 0.9in 1.1in;
+}
+@page :left {
+  margin-left: 1.3in; margin-right: 1.1in;
+  @top-left { content: string(book-title); font: 400 6.6pt "Geist Mono"; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--ink-500); vertical-align: bottom; padding-bottom: 14pt; }
+  @bottom-left { content: counter(page); font: 400 7.5pt "Geist Mono"; color: var(--ink-700);
+    vertical-align: top; padding-top: 18pt; }
+}
+@page :right {
+  margin-left: 1.1in; margin-right: 1.3in;
+  @top-right { content: string(chapter-title, first-except); font: 400 6.6pt "Geist Mono"; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--ink-500); vertical-align: bottom; padding-bottom: 14pt; }
+  @bottom-right { content: counter(page); font: 400 7.5pt "Geist Mono"; color: var(--ink-700);
+    vertical-align: top; padding-top: 18pt; }
+}
+/* Front matter and the blank pages before a recto opener carry no running heads or folios. */
+@page :blank { @top-left { content: none; } @top-right { content: none; }
+  @bottom-left { content: none; } @bottom-right { content: none; } }
+@page front { @top-left { content: none; } @top-right { content: none; }
+  @bottom-left { content: none; } @bottom-right { content: none; } }
+@page rotated:left { @top-left { content: none; } }
+@page rotated:right { @top-right { content: none; } }
+
+/* The design system sets Geist at 300; on paper at body size that greys out, so the body takes the
+   variable axis to 360. Headings and display stay at the system's 300 and 200. */
+html { font-family: "Geist", sans-serif; font-weight: 360; font-size: 10.2pt;
+  line-height: 15.4pt; color: var(--ink-900); hyphens: auto; -weasy-hyphenate-limit-chars: 7 3 3;
+  /* Geist has no U+2010, the default hyphen, which would fall back to Helvetica mid-word. */
+  hyphenate-character: "-"; }
+body { margin: 0; string-set: book-title attr(data-title); }
+
+/* ---------- front matter ---------- */
+.half-title, .blank, .title-page, .copyright { page: front; break-after: page; }
+.blank { height: 1pt; }
+.half-title p, .title-page p, .copyright p { text-indent: 0; text-align: left; }
+.half-title p { margin-top: 2.6in; font: 200 16pt/1.2 "Manrope"; color: var(--ink-800); text-align: center; }
+.title-page { height: 7.45in; position: relative; }
+.title-block { padding-top: 1.6in; }
+.title-block::before { content: ""; display: block; width: 0.9in; height: 3pt; background: var(--rose); }
+.book-title { font: 200 38pt/1.04 "Manrope"; letter-spacing: -0.02em; margin: 0.35in 0 0; width: 5.2in;
+  color: var(--ink-900); hyphens: manual; }
+.subtitle { font: 300 13pt/1.4 "Geist"; color: var(--ink-600); margin-top: 18pt; width: 4.6in; }
+.title-foot { position: absolute; bottom: 0; left: 0; right: 0; }
+.title-foot-grid { width: 100%; border-collapse: collapse; }
+.title-foot-grid td { padding: 0; vertical-align: baseline; }
+.title-foot-grid td.follow { width: 1%; white-space: nowrap; }
+.title-foot-grid .foot-0 td { vertical-align: top; padding-bottom: 10pt; }
+.title-foot-grid .foot-2 td { padding-top: 3pt; }
+.title-foot-grid .foot-3 td { padding-top: 6pt; }
+.title-foot-grid p { margin: 0; }
+.author { font: 300 12pt "Geist"; color: var(--ink-900); }
+.email { font: 300 9pt "Geist"; color: var(--ink-600); }
+.imprint { font: 400 7.5pt "Geist Mono"; color: var(--ink-500); letter-spacing: 0.12em; text-transform: uppercase; }
+.author-photo { display: block; width: 0.7in; height: 0.7in; }
+/* Below 0.5in a phone at arm's length struggles to lock on; matching the photo keeps it well clear. */
+.author-qr { width: 0.7in; height: 0.7in; }
+.author-qr svg { width: 100%; height: 100%; display: block; }
+.follow-cta { font: 400 6.5pt "Geist Mono"; color: var(--ink-500); letter-spacing: 0.12em; text-transform: uppercase; }
+.follow-link { font: 300 6.5pt "Geist"; color: var(--ink-600); }
+.follow-link svg { width: 6.5pt; height: 6.5pt; fill: var(--ink-700); vertical-align: -0.5pt; margin-right: 3pt; }
+.copyright { padding-top: 6.1in; font: 300 7.8pt/1.55 "Geist"; color: var(--ink-600); }
+.copyright p { margin: 0 0 3pt; }
+.contents { page: front; break-before: right; break-after: page; padding-top: 1.3in; }
+.contents-title { font: 200 31pt/1.08 "Manrope"; letter-spacing: -0.018em; margin: 0 0 0.5in; text-indent: 0; }
+.contents ol { list-style: none; margin: 0; padding: 0; }
+.contents li { margin: 0; padding: 7pt 0; border-bottom: 0.5pt solid var(--ink-200); font: 300 11pt/1.35 "Geist"; }
+.contents li::marker { content: none; }
+.contents li.toc-appendix { margin-top: 14pt; }
+.preface { page: front; break-before: right; break-after: page; padding-top: 1.3in; }
+.preface-title { font: 200 31pt/1.08 "Manrope"; letter-spacing: -0.018em; margin: 0 0 0.5in; }
+.preface p { text-indent: 0; margin: 0 0 8pt; }
+.toc-num { display: inline-block; width: 0.95in; font: 400 7pt "Geist Mono"; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--rose-dark); }
+.contents a::after { content: target-counter(attr(href url), page); float: right; font: 400 8pt "Geist Mono";
+  color: var(--ink-700); }
+
+/* ---------- chapters ---------- */
+.chapter { page: chapter; break-before: right; }
+.opener { padding-top: 1.3in; margin-bottom: 0.5in; }
+.chapter-number { font: 400 7.5pt "Geist Mono"; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--rose-dark); margin: 0 0 14pt; text-indent: 0; }
+.chapter-number::before { content: ""; display: block; width: 0.6in; height: 3pt; background: var(--rose);
+  margin-bottom: 16pt; }
+h1 { font: 200 31pt/1.08 "Manrope"; letter-spacing: -0.018em; margin: 0; color: var(--ink-900);
+  string-set: chapter-title content(); bookmark-level: 1; hyphens: manual; }
+.nobr { white-space: nowrap; }
+h2 { font: 300 13pt/1.25 "Geist"; letter-spacing: -0.005em; color: var(--ink-900); margin: 24pt 0 8pt;
+  break-after: avoid; bookmark-level: 2; hyphens: manual; }
+h3 { font: 400 7.5pt/1.4 "Geist Mono"; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--rose-dark); margin: 18pt 0 5pt; break-after: avoid; hyphens: manual; }
+h2 + p, h3 + p, figure + p, blockquote + p, ul + p, ol + p, table + p, p.first { text-indent: 0; }
+
+p { margin: 0; text-indent: 1.3em; text-align: left; orphans: 2; widows: 2; }
+em { font-style: italic; }
+strong { font-weight: 600; }
+code { font: 400 0.9em "Geist Mono", monospace; letter-spacing: -0.01em; }
+a { color: inherit; text-decoration: none; }
+
+blockquote { margin: 12pt 0; padding: 2pt 0 2pt 14pt; border-left: 2pt solid var(--rose); }
+blockquote p { text-indent: 0; color: var(--ink-700); font-size: 10.4pt; line-height: 15.4pt; font-weight: 300; }
+/* Markers start at the paragraph indent, never left of it; the text hangs one indent further. */
+ul, ol { margin: 7pt 0 9pt; padding-left: 2.6em; }
+li { margin: 0 0 4pt; }
+li::marker { color: var(--rose-dark); font: 400 8pt "Geist Mono"; }
+
+/* ---------- figures ---------- */
+/* Figures break out 0.45 in each side of the measure: the diagrams are drawn at screen scale. */
+figure { margin: 14pt -0.45in 14pt; break-inside: avoid; }
+/* A figure, a diagram and an example are one kind of panel: the hairline card, a faint sunken fill
+   and a quiet eyebrow title on top. The panel keeps the figure's breakout, and its text sits back on
+   the measure, so a panel's edges line up with every other panel's. */
+figure.chart, figure.diagram, figure.missing { background: var(--panel); border: 0.75pt solid var(--ink-300);
+  border-radius: 3pt; padding: 10pt 10pt 9pt; }
+figure figcaption { margin-left: calc(0.45in - 10pt); margin-right: calc(0.45in - 10pt); }
+.panel-title, .example-title { font: 300 6.8pt/1.2 "Geist Mono"; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-600); text-indent: 0; }
+.panel-title { margin: 0 calc(0.45in - 10pt) 8pt; }
+figure img { display: block; width: 100%; max-height: 5.8in; object-fit: contain; }
+figure.chart img { width: auto; max-width: 100%; max-height: 5.0in; margin: 0 auto; }
+figcaption { font: 300 7.9pt/1.45 "Geist"; color: var(--ink-700); margin-top: 7pt; padding-top: 6pt;
+  border-top: 0.5pt solid var(--ink-200); hyphens: manual; }
+.fig-label { font: 400 6.8pt "Geist Mono"; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--rose-dark); margin-right: 5pt; }
+figure.missing .placeholder { border: 1pt dashed var(--ink-300); padding: 0.5in; text-align: center;
+  font: 300 9pt "Geist"; color: var(--ink-500); }
+
+/* A table wider than the measure arrives as pre-turned SVG pages (book.table_svg). */
+figure.table-figure { margin: 0 -0.45in; }
+.table-page { page: rotated; break-before: page; break-after: page; }
+.table-page img { width: auto; height: 7.45in; max-height: none; margin: 0 auto; }
+
+table.prose-table { width: 100%; border-collapse: collapse; margin: 10pt 0; font: 300 8pt/1.35 "Geist"; }
+table.prose-table th { text-align: left; font-weight: 400; border-bottom: 1pt solid var(--ink-900); padding: 3pt; }
+table.prose-table td { border-bottom: 0.4pt solid var(--ink-200); padding: 3pt; vertical-align: top; }
+
+/* ---------- sources: one numbered list at the back, as the paper and the site number it ---------- */
+p.further-sources { font-size: 7.9pt; line-height: 11.4pt; font-weight: 300; text-indent: 0; color: var(--ink-700);
+  margin-top: 26pt; padding-top: 10pt; border-top: 0.5pt solid var(--ink-300); }
+.references { page: chapter; break-before: right; }
+.references-title { string-set: chapter-title "References"; }
+.reference-list p { font-size: 7.9pt; line-height: 11.4pt; font-weight: 300; text-align: left; text-indent: 0;
+  margin: 0 0 4pt; padding-left: 2.6em; position: relative; color: var(--ink-700); }
+.ref-n { position: absolute; left: 0; font: 400 7pt "Geist Mono"; color: var(--rose-dark); }
+a.cite { color: inherit; text-decoration: none; }
+
+/* ---------- appendix: the curated evidence ---------- */
+/* Each chapter's evidence starts a new page: the reader arrives from a caption pointer looking
+   for one chapter, and a fresh page under a running head is the fastest place to find it. */
+.appendix-opener { page: chapter; break-before: right; }
+.appendix-opener p { text-indent: 0; margin: 0 0 7pt; color: var(--ink-700); font-weight: 300; }
+.appendix-title { string-set: chapter-title attr(data-running); }
+.appendix-part { page: appendix; break-before: page; }
+h2.appendix-part-head { font: 200 20pt/1.15 "Manrope"; letter-spacing: -0.01em; margin: 0.2in 0 16pt;
+  string-set: chapter-title attr(data-running); bookmark-level: 2; bookmark-label: attr(data-bookmark); }
+h2.appendix-part-head .chapter-number { display: block; margin-bottom: 8pt; }
+h2.appendix-part-head .chapter-number::before { width: 0.4in; height: 2pt; margin-bottom: 10pt; }
+h3.appendix-group { bookmark-level: none; margin: 18pt 0 8pt; padding-top: 8pt; border-top: 0.5pt solid var(--ink-300); }
+@page appendix:left { @top-left { content: "Appendix"; } }
+
+.entry { margin: 0 0 16pt; }
+.entry-head { break-inside: avoid; }
+h4 { font: 400 7pt/1.4 "Geist Mono"; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-500);
+  margin: 12pt 0 6pt; break-after: avoid; bookmark-level: none; }
+.entry-label { color: var(--rose-dark); margin-right: 8pt; }
+.entry-title { font: 300 10.5pt/1.35 "Geist"; letter-spacing: 0; text-transform: none; color: var(--ink-900); }
+.entry-chart { margin: 0 -0.45in 8pt; break-inside: avoid; }
+.entry-chart img { display: block; max-width: 100%; max-height: 3.9in; margin: 0 auto; object-fit: contain; }
+.entry-chart.n2 img, .entry-chart.n3 img { max-height: 3.05in; }
+.entry p { text-indent: 0; margin: 0 0 5pt; font-size: 8.6pt; line-height: 12.6pt; }
+.run-in { font: 400 6.8pt "Geist Mono"; letter-spacing: 0.1em; text-transform: uppercase; color: var(--rose-dark);
+  margin-right: 3pt; }
+.entry table.prose-table { font-size: 7.4pt; margin: 4pt 0 7pt; }
+.entry table.prose-table th:first-child, .entry table.prose-table td:first-child { width: 1.2in; hyphens: manual; }
+.entry table.prose-table th { font: 400 6.6pt "Geist Mono"; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink-700); border-bottom-width: 0.6pt; }
+
+.evidence-ptr { font: 400 6.4pt "Geist Mono"; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--rose-dark); white-space: nowrap; }
+.evidence-ptr::after { content: " p. " target-counter(attr(href url), page); }
+
+/* ---------- in-text sources and figure references ---------- */
+/* The note sits in the sentence that cites it; WeasyPrint lifts it to the foot of the page. */
+.fn { float: footnote; footnote-display: block; font: 300 7.2pt/10pt "Geist"; color: var(--ink-700);
+  text-indent: 0; text-align: left; hyphens: manual; overflow-wrap: anywhere; }
+.fn::footnote-call { content: counter(footnote); font-size: 6pt; vertical-align: super; line-height: 0;
+  color: var(--rose-dark); }
+.fn::footnote-marker { content: counter(footnote) "  "; font: 400 6.4pt "Geist Mono"; color: var(--rose-dark); }
+@page { @footnote { border-top: 0.4pt solid var(--ink-300); padding-top: 4pt; margin-top: 6pt; } }
+a.xref, a.evi-ref { color: inherit; text-decoration: none; }
+a.evi-ref { font: 400 6.6pt "Geist Mono"; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--rose-dark); hyphens: none; }
+a.evi-ref::after { content: ", p. " target-counter(attr(href url), page); }
+section.chapter { counter-reset: footnote 0; }
+.fn + .fn::footnote-call { content: "," counter(footnote); }
+
+/* ---------- worked examples from the factory, and repository names ---------- */
+/* An example is the same panel as a figure, drawn block by block so it can break across pages: the
+   title draws the top, the last block the bottom. */
+.example-title, .example { background: var(--panel); border: 0.75pt solid var(--ink-300); border-width: 0 0.75pt;
+  margin: 0 -0.45in; text-indent: 0; }
+.example-title { margin-top: 14pt; padding: 10pt 0.45in 0; border-top-width: 0.75pt; border-radius: 3pt 3pt 0 0;
+  break-after: avoid; color: var(--rose-dark); }
+.example-end { border-bottom-width: 0.75pt; border-radius: 0 0 3pt 3pt; margin-bottom: 0; }
+p.example { padding: 3.5pt 0.45in; }
+/* Two lines and a title at a page foot read as a stray box, so a card needs four lines to start. */
+p.example-start { padding-top: 7pt; orphans: 4; }
+p.example-end { padding-bottom: 10pt; }
+ul.example, ol.example { padding: 3.5pt 0.45in 3.5pt calc(0.45in + 2.6em); }
+blockquote.example { padding: 3.5pt 0.45in 3.5pt calc(0.45in + 14pt); }
+.example-end + :not(.example) { margin-top: 14pt; }
+.example-end + p { text-indent: 0; }
+code.repo { background: var(--ink-100); border-radius: 2pt; padding: 0 2.2pt; }
+/* A name in monospace may break at its own hyphens, never inside a word. */
+code, code.repo { hyphens: none; -webkit-hyphens: none; }
+/* The page number after an evidence pointer is never upper-cased. WeasyPrint leaves a target-counter
+   in lower case but would upper-case the single-chapter stand-in, and the widths would then differ. */
+a.evi-ref::after, .evidence-ptr::after { text-transform: none; }

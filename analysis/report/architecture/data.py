@@ -644,8 +644,8 @@ def q_design_record_lag_anchor(con):
             c, n = anchor_lag(con, r, end)
             series[c][i] += 1
             lag[r][i] = n
-    monthly = {r: [anchor_lag(con, r, min(month_end(m), "2026-09-25"))[1] for m in MONTHS] for r in repos}
-    now = {r: anchor_lag(con, r, "2026-09-30") for r in repos}
+    monthly = {r: [anchor_lag(con, r, min(month_end(m), "2026-10-01"))[1] for m in MONTHS] for r in repos}
+    now = {r: anchor_lag(con, r, "2026-10-01") for r in repos}
     from evolution import q_design_md_staleness_design
     q_design_md_staleness = q_design_md_staleness_design(con)["now"]
     # Each change of anchor is a check of the record against the code: how much had built up by then.
@@ -999,7 +999,7 @@ def q_repeated_facts_agree(con):
     per_month = {c: [0] * len(months) for c in cats}
     detail = {}
     for j, m in enumerate(months):
-        end = min(month_end(m), "2026-09-25")
+        end = min(month_end(m), "2026-10-01")
         for r in repos:
             mc = [s for s, d in R.main_commits(r) if d <= end]
             if not mc:

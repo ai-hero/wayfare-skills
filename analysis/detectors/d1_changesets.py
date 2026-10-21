@@ -209,7 +209,31 @@ def load_units(con):
                 c["dependabot_sets"] = dependabot_sets(f"{pr[2]}\n{pr[5]}" if pr else f"{subject}\n{body}")
             units.append((f"{repo}#{kind}{pr_number or sha[:10]}", repo, kind, str(pr_number or sha), sha,
                           f"commit on main{f' for PR #{pr_number}' if pr_number else ''}", [c], rule))
-    return units
+    return units + offmain_units(con, units, pr_commits)
+
+
+def offmain_units(con, units, pr_commits):
+    """Merged PRs whose work never reached main's history: a branch rewritten after the merge
+    (infrastructure-environments' main restarts on 17 Jul 2026) leaves GitHub and the PR head refs
+    holding work no main commit carries. main_sha is NULL; record.changeset_facts dates them by the
+    merge day. A PR is skipped when its squash commit is on main (it is already a push unit) or any
+    of its commits is already in a unit, so nothing is counted twice."""
+    default = dict(con.execute("SELECT repo, default_branch FROM git.repos").fetchall())
+    on_main = {(r[0], r[1]) for r in con.execute("SELECT repo, sha FROM git.commits")}
+    squash = {(r[0], r[1]): r[2] for r in con.execute("SELECT repo, pr_number, main_sha FROM pr_commits.pr_coverage")}
+    have_pr = {(u[1], u[3]) for u in units if u[2] == "pr"}
+    covered = {(u[1], c["sha"]) for u in units for c in u[6]}
+    out = []
+    for repo, num, title, base, head, bot in con.execute(
+            "SELECT repo, number, title, base_ref, head_ref, author_is_bot FROM github.prs WHERE merged_ts IS NOT NULL"):
+        commits = pr_commits.get((repo, num))
+        if (not commits or bot or (head or "").startswith("dependabot/") or base != default.get(repo)
+                or (repo, str(num)) in have_pr or (repo, squash.get((repo, num))) in on_main
+                or any((repo, c["sha"]) in covered for c in commits)):
+            continue
+        out.append((f"{repo}#pr{num}", repo, "pr", str(num), None, f'PR #{num} "{title}"', commits,
+                    "single-line" if len(commits) == 1 and not (commits[0]["body"] or "").strip() else None))
+    return out
 
 
 def build(limit=None, dry_run=False):

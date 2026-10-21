@@ -191,18 +191,21 @@ def read_table(shape):
 
 
 def read_slide(slide, where=""):
-    s = {"layout": slide.slide_layout.name, "charts": [], "tables": [], "images": [], "texts": [], "notes": ""}
+    s = {"layout": slide.slide_layout.name, "charts": [], "tables": [], "images": [], "texts": [], "notes": "",
+         "coverage": ""}
     lines, rotated, rects = [], [], []
     for sh in slide.shapes:
         x, y, w, h = inch(sh.left), inch(sh.top), inch(sh.width), inch(sh.height)
-        if sh.has_chart:
+        if sh.name == "coverage" and sh.has_text_frame:
+            s["coverage"] = sh.text_frame.text.strip()
+        elif sh.has_chart:
             s["charts"].append(read_chart(sh, where))
         elif sh.shape_type == MSO_SHAPE_TYPE.TABLE:
             s["tables"].append(read_table(sh))
         elif sh.shape_type == MSO_SHAPE_TYPE.PICTURE:
             img = sh.image
             s["images"].append({"src": f"data:{img.content_type};base64,{base64.b64encode(img.blob).decode()}",
-                                "alt": sh.name})
+                                "alt": sh._element.nvPicPr.cNvPr.get("descr") or sh.name})
         elif sh.shape_type == MSO_SHAPE_TYPE.LINE:
             try:
                 col = str(sh.line.color.rgb)
@@ -247,7 +250,7 @@ def classify(s):
         return {"kind": "view", "tag": tag, "title": " ".join(body[0]["paras"]) if body else "",
                 "points": [p for x in body[1:] for p in x["paras"]],
                 "source": re.sub(r"^SOURCE\s*", "", source, flags=re.I),
-                "extra": [p for x in rest for p in x["paras"]],
+                "extra": [p for x in rest for p in x["paras"]], "coverage": s["coverage"],
                 "charts": s["charts"], "tables": s["tables"], "images": s["images"], "notes": s["notes"]}
     tag = t[0]["paras"][0] if t else ""
     if tag.upper().endswith("· QUESTION"):
@@ -423,20 +426,62 @@ def warn(msg):
 
 
 def parse_book(text):
-    """book.md: `## ` sections, `### ` subheads, `> ` callouts, `| a | b |` tables, `- ` and `1. ` lists,
+    """book.md: `## ` sections, `### ` and `#### ` subheads, `> ` callouts, `| a | b |` tables, `- ` and `1. ` lists,
     `[[Q work-sources · By repo | caption]]` figures. `[[I work-sources | caption]]` is the same card in its
-    in-text form (question, finding, chart); `Q` places the whole card, which is what the appendix wants."""
+    in-text form (question, finding, chart); `Q` places the whole card, which is what the appendix wants.
+
+    A worked example from the factory is `{{example}}` and `{{/example}}`, each alone on a line, around
+    any blocks; a paragraph that opens with `{{example}} ` is a one-paragraph example. Every block in one
+    is marked `example`, its first `example_start` and its last `example_end`, so a renderer can shade
+    them and title the group."""
     sections, para = [{"title": "", "blocks": []}], []
+    opened = None  # the section and block index an open `{{example}}` began at
+    fence = None  # (section, block count) at the last example tag, so a list or table never joins across it
 
     def flush():
         if para:
-            sections[-1]["blocks"].append({"kind": "p", "text": " ".join(para)})
+            text = " ".join(para)
+            block = {"kind": "p", "text": text}
+            if text.startswith("{{example}}"):
+                block.update(text=text[len("{{example}}"):].lstrip(), example=True, example_start=True,
+                             example_end=True)
+            sections[-1]["blocks"].append(block)
             para.clear()
+
+    def last(kind):
+        blocks = sections[-1]["blocks"]
+        if blocks and blocks[-1]["kind"] == kind and fence != (len(sections), len(blocks)):
+            return blocks[-1]
+        return None
 
     for line in re.sub(r"<!--.*?-->", "", text, flags=re.S).splitlines():
         line = line.strip()
         fig = FIG_RE.match(line)
         if line.startswith("# "):
+            continue
+        if line in ("{{example}}", "{{/example}}"):
+            flush()
+            blocks = sections[-1]["blocks"]
+            if line == "{{example}}":
+                if opened:
+                    warn("book: {{example}} opened inside another example; close the first with {{/example}}")
+                opened = (len(sections), len(blocks))
+            elif not opened:
+                warn("book: {{/example}} closes no open {{example}}")
+            elif opened[0] != len(sections):
+                warn("book: an {{example}} runs across a `## ` heading; close it before the section ends")
+                opened = None
+            else:
+                inside = blocks[opened[1]:]
+                if not inside:
+                    warn("book: an {{example}} ... {{/example}} holds nothing")
+                for b in inside:
+                    b["example"] = True
+                    b.pop("example_start", None), b.pop("example_end", None)
+                if inside:
+                    inside[0]["example_start"] = inside[-1]["example_end"] = True
+                opened = None
+            fence = (len(sections), len(blocks))
             continue
         if line.startswith("## "):
             flush()
@@ -446,14 +491,17 @@ def parse_book(text):
         elif line.startswith("### "):
             flush()
             sections[-1]["blocks"].append({"kind": "h3", "text": line[4:].strip()})
+        elif line.startswith("#### "):
+            flush()
+            sections[-1]["blocks"].append({"kind": "h4", "text": line[5:].strip()})
         elif line.startswith(">"):
             flush()
             quote = line.lstrip("> ").strip()
-            blocks = sections[-1]["blocks"]
-            if blocks and blocks[-1]["kind"] == "quote" and line != ">":
-                blocks[-1]["text"] += " " + quote
+            prev = last("quote")
+            if prev and line != ">":
+                prev["text"] += " " + quote
             elif quote:
-                blocks.append({"kind": "quote", "text": quote})
+                sections[-1]["blocks"].append({"kind": "quote", "text": quote})
         elif fig:
             flush()
             ref, _, caption = fig.group(1).partition("|")
@@ -463,25 +511,27 @@ def parse_book(text):
         elif line.startswith("|"):
             flush()
             cells = [c.strip() for c in line.strip("|").split("|")]
-            blocks = sections[-1]["blocks"]
-            if blocks and blocks[-1]["kind"] == "table":
+            prev = last("table")
+            if prev:
                 # The `| :--- |` rule under the header row is layout, not a row.
                 if not all(re.fullmatch(r":?-+:?", c) for c in cells):
-                    blocks[-1]["rows"].append(cells)
+                    prev["rows"].append(cells)
             else:
-                blocks.append({"kind": "table", "rows": [cells]})
+                sections[-1]["blocks"].append({"kind": "table", "rows": [cells]})
         elif LIST_RE.match(line):
             flush()
             m = LIST_RE.match(line)
             kind = "ol" if m.group(1)[0].isdigit() else "ul"
-            blocks = sections[-1]["blocks"]
-            if blocks and blocks[-1]["kind"] == kind:
-                blocks[-1]["items"].append(m.group(2))
+            prev = last(kind)
+            if prev:
+                prev["items"].append(m.group(2))
             else:
-                blocks.append({"kind": kind, "items": [m.group(2)]})
+                sections[-1]["blocks"].append({"kind": kind, "items": [m.group(2)]})
         else:
             para.append(line)
     flush()
+    if opened:
+        warn("book: an {{example}} is never closed with {{/example}}")
     return sections
 
 

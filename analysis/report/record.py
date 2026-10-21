@@ -20,6 +20,165 @@ from ingest.git import CONV_RE  # noqa: E402
 STAGES = ["No skills yet", "Skills", "+ work items", "+ goals", "+ messages"]
 CATEGORIES = ["app", "app, no features yet", "allied"]
 
+# The one session-log window every question measured on the session logs uses: complete from 25 Aug and
+# frozen through 1 Oct. Before it the logs hold one session on 9 Aug, none 10-19 Aug, and 20-24 Aug only in
+# part: transcript cleanup deletes by last-modified date, so those days kept whatever happened to be touched
+# later. Do not move the start back to 20 Aug for the extra sessions; a partial span reads as a quiet one.
+# ISO weeks start on Monday, so W35 (from 24 Aug) and W40 (to 1 Oct) are partial: shares and totals may use
+# the whole window, but per-week averages take SESSION_FULL_WEEKS, or the short W40 drags the average down.
+SESSION_WINDOW = ("2026-08-25", "2026-10-01")
+SESSION_WINDOW_LABEL = "25 Aug–1 Oct"
+SESSION_FULL_WEEKS = ["2026-W36", "2026-W37", "2026-W38", "2026-W39"]
+
+# A chart's source line names where its numbers come from; one naming the session logs (or what is derived
+# from them: turns, asks, subagent runs, D6 segments, D9 spend, limit events) carries the session_coverage() note.
+# "prompt history" is ~/.claude/history.jsonl, which reaches back to 2025 and is not session data.
+SESSION_SOURCE_RE = re.compile(r"\bsessions?\b|\bturns\b|\basks\b|subagent|tool[ _]calls|\bD[69]\b|time segments"
+                               r"|limit (events|messages)|\bspend\b|list price|Claude Code logs", re.I)
+
+
+def in_session_window(day):
+    return SESSION_WINDOW[0] <= str(day)[:10] <= SESSION_WINDOW[1]
+
+
+def is_session_source(source):
+    return bool(source and SESSION_SOURCE_RE.search(source))
+
+
+def _day(d):
+    return f"{d.day} {d:%b}"
+
+
+def _span(a, b):
+    if a == b:
+        return _day(a)
+    return f"{a.day}–{_day(b)}" if a.month == b.month else f"{_day(a)}–{_day(b)}"
+
+
+# The study is 2026 only. infrastructure-root and infrastructure-environments carry 2025 history (commits, PRs,
+# CI runs and typed prompts from May and November 2025) that predates the factory; a query with no floor reaches it.
+STUDY_START = "2026-01-01"
+STUDY_END = date(2026, 10, 1)
+
+
+def coarse_day(d, long=False, year=False):
+    """The book's house style for a date: 'early Aug', 'mid-Sep', 'late Jul' (days 1-10, 11-20, 21-31), or
+    'mid-August' with long. The study's end, 1 October 2026, is the one date the book gives exactly."""
+    if isinstance(d, str):
+        d = date.fromisoformat(d[:10])
+    month = f"{d:%B}" if long else f"{d:%b}"
+    y = f" {d.year}" if year else ""
+    if d == STUDY_END:
+        return f"{d.day} {month}{y}"
+    part = "early" if d.day <= 10 else "mid" if d.day <= 20 else "late"
+    return f"{part}{'-' if part == 'mid' else ' '}{month}{y}"
+
+
+def coarse_span(a, b, long=False):
+    """A span of ten days or fewer is named by its middle, so 10-19 Aug reads 'mid-August', not
+    'early August–mid-August'."""
+    if isinstance(a, str):
+        a, b = date.fromisoformat(a[:10]), date.fromisoformat(b[:10])
+    if (b - a).days < 10 and STUDY_END not in (a, b):
+        return coarse_day(a + (b - a) / 2, long)
+    a, b = coarse_day(a, long), coarse_day(b, long)
+    return a if a == b else f"{a}–{b}"
+
+
+@lru_cache(maxsize=None)
+def session_gap():
+    """What the logs hold before SESSION_WINDOW, split at the longest run of days with no session: the early
+    sessions [(day, n)], the span with none (missing) and the partly kept span after it (partial), as date pairs."""
+    import sqlite3
+    from datetime import timedelta
+    from ingest.fleet import OUT
+    start = date.fromisoformat(SESSION_WINDOW[0])
+    con = sqlite3.connect(os.path.join(OUT, "harness.sqlite"))
+    pre = [(date.fromisoformat(d), n) for d, n in con.execute(
+        "SELECT day, COUNT(*) FROM sessions WHERE day < ? GROUP BY day ORDER BY day", (SESSION_WINDOW[0],))]
+    con.close()
+    if not pre:
+        return {"early": [], "missing": None, "partial": None}
+    days = [d for d, _ in pre] + [start]
+    cut = max(range(1, len(days)), key=lambda i: (days[i] - days[i - 1]).days)
+    early, partial = pre[:cut], days[cut:-1]
+    gap_from, gap_to = early[-1][0] + timedelta(1), (partial[0] if partial else start) - timedelta(1)
+    return {"early": early, "missing": (gap_from, gap_to) if gap_from <= gap_to else None,
+            "partial": (partial[0], start - timedelta(1)) if partial else None}
+
+
+def gap_span(kind, coarse=False):
+    """'10–19 Aug' for kind 'missing', '20–24 Aug' for 'partial'; 'mid-August' and 'late August' when coarse."""
+    sp = session_gap()[kind]
+    if not sp:
+        return ""
+    return coarse_span(*sp, long=True) if coarse else _span(*sp)
+
+
+def gap_days(kind):
+    """The (first, last) ISO days of the missing or partial span."""
+    sp = session_gap()[kind]
+    return (sp[0].isoformat(), sp[1].isoformat()) if sp else None
+
+
+def gap_range():
+    """(first missing day, last partial day): the whole stretch whose session-derived values are unknown."""
+    m, p = gap_days("missing"), gap_days("partial")
+    return (m[0], (p or m)[1]) if m else None
+
+
+def gap_note(coarse=False):
+    return f"{gap_span('missing', coarse)} has no session logs and {gap_span('partial', coarse)} is only partly kept"
+
+
+def gap_short():
+    return f"none logged {gap_span('missing')}, partial {gap_span('partial')}"
+
+
+def gap_weeks():
+    """(missing, partial) ISO weeks before the window's first week: a week in the gap with no session is missing,
+    one with some is partial. The window's own first week is left to the window."""
+    from datetime import timedelta
+    g = session_gap()
+    if not g["missing"]:
+        return set(), set()
+    first = week_of(SESSION_WINDOW[0])
+    have = {week_of(d.isoformat()) for d, _ in g["early"]} | {week_of((g["partial"] or g["missing"])[0].isoformat())}
+    lo, hi = g["missing"][0], (g["partial"] or g["missing"])[1]
+    weeks = sorted({week_of((lo + timedelta(i)).isoformat()) for i in range((hi - lo).days + 1)} - {first})
+    missing = {w for w in weeks if w not in have}
+    return missing, set(weeks) - missing
+
+
+def gap_events():
+    """The gap as two chart event marks: where the days with no logs start, and where the partial ones start."""
+    return [(d[0], label) for d, label in ((gap_days("missing"), f"No session logs {gap_span('missing')}"),
+                                           (gap_days("partial"), f"Partial session logs {gap_span('partial')}")) if d]
+
+
+@lru_cache(maxsize=None)
+def session_coverage(coarse=False):
+    """The note every chart built on the session logs carries, read from the logs themselves: the window,
+    then what the logs hold before it. Coarse gives the book diagrams' early/mid/late dates."""
+    start, end = (date.fromisoformat(d) for d in SESSION_WINDOW)
+    window = coarse_span(start, end) if coarse else _span(start, end)
+    note = f"Session data: {window} ({(end - start).days + 1} days)."
+    g = session_gap()
+    early = g["early"]
+    if not early:
+        return note + " Nothing is logged before it."
+    words = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"]
+    n = sum(k for _, k in early)
+    on = "in" if coarse else "on"
+    when = (coarse_span(early[0][0], early[-1][0], long=True) if coarse
+            else _span(early[0][0], early[-1][0]) if len(early) > 1 else _day(early[0][0]))
+    parts = [f"{words[n] if n < 10 else n} logged session{'s' if n != 1 else ''} {on} {when}"]
+    if g["missing"]:
+        parts.append(f"none {on} {gap_span('missing', coarse)}")
+    if g["partial"]:
+        parts.append(f"only partial records for {gap_span('partial', coarse)}")
+    return note + " Before it: " + ", ".join(parts[:-1]) + (", and " if len(parts) > 2 else " and ") + parts[-1] + "."
+
 
 def week_of(day):
     y, w, _ = date.fromisoformat(day[:10]).isocalendar()
@@ -123,7 +282,34 @@ def commit_facts(con):
                 "category": ad[m["repo"]]["category"], "stage": stage_of(con, m["repo"], day),
                 "original": True,
             })
+    for (repo, pr), merged in offmain_prs(con).items():
+        if repo not in ad:
+            continue
+        for c in pr_commits.get((repo, pr), []):
+            if (repo, c["sha"]) in seen:
+                continue
+            seen.add((repo, c["sha"]))
+            day = c["ts"][:10]
+            out.append({
+                "repo": repo, "sha": c["sha"], "day": day, "week": week_of(day), "month": day[:7],
+                "pr": pr, "subject": c["subject"], "merged_day": merged,
+                "body": c["body_redacted"] or "", "churn": c["churn"] or 0,
+                "actor": "bot" if "dependabot" in (c.get("author") or "").lower() else "agent" if c["claude_trailer"] else "human",
+                "conventional": bool(CONV_RE.match(c["subject"])),
+                "category": ad[repo]["category"], "stage": stage_of(con, repo, day),
+                "original": True,
+            })
     return out
+
+
+@lru_cache(maxsize=None)
+def offmain_prs(con):
+    """(repo, PR) -> merge day, for the PR units d1_changesets built with no commit on main (a branch
+    rewritten after the merge): neither main's history nor merge_day can date them."""
+    return {(r["repo"], int(r["unit_id"])): r["merged_ts"][:10] for r in rows(con, """
+        SELECT u.repo, u.unit_id, p.merged_ts FROM detectors.cs_units u
+        JOIN github.prs p ON p.repo = u.repo AND p.number = CAST(u.unit_id AS INTEGER)
+        WHERE u.unit_kind = 'pr' AND u.main_sha IS NULL""")}
 
 
 @lru_cache(maxsize=None)
@@ -138,6 +324,7 @@ def changeset_facts(con):
         churn[(r["repo"], r["sha"])], main_day[(r["repo"], r["sha"])] = r["churn"] or 0, r["day"]
     churn.update({(c["repo"], c["sha"]): c["churn"] for c in commit_facts(con)})
     units = {(r["repo"], r["unit_kind"], r["unit_id"]): r for r in rows(con, "SELECT * FROM detectors.cs_units")}
+    offmain = offmain_prs(con)
     sets = rows(con, "SELECT * FROM detectors.cs_sets")
     member = defaultdict(int)
     for s in sets:
@@ -148,7 +335,8 @@ def changeset_facts(con):
         if s["repo"] not in ad:
             continue
         u = units[(s["repo"], s["unit_kind"], s["unit_id"])]
-        day = main_day.get((s["repo"], u["main_sha"]))
+        day = main_day.get((s["repo"], u["main_sha"])) or offmain.get((s["repo"], int(s["unit_id"]))) \
+            if s["unit_kind"] == "pr" else main_day.get((s["repo"], u["main_sha"]))
         if not day:
             continue
         shas = json.loads(s["shas_json"])

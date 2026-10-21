@@ -26,7 +26,7 @@ from functools import lru_cache
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.dirname(HERE), os.path.dirname(os.path.dirname(HERE))]
 from cube.db import connect as _connect  # noqa: E402
-from record import changeset_facts, rows, stage_of, week_of  # noqa: E402
+from record import changeset_facts, gap_range, gap_weeks, rows, stage_of, week_of  # noqa: E402
 from evolution import MONTHS, WEEKS  # noqa: E402
 from changes import LATEST, UPSTREAM, clusters, commits, days  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE, REPO_ALIASES, category_of  # noqa: E402
@@ -35,10 +35,10 @@ FLEET = os.path.expanduser(os.environ.get("WAYFARE_FLEET_ROOT", "~/workspaces/ai
 PLUGIN = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 MIRRORS = os.path.join(PLUGIN, ".analysis", "data", "mirrors")
 SESSIONS_FROM = "2026-08-09"
-# No Claude Code sessions are logged 10-24 Aug (brief: "data not available"). Session-derived series are None
-# there, never zero, and a change landing then has no knowable carrier.
-GAP = ("2026-08-10", "2026-08-24")
-GAP_WEEKS = ("2026-W33", "2026-W34")
+# Session logs are missing or partial over record.gap_range(): session-derived series are None there, never
+# zero, and a change landing then has no knowable carrier.
+GAP = gap_range()
+GAP_WEEKS = tuple(sorted(set().union(*gap_weeks())))
 in_gap = lambda day: GAP[0] <= day <= GAP[1]
 
 

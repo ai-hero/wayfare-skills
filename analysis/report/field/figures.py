@@ -120,7 +120,7 @@ def fig_8_1(x):
 
 # ------------------------------------------------------------------ 8.2 · Q human-reading-points
 
-INPUT_COLORS = [F.PINK_DARK, F.PINK, F.PINK_LIGHT, "#9DA3AE", "#B9BDC6", F.GREY_DARK, "#5A5F6B", F.TEAL, F.GREY, F.GREY_LIGHT, "#F2F3F5"]
+INPUT_COLORS = [F.PINK_DARK, F.PINK, F.PINK_LIGHT, "#7B8290", "#C6C9D0", F.GREY_DARK, "#666D7B", F.CONTRAST, F.GREY, F.GREY_LIGHT, "#F4F5F8"]
 AUDIT_82 = ("Validation: a random sample of labelled free-text prompts was judged by hand from their text against the "
             "shared intent label, and every prompt the PR/merge text rule caught was read; the agreement counts are in "
             "the chapter's summary.")

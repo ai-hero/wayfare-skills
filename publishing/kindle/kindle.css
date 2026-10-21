@@ -21,7 +21,7 @@ blockquote { margin: 0.8em 1.4em; }
 
 table { border-collapse: collapse; margin: 1em 0; font-size: 0.8em; width: 100%; }
 th, td { border-bottom: 1px solid #999; padding: 0.3em 0.4em; text-align: left; vertical-align: top; }
-tr.group td { font-weight: bold; padding-top: 0.8em; }
+tr.group td, tr.group th { font-weight: bold; padding-top: 0.8em; }
 
 .example-title { font-size: 0.75em; letter-spacing: 0.08em; text-transform: uppercase; text-indent: 0;
   margin-top: 1.4em; padding: 0.6em 0.8em 0; border: 1px solid #999; border-bottom: 0; }
@@ -30,7 +30,7 @@ tr.group td { font-weight: bold; padding-top: 0.8em; }
 ul.example, ol.example { margin-left: 0; padding-left: 2.2em; }
 
 code { font-family: monospace; font-size: 0.9em; }
-a.cite, a.xref, a.evidence-ptr { text-decoration: none; }
+a.cite, a.xref, a.evidence-ptr { text-decoration: underline; }
 
 .title-page { text-align: center; margin-top: 30%; }
 .title-page p { text-indent: 0; }
@@ -42,8 +42,19 @@ a.cite, a.xref, a.evidence-ptr { text-decoration: none; }
 .entry { margin: 1.4em 0; }
 .entry h4 { font-size: 1em; margin: 0 0 0.4em; }
 .entry img { width: 100%; height: auto; margin: 0.4em 0; }
-.cover { margin: 0; padding: 0; text-align: center; }
-.cover img { height: 100%; max-width: 100%; }
 .noteref { text-decoration: none; }
 .noteref sup { font-size: 0.7em; line-height: 0; }
 .footnote p { font-size: 0.85em; text-indent: 0; margin-top: 0.6em; }
+
+h1, h2, h3 { text-align: left; }
+.title-page .book-title { text-align: center; margin-top: 0; line-height: normal; }
+nav ol { list-style-type: none; }
+nav ol ol { margin-left: 4%; }
+body, a, code, .reference-list { word-wrap: break-word; overflow-wrap: anywhere; }
+th[scope="row"] { font-weight: normal; }
+/* Overrides `figure { page-break-inside: avoid }`: a long table that may not break is pushed whole
+   to the next screen or clipped. Rows still stay whole. */
+.table-figure, table { page-break-inside: auto; break-inside: auto; }
+tr { page-break-inside: avoid; break-inside: avoid; }
+.wide-table { table-layout: fixed; }
+th, td { word-wrap: break-word; overflow-wrap: anywhere; }

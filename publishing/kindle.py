@@ -31,6 +31,13 @@ DEFAULTS = {"edition": "First"}
 # At the 70% royalty Amazon charges a delivery fee per megabyte on every sale, so figures are
 # downscaled and reduced to a small palette; the charts are flat colour and lose nothing visible.
 IMAGE_W, COLOURS = 1100, 64
+# Only what the book can stand behind: textual alone is not sufficient while complex figures lack
+# certified text equivalents, so no WCAG conformance is claimed.
+ACCESSIBILITY = [("rendition:layout", "reflowable"), ("schema:accessMode", "textual"), ("schema:accessMode", "visual"),
+                 ("schema:accessModeSufficient", "textual,visual")] + \
+    [("schema:accessibilityFeature", f) for f in ("alternativeText", "structuralNavigation", "tableOfContents",
+                                                  "readingOrder", "displayTransformability")] + \
+    [("schema:accessibilityHazard", h) for h in ("noFlashingHazard", "noMotionSimulationHazard", "noSoundHazard")]
 XHTML_NS = 'xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"'
 XML_ENTITIES = {"amp", "lt", "gt", "quot", "apos"}
 
@@ -42,8 +49,11 @@ def xml_safe(s):
                   else f"&#{html.entities.name2codepoint.get(m.group(1), 0xFFFD)};", s)
 
 
-def page(title, body, kind=None):
-    attr = f' epub:type="{kind}"' if kind else ""
+def page(title, body, kind=None, main=True):
+    # `preface` goes on the inner section with role doc-preface: EPUBCheck rejects that role on <body>.
+    attr = f' epub:type="{kind}"' if kind and kind != "preface" else ""
+    if main:
+        body = f"<main>{body}</main>"
     return (f'<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE html>\n<html {XHTML_NS} lang="en" xml:lang="en">'
             f'<head><meta charset="utf-8"/><title>{esc(title)}</title>'
             f'<link rel="stylesheet" type="text/css" href="kindle.css"/></head>'
@@ -103,16 +113,30 @@ def svg_image(src):
     return Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
 
 
-def table_html(rows, cls=""):
-    head = "".join(f"<th>{c['html']}</th>" for c in rows[0])
-    body = []
-    for r in rows[1:]:
+def table_html(rows, tid, labelledby, cls=""):
+    """A data table whose every cell names its column, row and group headers, so a screen reader
+    can announce them; each group row opens its own <tbody>."""
+    cols = [f"{tid}-c{j}" for j in range(len(rows[0]))]
+    head = "".join(f'<th scope="col" id="{h}">{c["html"]}</th>' for h, c in zip(cols, rows[0]))
+    bodies, current, group = [], [], None
+    for i, r in enumerate(rows[1:], 1):
         if len(r) > 1 and all(not c["md"] for c in r[1:]):
-            body.append(f'<tr class="group"><td colspan="{len(r)}">{r[0]["html"]}</td></tr>')
-        else:
-            body.append("<tr>" + "".join(f"<td>{c['html']}</td>" for c in r) + "</tr>")
-    cls = f' class="{cls}"' if cls else ""
-    return f'<table{cls}><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table>'
+            if current:
+                bodies.append(current)
+            group = f"{tid}-g{i}"
+            current = [f'<tr class="group"><th scope="rowgroup" colspan="{len(r)}" id="{group}">{r[0]["html"]}</th></tr>']
+            continue
+        row = f"{tid}-r{i}"
+        cells = [f'<th scope="row" id="{row}" headers="{" ".join(filter(None, (cols[0], group)))}">{r[0]["html"]}</th>']
+        cells += [f'<td headers="{" ".join(filter(None, (cols[j], row, group)))}">{c["html"]}</td>'
+                  for j, c in enumerate(r[1:], 1)]
+        current.append("<tr>" + "".join(cells) + "</tr>")
+    if current:
+        bodies.append(current)
+    classes = " ".join(filter(None, (cls, "wide-table" if len(cols) >= 5 else "")))
+    cls = f' class="{classes}"' if classes else ""
+    body = "".join(f'<tbody>{"".join(b)}</tbody>' for b in bodies)
+    return (f'<table id="{tid}"{cls} aria-labelledby="{labelledby}"><thead><tr>{head}</tr></thead>{body}</table>')
 
 
 def figure(b, images):
@@ -120,9 +144,10 @@ def figure(b, images):
     anchor = EVIDENCE.get(b.get("rid"))
     ptr = f' <a class="evidence-ptr" href="#{anchor}">Evidence</a>' if anchor else ""
     title = f'<p class="panel-title">{esc(label)}</p>'
-    cap = f'<figcaption>{b["caption_html"]}{ptr}</figcaption>'
+    cap = f'<figcaption id="{fig_id(b)}-caption">{b["caption_html"]}{ptr}</figcaption>'
     if b["type"] == "table":
-        return f'<figure id="{fig_id(b)}">{title}{table_html(b["rows"])}{cap}</figure>'
+        table = table_html(b["rows"], f"{fig_id(b)}-table", f"{fig_id(b)}-caption")
+        return f'<figure class="table-figure" id="{fig_id(b)}">{title}{table}{cap}</figure>'
     files = b.get("files") or {}
     src = images.add(files.get("png") or files.get("svg"))
     if not src:
@@ -131,7 +156,8 @@ def figure(b, images):
     return f'<figure id="{fig_id(b)}">{title}<img src="{src}" alt="{esc(alt)}"/>{cap}</figure>'
 
 
-def block(b, images):
+def block(b, images, heading=None, tid=None):
+    """`heading` is the id of the section heading that names a prose table, `tid` that table's id."""
     k = b["kind"]
     if k == "p":
         out = f"<p>{b['html']}</p>"
@@ -142,7 +168,7 @@ def block(b, images):
     elif k in ("ul", "ol"):
         out = f"<{k}>" + "".join(f"<li>{i['html']}</li>" for i in b["items"]) + f"</{k}>"
     elif k == "table":
-        out = table_html(b["rows"], "prose-table")
+        out = table_html(b["rows"], tid, heading, "prose-table")
     elif k == "figure":
         out = figure(b, images)
     else:
@@ -151,12 +177,18 @@ def block(b, images):
 
 
 def chapter(c, images):
-    out = [f'<section epub:type="chapter" id="ch-{c["n"]}"><p class="chapter-number">Chapter {ONES[c["n"]]}</p>'
-           f'<h1>{esc(c["title"])}</h1>']
+    out = [f'<section epub:type="chapter" role="doc-chapter" id="ch-{c["n"]}">'
+           f'<p class="chapter-number">Chapter {ONES[c["n"]]}</p><h1 id="ch-{c["n"]}-title">{esc(c["title"])}</h1>']
+    heading = f"ch-{c['n']}-title"
     for s in c["sections"]:
         if s["title"]:
-            out.append(f'<h2 id="ch-{c["n"]}-{s["slug"]}">{s["html"]}</h2>')
-        out += [block(b, images) for b in s["blocks"]]
+            heading = f'ch-{c["n"]}-{s["slug"]}'
+            out.append(f'<h2 id="{heading}">{s["html"]}</h2>')
+        tables = 0
+        for b in s["blocks"]:
+            if b["kind"] == "table":
+                tables += 1
+            out.append(block(b, images, heading, f"{heading}-table-{tables}"))
     if c.get("further"):
         refs = ", ".join(f'<a class="cite" href="#ref-{n}">{n}</a>' for n in c["further"])
         out.append(f'<p class="first">Further sources: [{refs}].</p>')
@@ -199,7 +231,7 @@ def appendix_part(part, title, images):
 
 def front_matter(meta, preface):
     pages = [("title", "Title page", "titlepage",
-              f'<section class="title-page"><p class="book-title">{esc(meta["title"])}</p>'
+              f'<section class="title-page"><h1 class="book-title">{esc(meta["title"])}</h1>'
               f'<p class="subtitle">{esc(meta.get("subtitle"))}</p><p>{esc(meta["author"])}</p>'
               f'<p>{esc(meta.get("affiliation"))}</p></section>'),
              ("copyright", "Copyright", "copyright-page",
@@ -208,7 +240,9 @@ def front_matter(meta, preface):
               f'<p>All rights reserved. Corrections are welcome at {esc(meta.get("email"))}.</p></section>')]
     if preface:
         body = "".join(f"<p>{b['html']}</p>" for b in preface["blocks"])
-        pages.append(("preface", preface["title"], "preface", f'<section id="preface"><h1>{esc(preface["title"])}</h1>{body}</section>'))
+        pages.append(("preface", preface["title"], "preface",
+                      f'<section epub:type="preface" role="doc-preface" id="preface"><h1>{esc(preface["title"])}</h1>'
+                      f'{body}</section>'))
     return pages
 
 
@@ -223,14 +257,33 @@ def footnotes(name, body):
     def call(m):
         notes.append(m.group(1))
         n = len(notes)
-        return (f'<a epub:type="noteref" class="noteref" id="{name}-fnref-{n}" href="#{name}-fn-{n}">'
-                f'<sup>{n}</sup></a>')
+        return (f'<a epub:type="noteref" role="doc-noteref" class="noteref" id="{name}-fnref-{n}" '
+                f'href="#{name}-fn-{n}"><sup>{n}</sup></a>')
     body = FN.sub(call, body)
     if notes:
-        body += "".join(f'<aside epub:type="footnote" class="footnote" id="{name}-fn-{n}"><p>'
-                        f'<a href="#{name}-fnref-{n}">{n}.</a> {t}</p></aside>'
+        body += "".join(f'<aside epub:type="footnote" role="doc-footnote" class="footnote" id="{name}-fn-{n}"><p>'
+                        f'<a href="#{name}-fnref-{n}" role="doc-backlink" '
+                        f'aria-label="Return to footnote reference {n}">{n}.</a> {t}</p></aside>'
                         for n, t in enumerate(notes, 1))
     return body
+
+
+URL = re.compile(r"https?://[^\s<]+")
+
+
+def url_link(m):
+    """A reference's bare URL as a link. Terminal punctuation stays outside the anchor, and so does a
+    closing parenthesis the URL never opened, but a DOI's balanced parentheses stay in."""
+    url, tail = m.group(0), ""
+    while url and (url[-1] in ".,;:!?" or (url[-1] == ")" and url.count(")") > url.count("("))):
+        url, tail = url[:-1], url[-1] + tail
+    return f'<a href="{url}">{url}</a>{tail}'
+
+
+def link_urls(text):
+    # Split on existing anchors so a URL already inside one is never wrapped a second time.
+    parts = re.split(r"(<a\b.*?</a>)", text, flags=re.S)
+    return "".join(p if p.startswith("<a") else URL.sub(url_link, p) for p in parts)
 
 
 def link(docs):
@@ -252,41 +305,53 @@ def link(docs):
     return out, broken, unlinked
 
 
-def nav(meta, chapters, has_preface, appendix_parts, appendix_title, has_refs):
-    rows = []
+def contents_tree(chapters, has_preface, appendix_parts, appendix_title, has_refs):
+    """The contents as (href, label, children), labels escaped: the nav document and the NCX are
+    both drawn from it, so the two menus cannot disagree."""
+    tree = []
     if has_preface:
-        rows.append('<li><a href="preface.xhtml">Use of AI tools</a></li>')
+        tree.append(("preface.xhtml", "Use of AI tools", []))
     for c in chapters:
-        subs = "".join(f'<li><a href="ch-{c["n"]}.xhtml#ch-{c["n"]}-{s["slug"]}">{md_plain(s["title"])}</a></li>'
-                       for s in c["sections"] if s["title"])
-        rows.append(f'<li><a href="ch-{c["n"]}.xhtml">{ONES[c["n"]]}. {esc(c["title"])}</a>'
-                    + (f"<ol>{subs}</ol>" if subs else "") + "</li>")
+        subs = [(f'ch-{c["n"]}.xhtml#ch-{c["n"]}-{s["slug"]}', esc(md_plain(s["title"])), [])
+                for s in c["sections"] if s["title"]]
+        tree.append((f'ch-{c["n"]}.xhtml', f'{ONES[c["n"]]}. {esc(c["title"])}', subs))
     if appendix_parts:
-        parts = "".join(f'<li><a href="appendix-{p["n"]}.xhtml">Chapter {ONES[p["n"]]} · {esc(p["title"])}</a></li>'
-                        for p in appendix_parts)
-        rows.append(f'<li><a href="appendix.xhtml">Appendix: {esc(appendix_title)}</a><ol>{parts}</ol></li>')
+        parts = [(f'appendix-{p["n"]}.xhtml', f'Chapter {ONES[p["n"]]} · {esc(p["title"])}', []) for p in appendix_parts]
+        tree.append(("appendix.xhtml", f"Appendix: {esc(appendix_title)}", parts))
     if has_refs:
-        rows.append('<li><a href="references.xhtml">References</a></li>')
-    first = f"ch-{chapters[0]['n']}.xhtml"
-    body = (f'<nav epub:type="toc" id="toc"><h1>Contents</h1><ol>{"".join(rows)}</ol></nav>'
+        tree.append(("references.xhtml", "References", []))
+    return tree
+
+
+def nav(tree, first):
+    def ol(entries):
+        return "<ol>" + "".join(f'<li><a href="{h}">{label}</a>{ol(kids) if kids else ""}</li>'
+                                for h, label, kids in entries) + "</ol>"
+    # No cover landmark: KDP builds its cover from the cover-image, and an HTML cover page beside it
+    # shows the reader the cover twice.
+    body = (f'<nav epub:type="toc" role="doc-toc" id="toc"><h1>Contents</h1>{ol(tree)}</nav>'
             f'<nav epub:type="landmarks" hidden=""><ol>'
-            f'<li><a epub:type="cover" href="cover.xhtml">Cover</a></li>'
             f'<li><a epub:type="toc" href="nav.xhtml">Contents</a></li>'
             f'<li><a epub:type="bodymatter" href="{first}">Start</a></li></ol></nav>')
-    return page("Contents", body), first
+    return page("Contents", body, main=False)
 
 
-def ncx(meta, ident, xhtml_nav):
+def ncx(meta, ident, tree):
     """The EPUB 2 table of contents, which older Kindle devices read instead of the nav document."""
-    points, n = [], 0
-    for href, label in re.findall(r'<a href="([^"]+)">([^<]+)</a>', xhtml_nav.split('epub:type="landmarks"')[0]):
-        n += 1
-        points.append(f'<navPoint id="np{n}" playOrder="{n}"><navLabel><text>{label}</text></navLabel>'
-                      f'<content src="{href}"/></navPoint>')
+    order = iter(range(1, 10000))
+
+    def points(entries):
+        out = []
+        for h, label, kids in entries:
+            n = next(order)
+            out.append(f'<navPoint id="np{n}" playOrder="{n}"><navLabel><text>{label}</text></navLabel>'
+                       f'<content src="{h}"/>{points(kids)}</navPoint>')
+        return "".join(out)
+    depth = 2 if any(kids for *_, kids in tree) else 1
     return ('<?xml version="1.0" encoding="utf-8"?>\n<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">'
-            f'<head><meta name="dtb:uid" content="urn:uuid:{ident}"/><meta name="dtb:depth" content="1"/>'
+            f'<head><meta name="dtb:uid" content="urn:uuid:{ident}"/><meta name="dtb:depth" content="{depth}"/>'
             '<meta name="dtb:totalPageCount" content="0"/><meta name="dtb:maxPageNumber" content="0"/></head>'
-            f'<docTitle><text>{esc(meta["title"])}</text></docTitle><navMap>{"".join(points)}</navMap></ncx>')
+            f'<docTitle><text>{esc(meta["title"])}</text></docTitle><navMap>{points(tree)}</navMap></ncx>')
 
 
 def opf(meta, ident, docs, images, first):
@@ -297,29 +362,32 @@ def opf(meta, ident, docs, images, first):
              '<item id="cover-image" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/>']
     items += [f'<item id="{name}" href="{name}.xhtml" media-type="application/xhtml+xml"/>' for name, *_ in docs]
     items += [f'<item id="img{i}" href="{href}" media-type="image/png"/>' for i, (href, _) in enumerate(images.files.values())]
-    spine = ['<itemref idref="cover" linear="yes"/>']
+    spine = []
     for name, *_ in docs:
-        if name == "cover":
-            continue
         spine.append(f'<itemref idref="{name}"/>')
         if name == "copyright":
             spine.append('<itemref idref="nav"/>')
-    sub = f'<meta refines="#title" property="title-type">main</meta>'
+    sub = f'<meta refines="#book-title" property="title-type">main</meta>'
+    summary = (f"Reflowable text with a two-level contents menu, descriptive alternatives supplied for all "
+               f"{len(images.files)} interior images, and programmatic table headers. Dense diagrams and screenshots "
+               "may require magnification. Full textual equivalence of complex images has not been certified. "
+               "No WCAG conformance claim is made.")
+    access = "".join(f'<meta property="{k}">{v}</meta>' for k, v in ACCESSIBILITY)
+    access += f'<meta property="schema:accessibilitySummary">{summary}</meta>'
     subtitle = (f'<dc:title id="subtitle">{esc(meta["subtitle"])}</dc:title>'
                 f'<meta refines="#subtitle" property="title-type">subtitle</meta>') if meta.get("subtitle") else ""
     return ('<?xml version="1.0" encoding="utf-8"?>\n'
             '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid" xml:lang="en">'
             '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
             f'<dc:identifier id="uid">urn:uuid:{ident}</dc:identifier>'
-            f'<dc:title id="title">{esc(meta["title"])}</dc:title>{sub}{subtitle}'
+            f'<dc:title id="book-title">{esc(meta["title"])}</dc:title>{sub}{subtitle}'
             f'<dc:creator>{esc(meta["author"])}</dc:creator><dc:language>en-US</dc:language>'
             f'<dc:publisher>{esc(meta.get("affiliation"))}</dc:publisher><dc:date>{meta.get("year")}</dc:date>'
             f'<dc:rights>{esc(meta.get("copyright"))}</dc:rights>'
-            f'<meta property="dcterms:modified">{now}</meta><meta name="cover" content="cover-image"/>'
+            f'<meta property="dcterms:modified">{now}</meta><meta name="cover" content="cover-image"/>{access}'
             f'</metadata><manifest>{"".join(items)}</manifest>'
             f'<spine toc="ncx">{"".join(spine)}</spine>'
-            f'<guide><reference type="cover" title="Cover" href="cover.xhtml"/>'
-            f'<reference type="toc" title="Contents" href="nav.xhtml"/>'
+            f'<guide><reference type="toc" title="Contents" href="nav.xhtml"/>'
             f'<reference type="text" title="Start" href="{first}"/></guide></package>')
 
 
@@ -365,8 +433,7 @@ def main():
     EVIDENCE.update({e["rid"]: e["anchor"] for p in appx.get("parts", [])
                      for g in p["groups"] for e in g["entries"] if e["rid"]})
     images = Images()
-    docs = [("cover", "Cover", "cover", '<div class="cover"><img src="images/cover.jpg" alt="Cover"/></div>')]
-    docs += front_matter(meta, doc.get("preface"))
+    docs = front_matter(meta, doc.get("preface"))
     docs += [(f"ch-{c['n']}", c["title"], "bodymatter", chapter(c, images)) for c in doc["chapters"]]
     if appx.get("parts"):
         intro = "".join(f"<p>{b['html']}</p>" for b in appx["intro"])
@@ -376,19 +443,21 @@ def main():
         docs += [(f"appendix-{p['n']}", p["title"], "backmatter", appendix_part(p, appx["title"], images))
                  for p in appx["parts"]]
     if doc.get("references"):
-        refs = "".join(f'<p id="ref-{r["n"]}">[{r["n"]}] {r["html"]}</p>' for r in doc["references"])
+        refs = "".join(f'<p id="ref-{r["n"]}">[{r["n"]}] {link_urls(r["html"])}</p>' for r in doc["references"])
         docs.append(("references", "References", "backmatter",
-                     f'<section epub:type="bibliography" id="references"><h1>References</h1>'
+                     f'<section epub:type="bibliography" role="doc-bibliography" id="references"><h1>References</h1>'
                      f'<div class="reference-list">{refs}</div></section>'))
     docs = [(name, title, kind, footnotes(name, body)) for name, title, kind, body in docs]
     docs, broken, unlinked = link(docs)
-    xhtml_nav, first = nav(meta, doc["chapters"], bool(doc.get("preface")), appx.get("parts"), appx.get("title"),
-                             bool(doc.get("references")))
+    tree = contents_tree(doc["chapters"], bool(doc.get("preface")), appx.get("parts"), appx.get("title"),
+                         bool(doc.get("references")))
+    first = f"ch-{doc['chapters'][0]['n']}.xhtml"
+    xhtml_nav = nav(tree, first)
     ident = uuid.uuid5(uuid.NAMESPACE_URL, f"aihero.studio/book/{meta['title']}")
     with open(os.path.join(HERE, "kindle.css"), encoding="utf-8") as f:
         css = f.read()
 
-    files = {"OEBPS/kindle.css": css, "OEBPS/nav.xhtml": xhtml_nav, "OEBPS/toc.ncx": ncx(meta, ident, xhtml_nav),
+    files = {"OEBPS/kindle.css": css, "OEBPS/nav.xhtml": xhtml_nav, "OEBPS/toc.ncx": ncx(meta, ident, tree),
              "OEBPS/content.opf": opf(meta, ident, docs, images, first), "OEBPS/images/cover.jpg": cover_jpeg()}
     files.update({f"OEBPS/{name}.xhtml": page(title, body, kind) for name, title, kind, body in docs})
     files.update({f"OEBPS/{href}": data for href, data in images.files.values()})

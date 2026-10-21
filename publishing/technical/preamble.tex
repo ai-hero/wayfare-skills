@@ -12,16 +12,27 @@
 \renewcommand{\@toptitlebar}{\vskip 0.25in\vskip -\parskip}
 \renewcommand{\@bottomtitlebar}{\vskip 0.29in\vskip -\parskip\vskip 0.09in}
 \makeatother
-% tectonic is XeTeX: the legacy `times` package would take T1 Type 1 fonts that drop every curly
-% quote and dash in this Unicode text. TeX Gyre Termes/Heros/Cursor are the URW Nimbus/Helvetica/
-% Courier clones the reference embeds, loaded as OpenType so the text's characters survive.
-\usepackage{fontspec}
-\setmainfont{texgyretermes}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,
-  ItalicFont=*-italic,BoldItalicFont=*-bolditalic]
-\setsansfont{texgyreheros}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,
-  ItalicFont=*-italic,BoldItalicFont=*-bolditalic]
-\setmonofont{texgyrecursor}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,
-  ItalicFont=*-italic,BoldItalicFont=*-bolditalic]
+\usepackage{iftex}
+\ifPDFTeX
+  % arXiv compiles with pdfLaTeX, which has no fontspec: the same TeX Gyre faces as Type 1 fonts.
+  % T1 with utf8 input maps the curly quotes and dashes to glyphs the T1 fonts carry.
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{tgtermes}
+  \usepackage{tgheros}
+  \usepackage{tgcursor}
+\else
+  % tectonic is XeTeX: the legacy `times` package would take T1 Type 1 fonts that drop every curly
+  % quote and dash in this Unicode text. TeX Gyre Termes/Heros/Cursor are the URW Nimbus/Helvetica/
+  % Courier clones the reference embeds, loaded as OpenType so the text's characters survive.
+  \usepackage{fontspec}
+  \setmainfont{texgyretermes}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,
+    ItalicFont=*-italic,BoldItalicFont=*-bolditalic]
+  \setsansfont{texgyreheros}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,
+    ItalicFont=*-italic,BoldItalicFont=*-bolditalic]
+  \setmonofont{texgyrecursor}[Extension=.otf,UprightFont=*-regular,BoldFont=*-bold,
+    ItalicFont=*-italic,BoldItalicFont=*-bolditalic]
+\fi
 \usepackage{newunicodechar}
 \newunicodechar{λ}{\ensuremath{\lambda}}
 \newunicodechar{→}{\ensuremath{\rightarrow}}

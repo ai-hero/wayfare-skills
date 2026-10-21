@@ -20,6 +20,32 @@ XREF_RE = re.compile(r"\{\{(fig|diagram|figure|table|ev):([A-Za-z0-9.-]+)(\|name
 _MARKER_GAP = re.compile(r"\s*(?:\[\^[a-z0-9][a-z0-9-]*\]|\{\{[^}]*\}\})")
 CITE_MAP = {}  # source key -> bibliography key, set by the technical edition
 NOTES = {}  # `note-` source key -> footnote LaTeX: the author's aside rather than a source
+_NOTE_OPEN = re.compile(r'<span class="fn"[^>]*>')
+_SPAN_TAG = re.compile(r"<span\b[^>]*>|</span>")
+
+
+def note_end(html_text, i):
+    """Where the author's note opening at `i` ends, or None when none opens there. A note may hold
+    spans of its own, so its close is found by depth: the first `</span>` would cut it short."""
+    m = _NOTE_OPEN.match(html_text, i)
+    if not m:
+        return None
+    depth = 1
+    for t in _SPAN_TAG.finditer(html_text, m.end()):
+        depth += -1 if t.group(0) == "</span>" else 1
+        if depth == 0:
+            return t.end()
+    raise ValueError(f"unclosed author's note: {html_text[i:i + 80]}")
+
+
+def sub_notes(html_text, repl):
+    """`html_text` with each author's note replaced by `repl(the note's inner HTML)`."""
+    out, pos = [], 0
+    while (m := _NOTE_OPEN.search(html_text, pos)):
+        end = note_end(html_text, m.start())
+        out += [html_text[pos:m.start()], repl(html_text[m.end():end - len("</span>")])]
+        pos = end
+    return "".join(out) + html_text[pos:]
 
 
 def _repo_pairs():

@@ -19,7 +19,7 @@ import zipfile
 
 import paths
 from book import ONES, without_appendix, esc, example, fig_id
-from inline import md_plain
+from inline import md_plain, sub_notes
 
 HERE = os.path.join(paths.HERE, "kindle")
 OVERRIDES = os.path.join(paths.EDITIONS, "kindle.json")
@@ -87,7 +87,12 @@ class Images:
             im = im.resize((IMAGE_W, round(im.height * IMAGE_W / im.width)), Image.LANCZOS)
         buf = io.BytesIO()
         im.quantize(COLOURS, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(buf, "PNG", optimize=True)
-        href = f"images/{os.path.splitext(os.path.basename(name))[0]}.png"
+        stem, n = os.path.splitext(os.path.basename(name))[0], 1
+        taken = {h for h, _ in self.files.values()}
+        href = f"images/{stem}.png"
+        while href in taken:
+            n += 1
+            href = f"images/{stem}-{n}.png"
         self.files[name] = (href, buf.getvalue())
         return href
 
@@ -136,7 +141,9 @@ def table_html(rows, tid, labelledby, cls=""):
     classes = " ".join(filter(None, (cls, "wide-table" if len(cols) >= 5 else "")))
     cls = f' class="{classes}"' if classes else ""
     body = "".join(f'<tbody>{"".join(b)}</tbody>' for b in bodies)
-    return (f'<table id="{tid}"{cls} aria-labelledby="{labelledby}"><thead><tr>{head}</tr></thead>{body}</table>')
+    # class first: `book.example` adds its classes to the first tag's existing class attribute,
+    # and a second class attribute after `id` would make the file malformed XML.
+    return (f'<table{cls} id="{tid}" aria-labelledby="{labelledby}"><thead><tr>{head}</tr></thead>{body}</table>')
 
 
 def figure(b, images):
@@ -151,6 +158,8 @@ def figure(b, images):
     files = b.get("files") or {}
     src = images.add(files.get("png") or files.get("svg"))
     if not src:
+        if not (files.get("png") or files.get("svg")):
+            images.missing.append(b["ref"])
         return f'<figure id="{fig_id(b)}">{title}<p>[{esc(b["ref"])} is missing from this build]</p>{cap}</figure>'
     alt = b.get("alt") or md_plain(b["caption_md"])
     return f'<figure id="{fig_id(b)}">{title}<img src="{src}" alt="{esc(alt)}"/>{cap}</figure>'
@@ -180,15 +189,17 @@ def chapter(c, images):
     out = [f'<section epub:type="chapter" role="doc-chapter" id="ch-{c["n"]}">'
            f'<p class="chapter-number">Chapter {ONES[c["n"]]}</p><h1 id="ch-{c["n"]}-title">{esc(c["title"])}</h1>']
     heading = f"ch-{c['n']}-title"
+    # Counted per heading, not per section: an untitled section keeps the heading before it, and
+    # restarting its count would repeat that heading's table ids.
+    tables = {}
     for s in c["sections"]:
         if s["title"]:
             heading = f'ch-{c["n"]}-{s["slug"]}'
             out.append(f'<h2 id="{heading}">{s["html"]}</h2>')
-        tables = 0
         for b in s["blocks"]:
             if b["kind"] == "table":
-                tables += 1
-            out.append(block(b, images, heading, f"{heading}-table-{tables}"))
+                tables[heading] = tables.get(heading, 0) + 1
+            out.append(block(b, images, heading, f"{heading}-table-{tables.get(heading, 0)}"))
     if c.get("further"):
         refs = ", ".join(f'<a class="cite" href="#ref-{n}">{n}</a>' for n in c["further"])
         out.append(f'<p class="first">Further sources: [{refs}].</p>')
@@ -246,20 +257,17 @@ def front_matter(meta, preface):
     return pages
 
 
-FN = re.compile(r'<span class="fn" data-key="[^"]*">(.*?)</span>', re.S)
-
-
 def footnotes(name, body):
     """The author's notes as EPUB footnotes: a numbered call in the text and the note at the end of
     its file, which Kindle shows as a pop-up. Left as the span, the note runs into the sentence."""
     notes = []
 
-    def call(m):
-        notes.append(m.group(1))
+    def call(note):
+        notes.append(note)
         n = len(notes)
         return (f'<a epub:type="noteref" role="doc-noteref" class="noteref" id="{name}-fnref-{n}" '
                 f'href="#{name}-fn-{n}"><sup>{n}</sup></a>')
-    body = FN.sub(call, body)
+    body = sub_notes(body, call)
     if notes:
         body += "".join(f'<aside epub:type="footnote" role="doc-footnote" class="footnote" id="{name}-fn-{n}"><p>'
                         f'<a href="#{name}-fnref-{n}" role="doc-backlink" '
@@ -268,7 +276,9 @@ def footnotes(name, body):
     return body
 
 
-URL = re.compile(r"https?://[^\s<]+")
+# A URL stops at whitespace, a tag, a quote or an escaped quote or bracket. `&amp;` stays: it joins a
+# query string's parameters.
+URL = re.compile(r"https?://(?:(?!&quot;|&#39;|&#x27;|&lt;|&gt;)[^\s<\"'])+")
 
 
 def url_link(m):
@@ -416,6 +426,20 @@ def check(files):
         for ref in re.findall(r'(?:href|src)="([^"#]+)', text):
             if ":" not in ref and f"OEBPS/{ref}" not in files:
                 problems.append(f"{name}: {ref} is not in the book")
+        found = re.findall(r'\sid="([^"]+)"', text)
+        problems += [f"{name}: id {i} is used twice" for i in sorted({i for i in found if found.count(i) > 1})]
+    # A fragment is checked against the ids in its file: a contents entry or cross-reference to a
+    # heading that is not there opens the right file at the wrong place, and nothing else notices.
+    ids = {name: set(re.findall(r'\sid="([^"]+)"', data.decode("utf-8") if isinstance(data, bytes) else data))
+           for name, data in files.items() if name.endswith(".xhtml")}
+    for name, data in files.items():
+        if not name.endswith((".xhtml", ".ncx")):
+            continue
+        text = data.decode("utf-8") if isinstance(data, bytes) else data
+        for ref, frag in re.findall(r'(?:href|src)="([^"#:]*)#([^"]+)"', text):
+            target = f"OEBPS/{ref}" if ref else name
+            if target in ids and frag not in ids[target]:
+                problems.append(f"{name}: {ref}#{frag} names no element")
     return problems
 
 
@@ -476,12 +500,11 @@ def main():
         for name, data in files.items():
             z.writestr(name, data, compress_type=zipfile.ZIP_DEFLATED)
 
-    for name in images.missing:
-        print(f"kindle: warning: figure file missing from the build: {name}")
+    # This edition exists only to be uploaded to KDP, so what a draft would let pass stops it.
+    problems += [f"figure missing from the build: {name}" for name in images.missing]
+    problems += [f"link to #{ref}, which no file defines" for ref in sorted(broken)]
     if unlinked:
         print(f"kindle: warning: {unlinked} link(s) to manuscript files kept as plain text")
-    for ref in sorted(broken):
-        print(f"kindle: warning: link to #{ref}, which no file defines")
     for p in problems:
         print(f"kindle: error: {p}")
     mb = os.path.getsize(OUT) / 1e6

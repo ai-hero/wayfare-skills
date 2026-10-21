@@ -32,7 +32,7 @@ from PIL import Image
 
 import paths
 from html.parser import HTMLParser
-from inline import EXAMPLE_TITLE, md_html
+from inline import EXAMPLE_TITLE, md_html, sub_notes
 
 WEBSITE = os.environ.get("WEBSITE_DIR", os.path.join(paths.WORKSPACE, "website", ".claude", "worktrees", "book"))
 TEMPLATES = os.path.join(paths.HERE, "web", "site")
@@ -239,22 +239,21 @@ class Inline(HTMLParser):
             self.out.append(html.escape(data, quote=False))
 
 
-FN = re.compile(r'<span class="fn" data-key="[^"]*">(.*?)</span>', re.S)
 NOTES = []  # the author's notes in the chapter being written, in call order
 EVI = re.compile(r'<a class="evi-ref" href="#([^"]+)">')
 XREF = re.compile(r'<a class="xref" href="#fig-')
 LINKS = {}  # appendix anchor -> its page on the site, set before the chapters are written
 
 
-def note_call(m):
-    NOTES.append(m.group(1))
+def note_call(note):
+    NOTES.append(note)
     return f'<sup><a href="#note-{len(NOTES)}">{len(NOTES)}</a></sup>'
 
 
 def site_links(fragment):
     """An author's note becomes a superscript number linking to the chapter's notes list; a figure
     marker links to the figure (whose id here has no `fig-` prefix) and its appendix entry."""
-    fragment = FN.sub(note_call, fragment)
+    fragment = sub_notes(fragment, note_call)
     fragment = XREF.sub('<a class="xref" href="#', fragment)
     return EVI.sub(lambda m: f'<a class="evi-ref" href="{LINKS.get(m.group(1), "#" + m.group(1))}">', fragment)
 

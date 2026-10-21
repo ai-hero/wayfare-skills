@@ -11,7 +11,7 @@ import os
 import re
 
 import paths
-from inline import EXAMPLE_TITLE, md_plain
+from inline import EXAMPLE_TITLE, md_plain, note_end, sub_notes
 
 HERE = os.path.join(paths.HERE, "book")
 
@@ -598,9 +598,6 @@ SENT_END = re.compile(r"[.?!:][\"”’)]*$")
 NOT_END = {"e.g.", "i.e.", "vs.", "cf.", "Dr.", "Mr.", "Ms.", "St.", "No."}
 
 
-FN_SPAN = re.compile(r'<span class="fn"[^>]*>.*?</span>', re.S)
-
-
 def cut_after_token(html_text, n):
     """Index in `html_text` just after its n-th (0-based) visible whitespace-separated token,
     or None when that point falls inside an inline element, where a split would break the markup."""
@@ -608,9 +605,9 @@ def cut_after_token(html_text, n):
     while i < len(html_text):
         ch = html_text[i]
         if ch == "<":
-            fn = FN_SPAN.match(html_text, i)
+            fn = note_end(html_text, i)
             if fn:  # a footnote floats to the page foot: it adds no words to the paragraph's lines
-                i = fn.end()
+                i = fn
                 continue
             end = html_text.index(">", i)
             tag = html_text[i + 1:end]
@@ -666,7 +663,7 @@ def float_split(document, fid, para):
         words += len(toks) - (1 if text.endswith("-") and toks else 0)
     if key is None or words == 0 or key not in para:
         return None
-    plain = html.unescape(re.sub(r"<[^>]+>", "", FN_SPAN.sub("", para[key]))).split()
+    plain = html.unescape(re.sub(r"<[^>]+>", "", sub_notes(para[key], lambda _: ""))).split()
     ends = [i for i, t in enumerate(plain[:words]) if SENT_END.search(t) and t not in NOT_END]
     for t in reversed(ends):
         cut = cut_after_token(para[key], t)
@@ -705,7 +702,7 @@ def float_back(document, fid, para, earliest):
             words += len(toks) - (1 if text.endswith("-") and toks else 0)
     if not words:
         return None
-    plain = html.unescape(re.sub(r"<[^>]+>", "", FN_SPAN.sub("", para[key]))).split()
+    plain = html.unescape(re.sub(r"<[^>]+>", "", sub_notes(para[key], lambda _: ""))).split()
     ends = [i for i, t in enumerate(plain[:words]) if SENT_END.search(t) and t not in NOT_END]
     for t in reversed(ends):
         cut = cut_after_token(para[key], t)

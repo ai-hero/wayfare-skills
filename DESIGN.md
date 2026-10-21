@@ -1,7 +1,6 @@
 # Design
 
-> Last updated: 2026-09-27 · Source ref:
-> 36ce2b7ab2b488062554b642050cc18718e4396b
+> Last updated: 2026-10-21 · Source ref: 4ade7c45f6dd68417739a2ce7de8e08755ef9c5a
 
 Why wayfare is shaped the way it is. Facts the code cannot state about itself,
 and decisions someone would otherwise undo.
@@ -25,14 +24,18 @@ manifest beyond the per-agent plugin manifests (pyyaml is pinned in
 `.pre-commit-config.yaml`), no build step. `pre-commit` holds the gates and the
 `Justfile` names them: `just lint`, `typecheck`, `test` and `validate` run the
 same checks locally and in `pr-check.yaml`, one recipe per CI step. mdformat
-owns Markdown line breaks, so nobody re-wraps a paragraph by hand.
+owns Markdown line breaks, so nobody re-wraps a paragraph by hand, except in this
+file, whose line-3 anchor must stay on one line.
+
+`analysis/` is Python too, over a local SQLite store, and sits outside every
+gate above (see Boundaries).
 
 ## Codemap
 
 | Path | What lives there |
 | -- | -- |
-| `skills/<name>/SKILL.md` | One skill each: instructions an agent follows, not code it runs. |
-| `references/` | Procedure shared by several skills; a skill points at it rather than restating it. |
+| `skills/<name>/` | One skill each: instructions an agent follows, not code it runs. `SKILL.md` is the entrypoint an agent loads; a pipeline skill keeps its long procedure in a linked `WORKFLOW.md`, so activation stays short. |
+| `references/` | Procedure shared by several skills; a skill points at it rather than restating it. `authorization.md` says when a run continues, confirms, stops or defers, and `client-capabilities.md` maps the skills' generic operations onto each host's tools. |
 | `docs/` | The standards: the store, connections, the fleet map, messages, pipelines, and the rest. |
 | `scripts/` | The shell library every skill sources, its helpers and `*.test.sh` suites, the Python compliance engine (`audit.py`, `consistency.py`), and the Python checkers (`check_docs.py`, `pr_text_lint.py`, `diff_leftovers.py`). |
 | `hooks/` | Claude Code hooks (`hooks.json`): a Stop hook, `check-deferrals.sh`, that blocks a stop once when deferred work was never filed in `.plans/`. Claude Code only; other hosts do not run it. |
@@ -41,19 +44,22 @@ owns Markdown line breaks, so nobody re-wraps a paragraph by hand.
 | `plugin.json`, `.claude-plugin/`, `.agents/` | One portable manifest for Agent Plugin hosts, a separate Claude Code adapter, and marketplace metadata over the same skills. |
 | `.github/workflows/auto-approve.yaml` | The shared reusable workflow ~25 repos execute at `@main`. |
 | `.github/workflows/pr-check.yaml` | This repo's own gate. |
+| `analysis/` | The research pipeline (ingest, cube, detectors, questions, report) that reads the fleet's repos and session data into a gitignored `.analysis/` store. Code commits; data and results never do. |
 
 ## Boundaries
 
 | Boundary | Rule |
 | -- | -- |
-| `skills/` → the world | Skills are instructions, not code. They are read by an agent and executed with the agent's own tools. |
+| `skills/` → the world | Skills are instructions, not code. They are read by an agent and executed with the agent's own tools, named as capabilities (`references/client-capabilities.md`), never as one client's tool syntax; `validate.sh` fails a skill that hard-codes it. |
 | `skills/` → `references/`, `docs/` | A skill links procedure; it never copies it. Two copies of a rule drift and then disagree about the same file. |
 | `skills/` → `scripts/` | Resolved through `WAYFARE_ROOT` (the plugin root), never the checkout's own `scripts/`: during a review the checkout is the branch under review, and a file in it cannot prove it is the plugin. |
 | skill → skill | Stage skills are not user-invocable and are reached only through the skill that chains them; `validate.sh` enforces who may chain whom. |
-| `assets/` → consumers | Vendored into other repos by the installers and the fleet scan. Treat as downstream output: fix here, re-vendor. |
+| `assets/` → consumers | Vendored into other repos by the installers and the fleet scan. Treat as downstream output: fix here, re-vendor. Where a copy must not drift (the auto-approve caller, the exception-expiry gate), an audit check holds the consumer's file byte-identical to this one. |
 | `assets/compliance/` → engine | Not installed anywhere. The engine reads the baseline in place and merges the fleet's overlay over it by id. |
 | `.github/workflows/auto-approve.yaml` → consumers | Executed *in place* by ~25 repos via `uses: …@main`. Not copied; resolved at trigger time. |
 | repo → sibling repo | Through a message, a new file in the sibling's `.plans/inbox/` and the only write allowed there; never by editing its code or config. |
+| audits → `issues` tracker | A confirmed finding (judged against the default branch as merged) is filed as one ticket through the `issues` connection, linked both ways with its `.plans/` item, and closed only on evidence (`references/finding-tickets.md`). Candidates stay local. |
+| `analysis/` → the rest | Research code, outside the plugin's gates (check_docs, mdformat, the main codespell hook, semgrep). Nothing in `skills/`, `scripts/` or `hooks/` imports it; it reads the plugin and fleet the way a skill does, never the other way round. |
 
 The `auto-approve` rows are the ones that surprise people.
 `assets/auto-approve/caller.yaml` is **copied**; `auto-approve.yaml` is
@@ -90,6 +96,15 @@ incident history and any checks of its own) lives in the fleet's register
 checkout and wins by id. This repo is audited as a family member. A check names
 no repo (not an exemplar and not an exemption), so an open gap shows up as a
 failing cell every run rather than as a carve-out nobody re-reads.
+
+Every audit judges `main`. The engine re-runs itself from the plugin checkout's
+`origin/main`, so register, checkers and assets come from one commit whatever
+branch the checkout is on, and it reads each audited repo at `origin/main` too.
+
+A dependency release is adopted only once it is old enough, and how old depends
+on the most severe advisory it fixes. `references/dependency-cooldown.md` is the
+rule's one home; the bot-PR procedure, `wayfare-ship-pr` and the security audit
+apply it rather than restating the tiers.
 
 ## Decisions
 

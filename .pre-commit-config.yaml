@@ -81,7 +81,11 @@ repos:
           - mdformat-gfm==1.0.0
           - mdformat-frontmatter==2.1.2
           - mdformat-tables==1.0.0
-        exclude: ^analysis/
+        # DESIGN.md's line 3 is the Source ref anchor, a fixed one-line grammar
+        # that ARCH-02 and the architecture skills match exactly. It is longer
+        # than 80 characters, and --wrap splits it onto line 4, after which
+        # every reader reports the file as unanchored.
+        exclude: ^(analysis/|DESIGN\.md$)
 
   # ===========================================================================
   # Typo detection

@@ -592,11 +592,6 @@ hero_check_staleness() {
 # definition not a repo root, and under a dotfiles-managed $HOME hero_root is
 # $HOME, which would hide every fleet beneath it.
 
-# Nearest ancestor (inclusive) of START holding FLEET.md, or return 1. A
-# directory holding HERO.md beside it is a repo that committed a FLEET.md:
-# repo content, not the operator's map, so it is passed over (stderr note)
-# and the walk continues upward.
-# shellcheck disable=SC2120  # in-file callers take the default; the tests pass START
 # True when DIR or any ancestor holds a .git entry (a directory, or the file a
 # worktree or submodule leaves). Walks the filesystem rather than asking git:
 # GIT_DIR in a hook's environment would make `git rev-parse` call everything a
@@ -611,6 +606,11 @@ hero_in_git_worktree() { # DIR
   return 1
 }
 
+# Nearest ancestor (inclusive) of START holding FLEET.md, or return 1. A
+# directory holding HERO.md beside it is a repo that committed a FLEET.md:
+# repo content, not the operator's map, so it is passed over (stderr note)
+# and the walk continues upward.
+# shellcheck disable=SC2120  # in-file callers take the default; the tests pass START
 hero_fleet_root() { # [START]
   local d
   d=$(cd "${1:-$PWD}" && pwd -P) || return 1
@@ -635,8 +635,9 @@ hero_fleet_root() { # [START]
 }
 
 # True when DIR (default $PWD) is a fleet folder rather than a repo: it holds
-# FLEET.md, no HERO.md, and sits outside any git work tree. Skills test this in Step 0 and hand off to "At the
-# fleet root" in docs/FLEET-MD.md instead of treating the folder as a project.
+# FLEET.md, no HERO.md, and sits outside any git work tree. Skills test this in
+# Step 0 and hand off to "At the fleet root" in docs/FLEET-MD.md instead of
+# treating the folder as a project.
 hero_at_fleet_root() { # [DIR]
   local d
   d="${1:-$PWD}"
@@ -676,12 +677,11 @@ hero_fleet_repo_field() { # NAME KEY [FLEET_ROOT]
 # stderr line `hero_fleet_repos: skipping 'NAME' — REASON` (fleet-scan.sh reads
 # them back as BAD_ROW), and the function returns 3 when any row was skipped.
 #
-# The containment check is decided on the path AS WRITTEN: `/…` and `~/…` (the
-# `~` expanded to $HOME) are the operator naming a
-# place and are trusted wherever they resolve; `..` and symlink escapes in a
-# relative path are not. That is safe only because a FLEET.md inside a git work
-# tree is never a fleet root, so the file is never a cloned repo's. audit.py's
-# `configure` makes the same call.
+# The containment check is decided on the path AS WRITTEN: `/…` and `~/…` are
+# the operator naming a place and are trusted wherever they resolve; `..` and
+# symlink escapes in a relative path are not. That is safe only because a
+# FLEET.md inside a git work tree is never a fleet root, so the file is never a
+# cloned repo's.
 #
 # Locals are rpath/rgroup/rport, never `path`: sourced from zsh, `local path`
 # empties the PATH-tied array and awk becomes "command not found", leaving an empty

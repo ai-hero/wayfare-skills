@@ -122,26 +122,23 @@ def repo_path(name):
 
 
 def in_git_worktree(d):
-    """Whether d or an ancestor holds a .git entry. Mirrors
-    hero_in_git_worktree; walks the filesystem so GIT_DIR cannot lie."""
+    """Whether d or an ancestor holds a .git entry. Walks the filesystem so
+    GIT_DIR cannot lie."""
     return any((p / ".git").exists() for p in (d, *d.parents))
 
 
 def fleet_root(start=None):
     """The nearest ancestor holding FLEET.md that is neither beside a HERO.md
-    nor inside a git work tree, or None. Same rule as hero_fleet_root in
-    hero-lib.sh: a committed FLEET.md is a clone's content, and its register
-    would run the clone's checkers.py. Tests the FLEET.md folder, never the
-    register, which is the real fleet's own checkout."""
+    nor inside a git work tree, or None: a committed FLEET.md is a clone's
+    content, and its register would run the clone's checkers.py. Tests the
+    FLEET.md folder, never the register, which is the real fleet's own
+    checkout."""
     d = pathlib.Path(start or os.getcwd()).resolve()
     while True:
-        if (d / "FLEET.md").is_file():
-            if (d / "HERO.md").is_file():
-                pass
-            elif in_git_worktree(d):
-                print(f"fleet_root: passing over {d}; a folder inside a git work tree is never a fleet root", file=sys.stderr)
-            else:
+        if (d / "FLEET.md").is_file() and not (d / "HERO.md").is_file():
+            if not in_git_worktree(d):
                 return d
+            print(f"fleet_root: passing over {d}; a folder inside a git work tree is never a fleet root", file=sys.stderr)
         if d.parent == d:
             return None
         d = d.parent
@@ -236,10 +233,7 @@ def configure(root=None):
         if row["group"] == "none":
             continue
         raw = row["path"] or row["name"]
-        # Decided on the path as written, as hero_fleet_repos does: `/…` and
-        # `~/…` are the operator naming a place, trusted wherever they point;
-        # a relative path that escapes by `..` or a symlink is not this
-        # fleet's repo, whatever its name says.
+        # Decided on the path as written; the resolved location is not the test.
         written_absolute = raw == "~" or raw.startswith(("/", "~/"))
         path = (root / os.path.expanduser(raw)).resolve()
         if not written_absolute and root not in path.parents:

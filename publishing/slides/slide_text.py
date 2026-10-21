@@ -39,14 +39,18 @@ def find_sentence(doc, n, sec_title, text):
 
 
 def find_figure(doc, ref):
-    for c in doc["chapters"]:
-        for s in c["sections"]:
-            prev = None
-            for b in s["blocks"]:
-                if b["kind"] == "figure" and (f"{b['label']} {b['number']}" == ref or b["ref"] == ref):
-                    return c, s, b, prev
-                if b["kind"] == "p":
-                    prev = b
+    """The figure whose authored ref is `ref`, else the one now numbered `ref`. The ref is tried
+    across the whole book first: a number is positional, so a figure added earlier in a chapter
+    gives another figure that number and the slide would silently show the wrong chart."""
+    for match in (lambda b: b["ref"] == ref, lambda b: f"{b['label']} {b['number']}" == ref):
+        for c in doc["chapters"]:
+            for s in c["sections"]:
+                prev = None
+                for b in s["blocks"]:
+                    if b["kind"] == "figure" and match(b):
+                        return c, s, b, prev
+                    if b["kind"] == "p":
+                        prev = b
     raise RefError(f"no figure {ref}")
 
 

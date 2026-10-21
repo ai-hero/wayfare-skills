@@ -74,7 +74,7 @@ BOOK_ASSETS = os.path.join(ROOT, ".analysis", "diagrams", "book")
 def book_diagrams(folder=BOOK_ASSETS):
     """The manuscript's own drawn diagrams and tables, one block each, keyed `Diagram 1.5` or `Table 7.T1`
     from the sidecar `svg_lib.finish` writes beside every asset. A chapter draws one with `[[Diagram 1.5 |
-    caption]]`; the SVG goes in as the view's image, a table's Markdown as the view's table."""
+    caption]]`; the SVG, or a PNG when there is none, goes in as the view's image, a table's Markdown as the view's table."""
     out = []
     for path in sorted(glob.glob(os.path.join(folder, "*.json"))):
         with open(path, encoding="utf-8") as f:
@@ -82,12 +82,18 @@ def book_diagrams(folder=BOOK_ASSETS):
         if not meta.get("id") or not meta.get("name"):
             continue
         key = f"{meta.get('kind', 'diagram').capitalize()} {meta['id']}"
-        view = {"label": "", "title": meta.get("caption", ""), "points": [], "source": meta.get("source", ""),
+        # A sidecar's `source` is provenance for whoever redraws the asset; the viewer would print it
+        # under the chapter caption as "Source: …", which reads as an agent's note in the book.
+        view = {"label": "", "title": meta.get("caption", ""), "points": [], "source": "",
                 "extra": [], "notes": meta.get("alt", ""), "charts": [], "tables": [], "images": []}
         base = os.path.join(folder, meta["name"])
         if os.path.exists(base + ".svg"):
             with open(base + ".svg", "rb") as f:
                 src = "data:image/svg+xml;base64," + base64.b64encode(f.read()).decode()
+            view["images"].append({"src": src, "alt": meta.get("alt", "")})
+        elif os.path.exists(base + ".png"):
+            with open(base + ".png", "rb") as f:
+                src = "data:image/png;base64," + base64.b64encode(f.read()).decode()
             view["images"].append({"src": src, "alt": meta.get("alt", "")})
         if os.path.exists(base + ".md"):
             with open(base + ".md", encoding="utf-8") as f:

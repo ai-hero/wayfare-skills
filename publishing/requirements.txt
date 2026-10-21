@@ -5,3 +5,4 @@ markdown-it-py==4.0.0
 matplotlib==3.10.6
 numpy
 pillow
+segno==1.6.6

@@ -341,6 +341,43 @@ def preface_html(preface):
     return f'<section class="preface"><h1 class="preface-title">{esc(preface["title"])}</h1>{body}</section>'
 
 
+BOOK_UTM = "utm_source=book&utm_medium=print&utm_campaign=software-factory"
+X_ICON = ("M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594"
+          "l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z")
+LINKEDIN_ICON = ("M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667"
+                 "H9.351V9h3.414v1.561h.046c.477-.937 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 4.892v6.249z"
+                 "M5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 "
+                 "2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 "
+                 ".774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 "
+                 "0 22.222 0h.003z")
+
+
+def author_foot(meta):
+    """The title page's foot: headshot and name on the left, a small QR code to LinkedIn and the
+    profiles to follow on the right. Each piece is left out when its `meta.json` field is."""
+    import pathlib
+    import segno
+    photo = ""
+    if meta.get("photo"):
+        uri = pathlib.Path(paths.EDITIONS, meta["photo"]).as_uri()
+        photo = f'<img class="author-photo" src="{esc(uri)}" alt="">'
+    left = [photo, f'<p class="author">{esc(meta["author"])}</p>', f'<p class="email">{esc(meta.get("email"))}</p>',
+            f'<p class="imprint">{esc(meta.get("affiliation"))}</p>']
+    links = [(icon, meta[key]) for icon, key in ((X_ICON, "x"), (LINKEDIN_ICON, "linkedin")) if meta.get(key)]
+    right = [""] * 4
+    if links:
+        if meta.get("linkedin"):
+            url = f'{meta["linkedin"]}{"&" if "?" in meta["linkedin"] else "?"}{BOOK_UTM}'
+            right[0] = f'<div class="author-qr">{segno.make(url, error="m").svg_inline(border=0, omitsize=True, dark="#11141C")}</div>'
+        right[1] = '<p class="follow-cta">Follow me on</p>'
+        for i, (icon, url) in enumerate(links, 2):
+            right[i] = (f'<p class="follow-link"><svg viewBox="0 0 24 24"><path d="{icon}"/></svg>'
+                        f'{"@" if icon == X_ICON else ""}{esc(url.rstrip("/").rsplit("/", 1)[-1])}</p>')
+    # A table, not flex: each right-hand line must share a baseline with the left-hand line beside it.
+    rows = "".join(f'<tr class="foot-{i}"><td>{l}</td><td class="follow">{r}</td></tr>' for i, (l, r) in enumerate(zip(left, right)))
+    return f'<table class="title-foot-grid">{rows}</table>'
+
+
 def front(meta, chapters, appendix_title=None, preface=None, references_present=False):
     title, sub = esc(meta["title"]), esc(meta.get("subtitle"))
     return f"""
@@ -348,7 +385,7 @@ def front(meta, chapters, appendix_title=None, preface=None, references_present=
 <section class="blank"></section>
 <section class="title-page">
   <div class="title-block"><p class="book-title">{title}</p><p class="subtitle">{sub}</p></div>
-  <div class="title-foot"><p class="author">{esc(meta["author"])}</p><p class="email">{esc(meta.get("email"))}</p><p class="imprint">{esc(meta.get("affiliation"))}</p></div>
+  <div class="title-foot">{author_foot(meta)}</div>
 </section>
 <section class="copyright">
   <p>{esc(meta.get("copyright"))}</p>

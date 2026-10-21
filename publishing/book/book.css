@@ -55,10 +55,24 @@ body { margin: 0; string-set: book-title attr(data-title); }
 .book-title { font: 200 38pt/1.04 "Manrope"; letter-spacing: -0.02em; margin: 0.35in 0 0; width: 5.2in;
   color: var(--ink-900); hyphens: manual; }
 .subtitle { font: 300 13pt/1.4 "Geist"; color: var(--ink-600); margin-top: 18pt; width: 4.6in; }
-.title-foot { position: absolute; bottom: 0; left: 0; }
-.author { font: 300 12pt "Geist"; margin: 0; color: var(--ink-900); }
-.email { font: 300 9pt "Geist"; margin: 3pt 0 0; color: var(--ink-600); }
-.imprint { font: 400 7.5pt "Geist Mono"; color: var(--ink-500); letter-spacing: 0.12em; text-transform: uppercase; margin: 6pt 0 0; }
+.title-foot { position: absolute; bottom: 0; left: 0; right: 0; }
+.title-foot-grid { width: 100%; border-collapse: collapse; }
+.title-foot-grid td { padding: 0; vertical-align: baseline; }
+.title-foot-grid td.follow { width: 1%; white-space: nowrap; }
+.title-foot-grid .foot-0 td { vertical-align: top; padding-bottom: 10pt; }
+.title-foot-grid .foot-2 td { padding-top: 3pt; }
+.title-foot-grid .foot-3 td { padding-top: 6pt; }
+.title-foot-grid p { margin: 0; }
+.author { font: 300 12pt "Geist"; color: var(--ink-900); }
+.email { font: 300 9pt "Geist"; color: var(--ink-600); }
+.imprint { font: 400 7.5pt "Geist Mono"; color: var(--ink-500); letter-spacing: 0.12em; text-transform: uppercase; }
+.author-photo { display: block; width: 0.7in; height: 0.7in; }
+/* Below 0.5in a phone at arm's length struggles to lock on; matching the photo keeps it well clear. */
+.author-qr { width: 0.7in; height: 0.7in; }
+.author-qr svg { width: 100%; height: 100%; display: block; }
+.follow-cta { font: 400 6.5pt "Geist Mono"; color: var(--ink-500); letter-spacing: 0.12em; text-transform: uppercase; }
+.follow-link { font: 300 6.5pt "Geist"; color: var(--ink-600); }
+.follow-link svg { width: 6.5pt; height: 6.5pt; fill: var(--ink-700); vertical-align: -0.5pt; margin-right: 3pt; }
 .copyright { padding-top: 6.1in; font: 300 7.8pt/1.55 "Geist"; color: var(--ink-600); }
 .copyright p { margin: 0 0 3pt; }
 .contents { page: front; break-before: right; break-after: page; padding-top: 1.3in; }

@@ -27,6 +27,10 @@ ERRORS = []
 DEF_RE = re.compile(r"^\[\^([a-z0-9][a-z0-9-]*)\]:\s*(.+)$", re.S)
 
 
+# Every edition prints these; photo, linkedin, x and subtitle are optional and left out when unset.
+META_REQUIRED = ("title", "author", "affiliation", "email", "edition", "date", "year", "copyright")
+
+
 def warn(msg):
     WARN.append(msg)
     print(f"warn: {msg}", file=sys.stderr)
@@ -421,6 +425,9 @@ def figure(b, n, cards, drawn, results, assets, counters):
     else:
         out.update(type="diagram", label="Diagram", number=meta["id"], id=meta["id"])
     out["files"] = copy_drawn(meta, assets)
+    if not out["files"]:
+        warn(f"chapter {n}: {ref} has a sidecar but no svg, pdf or png in {paths.DIAGRAMS}")
+        out["type"] = "missing"
     return out
 
 
@@ -573,6 +580,9 @@ def main():
         chapters.append(build_chapter(ch, cards, drawn, results, assets, {"figure": 0, "table": 0}))
     with open(paths.META, encoding="utf-8") as f:
         meta = json.load(f)
+    missing = [k for k in META_REQUIRED if not meta.get(k)]
+    if missing:
+        raise SystemExit(f"source: {paths.META} lacks {', '.join(missing)}; the front matter would print blank")
     words = sum(len(md_plain(b.get("md", "")).split()) for c in chapters for s in c["sections"] for b in s["blocks"])
     appendix = build_appendix(chapters, cards, assets)
     references = resolve_markers(chapters, appendix)

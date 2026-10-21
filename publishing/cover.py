@@ -651,10 +651,12 @@ def main():
     ebook, _ = front_svg(meta, bleed=0, h=eh)
     chrome_pdf(ebook, TRIM_W, eh, os.path.join(paths.BUILD, "cover-ebook.pdf"))
     raster(os.path.join(paths.BUILD, "cover-ebook.pdf"), os.path.join(d, "cover-ebook.png"), size=(1600, 2560))
+    # The spine is sized from the interior's page count. book.pdf would count the screen cover as a
+    # page, and an interior older than the source may no longer have the book's page count.
     book = os.path.join(d, "book-interior.pdf")
-    if not os.path.exists(book):
-        book = os.path.join(d, "book.pdf")
-    pages = len(fitz.open(book)) if os.path.exists(book) else 0
+    if not os.path.exists(book) or os.path.getmtime(book) < os.path.getmtime(paths.SOURCE):
+        raise SystemExit(f"cover: {book} is missing or older than the source; run ./publish book, which draws the cover")
+    pages = len(fitz.open(book))
     wsvg, ww, wh, spine = wrap_svg(meta, pages)
     chrome_pdf(wsvg, ww, wh, os.path.join(d, "cover-wrap.pdf"))
     with open(os.path.join(d, "cover-animated.svg"), "w", encoding="utf-8") as f:

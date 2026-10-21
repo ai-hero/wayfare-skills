@@ -99,7 +99,8 @@ failing cell every run rather than as a carve-out nobody re-reads.
 
 Every audit judges `main`. The engine re-runs itself from the plugin checkout's
 `origin/main`, so register, checkers and assets come from one commit whatever
-branch the checkout is on, and it reads each audited repo at `origin/main` too.
+branch the checkout is on, and by default it reads each audited repo at
+`origin/main` too.
 
 A dependency release is adopted only once it is old enough, and how old depends
 on the most severe advisory it fixes. `references/dependency-cooldown.md` is the

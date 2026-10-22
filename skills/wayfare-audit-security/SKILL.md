@@ -18,9 +18,9 @@ The executor can be a cheaper model, a fresh session, or
 with `launched by wayfare` after updating the architecture map and before
 judging the roadmap. Wayfare's planning postflight marks the resulting items
 ready and groups them into a security goal. This stage accepts only the audit
-scope. Use wayfare's `recalibrate` for the fields this stage reads. The calling
-skill already selected one repo and checked for a fleet root. Thus, Step 0 does
-not repeat that check.
+scope. Use `wayfare:wayfare-recalibrate-config` for the fields this stage reads.
+The calling skill already selected one repo and checked for a fleet root. Thus,
+Step 0 does not repeat that check.
 
 Use the approach from [shadcn/improve](https://github.com/shadcn/improve): the
 stronger model investigates, judges, and specifies the fix. Cheaper models

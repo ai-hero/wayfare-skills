@@ -498,7 +498,7 @@ Next step: (pick exactly one, based on what actually happened above)
 
 - **`$NO_MARK_READY` is `true`** (deferred to caller, e.g.
   `wayfare-build-task`): no next-step line. The caller owns what happens next
-  (wayfare-build-task's own Step 7 mark-ready gate).
+  (wayfare-build-task's own Step 6 mark-ready gate).
 - **Marked ready, agent configured**: print
   `Waiting on {agent}'s first review, then run wayfare:wayfare-respond-pr.` (no
   prompt, nothing to invoke yet).

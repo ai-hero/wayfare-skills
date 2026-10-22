@@ -177,7 +177,7 @@ say it is unverified, and carry the review's findings into this run's report: a
 declined refresh must never make the staleness disappear. **This map orders
 subtasks, never tasks.** Task order comes from the journey.
 
-**The `wayfare-audit-security` stage, in both modes, after the map.** Invoke
+**The `harden` stage, in both modes, after the map.** Invoke
 `wayfare:wayfare-audit-security all` through the active client's skill mechanism
 with the line `launched by wayfare`, and with `launched as a fan-out agent` too
 when this run was launched with it. It edits no source: it writes `type: task` +

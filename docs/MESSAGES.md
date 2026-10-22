@@ -5,8 +5,9 @@ this exists, it may never again reach into that checkout and change it.
 
 `scripts/hero-lib.sh` reads the mailbox and carries the send half (*Sending*),
 `wayfare:wayfare-sync-plan`'s `inbox` stage triages, wayfare-build-task's Step
-2a and `wayfare-sync-fleet` send, and the Step 0 of wayfare, wayfare-build-task
-and wayfare-grill-idea reports what is waiting.
+2a and `wayfare-sync-fleet` send, and the shared Step 0 in
+`references/loading.md`, wayfare-build-task's Step 0 and wayfare-grill-idea's
+Step 0 report what is waiting.
 
 ## The principle
 
@@ -433,7 +434,7 @@ other people merge underneath every PR.
 | `hero_item_type` (`scripts/hero-lib.sh`) | DONE: a promoted message is an ordinary item (`type: task`, `shape: defect`), and the inbox itself is outside the item namespace |
 | `hero_ready_items` status table | DONE: a non-empty `awaiting` prints a `suspended` row with the awaiting annotation, never READY, never in `done_ids` |
 | The `enum=` strings in `hero_ready_items` | DONE: no enum names `suspended`; the flag is `awaiting` |
-| Every per-repo skill's Step 0 | DONE for wayfare, wayfare-build-task and wayfare-grill-idea: each prints `hero_inbox_count`. Nothing else will make an agent notice, and a miscount of zero is indistinguishable from an empty inbox. The remaining per-repo skills are reached through one of those three |
+| Every per-repo skill's Step 0 | DONE for the shared Step 0 in `references/loading.md`, wayfare-build-task and wayfare-grill-idea: each prints `hero_inbox_count`. Nothing else will make an agent notice, and a miscount of zero is indistinguishable from an empty inbox. The remaining per-repo skills are reached through one of those three |
 | `references/sync.md` store defects | DONE: `inbox/` is the mailbox, never a legacy subdirectory; `sync`'s `inbox` stage reads it |
 | `skills/wayfare-sync-fleet/SKILL.md` `sync` | DONE: it deposits a `type: ask` per repo instead of appending to each `AGENTS.md`, and each repo's own agent lands the section in its own PR. A row with no `.plans/` cannot receive one and is reported, never given a store to make the deposit work |
 | `docs/FLEET-MD.md` fan-out prompt | DONE: modify nothing, read a sibling only for the dedupe and deadlock probes, and deposit only into `.plans/inbox/` |

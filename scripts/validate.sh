@@ -787,7 +787,8 @@ fi
 # audit-plugin reads HERO.md to audit this plugin's own field coverage, not
 # as a project's config, and never runs in another repo. A `user-invocable:
 # false` skill is reached only by a Skill-tool chain from a skill that already
-# ran the fleet test (wayfare Step 0, wayfare-grill-idea Step 0), a second test
+# ran the fleet test (references/loading.md's shared Step 0, which
+# wayfare-sync-plan runs, or wayfare-grill-idea's Step 0), a second test
 # there would be dead code that reads as a promise, and dropping the exemption
 # would re-add fleet handling to skills that have no user path to a fleet
 # folder. A hand-typed run at a fleet root is unguarded and fails loudly on

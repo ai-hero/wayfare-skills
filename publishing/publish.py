@@ -4,15 +4,25 @@ import importlib
 import sys
 import time
 
-TARGETS = ["source", "book", "technical", "web", "slides"]
+# Literal names, never import_module(name): semgrep's non-literal-import rule blocks the pre-push
+# gate, and this table is the allow-list of what `./publish` may load.
+EDITIONS = {
+    "source": lambda: importlib.import_module("source"),
+    "book": lambda: importlib.import_module("book"),
+    "technical": lambda: importlib.import_module("technical"),
+    "web": lambda: importlib.import_module("web"),
+    "slides": lambda: importlib.import_module("slides"),
+    "cover": lambda: importlib.import_module("cover"),
+    "kindle": lambda: importlib.import_module("kindle"),
+}
 # `book` draws the cover itself (the wrap's spine needs the page count); `cover` redraws it alone.
 # `kindle` is not in `all`: the store edition is built only when a KDP upload is being prepared.
-EXTRA = ["cover", "kindle"]
+TARGETS = ["source", "book", "technical", "web", "slides"]
 
 
 def run(name):
     t = time.time()
-    importlib.import_module(name).main()
+    EDITIONS[name]().main()
     print(f"{name}: done in {time.time() - t:.1f}s")
 
 
@@ -23,9 +33,9 @@ def main(argv):
         return qa.main(names[1:])
     if names == ["all"]:
         names = TARGETS
-    bad = [n for n in names if n not in TARGETS + EXTRA]
+    bad = [n for n in names if n not in EDITIONS]
     if bad:
-        sys.exit(f"unknown target {', '.join(bad)}; choose from all, {', '.join(TARGETS + EXTRA)}, or qa [edition] [pages]")
+        sys.exit(f"unknown target {', '.join(bad)}; choose from all, {', '.join(EDITIONS)}, or qa [edition] [pages]")
     for n in names:
         run(n)
 

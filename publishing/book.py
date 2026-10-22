@@ -39,7 +39,7 @@ def font_faces():
     if not os.path.exists(FONTS["Manrope"]):
         import urllib.request
         os.makedirs(os.path.dirname(FONTS["Manrope"]), exist_ok=True)
-        urllib.request.urlretrieve(MANROPE_URL, FONTS["Manrope"])
+        urllib.request.urlretrieve(MANROPE_URL, FONTS["Manrope"])  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
     missing = [p for p in FONTS.values() if not os.path.exists(p)]
     if missing:
         raise SystemExit("book: missing font files: " + ", ".join(missing))

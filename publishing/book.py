@@ -324,9 +324,11 @@ def appendix_name(a):
     return a.get("title", "Evidence") if a and a.get("parts") else None
 
 
-def contents(chapters, appendix_title, references_present=False):
+def contents(chapters, appendix_title, references_present=False, note_title=None):
     rows = [f'<li><a href="#ch-{c["n"]}"><span class="toc-num">{ONES[c["n"]]}</span>{esc(c["title"])}</a></li>'
             for c in chapters]
+    if note_title:
+        rows.append(f'<li class="toc-appendix"><a href="#ai-note"><span class="toc-num"></span>{esc(note_title)}</a></li>')
     if appendix_title:
         rows.append(f'<li class="toc-appendix"><a href="#appendix"><span class="toc-num">Appendix</span>{esc(appendix_title)}</a></li>')
     if references_present:
@@ -334,11 +336,13 @@ def contents(chapters, appendix_title, references_present=False):
     return f'<section class="contents"><p class="contents-title">Contents</p><ol>{"".join(rows)}</ol></section>'
 
 
-def preface_html(preface):
-    if not preface:
+def ai_note(note):
+    """The note on the use of AI tools closes the book, after the last chapter, as it does in the paper."""
+    if not note:
         return ""
-    body = "".join(f"<p>{b['html']}</p>" for b in preface["blocks"])
-    return f'<section class="preface"><h1 class="preface-title">{esc(preface["title"])}</h1>{body}</section>'
+    body = "".join(f"<p>{b['html']}</p>" for b in note["blocks"])
+    return (f'<section class="ai-note" id="ai-note"><header class="opener"><h1>{esc(note["title"])}</h1></header>'
+            f'{body}</section>')
 
 
 BOOK_UTM = "utm_source=book&utm_medium=print&utm_campaign=software-factory"
@@ -378,7 +382,7 @@ def author_foot(meta):
     return f'<table class="title-foot-grid">{rows}</table>'
 
 
-def front(meta, chapters, appendix_title=None, preface=None, references_present=False):
+def front(meta, chapters, appendix_title=None, note_title=None, references_present=False):
     title, sub = esc(meta["title"]), esc(meta.get("subtitle"))
     return f"""
 <section class="half-title"><p>{title}</p></section>
@@ -391,8 +395,7 @@ def front(meta, chapters, appendix_title=None, preface=None, references_present=
   <p>{esc(meta.get("copyright"))}</p>
   <p>{esc(meta.get("edition"))} edition · {esc(meta.get("date"))}</p>
 </section>
-{contents(chapters, appendix_title, references_present)}
-{preface_html(preface)}
+{contents(chapters, appendix_title, references_present, note_title)}
 """
 
 
@@ -410,10 +413,10 @@ def render_html(doc, defer=None, shrink=None, only=None, splits=None):
         css += '\na.evi-ref::after { content: ", p. 000"; } .evidence-ptr::after { content: " p. 000"; }'
         body = chapter(only, defer or {}, shrink or {}, splits)
     else:
-        body = (front(meta, doc["chapters"], appendix_name(doc.get("appendix")), doc.get("preface"),
-                      bool(doc.get("references")))
+        body = (front(meta, doc["chapters"], appendix_name(doc.get("appendix")),
+                      (doc.get("preface") or {}).get("title"), bool(doc.get("references")))
                 + "\n".join(chapter(c, defer or {}, shrink or {}, splits) for c in doc["chapters"])
-                + appendix(doc.get("appendix")) + references(doc.get("references")))
+                + ai_note(doc.get("preface")) + appendix(doc.get("appendix")) + references(doc.get("references")))
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{esc(meta["title"])}</title>'
             f'<meta name="author" content="{esc(meta["author"])}">'
             f'<style>{font_faces()}\n{css}</style></head>'

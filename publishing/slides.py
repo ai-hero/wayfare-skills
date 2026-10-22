@@ -121,7 +121,6 @@ def listing(prs, doc, spec):
                 continue
             item, note, _ = chunk[k]
             if P.lines(s, 20 + k, item) > 1 or not note or P.lines(s, 30 + k, note) > 1:
-                # Two lines of item, or no one-line note: the item takes the note's slot too.
                 P.drop(s, 30 + k)
                 P.fill(s, 20 + k, item, height=0.72)
             else:

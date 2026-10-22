@@ -44,8 +44,6 @@ figure { page-break-inside: avoid; -webkit-column-break-inside: avoid; break-ins
 figure img { display: block; width: auto; max-width: 100%; height: auto; max-height: 62vh; margin: 0 auto; }
 figcaption { font-size: 0.82em; line-height: 1.45; font-weight: 300; margin-top: 0.8em; padding-top: 0.6em;
   border-top: 1px solid #E2E4E8; hyphens: manual; -webkit-hyphens: manual; }
-.evidence-ptr { font-family: "Geist Mono", monospace; font-size: 0.8em; letter-spacing: 0.1em; text-transform: uppercase;
-  color: #D63358; white-space: nowrap; }
 div.example p { text-indent: 0; margin: 0 0 0.6em; }
 div.example > :last-child { margin-bottom: 0; }
 div.example ul, div.example ol { padding-left: 1.6em; }

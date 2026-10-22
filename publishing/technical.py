@@ -356,10 +356,7 @@ def appendix_block(b, refs):
         return refs.tex(b["md"]) + "\\par\\smallskip\n"
     if k == "table":
         n = len(b["rows"][0])
-        # The shared parser splits on every `|`, including Markdown's escaped `\|` inside a cell, so a
-        # row longer than its header is one cell broken apart; rejoin it with the pipes restored.
-        rows = [r[:n - 1] + [{"md": " | ".join(c["md"].rstrip("\\") for c in r[n - 1:])}] if len(r) > n else r
-                for r in b["rows"]]
+        rows = b["rows"]
         spec = "@{}>{\\raggedright\\arraybackslash}p{0.24\\linewidth}" + ">{\\raggedright\\arraybackslash}X" * (n - 1) + "@{}"
         if n >= 3:
             spec = "@{}" + "".join(f">{{\\hsize={w:.3f}\\hsize\\raggedright\\arraybackslash}}X"

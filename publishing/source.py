@@ -27,7 +27,8 @@ ERRORS = []
 DEF_RE = re.compile(r"^\[\^([a-z0-9][a-z0-9-]*)\]:\s*(.+)$", re.S)
 
 
-# Every edition prints these; photo, linkedin, x and subtitle are optional and left out when unset.
+# Every edition prints these. photo, linkedin and x are optional and left out when unset; subtitle is
+# optional too, but the print and Kindle title pages still set an empty line for it.
 META_REQUIRED = ("title", "author", "affiliation", "email", "edition", "date", "year", "copyright")
 
 
@@ -358,7 +359,6 @@ def convert_kind(b, n, cards, drawn, results, assets, counters):
     if k == "h3":
         return {"kind": "h3", "md": b["text"], "html": md_html(b["text"])}
     if k == "quote":
-        # House style: the author's own key lines are italics, and quotations are inline in double quotes.
         ERRORS.append(f"chapter {n}: blockquote \"{b['text'][:50]}...\"; use italics for your own line "
                       "or double quotes inline for someone else's")
         return {"kind": "quote", "md": b["text"], "html": md_html(b["text"])}

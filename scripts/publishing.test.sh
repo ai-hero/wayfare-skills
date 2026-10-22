@@ -2,11 +2,9 @@
 # Copyright (c) 2026 A.I. Hero, Inc.
 # All Rights Reserved.
 
-# Regression table for the Kindle edition's EPUB markup (publishing/kindle.py)
-# and the author's-note parser every edition shares (publishing/inline.py).
-#
-# Each case is a bug that once produced an EPUB KDP rejects or a reader
-# misreads, while the build still exited 0.
+# Regression table for the Kindle edition's EPUB markup (publishing/kindle.py),
+# the author's-note parser every edition shares (publishing/inline.py), and the
+# print path's URL fetcher and font pin (publishing/book.py).
 #
 # Usage: bash scripts/publishing.test.sh
 
@@ -107,7 +105,7 @@ images = kindle.Images()
 hrefs = {images.add(os.path.join(tmp, d, "fig.png")) for d in ("a", "b")}
 check("two figures with one file name get two files", 2, len(hrefs))
 
-tree = kindle.contents_tree([chapter], False, None, None, False)
+tree = kindle.contents_tree([chapter], None, False)
 nav = kindle.nav(tree, "ch-1.xhtml")
 ncx = kindle.ncx({"title": "T"}, "u", tree)
 files = {"OEBPS/kindle.css": "", "OEBPS/nav.xhtml": nav, "OEBPS/toc.ncx": ncx,

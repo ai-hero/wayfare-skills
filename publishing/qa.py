@@ -1,8 +1,9 @@
 """Render built editions to images for visual review: `./publish qa [book|technical|slides] [pages]`.
 
 Pages land in `$PUBLISH_OUT/qa/<edition>/`: `p012.png` for page 12, `s012-013.png` for the book's
-facing pages (even on the left, as bound). With no page list the sample is the opening pages, every
-chapter opening, and a page holding a figure and one holding a table where the PDF has them.
+facing pages (even on the left, as bound). With no page list, slides render every page; the other
+editions render the first six pages, the first page of each top-level outline entry, the first three
+pages with an image and one from the middle, the first page with a table, and the last page.
 """
 import os
 import sys

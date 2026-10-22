@@ -65,13 +65,12 @@ type ChapterHead = {
   book: BookMeta;
 };
 
-// A chapter file as `./publish web` writes it.
 // `n` is the source's number in the book's one reference list, the [n] the text links to.
 export type Source = { n: number; html: string };
 
-// An author's note, numbered in call order within its chapter.
 export type Note = { n: number; html: string };
 
+// A chapter file as `./publish web` writes it.
 export type ChapterFile = ChapterHead & { sections: Section[]; notes: Note[]; sources: Source[] };
 
 export type OpenChapter = ChapterFile & { locked: false };

@@ -2,8 +2,9 @@
 
     ./publish book          -> $PUBLISH_OUT/dist/book.pdf
 
-Layout lives in `book/book.css`; this module only writes semantic HTML. A layout fault is fixed
-there or here, never in the PDF.
+Layout lives in `book/book.css`; this module writes the HTML (with an inline max-height on shrunk
+figures), solves figure placement against rendered pages, and fetches local assets for WeasyPrint.
+A layout fault is fixed there or here, never in the PDF.
 """
 import functools
 import hashlib
@@ -460,9 +461,6 @@ def render_html(doc, defer=None, shrink=None, only=None, splits=None):
     EVIDENCE.update({e["rid"]: e["anchor"] for p in (doc.get("appendix") or {}).get("parts", [])
                      for g in p["groups"] for e in g["entries"] if e["rid"]})
     if only is not None:
-        # The appendix is absent from a single-chapter render, so the "p. N" an evidence pointer prints
-        # cannot resolve and the line breaks differ from the book's. A three-digit stand-in keeps them equal.
-        css += '\na.evi-ref::after { content: ", p. 000"; } .evidence-ptr::after { content: " p. 000"; }'
         body = chapter(only, defer or {}, shrink or {}, splits)
     else:
         body = (front(meta, doc["chapters"], appendix_name(doc.get("appendix")),
@@ -497,7 +495,8 @@ def boxes(box):
 
 def gaps(document):
     """Figures that start a page while the page before ends with a large empty band: the figure
-    did not fit and was pushed, leaving the gap. Returns {figure id: gap as a share of the page}."""
+    did not fit and was pushed, leaving the gap. Returns {figure id: (page, gap as a share of the page,
+    room left, image height, min_scale)}."""
     found = {}
     for i, page in enumerate(document.pages[1:], 1):
         flow = [b for b in boxes(page._page_box) if getattr(b, "element_tag", "") in ("figure", "h2", "p", "h3")
@@ -505,7 +504,6 @@ def gaps(document):
         if not flow or any(getattr(b, "element_tag", "") == "h1" for b in boxes(page._page_box)):
             continue
         flow.sort(key=lambda b: b.position_y)
-        # A figure at the head of the page, or a heading kept with the figure that follows it.
         lead = flow[:2] if flow[0].element_tag == "h2" else flow[:1]
         first = next((b for b in lead if b.element_tag == "figure" and b.element.get("id")
                       and "table" not in b.element.get("class", "")), None)
@@ -708,7 +706,6 @@ def float_split(document, fid, para):
         if el is None or el.tag != "p" or not el.get("id", "").startswith("k"):
             break
         if el.get("id") != key:
-            # Whole paragraphs before the one that is cut move up ahead of the figure unchanged.
             key, words = el.get("id"), 0
         if used + ln.height > room:
             break
@@ -812,7 +809,8 @@ def cost(found):
 
 def evaluate(doc, c, HTML, defer, splits=None, shrink=None):
     """Render one chapter and score it: the summed share of each page a pushed figure leaves empty,
-    plus a penalty for every figure that precedes its introduction's spread."""
+    plus GAP_COUNT per gap, a steep GAP_LARGE charge past LARGE, and VIOLATION for every figure that
+    precedes its introduction's spread."""
     document = HTML(string=render_html(doc, defer, shrink, only=c, splits=splits),
                     base_url=paths.ASSETS + "/").render()
     g = gaps(document)
@@ -916,7 +914,6 @@ def main():
                     print(f"book: re-seated {fid} by {step} in the whole book")
                     defer, document, html_text, score = trial, tried, text, s
                     break
-        # Moves alone can leave such a gap, so each one left also gets the floats the solve uses.
         para, allowed = {}, {}
         for c in doc["chapters"]:
             allowed.update(allowed_cuts(c))

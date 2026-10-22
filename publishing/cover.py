@@ -142,9 +142,6 @@ def _arc(cx, cy, r, a0, a1, n=24):
              cy + r * math.sin(math.radians(a0 + (a1 - a0) * k / n))) for k in range(n + 1)]
 
 
-# The website's three components first, then simple solids of the same family: every machine on
-# the floor makes something different. Each is a list of closed outlines in face units (one unit
-# is the box edge, so +/-0.3 fills about half the top).
 _W = 0.1
 SHAPES = [
     [[(-0.26, -0.26), (0.26, -0.26), (0.26, 0.26), (-0.26, 0.26)]],
@@ -219,17 +216,13 @@ def screen_d(g, polylines, to_uvz, closed=True):
     return "".join(d)
 
 
-# One machine, in grid units from its corner: the pedestal behind, the software box in front of it
-# and the arm reaching across, as the website's line has them.
 PED = (0.55, 0.5)
 BOX = (1.3, 0.95, 1.1, 0.95)  # u, v, edge, height
 ARM_SHOULDER, ARM_UPPER, ARM_FORE = 1.95, 1.55, 1.3
 PITCH_U, PITCH_V = 3.35, 3.15
 CYCLE_S = 9.0
 GAP, PAD = 0.9, 0.55
-# The etched product's size on the box top, past the website's: on a cover it is what the eye reads.
 MARK = 1.25
-# The floor fills this share of the trim width, its back corner this far down the page.
 FLOOR_WIDTH, FLOOR_TOP = 0.9, 0.455
 
 
@@ -276,7 +269,6 @@ class Machine:
         if still:
             f, lift, ticket, shipped = still
         cls = (lambda c: f' class="{c} m{idx}"') if animated else (lambda c: "")
-        # The inbound ticket on the floor in front of the box, and the shipped version past it.
         tu, tv = u + 0.2, v + box_v + e / 2 + 0.05
         if ticket:
             g.raw(f'<g{cls("ticket")}>')
@@ -307,7 +299,6 @@ class Machine:
             d, extra = screen_d(g, partial(self.loops, f)[0] if f < 0.999 else self.loops, on_top, f >= 0.999), ""
         g.raw(f'<path{cls("trace")} d="{d}" fill="none" stroke="{ROSE}" stroke-width="{sw * 1.6:.2f}"{extra}'
               f' stroke-linejoin="round" stroke-linecap="round"/>')
-        # The shipped version, a dashed copy of the box carrying the finished shape.
         if shipped:
             su = u + box_u + e + 0.6
             g.raw(f'<g{cls("ship")}>')
@@ -350,7 +341,6 @@ class Machine:
 
 
 def factory(g, animated=False):
-    """Four cells of six machines on one floor: the factory the book is about."""
     sw = g.sw
     cell_u, cell_v, gap, pad = 3 * PITCH_U, 2 * PITCH_V, GAP, PAD
     total_u, total_v = 2 * cell_u + gap + 2 * pad, 2 * cell_v + gap + 2 * pad
@@ -406,7 +396,6 @@ def front_art(w, h, animated=False):
     cell_u, cell_v = 3 * PITCH_U, 2 * PITCH_V
     span_u, span_v = 2 * cell_u + GAP + 2 * PAD, 2 * cell_v + GAP + 2 * PAD
     s = FLOOR_WIDTH * w / ((span_u + span_v) * C30)
-    # The floor's left corner is (-PAD, span_v - PAD); centre the whole rhombus on the page.
     left = (-PAD - (span_v - PAD)) * C30 * s
     ox = (w - FLOOR_WIDTH * w) / 2 - left
     g = Iso(ox=ox, oy=h * FLOOR_TOP + PAD * s, s=s, stroke=max(0.55, s * 0.045))

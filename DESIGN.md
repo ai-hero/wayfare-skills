@@ -1,6 +1,6 @@
 # Design
 
-> Last updated: 2026-10-21 · Source ref: 4ade7c45f6dd68417739a2ce7de8e08755ef9c5a
+> Last updated: 2026-10-22 · Source ref: ebe36dd29311836a91faf793c42205dd44630b1e
 
 Why wayfare is shaped the way it is. Facts the code cannot state about itself,
 and decisions someone would otherwise undo.
@@ -20,8 +20,8 @@ so the interesting risks are distribution risks, not correctness risks.
 Markdown, bash, and Python: the compliance engine, the doc checker
 (`check_docs.py`), and the linters the skills run before they post or commit
 (`pr_text_lint.py`, `diff_leftovers.py`). No compiled language, no dependency
-manifest beyond the per-agent plugin manifests (pyyaml is pinned in
-`.pre-commit-config.yaml`), no build step. `pre-commit` holds the gates and the
+manifest beyond the per-agent plugin manifests and `publishing/requirements.txt`
+(pyyaml is pinned in `.pre-commit-config.yaml`), no build step. `pre-commit` holds the gates and the
 `Justfile` names them: `just lint`, `typecheck`, `test` and `validate` run the
 same checks locally and in `pr-check.yaml`, one recipe per CI step. mdformat
 owns Markdown line breaks, so nobody re-wraps a paragraph by hand, except in this
@@ -29,6 +29,11 @@ file, whose line-3 anchor must stay on one line.
 
 `analysis/` is Python too, over a local SQLite store, and sits outside every
 gate above (see Boundaries).
+
+`publishing/` is Python plus LaTeX and a TSX site with a Playwright spec, run by
+`./publish` from its own venv (`.analysis/publish-env`, installed from
+`publishing/requirements.txt`). Unlike `analysis/` it sits inside the main gates,
+but its suite only runs where that venv exists (see Testing).
 
 ## Codemap
 
@@ -44,6 +49,7 @@ gate above (see Boundaries).
 | `plugin.json`, `.claude-plugin/`, `.agents/` | One portable manifest for Agent Plugin hosts, a separate Claude Code adapter, and marketplace metadata over the same skills. |
 | `.github/workflows/auto-approve.yaml` | The shared reusable workflow ~25 repos execute at `@main`. |
 | `.github/workflows/pr-check.yaml` | This repo's own gate. |
+| `publishing/`, `publish` | Builds the book's editions (print, technical, web, slides, cover, Kindle) and their QA from `analysis/manuscript/` into the gitignored `.analysis/`. |
 | `analysis/` | The research pipeline (ingest, cube, detectors, questions, report) that reads the fleet's repos and session data into a gitignored `.analysis/` store. Code commits; data and results never do. |
 
 ## Boundaries
@@ -58,9 +64,10 @@ gate above (see Boundaries).
 | `assets/compliance/` → engine | Not installed anywhere. The engine reads the baseline in place and merges the fleet's overlay over it by id. |
 | `.github/workflows/auto-approve.yaml` → consumers | Executed *in place* by ~25 repos via `uses: …@main`. Not copied; resolved at trigger time. |
 | `FLEET.md` → the audit | A folder is never a fleet root (`fleet_root()`, `hero_fleet_root`) when it or an ancestor other than `$HOME` holds `.git`: `FLEET.md` is the operator's unversioned map, and a cloned one would make the audit execute the clone's `.fleet/checkers.py`. Tested on the `FLEET.md` folder, never the register. |
-| repo → sibling repo | Through a message, a new file in the sibling's `.plans/inbox/` and the only write allowed there; never by editing its code or config. |
+| repo → sibling repo | A skill reaches a sibling through a message, a new file in the sibling's `.plans/inbox/` and the only write allowed there; never by editing its code or config. |
 | audits → `issues` tracker | A confirmed finding (judged against the default branch as merged) is filed as one ticket through the `issues` connection, linked both ways with its `.plans/` item, and closed only on evidence (`references/finding-tickets.md`). Candidates stay local. |
-| `analysis/` → the rest | Research code, outside the plugin's gates (check_docs, mdformat, the main codespell hook, semgrep). Nothing in `skills/`, `scripts/` or `hooks/` imports it; it reads the plugin and fleet the way a skill does, never the other way round. |
+| `analysis/` → the rest | Research code, outside the plugin's gates (check_docs, mdformat, the main codespell hook, semgrep). Nothing in `skills/`, `scripts/` or `hooks/` imports it; it reads the plugin and fleet the way a skill does, never the other way round. `publishing/` is the one reader: it reuses `analysis/report`'s figure library and reads `analysis/manuscript/`. |
+| `publishing/` → `website` | `./publish web` writes the web edition into a worktree of the sibling `website` repo on its own branch (`WEBSITE_DIR`), never into the checkout someone works in. It is the one place this repo edits a sibling's code, and a person merges it there. |
 
 The `auto-approve` rows are the ones that surprise people.
 `assets/auto-approve/caller.yaml` is **copied**; `auto-approve.yaml` is
@@ -89,6 +96,9 @@ contract**: secret declarations line up, the caller's permissions cover what the
 callee declares, `secrets: inherit` is absent, and the caller tracks `main`.
 Those violations fail in the *consuming* repos, not here, so nothing in this
 repo's normal feedback loop would surface them.
+
+`publishing.test.sh` needs the publish venv. Without it the suite prints SKIP
+and passes, which is every CI run, so the editions' code is gated locally only.
 
 ### Compliance
 

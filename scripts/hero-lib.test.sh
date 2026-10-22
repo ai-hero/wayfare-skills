@@ -1096,6 +1096,20 @@ item 197-fafterlog.md 197 "Backlog, waiting on committed" "accepted" "[195]"
 # `done` would re-plan around code nobody ever wrote.
 item 199-dropped.md 199 "Abandoned task" "dropped" "[]"
 item 200-waitdrop.md 200 "Waiting on abandoned work" "ready" "[199]"
+# A dropped item that names its replacement must say so on its row, and a
+# dependent must name the edge to move rather than read as an ordinary wait.
+# It stays blocked: the listing never rewrites depends_on. 1201 ends with 201
+# and lists first, so a lookup that matched a suffix would hand 201's
+# dependents 1201's replacement.
+item 201-superseded.md 201 "Re-cut as 241" "dropped" $'[]\nreplaced_by: 241'
+item 1201-other.md 1201 "Re-cut as 250" "dropped" $'[]\nreplaced_by: 250'
+item 241-recut.md 241 "The replacement" "ready" "[]"
+item 250-recut.md 250 "The other replacement" "ready" "[]"
+item 202-waitrecut.md 202 "Waiting on superseded work" "ready" "[201]"
+item 203-logrecut.md 203 "Backlog on superseded work" "accepted" "[201]"
+item 206-waitother.md 206 "Waiting on the other superseded work" "ready" "[1201]"
+item 204-liverb.md 204 "Live item with a replacement" "ready" $'[]\nreplaced_by: 241'
+item 205-ghostrb.md 205 "Replaced by nothing" "dropped" $'[]\nreplaced_by: 9999'
 OUTF="$(hero_ready_items "$W" 2>/dev/null)"
 check "task: accepted lists as backlog, not READY" "backlog" "$(state_of 030-backlog.md "$OUTF")"
 check "task: ready with deps done is READY"    "READY"   "$(state_of 032-fready.md "$OUTF")"
@@ -1126,6 +1140,17 @@ printf '%s' "$OUTF" | grep -q '197-fafterlog.md.*\[deps unmet; committed dep: 19
 check "task: backlog row names its committed dep" "0" "$?"
 check "task: dropped lists as dropped, not done" "dropped" "$(state_of 199-dropped.md "$OUTF")"
 check "task: dep on a dropped item stays blocked" "blocked" "$(state_of 200-waitdrop.md "$OUTF")"
+printf '%s' "$OUTF" | grep -q '^dropped 201-superseded.md — Re-cut as 241 \[replaced by 241\]$'
+check "task: dropped row names its replacement" "0" "$?"
+check "task: dep on a replaced item stays blocked" "blocked" "$(state_of 202-waitrecut.md "$OUTF")"
+printf '%s' "$OUTF" | grep -q '202-waitrecut.md.*\[replaced dep: 201 → 241\]$'
+check "task: blocked row names the replaced dep and its replacement" "0" "$?"
+printf '%s' "$OUTF" | grep -q '203-logrecut.md.*\[deps unmet; replaced dep: 201 → 241\]$'
+check "task: backlog row names the replaced dep" "0" "$?"
+printf '%s' "$OUTF" | grep -q '206-waitother.md.*\[replaced dep: 1201 → 250\]$'
+check "task: a replaced dep resolves by whole id, not suffix" "0" "$?"
+printf '%s' "$OUTF" | grep -q '200-waitdrop.md.*replaced dep'
+check "task: a plain drop carries no replaced dep" "1" "$?"
 ERRF="$(hero_ready_items "$W" 2>&1 >/dev/null)"
 printf '%s' "$ERRF" | grep -q "unrecognized status 'in-review'.*new/accepted/planning/ready"
 check "task: unknown status names the task enum on stderr" "0" "$?"
@@ -1133,6 +1158,16 @@ printf '%s' "$ERRF" | grep -q "045-colon.md has a malformed status/type"
 check "task: colon status warns on stderr"     "0" "$?"
 printf '%s' "$ERRF" | grep -q "050-fdangle.md depends_on '999'"
 check "task: backlog dangling dep warns on stderr" "0" "$?"
+printf '%s' "$ERRF" | grep -q "204-liverb.md carries replaced_by '241' at status 'ready'"
+check "task: replaced_by at ready warns on stderr" "0" "$?"
+printf '%s' "$ERRF" | grep -q "205-ghostrb.md is replaced_by '9999', which no item carries"
+check "task: replaced_by naming a missing id warns on stderr" "0" "$?"
+printf '%s' "$ERRF" | grep -q "201-superseded.md.*replaced_by"
+check "task: a valid replacement warns nothing" "1" "$?"
+if command -v zsh >/dev/null 2>&1; then
+  check "task: replaced dep resolves the same under zsh" "0" \
+    "$(zsh -c ". '$LIB'; hero_ready_items '$W'" 2>/dev/null | grep -c '202-waitrecut.md.*\[replaced dep: 201 → 241\]$' | sed 's/^1$/0/')"
+fi
 
 # ---------- signals and goals ------------------------------------------------
 #

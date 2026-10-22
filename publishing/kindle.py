@@ -54,8 +54,7 @@ def xml_safe(s):
 
 
 def page(title, body, kind=None, main=True):
-    # `preface` goes on the inner section with role doc-preface: EPUBCheck rejects that role on <body>.
-    attr = f' epub:type="{kind}"' if kind and kind != "preface" else ""
+    attr = f' epub:type="{kind}"' if kind else ""
     if main:
         body = f"<main>{body}</main>"
     return (f'<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE html>\n<html {XHTML_NS} lang="en" xml:lang="en">'
@@ -253,8 +252,8 @@ def appendix_part(part, title, images):
     return "".join(out)
 
 
-def front_matter(meta, preface):
-    pages = [("title", "Title page", "titlepage",
+def front_matter(meta):
+    return [("title", "Title page", "titlepage",
               f'<section class="title-page"><hr class="opener-rule" aria-hidden="true"/>'
               f'<h1 class="book-title">{esc(meta["title"])}</h1>'
               f'<p class="subtitle">{esc(meta.get("subtitle"))}</p><p class="author">{esc(meta["author"])}</p>'
@@ -263,12 +262,14 @@ def front_matter(meta, preface):
               f'<section class="copyright"><p>{esc(meta.get("copyright"))}</p>'
               f'<p>{esc(meta.get("edition"))} edition · {esc(meta.get("date"))}</p>'
               f'<p>All rights reserved. Corrections are welcome at {esc(meta.get("email"))}.</p></section>')]
-    if preface:
-        body = "".join(f"<p>{b['html']}</p>" for b in preface["blocks"])
-        pages.append(("preface", preface["title"], "preface",
-                      f'<section epub:type="preface" role="doc-preface" id="preface"><h1>{esc(preface["title"])}</h1>'
-                      f'{body}</section>'))
-    return pages
+
+
+def ai_note(note):
+    """The note on the use of AI tools closes the book, after the last chapter, as it does in the paper."""
+    body = "".join(f"<p>{b['html']}</p>" for b in note["blocks"])
+    return ("ai-note", note["title"], "backmatter",
+            f'<section epub:type="afterword" role="doc-afterword" id="ai-note">'
+            f'<hr class="opener-rule" aria-hidden="true"/><h1>{esc(note["title"])}</h1>{body}</section>')
 
 
 def footnotes(name, body):
@@ -329,16 +330,16 @@ def link(docs):
     return out, broken, unlinked
 
 
-def contents_tree(chapters, has_preface, appendix_parts, appendix_title, has_refs):
+def contents_tree(chapters, note_title, appendix_parts, appendix_title, has_refs):
     """The contents as (href, label, children), labels escaped: the nav document and the NCX are
     both drawn from it, so the two menus cannot disagree."""
     tree = []
-    if has_preface:
-        tree.append(("preface.xhtml", "Use of AI tools", []))
     for c in chapters:
         subs = [(f'ch-{c["n"]}.xhtml#ch-{c["n"]}-{s["slug"]}', esc(md_plain(s["title"])), [])
                 for s in c["sections"] if s["title"]]
         tree.append((f'ch-{c["n"]}.xhtml', f'{ONES[c["n"]]}. {esc(c["title"])}', subs))
+    if note_title:
+        tree.append(("ai-note.xhtml", esc(note_title), []))
     if appendix_parts:
         parts = [(f'appendix-{p["n"]}.xhtml', f'Chapter {ONES[p["n"]]} · {esc(p["title"])}', []) for p in appendix_parts]
         tree.append(("appendix.xhtml", f"Appendix: {esc(appendix_title)}", parts))
@@ -506,8 +507,10 @@ def main():
     EVIDENCE.update({e["rid"]: e["anchor"] for p in appx.get("parts", [])
                      for g in p["groups"] for e in g["entries"] if e["rid"]})
     images = Images()
-    docs = front_matter(meta, doc.get("preface"))
+    docs = front_matter(meta)
     docs += [(f"ch-{c['n']}", c["title"], "bodymatter", chapter(c, images)) for c in doc["chapters"]]
+    if doc.get("preface"):
+        docs.append(ai_note(doc["preface"]))
     if appx.get("parts"):
         intro = "".join(f"<p>{b['html']}</p>" for b in appx["intro"])
         docs.append(("appendix", appx["title"], "backmatter",
@@ -522,7 +525,7 @@ def main():
                      f'<div class="reference-list">{refs}</div></section>'))
     docs = [(name, title, kind, footnotes(name, body)) for name, title, kind, body in docs]
     docs, broken, unlinked = link(docs)
-    tree = contents_tree(doc["chapters"], bool(doc.get("preface")), appx.get("parts"), appx.get("title"),
+    tree = contents_tree(doc["chapters"], (doc.get("preface") or {}).get("title"), appx.get("parts"), appx.get("title"),
                          bool(doc.get("references")))
     first = f"ch-{doc['chapters'][0]['n']}.xhtml"
     xhtml_nav = nav(tree, first)

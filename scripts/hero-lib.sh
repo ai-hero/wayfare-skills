@@ -1754,7 +1754,7 @@ EOF
 hero_ready_items() (
   local store items f d raw deps ready title id state itype row all_ids done_ids
   local open_goals parent committed_ids committed missing awaiting blocked_on since enum
-  local idea_ids anti_ids shape channel resolution replaced_ids replaced rb
+  local idea_ids anti_ids shape channel resolution replaced_ids replaced rb new
   store="${1:-$(hero_work_store)}" || return 1
 
   # An unmigrated store lists NOTHING rather than listing wrong. Every item in
@@ -1826,9 +1826,9 @@ hero_ready_items() (
       # so a dependent built against it merges onto a tree missing it.
       committed) committed_ids="$committed_ids$id " ;;
     esac
-    rb=$(hero_norm_id "$(hero_item_field "$f" replaced_by)")
-    if [ "$state" = dropped ] && [ -n "$rb" ]; then
-      case "$rb" in *[[:space:]:]*) ;; *) replaced_ids="$replaced_ids$id:$rb " ;; esac
+    if [ "$state" = dropped ]; then
+      rb=$(hero_norm_id "$(hero_item_field "$f" replaced_by)")
+      case "$rb" in ''|*[[:space:]:]*) ;; *) replaced_ids="$replaced_ids$id:$rb " ;; esac
     fi
     # Only an OPEN goal counts as cover. `new` is untriaged and an
     # unrecognized status lists as invalid; crediting either would let a
@@ -2130,7 +2130,7 @@ hero_ready_items() (
       ready=0
       case "$committed_ids" in *" $d "*) committed="$committed $d" ;; esac
       case "$replaced_ids" in
-        *" $d:"*) rb=${replaced_ids#* "$d":}; replaced="${replaced:+$replaced, }$d → ${rb%% *}" ;;
+        *" $d:"*) new=${replaced_ids#* "$d":}; replaced="${replaced:+$replaced, }$d → ${new%% *}" ;;
       esac
     done <<EOF
 $deps

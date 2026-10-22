@@ -1165,8 +1165,8 @@ check "task: replaced_by naming a missing id warns on stderr" "0" "$?"
 printf '%s' "$ERRF" | grep -q "201-superseded.md.*replaced_by"
 check "task: a valid replacement warns nothing" "1" "$?"
 if command -v zsh >/dev/null 2>&1; then
-  check "task: replaced dep resolves the same under zsh" "0" \
-    "$(zsh -c ". '$LIB'; hero_ready_items '$W'" 2>/dev/null | grep -c '202-waitrecut.md.*\[replaced dep: 201 → 241\]$' | sed 's/^1$/0/')"
+  zsh -c ". '$LIB'; hero_ready_items '$W'" 2>/dev/null | grep -q '202-waitrecut.md.*\[replaced dep: 201 → 241\]$'
+  check "task: replaced dep resolves the same under zsh" "0" "$?"
 fi
 
 # ---------- signals and goals ------------------------------------------------

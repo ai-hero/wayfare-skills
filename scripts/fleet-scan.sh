@@ -82,7 +82,8 @@ if [ "$MODE" = list ]; then
 fi
 
 [ -f "$ROOT/FLEET.md" ] || { echo "fleet-scan: no FLEET.md in $ROOT; run wayfare:wayfare-sync-fleet to create one" >&2; exit 2; }
-hero_at_fleet_root "$ROOT" || { echo "fleet-scan: $ROOT holds HERO.md beside FLEET.md, which is a repo, not a fleet" >&2; exit 2; }
+[ ! -f "$ROOT/HERO.md" ] || { echo "fleet-scan: $ROOT holds HERO.md beside FLEET.md, which is a repo, not a fleet" >&2; exit 2; }
+hero_at_fleet_root "$ROOT" || { echo "fleet-scan: $ROOT is inside a git work tree, so its FLEET.md is a clone's content, not a fleet map" >&2; exit 2; }
 
 BAD=$(mktemp) || exit 2
 trap 'rm -f "$BAD"' EXIT

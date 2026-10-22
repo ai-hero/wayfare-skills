@@ -20,6 +20,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = pathlib.Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("audit", HERE / "audit.py")
@@ -887,6 +888,52 @@ class Configured(unittest.TestCase):
         self.assertIn("skipping '../evil'", err.getvalue())
         self.assertEqual(audit.repo_path("alpha"), self.root / "apps" / "alpha")
 
+    def test_absolute_path_outside_is_trusted_relative_escape_is_not(self):
+        outside = pathlib.Path(tempfile.mkdtemp()).resolve()
+        home = pathlib.Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, outside, True)
+        self.addCleanup(shutil.rmtree, home, True)
+        (home / ".plug" / "tilde").mkdir(parents=True)
+        (self.root / "inside").mkdir()
+        (self.root / "linked").symlink_to(outside)
+        fleet_fixture(self.root, f"""## Fleet
+
+- name: fx
+
+## Repos
+
+### inside
+
+- group: apps
+
+### abs
+
+- path: {outside}
+- group: apps
+
+### tilde
+
+- path: ~/.plug/tilde
+- group: apps
+
+### linked
+
+- group: apps
+
+### dotdot
+
+- path: ../{outside.name}
+- group: apps
+""")
+        with mock.patch.dict(os.environ, {"HOME": str(home)}), \
+                contextlib.redirect_stderr(io.StringIO()) as err:
+            audit.configure(self.root)
+        self.assertEqual(audit.FAMILY, ("inside", "abs", "tilde"))
+        self.assertEqual(audit.REPO_DIR["abs"], outside)
+        self.assertEqual(audit.REPO_DIR["tilde"], home / ".plug" / "tilde")
+        self.assertIn("skipping 'linked'", err.getvalue())
+        self.assertIn("skipping 'dotdot'", err.getvalue())
+
     def test_fleet_root(self):
         fleet_fixture(self.root, "## Fleet\n- name: fx\n")
         inner = self.root / "repo" / "sub"
@@ -894,6 +941,76 @@ class Configured(unittest.TestCase):
         self.assertEqual(audit.fleet_root(inner), self.root)
         write(self.root, "HERO.md", "# HERO\n")
         self.assertIsNone(audit.fleet_root(inner), "FLEET.md beside HERO.md is a repo, not a fleet")
+
+    def test_fleet_root_passes_over_a_git_work_tree(self):
+        git_repo(self.root, "clone")
+        clone = self.root / "clone"
+        fleet_fixture(clone, "## Fleet\n- name: fx\n")
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertIsNone(audit.fleet_root(clone), "a committed FLEET.md is not a fleet")
+        self.assertIn("inside a git work tree", err.getvalue())
+
+    def test_fleet_root_ignores_a_git_register(self):
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n")
+        git(self.root / ".fleet", "init", "-q")
+        sub = self.root / "repo"
+        sub.mkdir()
+        self.assertEqual(audit.fleet_root(sub), self.root)
+
+    def test_audit_in_a_clone_runs_no_committed_checkers(self):
+        clone = git_repo(self.root, "clone")
+        marker = self.root / "ran"
+        fleet_fixture(clone, "## Fleet\n- name: fx\n", checkers=f"open({str(marker)!r}, 'w').close()\n")
+        p = subprocess.run([sys.executable, str(HERE / "audit.py")], cwd=str(clone),
+                           capture_output=True, text=True, env=CLEAN_ENV)
+        self.assertFalse(marker.exists(), "the clone's .fleet/checkers.py executed")
+        self.assertIn("inside a git work tree", p.stderr)
+
+    def test_fleet_root_walks_ancestors_of_a_clone(self):
+        clone = git_repo(self.root, "clone")
+        docs = clone / "docs"
+        fleet_fixture(docs, "## Fleet\n- name: fx\n")
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertIsNone(audit.fleet_root(docs), "a FLEET.md in a clone's subfolder is not a fleet")
+
+    def test_audit_in_a_clone_subfolder_runs_no_committed_checkers(self):
+        clone = git_repo(self.root, "clone")
+        docs = clone / "docs"
+        marker = self.root / "ran"
+        fleet_fixture(docs, "## Fleet\n- name: fx\n", checkers=f"open({str(marker)!r}, 'w').close()\n")
+        subprocess.run([sys.executable, str(HERE / "audit.py")], cwd=str(docs),
+                       capture_output=True, text=True, env=CLEAN_ENV)
+        self.assertFalse(marker.exists(), "the clone subfolder's .fleet/checkers.py executed")
+
+    def test_fleet_root_passes_over_a_git_file(self):
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n")
+        write(self.root, ".git", "gitdir: /nonexistent\n")
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertIsNone(audit.fleet_root(self.root))
+
+    def test_git_dir_in_the_environment_does_not_hide_a_plain_fleet(self):
+        fleet_fixture(self.root / "fleet", "## Fleet\n- name: fx\n")
+        repo = git_repo(self.root, "other")
+        with mock.patch.dict(os.environ, {"GIT_DIR": str(repo / ".git")}):
+            self.assertEqual(audit.fleet_root(self.root / "fleet"), self.root / "fleet")
+
+    def test_a_git_dir_at_home_is_not_a_work_tree_signal(self):
+        home = self.root / "home"
+        home.mkdir()
+        git(home, "init", "-q")
+        fleet_fixture(home / "fleet", "## Fleet\n- name: fx\n")
+        clone = git_repo(home, "clone")
+        fleet_fixture(clone, "## Fleet\n- name: fx\n")
+        with mock.patch.dict(os.environ, {"HOME": str(home)}), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(audit.fleet_root(home / "fleet"), home / "fleet")
+            self.assertIsNone(audit.fleet_root(clone), "a clone below a dotfiles $HOME is still passed over")
+
+    def test_tilde_user_row_is_relative_as_in_the_shell(self):
+        write(self.root, "FLEET.md", "## Fleet\n- name: fx\n## Repos\n### u\n- path: ~nobody/x\n- group: apps\n")
+        (self.root / ".fleet").mkdir()
+        (self.root / "~nobody" / "x").mkdir(parents=True)
+        audit.configure(self.root)
+        self.assertEqual(audit.REPO_DIR["u"], self.root / "~nobody" / "x")
 
     def test_missing_register_is_an_error(self):
         write(self.root, "FLEET.md", "## Fleet\n- name: fx\n- register: .flet/\n## Repos\n### a\n- group: apps\n")

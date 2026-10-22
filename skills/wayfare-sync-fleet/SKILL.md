@@ -82,7 +82,7 @@ them.
 
    | Finding | Proposal |
    | -- | -- |
-   | `BAD_ROW` | the row could not be trusted (the detail says why: a bad name, a dashed or non-numeric value, a duplicate, a path outside the fleet). Fix or drop it, and never guess a replacement |
+   | `BAD_ROW` | the row could not be trusted (the detail says why: a bad name, a dashed or non-numeric value, a duplicate, a relative path outside the fleet). Fix or drop it, and never guess a replacement |
    | `MISSING` | drop the row, or fix `path` if the folder moved. Ask first |
    | `NOT_GIT` | same as `MISSING`. A folder that stopped being a checkout is not a repo |
    | `PORT_MISMATCH` | the row is the assignment, the compose default is the implementation. Ask which is right. If the repo must change, hand it to `wayfare:wayfare-build-task` in that repo. The standard's last anti-pattern names every place the port appears. Never edit the repo from here |

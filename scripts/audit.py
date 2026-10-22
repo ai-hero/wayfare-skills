@@ -121,14 +121,26 @@ def repo_path(name):
     return REPO_PATH.get(name, REPO_DIR.get(name, ROOT / name))
 
 
+def in_git_worktree(d):
+    """Whether d or an ancestor other than $HOME holds a .git entry. Walks the
+    filesystem so GIT_DIR cannot lie. $HOME is skipped: a dotfiles repo there is
+    not a clone, and counting it would stop every fleet under $HOME resolving."""
+    home = pathlib.Path.home().resolve()
+    return any((p / ".git").exists() for p in (d, *d.parents) if p != home)
+
+
 def fleet_root(start=None):
-    """The nearest ancestor holding FLEET.md without HERO.md, or None. Same
-    rule as hero_fleet_root in hero-lib.sh: a FLEET.md beside a HERO.md is a
-    committed copy inside a repo, and is passed over."""
+    """The nearest ancestor holding FLEET.md that is neither beside a HERO.md
+    nor inside a git work tree, or None: a committed FLEET.md is a clone's
+    content, and its register would run the clone's checkers.py. Tests the
+    FLEET.md folder, never the register, which is the real fleet's own
+    checkout."""
     d = pathlib.Path(start or os.getcwd()).resolve()
     while True:
         if (d / "FLEET.md").is_file() and not (d / "HERO.md").is_file():
-            return d
+            if not in_git_worktree(d):
+                return d
+            print(f"fleet_root: passing over {d}; a folder inside a git work tree is never a fleet root", file=sys.stderr)
         if d.parent == d:
             return None
         d = d.parent
@@ -222,10 +234,14 @@ def configure(root=None):
     for row in repos:
         if row["group"] == "none":
             continue
-        path = (root / (row["path"] or row["name"])).resolve()
-        # A row whose path escapes the fleet is not this fleet's repo, whatever
-        # its name says; hero_fleet_repos skips it for the same reason.
-        if root not in path.parents:
+        raw = row["path"] or row["name"]
+        # Only `~` and `~/…` expand, as in hero_fleet_repos: `~user/x` stays a
+        # relative path there, so it must here.
+        written_absolute = raw == "~" or raw.startswith(("/", "~/"))
+        if written_absolute:
+            raw = os.path.expanduser(raw) if raw[0] == "~" else raw
+        path = (root / raw).resolve()
+        if not written_absolute and root not in path.parents:
             print(f"configure: skipping '{row['name']}' — path resolves outside the fleet: {path}", file=sys.stderr)
             continue
         if path in REPO_DIR.values():

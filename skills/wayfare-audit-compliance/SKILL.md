@@ -18,7 +18,10 @@ results for each check and repo from the register in
 ### Step 0: load
 
 ```bash
-[ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+# shellcheck source=/dev/null
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT — export WAYFARE_ROOT as the plugin root"; exit 1; }
+hero_at_fleet_root && echo "FLEET_ROOT" || true
 ```
 
 If the command prints `FLEET_ROOT`, select the family audit below. Otherwise,

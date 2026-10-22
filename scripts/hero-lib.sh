@@ -592,6 +592,25 @@ hero_check_staleness() {
 # definition not a repo root, and under a dotfiles-managed $HOME hero_root is
 # $HOME, which would hide every fleet beneath it.
 
+# True when DIR or any ancestor other than $HOME holds a .git entry (a
+# directory, or the file a worktree or submodule leaves). Walks the filesystem
+# rather than asking git: GIT_DIR in a hook's environment would make `git
+# rev-parse` call everything a work tree. $HOME is skipped because a
+# dotfiles repo there is not a clone; counting it would stop every fleet under
+# $HOME resolving. An unresolvable DIR is reported as inside a work tree, so a
+# path that cannot be checked is never trusted.
+hero_in_git_worktree() { # DIR
+  local d home=""
+  d=$(cd "$1" 2>/dev/null && pwd -P) || return 0
+  [ -z "$HOME" ] || home=$(cd "$HOME" 2>/dev/null && pwd -P)
+  while [ -n "$d" ]; do
+    [ -e "$d/.git" ] && [ "$d" != "$home" ] && return 0
+    [ "$d" = "/" ] && return 1
+    d=${d%/*}; d=${d:-/}
+  done
+  return 1
+}
+
 # Nearest ancestor (inclusive) of START holding FLEET.md, or return 1. A
 # directory holding HERO.md beside it is a repo that committed a FLEET.md:
 # repo content, not the operator's map, so it is passed over (stderr note)
@@ -606,6 +625,10 @@ hero_fleet_root() { # [START]
     if [ -f "$d/FLEET.md" ]; then
       if [ -f "$d/HERO.md" ]; then
         echo "hero_fleet_root: passing over $d; FLEET.md beside HERO.md is a repo, not a fleet" >&2
+      elif hero_in_git_worktree "$d"; then
+        # Tests the folder holding FLEET.md, never the register: the real
+        # fleet's .fleet/ is its own checkout and must keep loading.
+        echo "hero_fleet_root: passing over $d; a folder inside a git work tree is never a fleet root" >&2
       else
         printf '%s' "$d"; return 0
       fi
@@ -617,12 +640,13 @@ hero_fleet_root() { # [START]
 }
 
 # True when DIR (default $PWD) is a fleet folder rather than a repo: it holds
-# FLEET.md and no HERO.md. Skills test this in Step 0 and hand off to "At the
-# fleet root" in docs/FLEET-MD.md instead of treating the folder as a project.
+# FLEET.md, no HERO.md, and sits outside any git work tree. Skills test this in
+# Step 0 and hand off to "At the fleet root" in docs/FLEET-MD.md instead of
+# treating the folder as a project.
 hero_at_fleet_root() { # [DIR]
   local d
-  d="${1:-$PWD}"
-  [ -f "$d/FLEET.md" ] && [ ! -f "$d/HERO.md" ]
+  d=$(cd "${1:-$PWD}" 2>/dev/null && pwd -P) || return 1
+  [ -f "$d/FLEET.md" ] && [ ! -f "$d/HERO.md" ] && ! hero_in_git_worktree "$d"
 }
 
 # A fleet-level `- key: value` from the `## Fleet` section.
@@ -652,11 +676,19 @@ hero_fleet_repo_field() { # NAME KEY [FLEET_ROOT]
 #
 # A row that cannot be trusted is SKIPPED, not defaulted: a leading `-` or a
 # control character in a value, a non-numeric port, a name that is not
-# [A-Za-z0-9._-] or is `.`/`..`, a path resolving outside the fleet, or a
-# duplicate name. Substituting a default path would point the caller's `cd` at
-# a different directory than the one the row names. Each skip is one stderr
-# line `hero_fleet_repos: skipping 'NAME' — REASON` (fleet-scan.sh reads
+# [A-Za-z0-9._-] or is `.`/`..`, a relative path resolving outside the fleet,
+# or a duplicate name. Substituting a default path would point the caller's
+# `cd` at a different directory than the one the row names. Each skip is one
+# stderr line `hero_fleet_repos: skipping 'NAME' — REASON` (fleet-scan.sh reads
 # them back as BAD_ROW), and the function returns 3 when any row was skipped.
+#
+# The containment check: whether a path is absolute is decided on the path AS
+# WRITTEN (`/…`, `~` or `~/…`), and those are the operator naming a place,
+# trusted wherever they resolve. A relative path (`~user/x` included) is held
+# to the fleet folder wherever it resolves, so `..` and symlink escapes are
+# not. Roots found by hero_fleet_root are never inside a git work tree, so
+# their FLEET.md is not a clone's; an explicit FLEET_ROOT argument is the
+# operator's own word.
 #
 # Locals are rpath/rgroup/rport, never `path`: sourced from zsh, `local path`
 # empties the PATH-tied array and awk becomes "command not found", leaving an empty
@@ -683,7 +715,7 @@ hero_fleet_repos() { # [FLEET_ROOT]
     }
     END { flush() }
   ' "$root/FLEET.md" | {
-    local name rpath rgroup rport v reason seen nbad real
+    local name rpath rgroup rport v reason seen nbad real abs
     seen=" "; nbad=0
     while IFS=$'\034' read -r name rpath rgroup rport; do
       reason=""
@@ -706,13 +738,20 @@ hero_fleet_repos() { # [FLEET_ROOT]
       rgroup=$(printf '%s' "${rgroup:-none}" | tr '[:upper:]' '[:lower:]')
       [ -n "$rpath" ] || rpath="./$name"
       rpath=${rpath%/}
-      case "$rpath" in /*) ;; *) rpath="$root/${rpath#./}" ;; esac
+      abs=0
+      case "$rpath" in
+        \~|\~/*) rpath="$HOME${rpath#\~}"; abs=1 ;;
+        /*) abs=1 ;;
+        *) rpath="$root/${rpath#./}" ;;
+      esac
       if [ -d "$rpath" ]; then
         real=$(cd "$rpath" && pwd -P)
-        case "$real" in "$root"/*) rpath=$real ;; *)
-          echo "hero_fleet_repos: skipping '$name': path resolves outside the fleet: $real" >&2
-          nbad=$((nbad + 1)); continue ;;
-        esac
+        if [ "$abs" = 1 ]; then rpath=$real; else
+          case "$real" in "$root"/*) rpath=$real ;; *)
+            echo "hero_fleet_repos: skipping '$name': path resolves outside the fleet: $real" >&2
+            nbad=$((nbad + 1)); continue ;;
+          esac
+        fi
       fi
       printf '%s\t%s\t%s\t%s\n' "$name" "$rpath" "$rgroup" "$rport"
     done

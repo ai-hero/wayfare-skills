@@ -359,8 +359,9 @@ check_repo() {
     emit OK "repo: HERO.md fresh"
   fi
 
-  # 3. auto-approve workflow on default branch (wayfare-build-task's Step 9, ship, needs it). Reuse the
-  # GH_AUTH_OK flag set by check_tooling instead of re-shelling gh auth.
+  # 3. auto-approve workflow on default branch (wayfare-build-task's Step 9,
+  # ship, needs it). Reuse the GH_AUTH_OK flag set by check_tooling instead of
+  # re-shelling gh auth.
   #
   # Both spellings, and this one is a BLOCKER: probing only .yml stopped
   # wayfare-build-task at Step 0.3, before any work started, against a repo whose

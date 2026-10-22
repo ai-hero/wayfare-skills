@@ -41,11 +41,10 @@
 # Exit: 0 rows printed, 1 cannot run (no lib, bad ROOT, reader failure),
 # 2 unknown skill.
 
-# Deliberately not `set -e`, unlike most scripts in this directory. An
-# unset field makes `hero_md_field` return non-zero, and that is this script's
-# finding to report, not an error to die on. With `-e` the table stops at the
-# first unset field and exits 1, silently, and every recalibrate that reads it
-# then asks about nothing.
+# Deliberately not `set -e`. An unset field makes `hero_md_field` return
+# non-zero, and that is this script's finding to report, not an error to die
+# on. With `-e` the table stops at the first unset field and exits 1, silently,
+# and every recalibrate that reads it then asks about nothing.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

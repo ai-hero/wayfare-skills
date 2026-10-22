@@ -108,9 +108,10 @@ Rules:
 | `hero_compose_port DIR [RANGE]` | the host port `DIR`'s dev compose file publishes; `-` no compose file, `?` none readable |
 
 `FLEET_ROOT` defaults to `hero_fleet_root`, so from inside a repo every read
-targets the fleet that checkout lives in. A member joined by an absolute row
-lives outside the fleet folder, so from inside its own checkout
-`hero_fleet_root` finds no fleet (rc 1); pass it `FLEET_ROOT` explicitly.
+targets the fleet that checkout lives in. A member joined by an absolute row can
+live outside the fleet folder, and then from inside its own checkout
+`hero_fleet_root` finds no fleet (rc 1) or a different one; pass each read
+`FLEET_ROOT` explicitly.
 
 `scripts/fleet-scan.sh FLEET_ROOT --list` enumerates the checkouts on disk with
 their compose port; `--review` diffs disk against the rows and prints

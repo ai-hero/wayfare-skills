@@ -59,7 +59,7 @@ strip_fences_and_comments() { # FILE -> prints it with fenced ``` blocks and lin
 }
 
 echo ""
-bold "Hero Skills Plugin Validator"
+bold "wayfare Plugin Validator"
 echo "────────────────────────────"
 echo ""
 
@@ -787,7 +787,8 @@ fi
 # audit-plugin reads HERO.md to audit this plugin's own field coverage, not
 # as a project's config, and never runs in another repo. A `user-invocable:
 # false` skill is reached only by a Skill-tool chain from a skill that already
-# ran the fleet test (wayfare Step 0, wayfare-grill-idea Step 0), a second test
+# ran the fleet test (references/loading.md's shared Step 0, which
+# wayfare-sync-plan runs, or wayfare-grill-idea's Step 0), a second test
 # there would be dead code that reads as a promise, and dropping the exemption
 # would re-add fleet handling to skills that have no user path to a fleet
 # folder. A hand-typed run at a fleet root is unguarded and fails loudly on
@@ -800,13 +801,26 @@ for f in "$SKILLS_DIR"/*/SKILL.md; do
   SKILL_DIR=$(dirname "$f")
   SKILL_CONTENT=$(find "$SKILL_DIR" -maxdepth 1 -type f \( -name 'SKILL.md' -o -name 'WORKFLOW.md' \) -exec cat {} +)
   grep -qE 'HERO\.md|hero_field|hero_md_field' <<< "$SKILL_CONTENT" || continue
-  grep -qE 'hero_at_fleet_root|hero_fleet_root|-f "\$(PWD|ROOT)/FLEET\.md" \]' <<< "$SKILL_CONTENT" && continue
+  grep -qE 'hero_at_fleet_root|hero_fleet_root' <<< "$SKILL_CONTENT" && continue
   FLEET_GATE_ERRORS=$((FLEET_GATE_ERRORS + 1))
   error "reads HERO.md but never tests for the fleet root" \
     "${f#"$PLUGIN_ROOT/"}" "" \
     "Add the FLEET_ROOT line from scripts/new-skill.sh's Step 0 and the pointer to docs/FLEET-MD.md"
 done
 [[ $FLEET_GATE_ERRORS -eq 0 ]] && pass "every skill that reads HERO.md tests for the fleet root"
+
+# The inline two-file test misses hero-lib.sh's work-tree rule, so a clone that
+# commits FLEET.md reads as a fleet to it and as a repo to the lib.
+INLINE_FLEET_ERRORS=0
+while IFS= read -r f; do
+  hits=$(grep -nE -- '-f "\\?\$(PWD|ROOT)/FLEET\.md" \] && \[ ! -f' "$f" || true)
+  [ -z "$hits" ] && continue
+  INLINE_FLEET_ERRORS=$((INLINE_FLEET_ERRORS + 1))
+  error "inline fleet-root test instead of hero_at_fleet_root" \
+    "${f#"$PLUGIN_ROOT/"}" "$(printf '%s' "$hits" | head -1 | cut -d: -f1)" \
+    "Source hero-lib.sh with the sanctioned WAYFARE_ROOT line and call hero_at_fleet_root"
+done < <(find "$SKILLS_DIR" "$PLUGIN_ROOT/references" "$PLUGIN_ROOT/scripts/new-skill.sh" -type f 2>/dev/null)
+[[ $INLINE_FLEET_ERRORS -eq 0 ]] && pass "no inline fleet-root test in skills/, references/ or new-skill.sh"
 
 # ── work-item store: producers must have a consumer ────────────────
 # wayfare-grill-idea, handoff, and harden all WRITE work-items into .plans/

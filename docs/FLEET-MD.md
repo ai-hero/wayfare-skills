@@ -108,15 +108,18 @@ Rules:
 | `hero_compose_port DIR [RANGE]` | the host port `DIR`'s dev compose file publishes; `-` no compose file, `?` none readable |
 
 `FLEET_ROOT` defaults to `hero_fleet_root`, so from inside a repo every read
-targets the fleet that checkout lives in.
+targets the fleet that checkout lives in. A member joined by an absolute row can
+live outside the fleet folder, and then from inside its own checkout
+`hero_fleet_root` finds no fleet (rc 1) or a different one; pass each read
+`FLEET_ROOT` explicitly.
 
 `scripts/fleet-scan.sh FLEET_ROOT --list` enumerates the checkouts on disk with
 their compose port; `--review` diffs disk against the rows and prints
 `CODE<TAB>NAME<TAB>DETAIL`. The codes and their meanings are the script's
 `--help`. `--review` exits 1 when there is anything to fix, and 2 for a folder
-that is not a fleet (no `FLEET.md`, or a `HERO.md` beside it). Disk is always
-scanned. A registry that only re-reads itself reports a fleet that no longer
-exists.
+that is not a fleet (no `FLEET.md`, a `HERO.md` beside it, or a folder inside a
+git work tree). Disk is always scanned. A registry that only re-reads itself
+reports a fleet that no longer exists.
 
 ## Fleet-aware repos
 

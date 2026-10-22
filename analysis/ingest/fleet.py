@@ -8,9 +8,9 @@ shared wayfare-skills plugin, not fleet-specific tooling):
   header comment), not a hardcoded path.
 - ROOT is found the same way scripts/hero-lib.sh's hero_fleet_root finds
   it: the nearest ancestor of the current directory holding FLEET.md with
-  no sibling HERO.md (a repo that committed its own FLEET.md is not a
-  fleet folder). WAYFARE_FLEET_ROOT overrides it, for a script run from
-  outside any repo.
+  no sibling HERO.md and outside any git work tree (a repo that committed
+  its own FLEET.md is not a fleet folder). WAYFARE_FLEET_ROOT overrides it,
+  for a script run from outside any repo.
 - Facts FLEET.md/HERO.md don't carry at all -- a baseline before/after
   cutoff date, which repos have no roadmap yet, which app IS the design
   system, role labels finer than a FLEET.md group -- come from
@@ -28,14 +28,29 @@ def _plugin_root():
             or os.path.expanduser("~/.claude/plugins/wayfare-skills"))
 
 
+# Mirrors scripts/audit.py's in_git_worktree rather than importing it:
+# importing audit.py runs its configure() and loads the fleet overlay.
+def _in_git_worktree(d):
+    home = os.path.realpath(os.path.expanduser("~"))
+    while True:
+        if d != home and os.path.exists(os.path.join(d, ".git")):
+            return True
+        parent = os.path.dirname(d)
+        if parent == d:
+            return False
+        d = parent
+
+
 def _fleet_root():
     env = os.environ.get("WAYFARE_FLEET_ROOT")
     if env:
         return os.path.abspath(env)
-    d = os.path.abspath(os.getcwd())
+    d = os.path.realpath(os.getcwd())
     while True:
         if os.path.isfile(os.path.join(d, "FLEET.md")) and not os.path.isfile(os.path.join(d, "HERO.md")):
-            return d
+            if not _in_git_worktree(d):
+                return d
+            print(f"ingest/fleet.py: passing over {d}; a folder inside a git work tree is never a fleet root", file=sys.stderr)
         parent = os.path.dirname(d)
         if parent == d:
             break

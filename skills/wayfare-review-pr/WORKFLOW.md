@@ -70,7 +70,9 @@ as wrong. Do not ask about a row that already has the correct value.
 ```bash
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
-[ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
+hero_at_fleet_root && echo "FLEET_ROOT" || true
 ```
 
 If the command prints `FLEET_ROOT`, stop this repo procedure. Follow **At the
@@ -496,7 +498,7 @@ Next step: (pick exactly one, based on what actually happened above)
 
 - **`$NO_MARK_READY` is `true`** (deferred to caller, e.g.
   `wayfare-build-task`): no next-step line. The caller owns what happens next
-  (wayfare-build-task's own Step 7 mark-ready gate).
+  (wayfare-build-task's own Step 6 mark-ready gate).
 - **Marked ready, agent configured**: print
   `Waiting on {agent}'s first review, then run wayfare:wayfare-respond-pr.` (no
   prompt, nothing to invoke yet).

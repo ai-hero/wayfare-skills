@@ -38,8 +38,9 @@
 # Exit codes:
 #   0  --list ran; or --review found nothing
 #   1  --review found at least one finding
-#   2  usage error; or, for --review, no FLEET.md at the root, or a HERO.md
-#      beside it (a repo that committed a FLEET.md is not a fleet)
+#   2  usage error; or, for --review, no FLEET.md at the root, a HERO.md
+#      beside it, or a root inside a git work tree (a repo that committed a
+#      FLEET.md is not a fleet)
 
 set -uo pipefail
 
@@ -50,7 +51,7 @@ HERO_LIB="$(cd "$(dirname "$0")" && pwd)/hero-lib.sh"
 # The end line tracks the header block above. Add a line up there and this
 # range silently truncates `--help` mid-sentence — no error, and the Exit
 # codes section is what falls off first.
-usage() { sed -n '5,42p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '5,43p' "$0" | sed 's/^# \{0,1\}//'; }
 
 MODE=list
 ROOT=""

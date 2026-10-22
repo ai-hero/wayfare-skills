@@ -18,7 +18,9 @@ Follow the four phases in [docs/RECALIBRATE.md](../../docs/RECALIBRATE.md)
 ### Step 0: fleet check
 
 ```bash
-[ -f "$PWD/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
+hero_at_fleet_root && echo "FLEET_ROOT" || true
 ```
 
 If the command prints `FLEET_ROOT`, stop this repo procedure. Follow **At the

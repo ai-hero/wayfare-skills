@@ -498,16 +498,14 @@ procedures:
 | -- | -- | -- |
 | `architecture` | `wayfare:wayfare-review-architecture` | Report where a single root `DESIGN.md` and the code have drifted: tech stack, boundaries, dependency rules, invariants, users, flows, interaction standards, append-only decisions. Writes nothing |
 | `architecture` | `wayfare:wayfare-sync-architecture` | Bootstrap `DESIGN.md`, and apply the drift rows the review found. Never restates what the code says |
-| `wayfare-audit-security` | `wayfare:wayfare-audit-security` | Audit read-only for hardening, dependency CVEs (Dependabot), container CVEs (Docker Scout, Trivy), code robustness, and emit execution-ready plans as `.plans/` security items |
+| `harden` | `wayfare:wayfare-audit-security` | Audit read-only for hardening, dependency CVEs (Dependabot), container CVEs (Docker Scout, Trivy), code robustness, and emit execution-ready plans as `.plans/` security items |
 
 ### Setup
 
 | Command | What it does |
 | -- | -- |
-| `wayfare:wayfare-init-repo` | Investigate your repo, auto-detect stack, create `HERO.md` config |
 | `wayfare:wayfare-check-preflight` | Catch missing tooling, stale `HERO.md`, env mismatches, and busy ports before a pipeline step does destructive work |
 | `wayfare:wayfare-setup-dev` | Set up a developer's local environment (tools, auth, dependencies) |
-| `wayfare:wayfare-init-repo` | Scaffold a new project (Python, full-stack, Node.js) |
 | `wayfare:wayfare-create-skill` | Create a new Claude Code skill, subagent, rule, or hook |
 
 ### Development Cycle
@@ -521,7 +519,6 @@ procedures:
 | Command | What it does |
 | -- | -- |
 | `wayfare:wayfare-review-pr` | Review a PR with the review agents plus a security pass: your draft → applies fixes, asks before marking ready. Others' PR → inline comments only. |
-| `wayfare:wayfare-humanize-prose` | Strip AI-writing patterns from prose ([docs/HUMANIZING.md](./docs/HUMANIZING.md), from Wikipedia's "Signs of AI writing"). The pipeline steps that emit prose read the doc directly; this skill runs it on any text you hand it |
 | `wayfare:wayfare-respond-pr` | Fix PR review comments, resolve threads, optionally loop with external review agent |
 | `wayfare:wayfare-ship-pr` | Trigger gated `@auto-approve`, wait for the verdict, merge if it passes, reset to the default branch, and wait for the merge commit's runs to report post-merge CI and deployment health |
 
@@ -531,7 +528,6 @@ procedures:
 | -- | -- |
 | `wayfare:wayfare-one-shot` | Takes one small, clear change from a one-line description to a merged PR: drafts one task, shows it, and on your yes marks it ready and runs `wayfare-build-task` on it. Stops and routes to `wayfare-grill-idea` when the description is several items, touches an anti-feature, or is a one-way door. |
 | `wayfare:wayfare-build-task` | Drives a small task end-to-end: plan → implement → simplify → push → self-review → mark-ready → await-review → respond → ship, with the tests run inside push. Detects a resume point on re-invocation; with no arguments, drives the current goal to merged + reset branch. Explicit user gates at each destructive step. |
-| `wayfare:wayfare-init-repo` | Scaffolds a new project, then chains into wayfare-setup-dev → config → first-commit. |
 
 ### Operations
 
@@ -547,8 +543,7 @@ procedures:
 | Command | What it does |
 | -- | -- |
 | `wayfare:wayfare-recomponentize-ui` | Refactor a project's UI into atomic components, sourcing primitives from a design-system registry and codemodding off-token styling |
-| `wayfare:wayfare-humanize-prose` | Strip the signs of AI-generated writing out of text |
-| `wayfare:wayfare-write-handoff` | Distil the session into one self-contained work-item for an agent with no context from it |
+| `wayfare:wayfare-humanize-prose` | Strip AI-writing patterns from prose ([docs/HUMANIZING.md](./docs/HUMANIZING.md), from Wikipedia's "Signs of AI writing"). The pipeline steps that emit prose read the doc directly; this skill runs it on any text you hand it |
 | `wayfare:wayfare-audit-plugin` | Audit the wayfare plugin itself for quality and consistency |
 
 ## Updating vendored assets in a downstream repo

@@ -219,8 +219,8 @@ def configure(root=None):
     ROOT = root
     reg = fields.get("register") or ".fleet/"
     REGISTER = (root / reg.rstrip("/")).resolve()
-    # The register is the fleet's own state and sits inside the fleet, like
-    # every row: an escaping value would make consistency.py write outside it.
+    # The register is the fleet's own state and sits inside the fleet: an
+    # escaping value would make consistency.py write outside it.
     if root not in REGISTER.parents:
         sys.exit(f"FLEET.md register: {reg} resolves outside the fleet ({REGISTER})")
     # A mapped-but-missing register is the one state that must not run: the

@@ -332,11 +332,10 @@ hero_connection_repo() { # KIND [ROOT]
   fi
 
   # A path, resolved against ROOT rather than $PWD so a caller running from a
-  # subdirectory does not get a different answer. Unlike hero_fleet_repos there
-  # is NO containment check: a connection legitimately points outside its own
-  # tree (`../design-system`), and the fleet's check exists because a row must
-  # stay inside the fleet it is a row of. What keeps this safe is the caller,
-  # which reads the resolved path and never writes it (docs/CONNECTIONS.md).
+  # subdirectory does not get a different answer. There is NO containment
+  # check: a connection legitimately points outside its own tree
+  # (`../design-system`). What keeps this safe is the caller, which reads the
+  # resolved path and never writes it (docs/CONNECTIONS.md).
   case "$at" in /*) row_path=$at ;; *) row_path="$root/$at" ;; esac
   [ -d "$row_path" ] || {
     echo "hero_connection_repo: $1 at '$at' is neither a FLEET.md row nor a directory" >&2
@@ -612,9 +611,9 @@ hero_in_git_worktree() { # DIR
 }
 
 # Nearest ancestor (inclusive) of START holding FLEET.md, or return 1. A
-# directory holding HERO.md beside it is a repo that committed a FLEET.md:
-# repo content, not the operator's map, so it is passed over (stderr note)
-# and the walk continues upward.
+# directory holding HERO.md beside it, or sitting inside a git work tree, is a
+# repo that committed a FLEET.md: repo content, not the operator's map, so it
+# is passed over (stderr note) and the walk continues upward.
 # shellcheck disable=SC2120  # in-file callers take the default; the tests pass START
 hero_fleet_root() { # [START]
   local d

@@ -344,6 +344,8 @@ def convert(b, n, cards, drawn, results, assets, counters):
     out = convert_kind(b, n, cards, drawn, results, assets, counters)
     if out:
         out.update({f: True for f in EXAMPLE_FLAGS if b.get(f)})
+    elif b.get("example_start") or b.get("example_end"):
+        ERRORS.append(f"chapter {n}: a worked example starts or ends on a dropped {b['kind']} block")
     return out
 
 

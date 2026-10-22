@@ -18,8 +18,8 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 import paths
-from book import ONES, without_appendix, esc, example, fig_id
-from inline import md_plain, sub_notes
+from book import FONTS, GEIST_ITALIC, ONES, esc, fig_id, font_faces, without_appendix
+from inline import EXAMPLE_TITLE, md_plain, sub_notes
 
 HERE = os.path.join(paths.HERE, "kindle")
 OVERRIDES = os.path.join(paths.EDITIONS, "kindle.json")
@@ -38,6 +38,10 @@ ACCESSIBILITY = [("rendition:layout", "reflowable"), ("schema:accessMode", "text
     [("schema:accessibilityFeature", f) for f in ("alternativeText", "structuralNavigation", "tableOfContents",
                                                   "readingOrder", "displayTransformability")] + \
     [("schema:accessibilityHazard", h) for h in ("noFlashingHazard", "noMotionSimulationHazard", "noSoundHazard")]
+# The print book's faces, cut to static instances (Kindle does not read variable fonts) and
+# subset to the book's characters, so each costs tens of kilobytes rather than hundreds.
+FACES = [("Geist", 300, "normal"), ("Geist", 400, "normal"), ("Geist", 600, "normal"), ("Geist", 400, "italic"),
+         ("Geist Mono", 400, "normal"), ("Manrope", 300, "normal")]
 XHTML_NS = 'xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"'
 XML_ENTITIES = {"amp", "lt", "gt", "quot", "apos"}
 
@@ -141,8 +145,6 @@ def table_html(rows, tid, labelledby, cls=""):
     classes = " ".join(filter(None, (cls, "wide-table" if len(cols) >= 5 else "")))
     cls = f' class="{classes}"' if classes else ""
     body = "".join(f'<tbody>{"".join(b)}</tbody>' for b in bodies)
-    # class first: `book.example` adds its classes to the first tag's existing class attribute,
-    # and a second class attribute after `id` would make the file malformed XML.
     return (f'<table{cls} id="{tid}" aria-labelledby="{labelledby}"><thead><tr>{head}</tr></thead>{body}</table>')
 
 
@@ -181,13 +183,24 @@ def block(b, images, heading=None, tid=None):
     elif k == "figure":
         out = figure(b, images)
     else:
-        return ""
-    return example(b, out)
+        out = ""
+    return card(b, out)
+
+
+def card(b, out):
+    """One element per card, unlike the print book's per-block borders: a reader's pagination splits
+    bordered siblings into stray boxes. Every block passes through here, rendered or not, or a card's
+    opening or closing tag is lost with it and the file stops parsing."""
+    if b.get("example_start"):
+        out = f'<div class="example"><p class="example-title">{EXAMPLE_TITLE}</p>{out}'
+    if b.get("example_end"):
+        out += "</div>"
+    return out
 
 
 def chapter(c, images):
     out = [f'<section epub:type="chapter" role="doc-chapter" id="ch-{c["n"]}">'
-           f'<p class="chapter-number">Chapter {ONES[c["n"]]}</p><h1 id="ch-{c["n"]}-title">{esc(c["title"])}</h1>']
+           f'<hr class="opener-rule" aria-hidden="true"/><p class="chapter-number">Chapter {ONES[c["n"]]}</p><h1 id="ch-{c["n"]}-title">{esc(c["title"])}</h1>']
     heading = f"ch-{c['n']}-title"
     # Counted per heading, not per section: an untitled section keeps the heading before it, and
     # restarting its count would repeat that heading's table ids.
@@ -202,7 +215,7 @@ def chapter(c, images):
             out.append(block(b, images, heading, f"{heading}-table-{tables.get(heading, 0)}"))
     if c.get("further"):
         refs = ", ".join(f'<a class="cite" href="#ref-{n}">{n}</a>' for n in c["further"])
-        out.append(f'<p class="first">Further sources: [{refs}].</p>')
+        out.append(f'<p class="further-sources">Further sources: [{refs}].</p>')
     out.append("</section>")
     return "".join(out)
 
@@ -220,9 +233,9 @@ def appendix_entry(e, images):
             out.append(f'<img src="{src}" alt="{esc(md_plain(ch.get("alt") or e.get("title") or ""))}"/>')
     for b in e["blocks"]:
         if b["kind"] == "link":
-            continue
-        if b["kind"] == "p":
-            out.append("<p>" + RUN_IN.sub(lambda m: f'<span class="run-in">{m.group(1)}</span> ', b["html"], 1) + "</p>")
+            out.append(card(b, ""))
+        elif b["kind"] == "p":
+            out.append(card(b, "<p>" + RUN_IN.sub(lambda m: f'<span class="run-in">{m.group(1)}</span> ', b["html"], 1) + "</p>"))
         else:
             out.append(block(b, images))
     out.append("</section>")
@@ -242,9 +255,10 @@ def appendix_part(part, title, images):
 
 def front_matter(meta, preface):
     pages = [("title", "Title page", "titlepage",
-              f'<section class="title-page"><h1 class="book-title">{esc(meta["title"])}</h1>'
-              f'<p class="subtitle">{esc(meta.get("subtitle"))}</p><p>{esc(meta["author"])}</p>'
-              f'<p>{esc(meta.get("affiliation"))}</p></section>'),
+              f'<section class="title-page"><hr class="opener-rule" aria-hidden="true"/>'
+              f'<h1 class="book-title">{esc(meta["title"])}</h1>'
+              f'<p class="subtitle">{esc(meta.get("subtitle"))}</p><p class="author">{esc(meta["author"])}</p>'
+              f'<p class="affiliation">{esc(meta.get("affiliation"))}</p></section>'),
              ("copyright", "Copyright", "copyright-page",
               f'<section class="copyright"><p>{esc(meta.get("copyright"))}</p>'
               f'<p>{esc(meta.get("edition"))} edition · {esc(meta.get("date"))}</p>'
@@ -364,13 +378,14 @@ def ncx(meta, ident, tree):
             f'<docTitle><text>{esc(meta["title"])}</text></docTitle><navMap>{points(tree)}</navMap></ncx>')
 
 
-def opf(meta, ident, docs, images, first):
+def opf(meta, ident, docs, images, fonts, first):
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     items = ['<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
              '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>',
              '<item id="css" href="kindle.css" media-type="text/css"/>',
              '<item id="cover-image" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/>']
     items += [f'<item id="{name}" href="{name}.xhtml" media-type="application/xhtml+xml"/>' for name, *_ in docs]
+    items += [f'<item id="font{i}" href="{href}" media-type="font/ttf"/>' for i, href in enumerate(fonts)]
     items += [f'<item id="img{i}" href="{href}" media-type="image/png"/>' for i, (href, _) in enumerate(images.files.values())]
     spine = []
     for name, *_ in docs:
@@ -399,6 +414,40 @@ def opf(meta, ident, docs, images, first):
             f'<spine toc="ncx">{"".join(spine)}</spine>'
             f'<guide><reference type="toc" title="Contents" href="nav.xhtml"/>'
             f'<reference type="text" title="Start" href="{first}"/></guide></package>')
+
+
+def embedded_fonts(text):
+    """The faces as {href: TrueType bytes} and the @font-face rules that load them. `text` is upper-cased
+    too, since the labels set in small caps draw glyphs the source never spells."""
+    from fontTools import subset
+    from fontTools.ttLib import TTFont
+    from fontTools.varLib.instancer import instantiateVariableFont
+    font_faces()
+    chars = text + text.upper() + "".join(map(chr, range(0x20, 0x7f)))
+    files, css = {}, []
+    for family, weight, style in FACES:
+        src = GEIST_ITALIC if style == "italic" else FONTS[family]
+        if not os.path.exists(src):
+            continue
+        font = instantiateVariableFont(TTFont(src), {"wght": weight}, updateFontNames=True)
+        font.flavor = None
+        options = subset.Options()
+        options.layout_features = ["*"]
+        options.drop_tables += ["meta"]
+        sub = subset.Subsetter(options)
+        sub.populate(text=chars)
+        sub.subset(font)
+        buf = io.BytesIO()
+        font.save(buf)
+        href = f"fonts/{family.replace(' ', '')}-{weight}{'-italic' if style == 'italic' else ''}.ttf"
+        files[href] = buf.getvalue()
+        css.append(f'@font-face {{ font-family: "{family}"; font-weight: {weight}; font-style: {style}; '
+                   f'src: url("{href}"); }}')
+    return files, "\n".join(css) + "\n"
+
+
+def visible_text(markup):
+    return html.unescape(re.sub(r"<[^>]+>", "", markup))
 
 
 def cover_jpeg():
@@ -467,7 +516,7 @@ def main():
         docs += [(f"appendix-{p['n']}", p["title"], "backmatter", appendix_part(p, appx["title"], images))
                  for p in appx["parts"]]
     if doc.get("references"):
-        refs = "".join(f'<p id="ref-{r["n"]}">[{r["n"]}] {link_urls(r["html"])}</p>' for r in doc["references"])
+        refs = "".join(f'<p id="ref-{r["n"]}"><span class="ref-n">[{r["n"]}]</span>{link_urls(r["html"])}</p>' for r in doc["references"])
         docs.append(("references", "References", "backmatter",
                      f'<section epub:type="bibliography" role="doc-bibliography" id="references"><h1>References</h1>'
                      f'<div class="reference-list">{refs}</div></section>'))
@@ -480,11 +529,15 @@ def main():
     ident = uuid.uuid5(uuid.NAMESPACE_URL, f"aihero.studio/book/{meta['title']}")
     with open(os.path.join(HERE, "kindle.css"), encoding="utf-8") as f:
         css = f.read()
+    fonts, faces = embedded_fonts(visible_text("".join(body for *_, body in docs) + xhtml_nav)
+                                  + meta["title"] + (meta.get("subtitle") or ""))
+    css = faces + css
 
     files = {"OEBPS/kindle.css": css, "OEBPS/nav.xhtml": xhtml_nav, "OEBPS/toc.ncx": ncx(meta, ident, tree),
-             "OEBPS/content.opf": opf(meta, ident, docs, images, first), "OEBPS/images/cover.jpg": cover_jpeg()}
+             "OEBPS/content.opf": opf(meta, ident, docs, images, fonts, first), "OEBPS/images/cover.jpg": cover_jpeg()}
     files.update({f"OEBPS/{name}.xhtml": page(title, body, kind) for name, title, kind, body in docs})
     files.update({f"OEBPS/{href}": data for href, data in images.files.values()})
+    files.update({f"OEBPS/{href}": data for href, data in fonts.items()})
     problems = check({k: v.encode("utf-8") if isinstance(v, str) else v for k, v in files.items()})
 
     os.makedirs(paths.DIST, exist_ok=True)

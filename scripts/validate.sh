@@ -59,7 +59,7 @@ strip_fences_and_comments() { # FILE -> prints it with fenced ``` blocks and lin
 }
 
 echo ""
-bold "Hero Skills Plugin Validator"
+bold "wayfare Plugin Validator"
 echo "────────────────────────────"
 echo ""
 

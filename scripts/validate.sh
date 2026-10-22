@@ -800,13 +800,26 @@ for f in "$SKILLS_DIR"/*/SKILL.md; do
   SKILL_DIR=$(dirname "$f")
   SKILL_CONTENT=$(find "$SKILL_DIR" -maxdepth 1 -type f \( -name 'SKILL.md' -o -name 'WORKFLOW.md' \) -exec cat {} +)
   grep -qE 'HERO\.md|hero_field|hero_md_field' <<< "$SKILL_CONTENT" || continue
-  grep -qE 'hero_at_fleet_root|hero_fleet_root|-f "\$(PWD|ROOT)/FLEET\.md" \]' <<< "$SKILL_CONTENT" && continue
+  grep -qE 'hero_at_fleet_root|hero_fleet_root' <<< "$SKILL_CONTENT" && continue
   FLEET_GATE_ERRORS=$((FLEET_GATE_ERRORS + 1))
   error "reads HERO.md but never tests for the fleet root" \
     "${f#"$PLUGIN_ROOT/"}" "" \
     "Add the FLEET_ROOT line from scripts/new-skill.sh's Step 0 and the pointer to docs/FLEET-MD.md"
 done
 [[ $FLEET_GATE_ERRORS -eq 0 ]] && pass "every skill that reads HERO.md tests for the fleet root"
+
+# The inline two-file test misses hero-lib.sh's work-tree rule, so a clone that
+# commits FLEET.md reads as a fleet to it and as a repo to the lib.
+INLINE_FLEET_ERRORS=0
+while IFS= read -r f; do
+  hits=$(grep -nE -- '-f "\\?\$(PWD|ROOT)/FLEET\.md" \] && \[ ! -f' "$f" || true)
+  [ -z "$hits" ] && continue
+  INLINE_FLEET_ERRORS=$((INLINE_FLEET_ERRORS + 1))
+  error "inline fleet-root test instead of hero_at_fleet_root" \
+    "${f#"$PLUGIN_ROOT/"}" "$(printf '%s' "$hits" | head -1 | cut -d: -f1)" \
+    "Source hero-lib.sh with the sanctioned WAYFARE_ROOT line and call hero_at_fleet_root"
+done < <(find "$SKILLS_DIR" "$PLUGIN_ROOT/references" "$PLUGIN_ROOT/scripts/new-skill.sh" -type f 2>/dev/null)
+[[ $INLINE_FLEET_ERRORS -eq 0 ]] && pass "no inline fleet-root test in skills/, references/ or new-skill.sh"
 
 # ── work-item store: producers must have a consumer ────────────────
 # wayfare-grill-idea, handoff, and harden all WRITE work-items into .plans/

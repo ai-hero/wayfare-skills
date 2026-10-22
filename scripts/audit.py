@@ -122,9 +122,11 @@ def repo_path(name):
 
 
 def in_git_worktree(d):
-    """Whether d or an ancestor holds a .git entry. Walks the filesystem so
-    GIT_DIR cannot lie."""
-    return any((p / ".git").exists() for p in (d, *d.parents))
+    """Whether d or an ancestor other than $HOME holds a .git entry. Walks the
+    filesystem so GIT_DIR cannot lie. $HOME is skipped: a dotfiles repo there is
+    not a clone, and counting it would stop every fleet under $HOME resolving."""
+    home = pathlib.Path.home().resolve()
+    return any((p / ".git").exists() for p in (d, *d.parents) if p != home)
 
 
 def fleet_root(start=None):
@@ -233,9 +235,12 @@ def configure(root=None):
         if row["group"] == "none":
             continue
         raw = row["path"] or row["name"]
-        # Decided on the path as written; the resolved location is not the test.
+        # Only `~` and `~/…` expand, as in hero_fleet_repos: `~user/x` stays a
+        # relative path there, so it must here.
         written_absolute = raw == "~" or raw.startswith(("/", "~/"))
-        path = (root / os.path.expanduser(raw)).resolve()
+        if written_absolute:
+            raw = os.path.expanduser(raw) if raw[0] == "~" else raw
+        path = (root / raw).resolve()
         if not written_absolute and root not in path.parents:
             print(f"configure: skipping '{row['name']}' — path resolves outside the fleet: {path}", file=sys.stderr)
             continue

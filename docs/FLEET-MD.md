@@ -80,13 +80,16 @@ Rules:
    absolute (`/…`, or `~/…` with `~` read as `$HOME`) is trusted wherever it
    points, which is how a plugin checkout outside the folder joins the fleet; a
    relative `path` that resolves outside the folder, by `..` or by a symlink, is
-   a bad row and is skipped (`BAD_ROW`). The test is on the path as written,
-   never on where it resolves. `group` defaults to `none`; `what` is one line.
-   `port` is the **assignment**: a new dev stack claims the next free port in
-   this file first and implements it in the repo second: the row is where the
-   choice is made, and the compose default is where it takes effect, and
-   `review` reports the two disagreeing. Anything else the repo needs belongs in
-   the repo.
+   a bad row and is skipped (`BAD_ROW`). Whether a path is absolute is decided
+   on the path as written (`/…`, `~` or `~/…`); only a relative path is held to
+   the fleet folder, wherever it resolves. Roots found by `hero_fleet_root` or
+   `fleet_root()` are never inside a git work tree; an explicit `FLEET_ROOT`
+   argument or `--fleet` is the operator's own word. `group` defaults to `none`;
+   `what` is one line. `port` is the **assignment**: a new dev stack claims the
+   next free port in this file first and implements it in the repo second: the
+   row is where the choice is made, and the compose default is where it takes
+   effect, and `review` reports the two disagreeing. Anything else the repo
+   needs belongs in the repo.
 4. **Prose after `## Repos` is fine**, conventions, known cross-repo issues, a
    change-routing table. The reader only parses `- key: value` lines under the
    headings it is asked for and skips code fences, so examples are safe.
@@ -97,7 +100,7 @@ Rules:
 
 | Function (`scripts/hero-lib.sh`) | Returns |
 | -- | -- |
-| `hero_fleet_root [START]` | nearest ancestor of `START` (default `$PWD`) holding `FLEET.md` with no `HERO.md` beside it, outside any git work tree; a committed FLEET.md is passed over |
+| `hero_fleet_root [START]` | nearest ancestor of `START` (default `$PWD`) holding `FLEET.md` with no `HERO.md` beside it, outside any git work tree (`.git` on the folder or an ancestor other than `$HOME`); a committed FLEET.md is passed over |
 | `hero_at_fleet_root [DIR]` | true when `DIR` (default `$PWD`) has `FLEET.md`, no `HERO.md`, and sits outside any git work tree: a fleet folder, not a repo |
 | `hero_fleet_field KEY [FLEET_ROOT]` | a `## Fleet` value |
 | `hero_fleet_repo_field NAME KEY [FLEET_ROOT]` | a value from `### NAME` under `## Repos` |
@@ -181,7 +184,8 @@ whose subject is the folder rather than a repo.
   imposed on everyone who clones, and, in a cloned repo, attacker content. Every
   reader treats a folder holding both files as a repo: `hero_fleet_root` passes
   it over and keeps walking, `review` exits 2, so a committed one is inert. A
-  folder inside a git work tree is never a fleet root, HERO.md or not, because
+  folder is never a fleet root, HERO.md or not, when it or any ancestor other
+  than `$HOME` holds `.git` (a dotfiles repo at `$HOME` is not a clone), because
   the audit would execute the clone's `.fleet/checkers.py`; both
   `hero_fleet_root` and the audit's `fleet_root()` pass it over with a stderr
   note. The test is on the folder holding `FLEET.md`, never the register, so a

@@ -592,14 +592,19 @@ hero_check_staleness() {
 # definition not a repo root, and under a dotfiles-managed $HOME hero_root is
 # $HOME, which would hide every fleet beneath it.
 
-# True when DIR or any ancestor holds a .git entry (a directory, or the file a
-# worktree or submodule leaves). Walks the filesystem rather than asking git:
-# GIT_DIR in a hook's environment would make `git rev-parse` call everything a
-# work tree.
+# True when DIR or any ancestor other than $HOME holds a .git entry (a
+# directory, or the file a worktree or submodule leaves). Walks the filesystem
+# rather than asking git: GIT_DIR in a hook's environment would make `git
+# rev-parse` call everything a work tree. $HOME is skipped because a
+# dotfiles repo there is not a clone; counting it would stop every fleet under
+# $HOME resolving. An unresolvable DIR is reported as inside a work tree, so a
+# path that cannot be checked is never trusted.
 hero_in_git_worktree() { # DIR
-  local d="$1"
+  local d home=""
+  d=$(cd "$1" 2>/dev/null && pwd -P) || return 0
+  [ -z "$HOME" ] || home=$(cd "$HOME" 2>/dev/null && pwd -P)
   while [ -n "$d" ]; do
-    [ -e "$d/.git" ] && return 0
+    [ -e "$d/.git" ] && [ "$d" != "$home" ] && return 0
     [ "$d" = "/" ] && return 1
     d=${d%/*}; d=${d:-/}
   done
@@ -640,8 +645,8 @@ hero_fleet_root() { # [START]
 # treating the folder as a project.
 hero_at_fleet_root() { # [DIR]
   local d
-  d="${1:-$PWD}"
-  [ -f "$d/FLEET.md" ] && [ ! -f "$d/HERO.md" ] && ! hero_in_git_worktree "$(cd "$d" && pwd -P)"
+  d=$(cd "${1:-$PWD}" 2>/dev/null && pwd -P) || return 1
+  [ -f "$d/FLEET.md" ] && [ ! -f "$d/HERO.md" ] && ! hero_in_git_worktree "$d"
 }
 
 # A fleet-level `- key: value` from the `## Fleet` section.
@@ -677,11 +682,13 @@ hero_fleet_repo_field() { # NAME KEY [FLEET_ROOT]
 # stderr line `hero_fleet_repos: skipping 'NAME' — REASON` (fleet-scan.sh reads
 # them back as BAD_ROW), and the function returns 3 when any row was skipped.
 #
-# The containment check is decided on the path AS WRITTEN: `/…` and `~/…` are
-# the operator naming a place and are trusted wherever they resolve; `..` and
-# symlink escapes in a relative path are not. That is safe only because a
-# FLEET.md inside a git work tree is never a fleet root, so the file is never a
-# cloned repo's.
+# The containment check: whether a path is absolute is decided on the path AS
+# WRITTEN (`/…`, `~` or `~/…`), and those are the operator naming a place,
+# trusted wherever they resolve. A relative path (`~user/x` included) is held
+# to the fleet folder wherever it resolves, so `..` and symlink escapes are
+# not. Roots found by hero_fleet_root are never inside a git work tree, so
+# their FLEET.md is not a clone's; an explicit FLEET_ROOT argument is the
+# operator's own word.
 #
 # Locals are rpath/rgroup/rport, never `path`: sourced from zsh, `local path`
 # empties the PATH-tied array and awk becomes "command not found", leaving an empty

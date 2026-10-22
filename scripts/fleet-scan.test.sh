@@ -199,6 +199,15 @@ touch "$F/HERO.md"
 check "review: HERO.md beside FLEET.md exits 2" "2" "$?"
 rm "$F/HERO.md"
 
+# A FLEET.md inside a git work tree is a clone's content, and the message must
+# say that rather than blame a HERO.md that is not there.
+WT="$TMP/wtfleet"; mkdir -p "$WT/.git"; printf '## Repos\n' > "$WT/FLEET.md"
+WTERR=$("$SCAN" "$WT" --review 2>&1 >/dev/null); WTRC=$?
+check "review: a FLEET.md inside a git work tree exits 2" "2" "$WTRC"
+check "review: the work-tree refusal names the work tree, not HERO.md" \
+  "1 0" "$(printf '%s\n' "$WTERR" | grep -c 'inside a git work tree') $(printf '%s\n' "$WTERR" | grep -c 'HERO.md')"
+rm -rf "$WT"
+
 # The first sync: a FLEET.md with no rows yet claims nothing, so review has
 # nothing to say about the checkouts. `--list` is what shows them, and it still
 # sees every one. Before, this reported the whole folder as findings, which

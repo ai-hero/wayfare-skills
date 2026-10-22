@@ -287,6 +287,64 @@ check "fleet-root: a git-checkout .fleet/ does not stop a plain folder resolving
 hero_at_fleet_root "$F"; check "at-fleet-root: a plain folder with a git .fleet/ is" "0" "$?"
 rm -rf "$F/.fleet" "$TMP/clone"
 
+# The walk covers ancestors, not just the FLEET.md folder.
+mkdir -p "$TMP/clone/docs"; git init -q "$TMP/clone" 2>/dev/null
+printf '## Repos\n' > "$TMP/clone/docs/FLEET.md"
+hero_fleet_root "$CLONE/docs" >/dev/null 2>&1; rc=$?
+check "fleet-root: a FLEET.md in a subfolder of a clone is not the fleet" "1" "$rc"
+hero_at_fleet_root "$CLONE/docs"; check "at-fleet-root: a subfolder of a clone is not" "1" "$?"
+rm -rf "$TMP/clone"
+
+# A .git FILE (a worktree or submodule pointer) counts, even a dangling one.
+mkdir -p "$TMP/gitfile"; printf '## Repos\n' > "$TMP/gitfile/FLEET.md"
+printf 'gitdir: /nonexistent\n' > "$TMP/gitfile/.git"
+GITFILE="$(cd "$TMP/gitfile" && pwd -P)"
+hero_fleet_root "$GITFILE" >/dev/null 2>&1; check "fleet-root: a .git file beside FLEET.md is not the fleet" "1" "$?"
+hero_at_fleet_root "$GITFILE"; check "at-fleet-root: a .git file beside FLEET.md is not" "1" "$?"
+rm -rf "$TMP/gitfile"
+
+# The walk never asks git, so a GIT_DIR from a hook cannot make a plain folder
+# a work tree.
+GD="$TMP/gdrepo"; git init -q "$GD" 2>/dev/null
+check "fleet-root: GIT_DIR in the environment does not hide a plain fleet folder" \
+  "$F" "$(GIT_DIR="$GD/.git" hero_fleet_root "$F/web/deep" 2>/dev/null)"
+GIT_DIR="$GD/.git" hero_at_fleet_root "$F"; check "at-fleet-root: GIT_DIR in the environment does not hide a plain fleet folder" "0" "$?"
+rm -rf "$GD"
+
+# A dotfiles repo at $HOME is not a clone; a clone below it still is.
+DH="$TMP/dothome"; mkdir -p "$DH/fleet/repo" "$DH/clone"; git init -q "$DH" 2>/dev/null
+printf '## Repos\n' > "$DH/fleet/FLEET.md"; printf '## Repos\n' > "$DH/clone/FLEET.md"
+git init -q "$DH/clone" 2>/dev/null
+DH="$(cd "$DH" && pwd -P)"
+check "fleet-root: a .git at \$HOME does not hide a fleet below it" \
+  "$DH/fleet" "$(HOME="$DH" hero_fleet_root "$DH/fleet/repo" 2>/dev/null)"
+HOME="$DH" hero_at_fleet_root "$DH/fleet"; check "at-fleet-root: a .git at \$HOME does not hide a fleet below it" "0" "$?"
+HOME="$DH" hero_fleet_root "$DH/clone" >/dev/null 2>&1; check "fleet-root: a clone below a dotfiles \$HOME is still passed over" "1" "$?"
+HOME="$TMP" hero_fleet_root "$DH/fleet/repo" >/dev/null 2>&1; check "fleet-root: a .git above \$HOME still counts when HOME is elsewhere" "1" "$?"
+rm -rf "$DH"
+
+# A relative path used to loop forever: ${d%/*} does not shrink `foo`.
+( cd "$F" && hero_in_git_worktree web; echo "$?" ) > "$TMP/rel.out" 2>&1 &
+REL=$!; ( sleep 10; kill "$REL" 2>/dev/null ) 2>/dev/null & WD=$!
+wait "$REL" 2>/dev/null; kill "$WD" 2>/dev/null; wait "$WD" 2>/dev/null
+check "in-git-worktree: a relative path returns instead of looping" "1" "$(cat "$TMP/rel.out")"
+hero_in_git_worktree "$TMP/no/such/dir"; check "in-git-worktree: an unresolvable path fails closed" "0" "$?"
+hero_at_fleet_root "$TMP/no/such/dir"; check "at-fleet-root: an unresolvable folder is not a fleet" "1" "$?"
+
+# `~user/x` is not expanded: a relative row, held to the fleet folder.
+U="$TMP/ufleet"; mkdir -p "$U/~nobody/x"; U="$(cd "$U" && pwd -P)"
+cat > "$U/FLEET.md" <<'EOF'
+## Repos
+
+### u
+
+- path: ~nobody/x
+- group: apps
+EOF
+check "repos: a ~user/x path is a relative row under the fleet" \
+  "$(printf 'u\t%s/~nobody/x\tapps\t' "$U")" "$(hero_fleet_repos "$U" 2>/dev/null)"
+rm -rf "$U"
+
 # ---------- hero_normalize_repo_ref ----------------------------------------
 #
 # target-repo flows from HERO.md into `git ls-remote`/`git clone` as a URL.

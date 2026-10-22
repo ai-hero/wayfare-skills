@@ -90,12 +90,5 @@ nav ol ol li { border-bottom: 0; padding: 0.2em 0; font-size: 0.88em; }
 
 .reference-list p { font-size: 0.82em; line-height: 1.45; font-weight: 300; text-indent: 0; margin: 0 0 0.5em; }
 .ref-n { font-family: "Geist Mono", monospace; font-size: 0.9em; color: #D63358; margin-right: 0.4em; }
-.run-in { font-family: "Geist Mono", monospace; font-size: 0.8em; letter-spacing: 0.1em; text-transform: uppercase;
-  color: #D63358; }
-.entry { margin: 1.4em 0; }
-.entry h4 { font-family: "Geist Mono", monospace; font-weight: 400; font-size: 0.72em; letter-spacing: 0.08em;
-  text-transform: uppercase; margin: 0 0 0.5em; }
-.entry p { text-indent: 0; margin-bottom: 0.5em; }
-.entry img { width: 100%; height: auto; margin: 0.4em 0; }
 
 body, a, code, .reference-list { word-wrap: break-word; overflow-wrap: anywhere; }

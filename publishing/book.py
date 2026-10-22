@@ -46,12 +46,13 @@ def fetch_manrope(dest, url=MANROPE_URL, sha256=MANROPE_SHA256):
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     tmp = dest + ".part"
     try:
-        with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT) as r, open(tmp, "wb") as f:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-            f.write(r.read())
-        with open(tmp, "rb") as f:
-            got = hashlib.sha256(f.read()).hexdigest()
+        with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+            body = r.read()
+        got = hashlib.sha256(body).hexdigest()
         if got != sha256:
             raise SystemExit(f"book: Manrope sha256 mismatch: expected {sha256}, got {got}")
+        with open(tmp, "wb") as f:
+            f.write(body)
         os.replace(tmp, dest)
     finally:
         if os.path.exists(tmp):

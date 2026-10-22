@@ -30,6 +30,7 @@ sys.path.insert(0, sys.argv[1])
 tmp = sys.argv[2]
 import book
 import kindle
+import web
 from inline import note_end, sub_notes
 
 failed = 0
@@ -160,7 +161,7 @@ open(font, "wb").close()
 book.GEIST_ITALIC = font
 check("a font file the book names is allowed", False, refused(pathlib.Path(font).as_uri()))
 check("a protocol-relative href is not site-relative", [],
-      [h for h in ("//evil.example", "/\\evil.example") if re.match(r"^(https?:|mailto:|#|/(?![/\\]))", h)])
+      [h for h in ("//evil.example", "/\\evil.example") if web.SITE_HREF.match(h)])
 
 
 def fake_urlopen(body):

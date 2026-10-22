@@ -355,8 +355,8 @@ def appendix_block(b, refs):
             return f"\\noindent\\textit{{{label}.}} {refs.tex(m.group(2))}\\par\\smallskip\n"
         return refs.tex(b["md"]) + "\\par\\smallskip\n"
     if k == "table":
-        n = len(b["rows"][0])
         rows = b["rows"]
+        n = len(rows[0])
         spec = "@{}>{\\raggedright\\arraybackslash}p{0.24\\linewidth}" + ">{\\raggedright\\arraybackslash}X" * (n - 1) + "@{}"
         if n >= 3:
             spec = "@{}" + "".join(f">{{\\hsize={w:.3f}\\hsize\\raggedright\\arraybackslash}}X"

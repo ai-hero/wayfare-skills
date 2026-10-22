@@ -208,6 +208,10 @@ def register_posts(posts, chapters):
         subprocess.run(["node", generator], cwd=WEBSITE, check=True, stdout=subprocess.DEVNULL)
 
 
+# `//host` and `/\host` are protocol-relative to a browser, not site paths.
+SITE_HREF = re.compile(r"^(https?:|mailto:|#|/(?![/\\]))")
+
+
 class Inline(HTMLParser):
     """Keep inline marks (a[href], em, strong, code, br, sup) and escape everything else. The site
     renders these strings as HTML, and sanitizing here keeps a DOM implementation out of its
@@ -225,7 +229,7 @@ class Inline(HTMLParser):
             return
         if tag == "a":
             href = dict(attrs).get("href") or ""
-            if not re.match(r"^(https?:|mailto:|#|/(?![/\\]))", href):
+            if not SITE_HREF.match(href):
                 return self.out.append("<a>")
             return self.out.append(f'<a href="{html.escape(href, quote=True)}">')
         if tag == "code" and dict(attrs).get("class") == "repo":

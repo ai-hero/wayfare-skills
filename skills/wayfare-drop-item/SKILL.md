@@ -55,10 +55,10 @@ Record the dropped status so an abandoned item does not remain `active`.
 `dropped` does not satisfy a dependency. The listing must continue to report
 dependent items as blocked.
 
-With `replaced-by NEW`, refuse a NEW that is missing, dropped, or done. Write
-`replaced_by: NEW` with the status, then offer to move every dependent's
-`depends_on` from ID to NEW. Rewrite only on the user's yes, and log each
-rewrite on the dependent.
+With `replaced-by NEW`, refuse a NEW that is missing, is ID itself, or is
+dropped or done. Write `replaced_by: NEW` with the status, then offer to move
+every dependent's `depends_on` from ID to NEW. Rewrite only on the user's yes,
+and log each rewrite on the dependent.
 
 ## Next steps
 

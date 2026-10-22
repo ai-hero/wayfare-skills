@@ -282,10 +282,10 @@ whose unmet dependency carries the field lists as `[replaced dep: OLD → NEW]`.
 That dependent stays blocked until its `depends_on` is rewritten, and the
 listing never rewrites it: `wayfare-drop-item OLD replaced-by NEW` offers the
 rewrite at the drop, and `wayfare-sync-plan` offers it for any replaced dep it
-finds. The field at any other status, or naming an id no item carries, is a
-store defect the listing warns about. It is not `promoted`, which is an idea or
-a reversed anti-feature becoming work; a task re-cut as a different task is a
-drop with a replacement.
+finds. The field at any other status, or naming the item itself, an id no item
+carries, or an item that is `done` or `dropped`, is a store defect the listing
+warns about. It is not `promoted`, which is an idea or a reversed anti-feature
+becoming work; a task re-cut as a different task is a drop with a replacement.
 
 Not every item visits every state. A `signal` runs
 `new → accepted → ready → active → done` (no plan to write, no branch to commit

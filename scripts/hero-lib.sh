@@ -1754,7 +1754,7 @@ EOF
 hero_ready_items() (
   local store items f d raw deps ready title id state itype row all_ids done_ids
   local open_goals parent committed_ids committed missing awaiting blocked_on since enum
-  local idea_ids anti_ids shape channel resolution replaced_ids replaced rb new
+  local idea_ids anti_ids shape channel resolution replaced_ids dropped_ids replaced rb new
   store="${1:-$(hero_work_store)}" || return 1
 
   # An unmigrated store lists NOTHING rather than listing wrong. Every item in
@@ -1788,6 +1788,7 @@ hero_ready_items() (
   idea_ids=" "
   anti_ids=" "
   replaced_ids=" "
+  dropped_ids=" "
   for f in *.md; do
     [ -e "$f" ] || continue
     id=$(hero_norm_id "$(hero_item_field "$f" id)")
@@ -1827,6 +1828,7 @@ hero_ready_items() (
       committed) committed_ids="$committed_ids$id " ;;
     esac
     if [ "$state" = dropped ]; then
+      dropped_ids="$dropped_ids$id "
       rb=$(hero_norm_id "$(hero_item_field "$f" replaced_by)")
       case "$rb" in ''|*[[:space:]:]*) ;; *) replaced_ids="$replaced_ids$id:$rb " ;; esac
     fi
@@ -1915,16 +1917,22 @@ hero_ready_items() (
         *) echo "hero_ready_items: $f is a $itype with resolution '$resolution', which is not an ending a $itype has (docs/PLAN.md)" >&2 ;;
       esac
     fi
-    # A replacement on a live item is a drop rolled back without clearing it,
-    # and one naming no item points every dependent's rewrite at nothing.
+    # A replacement on a live item is a drop rolled back without clearing it.
+    # One naming no item, itself, or finished or abandoned work gives every
+    # dependent's rewrite a target that can never unblock it correctly.
     rb=$(hero_norm_id "$(hero_item_field "$f" replaced_by)")
     if [ -n "$rb" ]; then
       if [ "$state" != dropped ]; then
         echo "hero_ready_items: $f carries replaced_by '$rb' at status '$state'; replaced_by is set only at dropped" >&2
+      elif [ "$rb" = "$id" ]; then
+        echo "hero_ready_items: $f is replaced_by itself; name the item that does its work instead" >&2
       else
         case "$all_ids" in
           *" $rb "*) ;;
           *) echo "hero_ready_items: $f is replaced_by '$rb', which no item carries; its dependents have nowhere to move" >&2 ;;
+        esac
+        case "$done_ids$dropped_ids" in
+          *" $rb "*) echo "hero_ready_items: $f is replaced_by '$rb', which is done or dropped; a replacement has to be work that is still open" >&2 ;;
         esac
       fi
     fi

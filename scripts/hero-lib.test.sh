@@ -1110,6 +1110,9 @@ item 203-logrecut.md 203 "Backlog on superseded work" "accepted" "[201]"
 item 206-waitother.md 206 "Waiting on the other superseded work" "ready" "[1201]"
 item 204-liverb.md 204 "Live item with a replacement" "ready" $'[]\nreplaced_by: 241'
 item 205-ghostrb.md 205 "Replaced by nothing" "dropped" $'[]\nreplaced_by: 9999'
+item 207-selfrb.md 207 "Replaced by itself" "dropped" $'[]\nreplaced_by: 207'
+item 208-deadrb.md 208 "Replaced by abandoned work" "dropped" $'[]\nreplaced_by: 199'
+item 209-donerb.md 209 "Replaced by shipped work" "dropped" $'[]\nreplaced_by: 37'
 OUTF="$(hero_ready_items "$W" 2>/dev/null)"
 check "task: accepted lists as backlog, not READY" "backlog" "$(state_of 030-backlog.md "$OUTF")"
 check "task: ready with deps done is READY"    "READY"   "$(state_of 032-fready.md "$OUTF")"
@@ -1162,6 +1165,12 @@ printf '%s' "$ERRF" | grep -q "204-liverb.md carries replaced_by '241' at status
 check "task: replaced_by at ready warns on stderr" "0" "$?"
 printf '%s' "$ERRF" | grep -q "205-ghostrb.md is replaced_by '9999', which no item carries"
 check "task: replaced_by naming a missing id warns on stderr" "0" "$?"
+printf '%s' "$ERRF" | grep -q "207-selfrb.md is replaced_by itself"
+check "task: replaced_by naming itself warns on stderr" "0" "$?"
+printf '%s' "$ERRF" | grep -q "208-deadrb.md is replaced_by '199', which is done or dropped"
+check "task: replaced_by naming a dropped item warns on stderr" "0" "$?"
+printf '%s' "$ERRF" | grep -q "209-donerb.md is replaced_by '37', which is done or dropped"
+check "task: replaced_by naming a done item warns on stderr" "0" "$?"
 printf '%s' "$ERRF" | grep -q "201-superseded.md.*replaced_by"
 check "task: a valid replacement warns nothing" "1" "$?"
 if command -v zsh >/dev/null 2>&1; then

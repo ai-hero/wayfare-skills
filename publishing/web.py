@@ -222,7 +222,7 @@ class Inline(HTMLParser):
             return
         if tag == "a":
             href = dict(attrs).get("href") or ""
-            if not re.match(r"^(https?:|mailto:|/|#)", href):
+            if not re.match(r"^(https?:|mailto:|#|/(?![/\\]))", href):
                 return self.out.append("<a>")
             return self.out.append(f'<a href="{html.escape(href, quote=True)}">')
         if tag == "code" and dict(attrs).get("class") == "repo":

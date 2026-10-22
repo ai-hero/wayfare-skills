@@ -119,6 +119,87 @@ files["OEBPS/ch-1.xhtml"] = kindle.page("One", '<section id="ch-1"><h2 id="ch-1-
 problems = kindle.check(files)
 check("a repeated id is a problem", ["OEBPS/ch-1.xhtml: id x is used twice"], problems)
 
+import hashlib
+import pathlib
+import urllib.request
+
+import paths
+import weasyprint.urls
+from PIL import Image
+
+os.makedirs(paths.ASSETS, exist_ok=True)
+local_png = os.path.join(paths.ASSETS, "fig.png")
+Image.new("RGB", (4, 4), "white").save(local_png)
+
+
+def refused(url):
+    try:
+        book.local_fetcher(url)
+    except ValueError:
+        return True
+    return False
+
+
+fetched = []
+real_fetcher = weasyprint.urls.default_url_fetcher
+weasyprint.urls.default_url_fetcher = lambda url, *a, **k: fetched.append(url) or real_fetcher(url, *a, **k)
+try:
+    hostile = ('<p><img src="http://127.0.0.1:9/x.png"><img src="file:///etc/hosts">'
+               '<img src="../../../etc/hosts"><img src="fig.png">'
+               '<a rel="attachment" href="file:///etc/hosts">x</a></p>')
+    book.weasy_html()(string=hostile, base_url=paths.ASSETS + "/").render()
+finally:
+    weasyprint.urls.default_url_fetcher = real_fetcher
+check("a render fetches only the asset it names", [pathlib.Path(local_png).as_uri()], fetched)
+check("a remote image is refused", True, refused("http://127.0.0.1:9/x.png"))
+check("an out-of-tree file is refused", True, refused("file:///etc/hosts"))
+check("a dot-dot path out of the assets is refused", True,
+      refused(pathlib.Path(paths.ASSETS, "..", "..", "x").as_uri()))
+check("a file on another host is refused", True, refused("file://example.com/etc/hosts"))
+check("a data URI still loads", False, refused("data:image/png;base64,iVBORw0KGgo="))
+font = os.path.join(tmp, "italic.woff2")
+open(font, "wb").close()
+book.GEIST_ITALIC = font
+check("a font file the book names is allowed", False, refused(pathlib.Path(font).as_uri()))
+check("a protocol-relative href is not site-relative", [],
+      [h for h in ("//evil.example", "/\\evil.example") if re.match(r"^(https?:|mailto:|#|/(?![/\\]))", h)])
+
+
+def fake_urlopen(body):
+    class R:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return body
+    return lambda url, timeout=None: R()
+
+
+real_urlopen = urllib.request.urlopen
+dest = os.path.join(tmp, "fonts", "m.ttf")
+urllib.request.urlopen = fake_urlopen(b"not the font")
+try:
+    book.fetch_manrope(dest)
+    outcome = "no error"
+except SystemExit as e:
+    outcome = str(e)
+finally:
+    urllib.request.urlopen = real_urlopen
+check("a wrong digest is a hard error naming both hashes", True,
+      book.MANROPE_SHA256 in outcome and hashlib.sha256(b"not the font").hexdigest() in outcome)
+check("a wrong digest leaves nothing in place", [], os.listdir(os.path.dirname(dest)))
+urllib.request.urlopen = fake_urlopen(b"font")
+try:
+    book.fetch_manrope(dest, sha256=hashlib.sha256(b"font").hexdigest())
+finally:
+    urllib.request.urlopen = real_urlopen
+check("a matching digest moves the file into place", ["m.ttf"], os.listdir(os.path.dirname(dest)))
+check("MANROPE_URL names a commit, not a branch", True,
+      "/raw/b31870aff700ab7a1d74fa0c6887d95beb9e0037/" in book.MANROPE_URL)
+
 sys.exit(1 if failed else 0)
 EOF
 status=$?

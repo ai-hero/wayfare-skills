@@ -5,10 +5,14 @@
 Layout lives in `book/book.css`; this module only writes semantic HTML. A layout fault is fixed
 there or here, never in the PDF.
 """
+import functools
+import hashlib
 import html
 import json
 import os
 import re
+import urllib.parse
+import urllib.request
 
 import paths
 from inline import EXAMPLE_TITLE, md_plain, note_end, sub_notes
@@ -28,7 +32,57 @@ FONTS = {
 }
 GEIST_ITALIC = os.path.join(paths.WEBSITE, "ui", "node_modules", "@fontsource-variable", "geist", "files",
                             "geist-latin-wght-italic.woff2")
-MANROPE_URL = "https://github.com/google/fonts/raw/main/ofl/manrope/Manrope%5Bwght%5D.ttf"
+# Pinned to a commit: `main` moves, and the digest below would then reject a good build.
+MANROPE_URL = ("https://github.com/google/fonts/raw/b31870aff700ab7a1d74fa0c6887d95beb9e0037"
+               "/ofl/manrope/Manrope%5Bwght%5D.ttf")
+MANROPE_SHA256 = "3ae11c49db0455a3cc33e37d380f20fdb8c7f8b41dc07625c177e3d87a9d6ae6"  # pragma: allowlist secret
+FETCH_TIMEOUT = 60
+
+
+def fetch_manrope(dest, url=MANROPE_URL, sha256=MANROPE_SHA256):
+    """Download to a temp name and move into place only once the digest matches, so a truncated or
+    swapped file never sits where `font_faces` treats an existing file as good."""
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    tmp = dest + ".part"
+    try:
+        with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT) as r, open(tmp, "wb") as f:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+            f.write(r.read())
+        with open(tmp, "rb") as f:
+            got = hashlib.sha256(f.read()).hexdigest()
+        if got != sha256:
+            raise SystemExit(f"book: Manrope sha256 mismatch: expected {sha256}, got {got}")
+        os.replace(tmp, dest)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def local_roots():
+    """Where a render may read: the figure assets, the turned-table SVGs, the author photo and the
+    font files `font_faces` names."""
+    roots = [paths.ASSETS, os.path.join(paths.BUILD, "book"), paths.EDITIONS, *FONTS.values(), GEIST_ITALIC]
+    return [os.path.realpath(r) for r in roots]
+
+
+def local_fetcher(url, *args, **kwargs):
+    """WeasyPrint's url_fetcher for every render. Manuscript HTML is untrusted: an `<img src=http://...>`
+    or a `file:///` link in it would otherwise be fetched at render time. Raising makes WeasyPrint
+    skip the resource, not fail the page."""
+    from weasyprint.urls import default_url_fetcher
+    if url.startswith("data:"):
+        return default_url_fetcher(url, *args, **kwargs)
+    parts = urllib.parse.urlparse(url)
+    if parts.scheme != "file" or parts.netloc not in ("", "localhost"):
+        raise ValueError(f"book: refusing to fetch {url}")
+    path = os.path.realpath(urllib.request.url2pathname(parts.path))
+    if not any(path == r or path.startswith(r + os.sep) for r in local_roots()):
+        raise ValueError(f"book: refusing to fetch {url}: outside the asset and font paths")
+    return default_url_fetcher(url, *args, **kwargs)
+
+
+def weasy_html():
+    from weasyprint import HTML
+    return functools.partial(HTML, url_fetcher=local_fetcher)
 
 
 def esc(s):
@@ -37,9 +91,7 @@ def esc(s):
 
 def font_faces():
     if not os.path.exists(FONTS["Manrope"]):
-        import urllib.request
-        os.makedirs(os.path.dirname(FONTS["Manrope"]), exist_ok=True)
-        urllib.request.urlretrieve(MANROPE_URL, FONTS["Manrope"])  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+        fetch_manrope(FONTS["Manrope"])
     missing = [p for p in FONTS.values() if not os.path.exists(p)]
     if missing:
         raise SystemExit("book: missing font files: " + ", ".join(missing))
@@ -64,7 +116,7 @@ def table_svg(b, cap):
     if fig_id(b) in _TABLES:
         return _TABLES[fig_id(b)]
     import fitz
-    from weasyprint import HTML
+    HTML = weasy_html()
     rows = b["rows"]
     head = "".join(f"<th>{c['html']}</th>" for c in rows[0])
     body = []
@@ -820,7 +872,7 @@ def with_cover(interior):
 
 
 def main():
-    from weasyprint import HTML
+    HTML = weasy_html()
     with open(paths.SOURCE, encoding="utf-8") as f:
         doc = without_appendix(json.load(f))
     # Every chapter opens on a new recto, so a chapter's pages lay out the same alone as in the

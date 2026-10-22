@@ -145,8 +145,6 @@ def table_html(rows, tid, labelledby, cls=""):
     classes = " ".join(filter(None, (cls, "wide-table" if len(cols) >= 5 else "")))
     cls = f' class="{classes}"' if classes else ""
     body = "".join(f'<tbody>{"".join(b)}</tbody>' for b in bodies)
-    # class first: `book.example` adds its classes to the first tag's existing class attribute,
-    # and a second class attribute after `id` would make the file malformed XML.
     return (f'<table{cls} id="{tid}" aria-labelledby="{labelledby}"><thead><tr>{head}</tr></thead>{body}</table>')
 
 
@@ -185,9 +183,14 @@ def block(b, images, heading=None, tid=None):
     elif k == "figure":
         out = figure(b, images)
     else:
-        return ""
-    # One element per card, unlike the print book's per-block borders: a reader's pagination splits
-    # bordered siblings into stray boxes.
+        out = ""
+    return card(b, out)
+
+
+def card(b, out):
+    """One element per card, unlike the print book's per-block borders: a reader's pagination splits
+    bordered siblings into stray boxes. Every block passes through here, rendered or not, or a card's
+    opening or closing tag is lost with it and the file stops parsing."""
     if b.get("example_start"):
         out = f'<div class="example"><p class="example-title">{EXAMPLE_TITLE}</p>{out}'
     if b.get("example_end"):
@@ -230,9 +233,9 @@ def appendix_entry(e, images):
             out.append(f'<img src="{src}" alt="{esc(md_plain(ch.get("alt") or e.get("title") or ""))}"/>')
     for b in e["blocks"]:
         if b["kind"] == "link":
-            continue
-        if b["kind"] == "p":
-            out.append("<p>" + RUN_IN.sub(lambda m: f'<span class="run-in">{m.group(1)}</span> ', b["html"], 1) + "</p>")
+            out.append(card(b, ""))
+        elif b["kind"] == "p":
+            out.append(card(b, "<p>" + RUN_IN.sub(lambda m: f'<span class="run-in">{m.group(1)}</span> ', b["html"], 1) + "</p>"))
         else:
             out.append(block(b, images))
     out.append("</section>")
@@ -426,7 +429,7 @@ def embedded_fonts(text):
         src = GEIST_ITALIC if style == "italic" else FONTS[family]
         if not os.path.exists(src):
             continue
-        font = instantiateVariableFont(TTFont(src), {"wght": weight})
+        font = instantiateVariableFont(TTFont(src), {"wght": weight}, updateFontNames=True)
         font.flavor = None
         options = subset.Options()
         options.layout_features = ["*"]
@@ -527,7 +530,7 @@ def main():
     with open(os.path.join(HERE, "kindle.css"), encoding="utf-8") as f:
         css = f.read()
     fonts, faces = embedded_fonts(visible_text("".join(body for *_, body in docs) + xhtml_nav)
-                                  + meta["title"] + meta.get("subtitle", ""))
+                                  + meta["title"] + (meta.get("subtitle") or ""))
     css = faces + css
 
     files = {"OEBPS/kindle.css": css, "OEBPS/nav.xhtml": xhtml_nav, "OEBPS/toc.ncx": ncx(meta, ident, tree),

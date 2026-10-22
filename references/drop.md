@@ -66,6 +66,39 @@ An id that names a `done` item is refused: finished work is not abandoned. An id
 with no item is refused rather than guessed at. An id that is already `dropped`
 is reported and left alone.
 
+## Replaced by another item: `ID replaced-by NEW`
+
+A task re-cut as a different task is a drop with a replacement, not a `promoted`
+(that ending belongs to ideas and anti-features). The invocation
+`wayfare-drop-item ID replaced-by NEW [REASON]` runs the same paths and the same
+item write as above, with three additions:
+
+- **Check NEW before writing anything.** Refuse a NEW that no item carries, that
+  is ID itself, or that is `dropped` or `done`:
+  `NEW is STATUS; a replacement has to be work that is still open.` A dependent
+  moved onto a dropped item is blocked again, and one moved onto a done item
+  unblocks on work that was never the replacement.
+- **Write `replaced_by: NEW` beside `status: dropped`**, and name it in the
+  reason line:
+  `- DATE (wayfare-drop-item) decision: dropped, replaced by NEW: REASON`. The
+  listing then prints the row as `dropped FILE — TITLE [replaced by NEW]`
+  (docs/PLAN.md).
+- **Offer to move the dependents.** List every item whose `depends_on` names ID,
+  and ask once: `Move depends_on from ID to NEW on: 12, 15? [y/N]`. On yes,
+  rewrite ID to NEW in each of those `depends_on` lists, leaving NEW in place
+  where the list already has it rather than writing it twice, and append to each
+  one's `## Log`:
+  `- DATE (wayfare-drop-item) note: depends_on ID → NEW (ID dropped, replaced by NEW)`.
+  On no, rewrite nothing and say that `hero_ready_items` lists each of them with
+  `[replaced dep: ID → NEW]` until the edge is moved, and that the next
+  `wayfare-sync-plan` round offers the same rewrite. Never move an edge without
+  the yes: a dependent may have depended on ID for a part of its work that NEW
+  does not cover.
+
+For a goal dropped with a replacement, the field goes on the goal only. Its
+members are dropped with the plain reason, because a member is not replaced by a
+goal.
+
 **A goal with open members asks first.** Dropping a goal leaves its tasks
 pointing at a parent that will never run, so list the members that are not
 `done` (`hero_goal_members`) and ask whether to drop the set. On yes, each open

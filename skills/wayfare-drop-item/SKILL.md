@@ -2,7 +2,7 @@
 name: wayfare-drop-item
 # prettier-ignore
 description: "Drop an open item with a recorded reason. For an unmerged branch, stash and switch only with a named, confirmed stash. Change no git state for an item without a branch. Use when abandoning work."
-argument-hint: "ID [REASON]"
+argument-hint: "ID [replaced-by NEW] [REASON]"
 compatibility: "Requires the complete Wayfare plugin, git, and the repository's .plans store."
 ---
 
@@ -54,6 +54,11 @@ change no git state. In both cases, write `status: dropped` and a dated reason.
 Record the dropped status so an abandoned item does not remain `active`.
 `dropped` does not satisfy a dependency. The listing must continue to report
 dependent items as blocked.
+
+With `replaced-by NEW`, refuse a NEW that is missing, is ID itself, or is
+dropped or done. Write `replaced_by: NEW` with the status, then offer to move
+every dependent's `depends_on` from ID to NEW. Rewrite only on the user's yes,
+and log each rewrite on the dependent.
 
 ## Next steps
 

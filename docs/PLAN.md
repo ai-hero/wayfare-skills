@@ -273,6 +273,20 @@ new → accepted → planning → ready → active → committed → review → 
 `accepted` anti-feature, which closes only `done` (see its section). The write
 always appends a dated `decision` line to `## Log` giving the reason.
 
+**`replaced_by` says which item does a dropped item's work instead.** It is
+optional, valid only at `status: dropped`, and names an item in the same store.
+`dropped` stays the status because the old work never shipped: a dependent must
+not unblock on it, it must depend on the replacement instead. `hero_ready_items`
+prints the row as `dropped FILE — TITLE [replaced by NEW]`, and a dependent
+whose unmet dependency carries the field lists as `[replaced dep: OLD → NEW]`.
+That dependent stays blocked until its `depends_on` is rewritten, and the
+listing never rewrites it: `wayfare-drop-item OLD replaced-by NEW` offers the
+rewrite at the drop, and `wayfare-sync-plan` offers it for any replaced dep it
+finds. The field at any other status, or naming the item itself, an id no item
+carries, or an item that is `done` or `dropped`, is a store defect the listing
+warns about. It is not `promoted`, which is an idea or a reversed anti-feature
+becoming work; a task re-cut as a different task is a drop with a replacement.
+
 Not every item visits every state. A `signal` runs
 `new → accepted → ready → active → done` (no plan to write, no branch to commit
 to). A `goal` runs `new → accepted → active → done`. An `idea` runs
@@ -361,6 +375,7 @@ depends_on: [9] # ids that must reach `done` first; blockers only
 parent: 7 # GOAL membership: the goal this task belongs to
 rank: 2 # optional — order within the parent where depends_on leaves it free
 discovered_from: 9 # optional — the item this was carved out of; provenance, never a blocker
+replaced_by: # set only at dropped — the item that does this work instead; its dependents move to it
 source: [services/auth/] # paths in THIS repo the work changes
 target: [auth/] # paths in the design project it satisfies; absent in self-review mode
 anchors:
@@ -629,7 +644,7 @@ local format looks the way it does.
 | `resolution` | enum column, valid per type (shipped task; delivered, rejected signal; promoted idea, anti-feature; obsolete any); null until `done` |
 | `depends_on` | `item_dependencies` join table |
 | `blocked_on`, `blocked_since` | nullable text and date columns, valid on a non-terminal task, signal or goal; null is not blocked. A check holds `blocked_since IS NULL OR blocked_on IS NOT NULL`, and migration strips `blocked_on` from terminal items |
-| `parent`, `discovered_from` | self-referencing nullable FKs |
+| `parent`, `discovered_from`, `replaced_by` | self-referencing nullable FKs; `replaced_by` is non-null only at `dropped` |
 | `source`, `target` | `item_paths` rows tagged `source` or `target` |
 | `anchors` | two columns on the item |
 | `## Log` lines | `item_events` rows: item, date, actor, tag, body |

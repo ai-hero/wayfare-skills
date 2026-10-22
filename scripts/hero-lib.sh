@@ -1754,7 +1754,7 @@ EOF
 hero_ready_items() (
   local store items f d raw deps ready title id state itype row all_ids done_ids
   local open_goals parent committed_ids committed missing awaiting blocked_on since enum
-  local idea_ids anti_ids shape channel resolution
+  local idea_ids anti_ids shape channel resolution replaced_ids dropped_ids replaced rb new
   store="${1:-$(hero_work_store)}" || return 1
 
   # An unmigrated store lists NOTHING rather than listing wrong. Every item in
@@ -1787,6 +1787,8 @@ hero_ready_items() (
   open_goals=" "
   idea_ids=" "
   anti_ids=" "
+  replaced_ids=" "
+  dropped_ids=" "
   for f in *.md; do
     [ -e "$f" ] || continue
     id=$(hero_norm_id "$(hero_item_field "$f" id)")
@@ -1825,6 +1827,11 @@ hero_ready_items() (
       # so a dependent built against it merges onto a tree missing it.
       committed) committed_ids="$committed_ids$id " ;;
     esac
+    if [ "$state" = dropped ]; then
+      dropped_ids="$dropped_ids$id "
+      rb=$(hero_norm_id "$(hero_item_field "$f" replaced_by)")
+      case "$rb" in ''|*[[:space:]:]*) ;; *) replaced_ids="$replaced_ids$id:$rb " ;; esac
+    fi
     # Only an OPEN goal counts as cover. `new` is untriaged and an
     # unrecognized status lists as invalid; crediting either would let a
     # defective goal silence the orphan warning for every item under it.
@@ -1909,6 +1916,25 @@ hero_ready_items() (
         *:) ;;
         *) echo "hero_ready_items: $f is a $itype with resolution '$resolution', which is not an ending a $itype has (docs/PLAN.md)" >&2 ;;
       esac
+    fi
+    # A replacement on a live item is a drop rolled back without clearing it.
+    # One naming no item, itself, or finished or abandoned work gives every
+    # dependent's rewrite a target that can never unblock it correctly.
+    rb=$(hero_norm_id "$(hero_item_field "$f" replaced_by)")
+    if [ -n "$rb" ]; then
+      if [ "$state" != dropped ]; then
+        echo "hero_ready_items: $f carries replaced_by '$rb' at status '$state'; replaced_by is set only at dropped" >&2
+      elif [ "$rb" = "$id" ]; then
+        echo "hero_ready_items: $f is replaced_by itself; name the item that does its work instead" >&2
+      else
+        case "$all_ids" in
+          *" $rb "*) ;;
+          *) echo "hero_ready_items: $f is replaced_by '$rb', which no item carries; its dependents have nowhere to move" >&2 ;;
+        esac
+        case "$done_ids$dropped_ids" in
+          *" $rb "*) echo "hero_ready_items: $f is replaced_by '$rb', which is done or dropped; a replacement has to be work that is still open" >&2 ;;
+        esac
+      fi
     fi
 
     # `priority` orders the listing and nothing else. An unrecognized value
@@ -2014,7 +2040,7 @@ hero_ready_items() (
       *:done)      echo "done    $f — $title"; continue ;;
       # Abandoned. Its own row word, never `done`, so nothing reads it as
       # satisfied work and re-plans around code that was never written.
-      *:dropped)   echo "dropped $f — $title"; continue ;;
+      *:dropped)   echo "dropped $f — $title${rb:+ [replaced by $rb]}"; continue ;;
       # Type-keyed, not `*:`: an idea at `active` or a goal at `planning` is
       # not a shared state, it is a mis-filed item, and the wildcard walked it
       # into a row resume-state then picked up as the item in flight.
@@ -2061,6 +2087,7 @@ hero_ready_items() (
     ready=1
     missing=""
     committed=""
+    replaced=""
     # Heredoc keeps the loop in this shell (so `ready` persists) and works under
     # both bash and zsh, which does not word-split unquoted vars.
     while IFS= read -r raw; do
@@ -2110,6 +2137,9 @@ hero_ready_items() (
       case "$done_ids" in *" $d "*) continue ;; esac
       ready=0
       case "$committed_ids" in *" $d "*) committed="$committed $d" ;; esac
+      case "$replaced_ids" in
+        *" $d:"*) new=${replaced_ids#* "$d":}; replaced="${replaced:+$replaced, }$d → ${new%% *}" ;;
+      esac
     done <<EOF
 $deps
 EOF
@@ -2122,12 +2152,12 @@ EOF
       if [ "$ready" = 1 ]; then
         echo "backlog $f — $title"
       else
-        echo "backlog $f — $title [deps unmet${missing:+; missing dep:$missing}${committed:+; committed dep:$committed}]"
+        echo "backlog $f — $title [deps unmet${missing:+; missing dep:$missing}${committed:+; committed dep:$committed}${replaced:+; replaced dep: $replaced}]"
       fi
     elif [ "$ready" = 1 ]; then
       echo "READY   $f — $title"
     else
-      echo "blocked $f — $title${missing:+ [missing dep:$missing]}${committed:+ [committed dep:$committed]}"
+      echo "blocked $f — $title${missing:+ [missing dep:$missing]}${committed:+ [committed dep:$committed]}${replaced:+ [replaced dep: $replaced]}"
     fi
   # No `return` inside the loop above: it is the left side of this pipe, so a
   # return would exit only that subshell, never this function.

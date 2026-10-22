@@ -754,6 +754,19 @@ rather than reporting clean, the same rule the Upstream lane above follows):
   task without a usable anchor is silently exempt from staleness detection, and
   an unresolvable one must never become a diff base.
 
+- **replaced deps**: every listing row carrying `[replaced dep: OLD → NEW]`. Its
+  dependency OLD is `dropped` with `replaced_by: NEW` (docs/PLAN.md), and the
+  row stays blocked until its `depends_on` names NEW instead, which nothing but
+  this offer and `wayfare-drop-item`'s does. Group the rows by OLD and offer the
+  rewrite `references/drop.md` describes (*Replaced by another item*), one
+  confirm per group, with `wayfare-sync-plan` as the log line's actor. On no,
+  write nothing; the row reports again next round. This is how a drop written by
+  hand, or one whose rewrite was declined at the drop, still gets its dependents
+  moved. A NEW that is itself `dropped` or `done` is not offered: report the row
+  and ask what the dependent should depend on instead. The listing warns on a
+  `replaced_by` naming a missing id or sitting on a live item, and those are
+  ordinary store defects above.
+
 - **legacy items**: a `.plans/pins/` directory from pre-simplification wayfare:
   propose folding each order's content into its task (or marking it `done`, or
   deleting it) and removing `pins/`, never silently. `inbox/` is **not** legacy:

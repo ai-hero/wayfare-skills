@@ -982,6 +982,12 @@ After the user responds, merge confirmed findings + user answers and write
      a successful merge. Override to false in HERO.md to keep merged
      branches around (e.g. for downstream tooling). -->
 - task-runner: make # or just, taskfile, npm-scripts, none
+- published-files: # optional, comma-separated root files published on purpose
+<!-- Root files the repo publishes for someone else to read, such as a dated
+     VERSION.md log of behaviour changes. The compliance audit's PLACE-04 and
+     REL-01 exempt each one and name it in their PASS detail; REL-01 still
+     fails a declared file that holds the repo's own version. Leave empty when
+     there are none. -->
 
 ## CI/CD
 - platform: DETECTED

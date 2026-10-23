@@ -13,12 +13,18 @@ check: lint test validate
 # a direct call would need those tools installed separately and could run a
 # different version than the commit hook enforces.
 
-# Static checks: shell and prose.
+# semgrep scans every file, not the changed ones: the pre-push hook scans only
+# the files a push changes, and `--config=auto` rules change underneath, so a
+# file nobody touched can start failing. Network and slowness are the accepted
+# cost.
+
+# Static checks: shell, prose and semgrep.
 lint:
     @pre-commit run shellcheck --all-files
     @pre-commit run markdownlint --all-files
     @pre-commit run mdformat --all-files
     @pre-commit run check-docs --all-files
+    @pre-commit run semgrep --hook-stage pre-push --all-files
 
 # rglob, not glob: glob drops any path component starting with a dot, so
 # .github/ and .pre-commit-config.yaml would be invisible and this would

@@ -195,11 +195,15 @@ def read_fleet(root):
     return fields, repos
 
 
-def configure(root=None):
+def configure(root=None, load_overlay=True):
     """Bind ROOT, FAMILY, REGISTER, TEMPLATE and REPO_DIR — from FLEET.md when
     inside a fleet, else from the current repo alone. Called by main() and by
     consistency.py; the import-time call below makes the module usable from
-    tests without one."""
+    tests without one.
+
+    The import-time call passes load_overlay=False: it runs in whatever engine
+    was invoked, before run_at_origin() decides which engine runs, so loading
+    the register's checkers.py there executes fleet code under a stale engine."""
     global ROOT, FAMILY, REGISTER, TEMPLATE
     if root:
         root = pathlib.Path(root).resolve()
@@ -252,7 +256,8 @@ def configure(root=None):
         names.append(row["name"])
         GROUP_REPOS.setdefault(row["group"], set()).add(row["name"])
     FAMILY = tuple(names)
-    _load_overlay_checkers()
+    if load_overlay:
+        _load_overlay_checkers()
 
 
 def _load_overlay_checkers():
@@ -342,6 +347,80 @@ def tracked(repo, *pathspecs):
     if rc:
         raise RuntimeError(f"git ls-files failed in {repo.name}: {err or f'rc={rc}'}")
     return out.splitlines()
+
+
+# awk's [[:space:]]. str.strip() and splitlines() also act on Unicode spaces
+# and separators, which would let the audit read a field the shell reader does
+# not.
+_AWK_SPACE = " \t\n\v\f\r"
+
+
+def hero_md_field(path, key, block="", refused=None):
+    """The value of `- key:` in a HERO.md, or None when it is absent, empty, or
+    refused. The Python twin of hero-lib.sh's hero_md_field for an H2 BLOCK or
+    none; HeroMdField in audit_test.py holds the two to one answer on the same
+    file, so the audit never reads a field the skills read differently.
+
+    HERO.md is the audited repo's content, so a value starting with `-` or
+    holding a control character is refused, as the shell reader refuses it.
+    A refusal is appended to `refused` when a list is passed, so a caller can
+    say why a declaration had no effect."""
+    block = block.rstrip(_AWK_SPACE)
+    if block and not block.startswith("## "):
+        raise ValueError(f"hero_md_field: block must be '' or an H2 heading line, got {block!r}")
+    try:
+        lines = pathlib.Path(path).read_text(errors="replace").split("\n")
+    except OSError:
+        return None
+    fence = inblk = False
+    value = ""
+    for line in lines:
+        if line.startswith("```"):
+            fence = not fence
+            continue
+        if fence:
+            continue
+        if re.match(r"##+ ", line):
+            heading = line.rstrip(_AWK_SPACE)
+            if heading.startswith("## "):
+                inblk = heading == block
+            continue
+        if (not block or inblk) and line.startswith(f"- {key}:"):
+            v = re.sub(r" *#.*", "", line.split(":", 1)[1].lstrip(" "), count=1).strip(_AWK_SPACE)
+            if v:
+                value = v
+                break
+    value = re.sub(r"[\"']$", "", re.sub(r"^[\"']", "", value))
+    if not value:
+        return None
+    if value.startswith("-") or any(ord(c) < 32 or ord(c) == 127 for c in value):
+        why = f"refusing '{key}' in {pathlib.Path(path).name}: {value!r}"
+        print(f"hero_md_field: {why}", file=sys.stderr)
+        if refused is not None:
+            refused.append(why)
+        return None
+    return value
+
+
+def published_files(repo):
+    """(names, problem) for the root files HERO.md declares as published
+    (`- published-files:` under ## Repository, comma-separated). PLACE-04 and
+    REL-01 exempt them by name and name them in the PASS detail, so every
+    exemption shows in the table. `problem` is the refusal when the value was
+    unsafe, which the FAIL detail carries: otherwise a declaration that had no
+    effect looks like one that was never written."""
+    refused = []
+    v = hero_md_field(repo / "HERO.md", "published-files", "## Repository", refused) or ""
+    names = (p.strip(_AWK_SPACE) for p in v.split(","))
+    return sorted({p for p in names if p and "/" not in p}), "; ".join(refused)
+
+
+def _published_note(paths):
+    return f"published-files exempts {', '.join(paths)}" if paths else ""
+
+
+def _with(detail, extra):
+    return "; ".join(x for x in (detail, extra) if x)
 
 
 def uncommented(text):
@@ -1596,7 +1675,8 @@ def _(r):
     # A root .go file is a module's own source only when a root go.mod makes
     # it one; _ROOT_OK is a regex over names and cannot see the repo.
     root_module = "go.mod" in files
-    loose = []
+    published, problem = published_files(r)
+    loose, exempt = [], []
     for f in files:
         if f.startswith("."):
             continue
@@ -1604,8 +1684,10 @@ def _(r):
             continue
         if root_module and re.fullmatch(r"[^/]+\.go", f):
             continue
-        loose.append(f)
-    return (FAIL, ", ".join(sorted(loose))) if loose else (PASS, "root is clean")
+        (exempt if f in published else loose).append(f)
+    if loose:
+        return FAIL, _with(", ".join(sorted(loose)), problem)
+    return PASS, _with("root is clean", _published_note(sorted(exempt)))
 
 
 @check("DOC-03")
@@ -2723,10 +2805,12 @@ def run_at_origin(script):
         return None
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="audit-engine-"))
     try:
-        sha, note = _plugin_at_origin(_PLUGIN_HOME, tmp, ("scripts/audit.py", "scripts/consistency.py", "assets"))
+        sha, note = _plugin_at_origin(_PLUGIN_HOME, tmp, ("scripts/audit.py", "scripts/consistency.py", "assets"),
+                                      "engine")
         if not sha:
             _ENGINE_NOTE = f"working tree {HERE} ({note}; register and checkers may be stale)"
             return None
+        print(f"engine: {_PLUGIN_REMOTE}/{_PLUGIN_BRANCH} @ {sha}, not the invoked tree {HERE}", file=sys.stderr)
         rc = subprocess.run([sys.executable, str(tmp / "scripts" / script), *sys.argv[1:]],
                             env={**os.environ, _ENGINE_MARKER: note}).returncode
         return rc if rc >= 0 else 128 - rc
@@ -2759,7 +2843,7 @@ def reference_assets():
             note = os.environ[_ENGINE_MARKER]
         else:
             tmp = pathlib.Path(tempfile.mkdtemp(prefix="audit-assets-"))
-            _sha, note = _plugin_at_origin(_PLUGIN_HOME, tmp, ("assets",))
+            _sha, note = _plugin_at_origin(_PLUGIN_HOME, tmp, ("assets",), "assets")
             _PLUGIN_ASSETS = tmp / "assets"
         yield note
     finally:
@@ -2768,11 +2852,12 @@ def reference_assets():
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _plugin_at_origin(plugin, dest, paths):
+def _plugin_at_origin(plugin, dest, paths, label):
     """(sha, note) for `plugin`'s origin/main, with `paths` extracted under
     `dest`; sha is None, and nothing extracted, when there is no origin/main to
-    read. A failed fetch is reported and the last-fetched origin/main is used:
-    falling back to the working tree is the defect reference_assets() fixes."""
+    read. A failed fetch is reported under `label`, what the fetch was for, and
+    the last-fetched origin/main is used: falling back to the working tree is
+    the defect reference_assets() fixes."""
     ref = f"{_PLUGIN_REMOTE}/{_PLUGIN_BRANCH}"
     if not (plugin / ".git").exists():
         return None, f"absent ({plugin} is not a git checkout; asset checks read MANUAL)"
@@ -2786,7 +2871,7 @@ def _plugin_at_origin(plugin, dest, paths):
     stale = ""
     if rc:
         stale = f"  (fetch failed: {err or f'rc={rc}'}; {ref} as last fetched)"
-        print(f"assets: git fetch in {plugin} failed: {err or f'rc={rc}'}", file=sys.stderr)
+        print(f"{label}: git fetch in {plugin} failed: {err or f'rc={rc}'}", file=sys.stderr)
     rc, sha, _err = sh3(plugin, f"git rev-parse --verify -q --short {ref}^{{commit}}")
     if rc or not sha:
         return None, f"absent ({ref} does not resolve in {plugin}; asset checks read MANUAL){stale}"
@@ -3335,10 +3420,34 @@ def _(r):
     return (PASS, "") if re.search(r'\.status|"ok"', body) else (FAIL, "checks HTTP code only")
 
 
+# A declared published file still fails REL-01 when it reads as the repo's own
+# version: a bare version string, or a changelog's `## [Unreleased]` / `## 1.2.3`
+# headings. Without this, declaring a real VERSION file would silence the check.
+_HOLDS_A_VERSION = re.compile(
+    r"\A\s*v?\d+(\.\d+)+\S*\s*\Z|^#+\s*\[?(unreleased|v?\d+\.\d+\.\d+)", re.I | re.M)
+
+
 @check("REL-01")
 def _(r):
     hits = tracked(r, "CHANGELOG*", "changelog*", "VERSION", "VERSION.*", "version.md")
-    return (FAIL, ", ".join(hits)) if hits else (PASS, "")
+    published, problem = published_files(r)
+    exempt, overridden = [], []
+    for h in hits:
+        if h not in published:
+            continue
+        # A symlink or a FIFO is never exempt: following one reads outside the
+        # repo, and reading a FIFO hangs the whole fleet run.
+        p = r / h
+        if p.is_symlink() or not p.is_file() or _HOLDS_A_VERSION.search(p.read_text(errors="replace")):
+            overridden.append(h)
+        else:
+            exempt.append(h)
+    hits = [h for h in hits if h not in exempt]
+    if hits:
+        note = (f"declared in published-files, but holds a version or is not a regular file: {', '.join(overridden)}"
+                if overridden else "")
+        return FAIL, _with(_with(", ".join(hits), note), problem)
+    return PASS, _published_note(exempt)
 
 
 # Which extension a repo needs, by what it runs. One row per tool; the
@@ -3752,11 +3861,12 @@ def main():
 
 
 # Bind once at import so tests and consistency.py get a usable module; main()
-# re-binds when --fleet is given. A broken cwd (unreadable FLEET.md, a mapped
-# register that is not cloned) must not sink `--help` or an explicit --fleet,
-# so the import-time call swallows the exit and leaves the module unbound.
+# re-binds, and loads the overlay, once run_at_origin() has picked the engine.
+# A broken cwd (unreadable FLEET.md, a mapped register that is not cloned) must
+# not sink `--help` or an explicit --fleet, so the import-time call swallows the
+# exit and leaves the module unbound.
 try:
-    configure()
+    configure(load_overlay=False)
 except SystemExit as _e:
     print(f"audit: not configured from cwd ({_e}); pass --fleet or run inside a fleet", file=sys.stderr)
 

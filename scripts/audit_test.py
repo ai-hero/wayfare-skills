@@ -699,6 +699,12 @@ class References(unittest.TestCase):
         self.assertEqual(audit._fleet_section("x\n## Fleet\nb\n"), "## Fleet\nb\n")
         self.assertEqual(audit._fleet_section("x\n## Fleet\nb\n## C\nd\n"), "## Fleet\nb")
 
+    def test_this_repos_fleet_section_matches_the_asset(self):
+        root = HERE.parent
+        verdict = audit._matches_reference(root / "AGENTS.md", root / "assets/fleet/agents-md-fleet-section.md",
+                                           audit._fleet_section)
+        self.assertEqual(verdict[0], audit.PASS, f"VNDR-02 on this repo's AGENTS.md: {verdict}")
+
 
 class HookRevs(unittest.TestCase):
     def tearDown(self):
@@ -965,6 +971,16 @@ class Configured(unittest.TestCase):
                            capture_output=True, text=True, env=CLEAN_ENV)
         self.assertFalse(marker.exists(), "the clone's .fleet/checkers.py executed")
         self.assertIn("inside a git work tree", p.stderr)
+
+    def test_import_runs_no_checkers_until_configured(self):
+        marker = self.root / "ran"
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n", checkers=f"open({str(marker)!r}, 'w').close()\n")
+        p = subprocess.run([sys.executable, "-c", "import audit"], cwd=str(self.root),
+                           capture_output=True, text=True, env={**CLEAN_ENV, "PYTHONPATH": str(HERE)})
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertFalse(marker.exists(), "importing audit.py ran the fleet's checkers.py")
+        audit.configure(self.root)
+        self.assertTrue(marker.exists(), "configure() loads the overlay")
 
     def test_fleet_root_walks_ancestors_of_a_clone(self):
         clone = git_repo(self.root, "clone")
@@ -1500,6 +1516,14 @@ class EngineAtOrigin(unittest.TestCase):
         self.assertIn("ZZ-NEW", p.stdout, "a check added on origin/main is listed")
         self.assertIn("ran-origin-engine", p.stderr, "origin/main's engine code ran")
         self.assertRegex(p.stdout, r"engine: origin/main @ ([0-9a-f]+) in .*\nassets: origin/main @ \1 in ")
+        self.assertRegex(p.stderr, r"(?m)^engine: origin/main @ [0-9a-f]+, not ", "the re-exec names itself on stderr, whatever the output format")
+
+    def test_failed_engine_fetch_is_labelled_engine(self):
+        git(self.plugin, "remote", "set-url", "origin", str(self.root / "gone"))
+        p = self.run_script("audit.py", "--md")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("engine: git fetch in ", p.stderr)
+        self.assertNotIn("assets: git fetch", p.stderr)
 
     def test_json_header_goes_to_stderr(self):
         p = self.run_script("audit.py", "--json")
@@ -1537,6 +1561,65 @@ class EngineAtOrigin(unittest.TestCase):
     def test_exit_code_is_the_childs(self):
         p = self.run_script("audit.py", "--md", "--fail-on", "high,medium,low")
         self.assertNotEqual(p.returncode, 0, "the bare fixture repo fails checks, and the child's code propagates")
+
+
+class HeroMdField(unittest.TestCase):
+    """audit.hero_md_field answers what hero-lib.sh's hero_md_field answers:
+    the skills and the engine read one HERO.md, and a disagreement means the
+    audit exempts a file the skills say is not declared, or the reverse."""
+
+    TEXT = """# HERO
+- published-files: top-level-wins
+## Code Quality
+- linters: ruff, shellcheck # trailing comment
+- published-files: wrong-section
+```markdown
+## Repository
+- published-files: fenced
+```
+## Repository
+- merge-method:
+- merge-method: "squash"
+- published-files:   VERSION.md, NOTES.md   # two
+- hostile: --upload-pack=x
+- quoted: 'a'
+- hashed: a#b
+### Sub
+- under-h3: kept
+## Deployment
+- under-h3: other
+"""
+    CASES = [(k, b) for k in ("published-files", "linters", "merge-method", "hostile", "quoted",
+                             "hashed", "under-h3", "missing")
+             for b in ("", "## Repository", "## Code Quality", "## Deployment", "## Nowhere")]
+
+    def test_parity_with_the_shell_reader(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = pathlib.Path(d) / "HERO.md"
+            f.write_text(self.TEXT)
+            for key, block in self.CASES:
+                with self.subTest(key=key, block=block):
+                    p = subprocess.run(["bash", "-c", '. "$1"; hero_md_field "$2" "$3" "$4"', "_",
+                                        str(HERE / "hero-lib.sh"), str(f), key, block],
+                                       capture_output=True, text=True, env=CLEAN_ENV)
+                    want = p.stdout if p.returncode == 0 else None
+                    with contextlib.redirect_stderr(io.StringIO()):
+                        self.assertEqual(audit.hero_md_field(f, key, block), want)
+
+    def test_absent_file_is_none(self):
+        self.assertIsNone(audit.hero_md_field(pathlib.Path("/nonexistent/HERO.md"), "x"))
+
+    def test_a_block_that_is_not_an_h2_is_an_error(self):
+        for block in ("Repository", "### Sub"):
+            with self.subTest(block=block), self.assertRaises(ValueError):
+                audit.hero_md_field(pathlib.Path("/nonexistent/HERO.md"), "x", block)
+
+    def test_line_splitting_matches_awk(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = pathlib.Path(d) / "HERO.md"
+            f.write_text("## Repository\n- x: y\x0c- published-files: VERSION.md\n")
+            self.assertIsNone(audit.hero_md_field(f, "published-files", "## Repository"),
+                              "a form feed is not a line break to awk")
 
 
 class ExtractTar(unittest.TestCase):
@@ -1766,6 +1849,64 @@ class RuleNotSpelling(unittest.TestCase):
         r = self.repo({"go.mod": "module x\n", "notes.txt": "x\n"})
         st, detail = self.verdict("PLACE-04", r)
         self.assertEqual((st, detail), (audit.FAIL, "notes.txt"))
+
+    # published-files: PLACE-04 and REL-01
+    PUBLISHED = "# HERO\n\n## Repository\n- default-branch: main\n- published-files: {}\n"
+    CHANGELOG_STYLE = "# Registry changes\n\n## 2026-10-19\n- the token endpoint moved\n"
+
+    def test_published_changelog_style_file_passes_both(self):
+        r = self.repo({"HERO.md": self.PUBLISHED.format("VERSION.md"), "VERSION.md": self.CHANGELOG_STYLE})
+        for cid in ("PLACE-04", "REL-01"):
+            st, detail = self.verdict(cid, r)
+            self.assertEqual(st, audit.PASS, f"{cid}: {detail}")
+            self.assertIn("published-files exempts VERSION.md", detail, cid)
+
+    def test_published_file_holding_a_version_still_fails_rel01(self):
+        for name, text in (("VERSION", "1.2.3\n"), ("VERSION.md", "v2.0.0-rc.1\n"),
+                           ("VERSION.md", "# Changes\n\n## [Unreleased]\n- x\n"),
+                           ("VERSION.md", "# Changes\n\n## 1.4.0 - 2026-10-01\n- x\n")):
+            with self.subTest(text=text):
+                r = self.repo({"HERO.md": self.PUBLISHED.format(name), name: text})
+                st, detail = self.verdict("REL-01", r)
+                self.assertEqual(st, audit.FAIL)
+                self.assertIn(name, detail)
+                shutil.rmtree(r)
+
+    def test_undeclared_version_md_fails_both(self):
+        r = self.repo({"HERO.md": "## Repository\n- default-branch: main\n", "VERSION.md": self.CHANGELOG_STYLE})
+        for cid in ("PLACE-04", "REL-01"):
+            self.assertEqual(self.verdict(cid, r), (audit.FAIL, "VERSION.md"), cid)
+
+    def test_published_file_exempts_only_itself(self):
+        r = self.repo({"HERO.md": self.PUBLISHED.format("VERSION.md, docs/notes.txt"),
+                       "VERSION.md": self.CHANGELOG_STYLE, "notes.txt": "x\n"})
+        self.assertEqual(self.verdict("PLACE-04", r), (audit.FAIL, "notes.txt"),
+                         "a nested entry exempts nothing, and a declaration exempts no other loose file")
+
+    def test_refused_value_is_named_in_the_fail(self):
+        r = self.repo({"HERO.md": self.PUBLISHED.format("-VERSION.md"), "VERSION.md": self.CHANGELOG_STYLE})
+        with contextlib.redirect_stderr(io.StringIO()):
+            for cid in ("PLACE-04", "REL-01"):
+                st, detail = self.verdict(cid, r)
+                self.assertEqual(st, audit.FAIL, cid)
+                self.assertIn("refusing 'published-files'", detail, cid)
+
+    def test_overridden_declaration_says_why(self):
+        r = self.repo({"HERO.md": self.PUBLISHED.format("VERSION"), "VERSION": "1.2.3\n"})
+        self.assertIn("declared in published-files, but holds a version", self.verdict("REL-01", r)[1])
+
+    def test_declared_symlink_is_never_exempt(self):
+        r = git_repo(self.root, "r")
+        write(r, "HERO.md", self.PUBLISHED.format("VERSION.md"))
+        write(self.root, "outside.md", self.CHANGELOG_STYLE)
+        (r / "VERSION.md").symlink_to(self.root / "outside.md")
+        git(r, "add", "-A")
+        git(r, "commit", "-q", "-m", "x")
+        self.assertEqual(self.verdict("REL-01", r)[0], audit.FAIL)
+
+    def test_published_files_outside_repository_section_is_ignored(self):
+        r = self.repo({"HERO.md": "## Code Quality\n- published-files: VERSION.md\n", "VERSION.md": self.CHANGELOG_STYLE})
+        self.assertEqual(self.verdict("REL-01", r)[0], audit.FAIL)
 
     # JUST-01
     BASE = "".join(f"{n}:\n    echo\n" for n in ("test", "lint", "typecheck", "clean", "format"))

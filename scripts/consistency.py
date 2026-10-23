@@ -62,8 +62,9 @@ _ORG = None
 def load_audit():
     spec = importlib.util.spec_from_file_location("audit", HERE / "scripts" / "audit.py")
     m = importlib.util.module_from_spec(spec)
-    # Registered BEFORE exec: the engine loads the fleet's checkers.py at
-    # configure time, and that module does `import audit`.
+    # Registered under `audit`: the fleet's checkers.py, loaded by main()'s
+    # configure(), does `import audit`, and without this entry that import
+    # loads a second copy whose registry nobody reads.
     sys.modules["audit"] = m
     spec.loader.exec_module(m)
     return m

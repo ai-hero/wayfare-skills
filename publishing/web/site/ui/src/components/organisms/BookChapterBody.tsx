@@ -62,7 +62,6 @@ function ProseView({ block }: { block: ProseBlock }) {
   }
 }
 
-// A chapter's text, figures and sources, for the book page and the blog posts.
 export function BookChapterBody({ chapter }: { chapter: ChapterFile }) {
   return (
     <div className="flex flex-col gap-10">

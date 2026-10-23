@@ -2,11 +2,14 @@
 
 The site renders the book itself (`/book`, `/book/<chapter>`); this target only hands it data and
 the route and component files, so the reading experience is the site's own code, built with its
-design system. Three things land in `$WEBSITE_DIR`:
+design system. What lands in `$WEBSITE_DIR`:
 
-- `ui/src/data/book/index.json` and `ui/src/data/book/chapters/<slug>.json`: block-structured content
-  (paragraphs, lists, figures, the table, sources), one file per chapter so each chapter is its
+- `ui/src/data/book/index.json`, `ui/src/data/book/chapters/<slug>.json` and
+  `ui/src/data/book/evidence/<slug>.json`: block-structured content (paragraphs, lists, figures,
+  the table, sources) and each chapter's evidence, one file per chapter so each chapter is its
   own chunk rather than one bundle the size of the book;
+- for each blog post below, a generated component under `ui/src/data/platform/`, its entry in
+  `blogs.ts`, and its line in `scripts/generate-blog-thumbnails.cjs`;
 - `ui/public/book/assets/`: one file per figure, SVG for drawn diagrams and PNG for cards, named by
   content hash so a rebuilt figure is never served from a stale cache;
 - every file under `publishing/web/site/` (the routes, components and an e2e spec), copied over
@@ -205,6 +208,16 @@ def register_posts(posts, chapters):
         subprocess.run(["node", generator], cwd=WEBSITE, check=True, stdout=subprocess.DEVNULL)
 
 
+# `//host` and `/\host` are protocol-relative to a browser, not site paths. A browser also drops
+# tab, CR and LF anywhere in a URL (so `/&#9;/host` is `//host`) and C0 controls and spaces at its
+# ends, so the href is matched, and written, as the browser will read it.
+SITE_HREF = re.compile(r"^(https?:|mailto:|#|/(?![/\\]))")
+
+
+def browser_href(href):
+    return re.sub(r"[\t\r\n]", "", href).strip("".join(map(chr, range(0x21))))
+
+
 class Inline(HTMLParser):
     """Keep inline marks (a[href], em, strong, code, br, sup) and escape everything else. The site
     renders these strings as HTML, and sanitizing here keeps a DOM implementation out of its
@@ -221,8 +234,8 @@ class Inline(HTMLParser):
         if tag not in self.KEEP:
             return
         if tag == "a":
-            href = dict(attrs).get("href") or ""
-            if not re.match(r"^(https?:|mailto:|/|#)", href):
+            href = browser_href(dict(attrs).get("href") or "")
+            if not SITE_HREF.match(href):
                 return self.out.append("<a>")
             return self.out.append(f'<a href="{html.escape(href, quote=True)}">')
         if tag == "code" and dict(attrs).get("class") == "repo":
@@ -305,7 +318,6 @@ def figure(b, assets, evidence=None):
     out = {"kind": "figure", "type": b["type"], "label": b.get("label", "Figure"), "number": b.get("number", ""),
            "id": f"{b.get('label', 'figure').lower()}-{b.get('number', '').replace('.', '-')}",
            "captionHtml": clean(b["caption_html"]), "alt": b.get("alt") or re.sub(r"<[^>]+>", "", b["caption_html"])}
-    # A card names its entry by `rid`; a drawn figure lists the entries it rests on in `evidence_ids`.
     rid = next((r for r in [b.get("rid"), *b.get("evidence_ids", [])] if evidence and r in evidence), None)
     if rid:
         out["evidence"] = evidence[rid]
@@ -313,7 +325,6 @@ def figure(b, assets, evidence=None):
         out["rows"] = [[clean(c["html"]) for c in r] for r in b["rows"]]
         return out
     files = b.get("files") or {}
-    # Drawn diagrams are vector and stay sharp at any zoom; cards are the decks' own raster charts.
     name = files.get("svg") if b["type"] in ("diagram", "drawn") and files.get("svg") else files.get("png") or files.get("svg")
     if not name:
         out["type"] = "missing"
@@ -422,7 +433,6 @@ def evidence_chapter(part, c, assets):
             entries.append({"anchor": e["anchor"], "label": e.get("label"), "slugs": e["slugs"],
                             "title": e.get("title"),
                             "charts": charts, "blocks": blocks})
-        # `title` is Markdown, kept for the anchor; the page sets the sanitized `titleHtml`.
         groups.append({"title": g["title"], "titleHtml": clean(g["html"]), "entries": entries})
     return {"n": part["n"], "slug": c["slug"], "title": c["title"], "free": c["free"],
             "count": sum(len(g["entries"]) for g in groups), "groups": groups}

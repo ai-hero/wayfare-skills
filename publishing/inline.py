@@ -8,7 +8,6 @@ from markdown_it import MarkdownIt
 
 import paths
 
-# The label every edition sets at the top of an `{{example}}` card.
 EXAMPLE_TITLE = "Inside this factory:"
 
 MD = MarkdownIt("commonmark")

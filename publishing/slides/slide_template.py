@@ -1,7 +1,7 @@
 """The A.I. Hero .potx, opened through `deck_lib.open_template`, and the few things python-pptx
 does not do for a template's placeholders: keep the layout's styling while filling them, shrink
-text the way PowerPoint's autofit would, carry the slide number, and fill the layout's one
-non-placeholder label (the Picture layout's figure label)."""
+text the way PowerPoint's autofit would, carry the slide number, and fill the layouts'
+non-placeholder labels (the Picture layout's figure label, the list layouts' numbers)."""
 import copy
 import os
 import sys

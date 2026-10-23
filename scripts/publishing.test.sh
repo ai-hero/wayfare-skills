@@ -2,11 +2,9 @@
 # Copyright (c) 2026 A.I. Hero, Inc.
 # All Rights Reserved.
 
-# Regression table for the Kindle edition's EPUB markup (publishing/kindle.py)
-# and the author's-note parser every edition shares (publishing/inline.py).
-#
-# Each case is a bug that once produced an EPUB KDP rejects or a reader
-# misreads, while the build still exited 0.
+# Regression table for the Kindle edition's EPUB markup (publishing/kindle.py),
+# the author's-note parser every edition shares (publishing/inline.py), and the
+# print path's URL fetcher and font pin (publishing/book.py).
 #
 # Usage: bash scripts/publishing.test.sh
 
@@ -32,6 +30,7 @@ sys.path.insert(0, sys.argv[1])
 tmp = sys.argv[2]
 import book
 import kindle
+import web
 from inline import note_end, sub_notes
 
 failed = 0
@@ -107,7 +106,7 @@ images = kindle.Images()
 hrefs = {images.add(os.path.join(tmp, d, "fig.png")) for d in ("a", "b")}
 check("two figures with one file name get two files", 2, len(hrefs))
 
-tree = kindle.contents_tree([chapter], False, None, None, False)
+tree = kindle.contents_tree([chapter], None, False)
 nav = kindle.nav(tree, "ch-1.xhtml")
 ncx = kindle.ncx({"title": "T"}, "u", tree)
 files = {"OEBPS/kindle.css": "", "OEBPS/nav.xhtml": nav, "OEBPS/toc.ncx": ncx,
@@ -118,6 +117,140 @@ check("a contents entry to a missing heading is a problem", True,
 files["OEBPS/ch-1.xhtml"] = kindle.page("One", '<section id="ch-1"><h2 id="ch-1-a">A</h2><p id="x"></p><p id="x"></p></section>')
 problems = kindle.check(files)
 check("a repeated id is a problem", ["OEBPS/ch-1.xhtml: id x is used twice"], problems)
+
+import hashlib
+import pathlib
+import urllib.error
+import urllib.request
+
+import paths
+import weasyprint.urls
+from PIL import Image
+
+os.makedirs(paths.ASSETS, exist_ok=True)
+local_png = os.path.join(paths.ASSETS, "fig.png")
+Image.new("RGB", (4, 4), "white").save(local_png)
+
+
+def refused(url):
+    try:
+        book.local_fetcher(url)
+    except ValueError:
+        return True
+    return False
+
+
+fetched = []
+real_fetcher = weasyprint.urls.default_url_fetcher
+weasyprint.urls.default_url_fetcher = lambda url, *a, **k: fetched.append(url) or real_fetcher(url, *a, **k)
+try:
+    hostile = ('<p><img src="http://127.0.0.1:9/x.png"><img src="file:///etc/hosts">'
+               '<img src="../../../etc/hosts"><img src="fig.png">'
+               '<a rel="attachment" href="file:///etc/hosts">x</a></p>')
+    book.weasy_html()(string=hostile, base_url=paths.ASSETS + "/").render()
+finally:
+    weasyprint.urls.default_url_fetcher = real_fetcher
+check("a render fetches only the asset it names", [pathlib.Path(local_png).as_uri()], fetched)
+check("a remote image is refused", True, refused("http://127.0.0.1:9/x.png"))
+check("an out-of-tree file is refused", True, refused("file:///etc/hosts"))
+check("a dot-dot path out of the assets is refused", True,
+      refused(pathlib.Path(paths.ASSETS, "..", "..", "x").as_uri()))
+check("a file on another host is refused", True, refused("file://example.com/etc/hosts"))
+check("a data URI still loads", False, refused("data:image/png;base64,iVBORw0KGgo="))
+font = os.path.join(tmp, "italic.woff2")
+open(font, "wb").close()
+book.GEIST_ITALIC = font
+check("a font file the book names is allowed", False, refused(pathlib.Path(font).as_uri()))
+roots_ok = {}
+for name, path in [("Manrope", book.FONTS["Manrope"]), ("turned table", os.path.join(paths.BUILD, "book", "t.svg")),
+                   ("author photo", os.path.join(paths.EDITIONS, "author.jpg"))]:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    open(path, "wb").close()
+    roots_ok[name] = not refused(pathlib.Path(path).as_uri())
+check("every root the book reads from is allowed", {k: True for k in roots_ok}, roots_ok)
+check("a sibling folder sharing the assets prefix is refused", True,
+      refused(pathlib.Path(paths.ASSETS + "-x", "f.png").as_uri()))
+book.REFUSED.clear()
+refused("http://127.0.0.1:9/x.png")
+check("a refusal is recorded for the build to fail on", {"http://127.0.0.1:9/x.png"}, book.REFUSED)
+book.REFUSED.clear()
+
+kept = {h: web.clean(f'<a href="{h}">x</a>') for h in ("/book/x", "#a", "https://x.example", "mailto:a@b.example")}
+check("a site, anchor, https or mailto href is kept", {h: f'<a href="{h}">x</a>' for h in kept}, kept)
+dropped = {h: web.clean(f'<a href="{h}">x</a>') for h in
+           ("//evil.example", "/\\evil.example", "/&#9;/evil.example", "/&#10;/evil.example", " //evil.example",
+            "javascript:alert(1)")}
+check("a protocol-relative or script href loses its href", {h: "<a>x</a>" for h in dropped}, dropped)
+
+import source
+check("an escaped pipe keeps a table cell whole", ["a | b", "c"], source.unescape_pipes(["a \\", " b", "c"]))
+
+
+def fake_urlopen(body):
+    class R:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return body
+    return lambda url, timeout=None: R()
+
+
+real_urlopen = urllib.request.urlopen
+dest = os.path.join(tmp, "fonts", "m.ttf")
+urllib.request.urlopen = fake_urlopen(b"not the font")
+try:
+    book.fetch_manrope(dest)
+    outcome = "no error"
+except SystemExit as e:
+    outcome = str(e)
+finally:
+    urllib.request.urlopen = real_urlopen
+check("a wrong digest is a hard error naming both hashes", True,
+      book.MANROPE_SHA256 in outcome and hashlib.sha256(b"not the font").hexdigest() in outcome)
+check("a wrong digest leaves nothing in place", [], os.listdir(os.path.dirname(dest)))
+urllib.request.urlopen = fake_urlopen(b"font")
+try:
+    book.fetch_manrope(dest, sha256=hashlib.sha256(b"font").hexdigest())
+finally:
+    urllib.request.urlopen = real_urlopen
+check("a matching digest moves the file into place", ["m.ttf"], os.listdir(os.path.dirname(dest)))
+check("a matching digest writes the downloaded bytes", b"font", open(dest, "rb").read())
+check("MANROPE_URL names a commit, not a branch", True,
+      re.search(r"/raw/[0-9a-f]{40}/", book.MANROPE_URL) is not None)
+
+
+def failing_urlopen(url, timeout=None):
+    raise urllib.error.URLError("no route")
+
+
+urllib.request.urlopen = failing_urlopen
+try:
+    book.fetch_manrope(dest + "2")
+    outcome = "no error"
+except SystemExit as e:
+    outcome = str(e)
+finally:
+    urllib.request.urlopen = real_urlopen
+check("a failed download names the URL and where to put the font", True,
+      book.MANROPE_URL in outcome and dest + "2" in outcome)
+
+with open(book.FONTS["Manrope"], "wb") as f:
+    f.write(b"an old unpinned font")
+calls = []
+real_fetch = book.fetch_manrope
+book.fetch_manrope = calls.append
+try:
+    try:
+        book.font_faces()
+    except SystemExit:
+        pass
+finally:
+    book.fetch_manrope = real_fetch
+check("a Manrope file with the wrong digest is fetched again", [book.FONTS["Manrope"]], calls)
 
 sys.exit(1 if failed else 0)
 EOF

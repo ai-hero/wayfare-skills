@@ -29,8 +29,9 @@ COVER = os.path.join(paths.DIST, "cover-ebook.png")
 # the store edition never inherits the print book's "Beta" unless kindle.json says so.
 DEFAULTS = {"edition": "First"}
 # At the 70% royalty Amazon charges a delivery fee per megabyte on every sale, so figures are
-# downscaled and reduced to a small palette; the charts are flat colour and lose nothing visible.
-IMAGE_W, COLOURS = 1100, 64
+# downscaled and palette-reduced. 256 colours, as in the technical edition: 64 bands the heatmaps'
+# gradients.
+IMAGE_W, COLOURS = 1100, 256
 # Only what the book can stand behind: textual alone is not sufficient while complex figures lack
 # certified text equivalents, so no WCAG conformance is claimed.
 ACCESSIBILITY = [("rendition:layout", "reflowable"), ("schema:accessMode", "textual"), ("schema:accessMode", "visual"),
@@ -100,9 +101,6 @@ class Images:
         return href
 
 
-EVIDENCE = {}  # figure-pipeline id -> appendix anchor
-
-
 def svg_image(src):
     """A drawn diagram that has no PNG, rendered through the same Chrome path as the cover, so its
     text is set in the design system's fonts rather than a rasterizer's fallback."""
@@ -149,10 +147,8 @@ def table_html(rows, tid, labelledby, cls=""):
 
 def figure(b, images):
     label = f'{b["label"]} {b["number"]}'
-    anchor = EVIDENCE.get(b.get("rid"))
-    ptr = f' <a class="evidence-ptr" href="#{anchor}">Evidence</a>' if anchor else ""
     title = f'<p class="panel-title">{esc(label)}</p>'
-    cap = f'<figcaption id="{fig_id(b)}-caption">{b["caption_html"]}{ptr}</figcaption>'
+    cap = f'<figcaption id="{fig_id(b)}-caption">{b["caption_html"]}</figcaption>'
     if b["type"] == "table":
         table = table_html(b["rows"], f"{fig_id(b)}-table", f"{fig_id(b)}-caption")
         return f'<figure class="table-figure" id="{fig_id(b)}">{title}{table}{cap}</figure>'
@@ -215,39 +211,6 @@ def chapter(c, images):
     if c.get("further"):
         refs = ", ".join(f'<a class="cite" href="#ref-{n}">{n}</a>' for n in c["further"])
         out.append(f'<p class="further-sources">Further sources: [{refs}].</p>')
-    out.append("</section>")
-    return "".join(out)
-
-
-RUN_IN = re.compile(r"^((?:Finding in the chapter|Finding|Question|Source|Method)(?: \([a-z0-9-]+\))?):\s*")
-
-
-def appendix_entry(e, images):
-    name = esc(e["label"]) + " · " if e["label"] else ""
-    name += " · ".join(esc(x) for x in e["slugs"]) if e["slugs"] else esc(e.get("title") or "")
-    out = [f'<section class="entry" id="{esc(e["anchor"])}"><h4>{name}</h4>']
-    for ch in e["charts"]:
-        src = images.add(ch["files"].get("png") or ch["files"].get("svg"))
-        if src:
-            out.append(f'<img src="{src}" alt="{esc(md_plain(ch.get("alt") or e.get("title") or ""))}"/>')
-    for b in e["blocks"]:
-        if b["kind"] == "link":
-            out.append(card(b, ""))
-        elif b["kind"] == "p":
-            out.append(card(b, "<p>" + RUN_IN.sub(lambda m: f'<span class="run-in">{m.group(1)}</span> ', b["html"], 1) + "</p>"))
-        else:
-            out.append(block(b, images))
-    out.append("</section>")
-    return "".join(out)
-
-
-def appendix_part(part, title, images):
-    out = [f'<section epub:type="appendix" id="appendix-{part["n"]}">'
-           f'<p class="chapter-number">{esc(title)} for Chapter {ONES[part["n"]]}</p><h1>{esc(part["title"])}</h1>']
-    for g in part["groups"]:
-        if len(part["groups"]) > 1 or g["title"].lower() != "figure evidence":
-            out.append(f'<h2>{g["html"]}</h2>')
-        out += [appendix_entry(e, images) for e in g["entries"]]
     out.append("</section>")
     return "".join(out)
 
@@ -330,7 +293,7 @@ def link(docs):
     return out, broken, unlinked
 
 
-def contents_tree(chapters, note_title, appendix_parts, appendix_title, has_refs):
+def contents_tree(chapters, note_title, has_refs):
     """The contents as (href, label, children), labels escaped: the nav document and the NCX are
     both drawn from it, so the two menus cannot disagree."""
     tree = []
@@ -340,9 +303,6 @@ def contents_tree(chapters, note_title, appendix_parts, appendix_title, has_refs
         tree.append((f'ch-{c["n"]}.xhtml', f'{ONES[c["n"]]}. {esc(c["title"])}', subs))
     if note_title:
         tree.append(("ai-note.xhtml", esc(note_title), []))
-    if appendix_parts:
-        parts = [(f'appendix-{p["n"]}.xhtml', f'Chapter {ONES[p["n"]]} · {esc(p["title"])}', []) for p in appendix_parts]
-        tree.append(("appendix.xhtml", f"Appendix: {esc(appendix_title)}", parts))
     if has_refs:
         tree.append(("references.xhtml", "References", []))
     return tree
@@ -502,22 +462,11 @@ def main():
             meta.update(json.load(f))
     if meta.get("confirm"):
         print(f"kindle: note: meta.json still says: {meta['confirm']}")
-    EVIDENCE.clear()
-    appx = doc.get("appendix") or {}
-    EVIDENCE.update({e["rid"]: e["anchor"] for p in appx.get("parts", [])
-                     for g in p["groups"] for e in g["entries"] if e["rid"]})
     images = Images()
     docs = front_matter(meta)
     docs += [(f"ch-{c['n']}", c["title"], "bodymatter", chapter(c, images)) for c in doc["chapters"]]
     if doc.get("preface"):
         docs.append(ai_note(doc["preface"]))
-    if appx.get("parts"):
-        intro = "".join(f"<p>{b['html']}</p>" for b in appx["intro"])
-        docs.append(("appendix", appx["title"], "backmatter",
-                     f'<section epub:type="appendix" id="appendix"><p class="chapter-number">Appendix</p>'
-                     f'<h1>{esc(appx["title"])}</h1>{intro}</section>'))
-        docs += [(f"appendix-{p['n']}", p["title"], "backmatter", appendix_part(p, appx["title"], images))
-                 for p in appx["parts"]]
     if doc.get("references"):
         refs = "".join(f'<p id="ref-{r["n"]}"><span class="ref-n">[{r["n"]}]</span>{link_urls(r["html"])}</p>' for r in doc["references"])
         docs.append(("references", "References", "backmatter",
@@ -525,8 +474,7 @@ def main():
                      f'<div class="reference-list">{refs}</div></section>'))
     docs = [(name, title, kind, footnotes(name, body)) for name, title, kind, body in docs]
     docs, broken, unlinked = link(docs)
-    tree = contents_tree(doc["chapters"], (doc.get("preface") or {}).get("title"), appx.get("parts"), appx.get("title"),
-                         bool(doc.get("references")))
+    tree = contents_tree(doc["chapters"], (doc.get("preface") or {}).get("title"), bool(doc.get("references")))
     first = f"ch-{doc['chapters'][0]['n']}.xhtml"
     xhtml_nav = nav(tree, first)
     ident = uuid.uuid5(uuid.NAMESPACE_URL, f"aihero.studio/book/{meta['title']}")

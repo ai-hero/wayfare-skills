@@ -190,7 +190,6 @@ h4 { font: 400 7pt/1.4 "Geist Mono"; letter-spacing: 0.08em; text-transform: upp
 
 .evidence-ptr { font: 400 6.4pt "Geist Mono"; letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--rose-dark); white-space: nowrap; }
-.evidence-ptr::after { content: " p. " target-counter(attr(href url), page); }
 
 /* ---------- in-text sources and figure references ---------- */
 /* The note sits in the sentence that cites it; WeasyPrint lifts it to the foot of the page. */
@@ -203,7 +202,6 @@ h4 { font: 400 7pt/1.4 "Geist Mono"; letter-spacing: 0.08em; text-transform: upp
 a.xref, a.evi-ref { color: inherit; text-decoration: none; }
 a.evi-ref { font: 400 6.6pt "Geist Mono"; letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--rose-dark); hyphens: none; }
-a.evi-ref::after { content: ", p. " target-counter(attr(href url), page); }
 section.chapter { counter-reset: footnote 0; }
 .fn + .fn::footnote-call { content: "," counter(footnote); }
 
@@ -226,6 +224,3 @@ blockquote.example { padding: 3.5pt 0.45in 3.5pt calc(0.45in + 14pt); }
 code.repo { background: var(--ink-100); border-radius: 2pt; padding: 0 2.2pt; }
 /* A name in monospace may break at its own hyphens, never inside a word. */
 code, code.repo { hyphens: none; -webkit-hyphens: none; }
-/* The page number after an evidence pointer is never upper-cased. WeasyPrint leaves a target-counter
-   in lower case but would upper-case the single-chapter stand-in, and the widths would then differ. */
-a.evi-ref::after, .evidence-ptr::after { text-transform: none; }

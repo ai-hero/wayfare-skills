@@ -90,7 +90,6 @@ export function BookEvidenceIndexPage({
   );
 }
 
-// Charts are drawn on white, so the plate stays white in dark mode.
 function Chart({ chart, title }: { chart: EvidenceChart; title: string }) {
   const img = (eager?: boolean) => (
     <img

@@ -2,13 +2,19 @@
 
     ./publish book          -> $PUBLISH_OUT/dist/book.pdf
 
-Layout lives in `book/book.css`; this module only writes semantic HTML. A layout fault is fixed
-there or here, never in the PDF.
+Layout lives in `book/book.css`; this module writes the HTML (with an inline max-height on shrunk
+figures), solves figure placement against rendered pages, restricts WeasyPrint's fetches to local
+assets and fonts, and downloads the pinned Manrope font when it is missing. A layout fault is fixed there or here, never in the PDF.
 """
+import functools
+import hashlib
 import html
+import http.client
 import json
 import os
 import re
+import urllib.parse
+import urllib.request
 
 import paths
 from inline import EXAMPLE_TITLE, md_plain, note_end, sub_notes
@@ -28,7 +34,73 @@ FONTS = {
 }
 GEIST_ITALIC = os.path.join(paths.WEBSITE, "ui", "node_modules", "@fontsource-variable", "geist", "files",
                             "geist-latin-wght-italic.woff2")
-MANROPE_URL = "https://github.com/google/fonts/raw/main/ofl/manrope/Manrope%5Bwght%5D.ttf"
+# Pinned to a commit: `main` moves, and the digest below would then reject a good build.
+MANROPE_URL = ("https://github.com/google/fonts/raw/b31870aff700ab7a1d74fa0c6887d95beb9e0037"
+               "/ofl/manrope/Manrope%5Bwght%5D.ttf")
+MANROPE_SHA256 = "3ae11c49db0455a3cc33e37d380f20fdb8c7f8b41dc07625c177e3d87a9d6ae6"  # pragma: allowlist secret
+FETCH_TIMEOUT = 60
+
+
+def sha256_of(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
+def fetch_manrope(dest, url=MANROPE_URL, sha256=MANROPE_SHA256):
+    """Check the digest before writing, and write through a temp name, so a truncated or swapped
+    file never sits where `font_faces` looks for the font."""
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    tmp = dest + ".part"
+    try:
+        try:
+            with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+                body = r.read()
+        except (OSError, http.client.HTTPException) as e:
+            raise SystemExit(f"book: cannot download Manrope from {url}: {e}; place the font at {dest}")
+        got = hashlib.sha256(body).hexdigest()
+        if got != sha256:
+            raise SystemExit(f"book: Manrope sha256 mismatch: expected {sha256}, got {got}")
+        with open(tmp, "wb") as f:
+            f.write(body)
+        os.replace(tmp, dest)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def local_roots():
+    """Where a render may read: the figure assets, the turned-table SVGs, the author photo and the
+    font files `font_faces` names."""
+    roots = [paths.ASSETS, os.path.join(paths.BUILD, "book"), paths.EDITIONS, *FONTS.values(), GEIST_ITALIC]
+    return [os.path.realpath(r) for r in roots]
+
+
+# WeasyPrint logs a failed fetch to a NullHandler and drops the resource, so every refusal is kept
+# here and `main` fails the build on any: otherwise a figure or font would vanish with exit 0.
+REFUSED = set()
+
+
+def local_fetcher(url, *args, **kwargs):
+    """WeasyPrint's url_fetcher for every render built through `weasy_html()`. Manuscript HTML is
+    untrusted: an `<img src=http://...>` or a `file:///` link in it would otherwise be fetched at
+    render time. Raising makes WeasyPrint skip the resource, not fail the page."""
+    from weasyprint.urls import default_url_fetcher
+    if url.startswith("data:"):
+        return default_url_fetcher(url, *args, **kwargs)
+    parts = urllib.parse.urlparse(url)
+    if parts.scheme != "file" or parts.netloc not in ("", "localhost"):
+        REFUSED.add(url)
+        raise ValueError(f"book: refusing to fetch {url}")
+    path = os.path.realpath(urllib.request.url2pathname(parts.path))
+    if not any(path == r or path.startswith(r + os.sep) for r in local_roots()):
+        REFUSED.add(url)
+        raise ValueError(f"book: refusing to fetch {url}: outside the asset and font paths")
+    return default_url_fetcher(url, *args, **kwargs)
+
+
+def weasy_html():
+    from weasyprint import HTML
+    return functools.partial(HTML, url_fetcher=local_fetcher)
 
 
 def esc(s):
@@ -36,10 +108,9 @@ def esc(s):
 
 
 def font_faces():
-    if not os.path.exists(FONTS["Manrope"]):
-        import urllib.request
-        os.makedirs(os.path.dirname(FONTS["Manrope"]), exist_ok=True)
-        urllib.request.urlretrieve(MANROPE_URL, FONTS["Manrope"])  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+    # A file left by the unpinned fetch this replaced is checked too, not trusted for existing.
+    if not os.path.exists(FONTS["Manrope"]) or sha256_of(FONTS["Manrope"]) != MANROPE_SHA256:
+        fetch_manrope(FONTS["Manrope"])
     missing = [p for p in FONTS.values() if not os.path.exists(p)]
     if missing:
         raise SystemExit("book: missing font files: " + ", ".join(missing))
@@ -64,7 +135,7 @@ def table_svg(b, cap):
     if fig_id(b) in _TABLES:
         return _TABLES[fig_id(b)]
     import fitz
-    from weasyprint import HTML
+    HTML = weasy_html()
     rows = b["rows"]
     head = "".join(f"<th>{c['html']}</th>" for c in rows[0])
     body = []
@@ -408,9 +479,6 @@ def render_html(doc, defer=None, shrink=None, only=None, splits=None):
     EVIDENCE.update({e["rid"]: e["anchor"] for p in (doc.get("appendix") or {}).get("parts", [])
                      for g in p["groups"] for e in g["entries"] if e["rid"]})
     if only is not None:
-        # The appendix is absent from a single-chapter render, so the "p. N" an evidence pointer prints
-        # cannot resolve and the line breaks differ from the book's. A three-digit stand-in keeps them equal.
-        css += '\na.evi-ref::after { content: ", p. 000"; } .evidence-ptr::after { content: " p. 000"; }'
         body = chapter(only, defer or {}, shrink or {}, splits)
     else:
         body = (front(meta, doc["chapters"], appendix_name(doc.get("appendix")),
@@ -445,7 +513,8 @@ def boxes(box):
 
 def gaps(document):
     """Figures that start a page while the page before ends with a large empty band: the figure
-    did not fit and was pushed, leaving the gap. Returns {figure id: gap as a share of the page}."""
+    did not fit and was pushed, leaving the gap. Returns {figure id: (page, gap as a share of the page,
+    room left, image height, min_scale)}."""
     found = {}
     for i, page in enumerate(document.pages[1:], 1):
         flow = [b for b in boxes(page._page_box) if getattr(b, "element_tag", "") in ("figure", "h2", "p", "h3")
@@ -453,7 +522,6 @@ def gaps(document):
         if not flow or any(getattr(b, "element_tag", "") == "h1" for b in boxes(page._page_box)):
             continue
         flow.sort(key=lambda b: b.position_y)
-        # A figure at the head of the page, or a heading kept with the figure that follows it.
         lead = flow[:2] if flow[0].element_tag == "h2" else flow[:1]
         first = next((b for b in lead if b.element_tag == "figure" and b.element.get("id")
                       and "table" not in b.element.get("class", "")), None)
@@ -656,7 +724,6 @@ def float_split(document, fid, para):
         if el is None or el.tag != "p" or not el.get("id", "").startswith("k"):
             break
         if el.get("id") != key:
-            # Whole paragraphs before the one that is cut move up ahead of the figure unchanged.
             key, words = el.get("id"), 0
         if used + ln.height > room:
             break
@@ -760,7 +827,8 @@ def cost(found):
 
 def evaluate(doc, c, HTML, defer, splits=None, shrink=None):
     """Render one chapter and score it: the summed share of each page a pushed figure leaves empty,
-    plus a penalty for every figure that precedes its introduction's spread."""
+    plus GAP_COUNT per gap, a steep GAP_LARGE charge past LARGE, and VIOLATION for every figure that
+    precedes its introduction's spread."""
     document = HTML(string=render_html(doc, defer, shrink, only=c, splits=splits),
                     base_url=paths.ASSETS + "/").render()
     g = gaps(document)
@@ -820,7 +888,7 @@ def with_cover(interior):
 
 
 def main():
-    from weasyprint import HTML
+    HTML = weasy_html()
     with open(paths.SOURCE, encoding="utf-8") as f:
         doc = without_appendix(json.load(f))
     # Every chapter opens on a new recto, so a chapter's pages lay out the same alone as in the
@@ -864,7 +932,6 @@ def main():
                     print(f"book: re-seated {fid} by {step} in the whole book")
                     defer, document, html_text, score = trial, tried, text, s
                     break
-        # Moves alone can leave such a gap, so each one left also gets the floats the solve uses.
         para, allowed = {}, {}
         for c in doc["chapters"]:
             allowed.update(allowed_cuts(c))
@@ -886,6 +953,8 @@ def main():
                     print(f"book: floated {fid} in the whole book")
                     splits, document, html_text, score = trial, tried, text, s
                     break
+    if REFUSED:
+        raise SystemExit("book: the render refused, and so left out, " + ", ".join(sorted(REFUSED)))
     os.makedirs(paths.DIST, exist_ok=True)
     with open(os.path.join(paths.BUILD, "book.html"), "w", encoding="utf-8") as f:
         f.write(html_text)

@@ -391,7 +391,8 @@ def published_files(repo):
     ## Repository, comma-separated). PLACE-04 and REL-01 exempt them by name,
     and each PASS detail names them, so every exemption shows in the table."""
     v = hero_md_field(repo / "HERO.md", "published-files", "## Repository") or ""
-    return sorted({p.strip() for p in v.split(",") if p.strip() and "/" not in p.strip()})
+    names = (p.strip() for p in v.split(","))
+    return sorted({p for p in names if p and "/" not in p})
 
 
 def _published_note(paths):
@@ -3824,9 +3825,9 @@ def main():
 
 # Bind once at import so tests and consistency.py get a usable module; main()
 # re-binds, and loads the overlay, once run_at_origin() has picked the engine.
-# A broken cwd (unreadable FLEET.md, a mapped
-# register that is not cloned) must not sink `--help` or an explicit --fleet,
-# so the import-time call swallows the exit and leaves the module unbound.
+# A broken cwd (unreadable FLEET.md, a mapped register that is not cloned) must
+# not sink `--help` or an explicit --fleet, so the import-time call swallows the
+# exit and leaves the module unbound.
 try:
     configure(load_overlay=False)
 except SystemExit as _e:

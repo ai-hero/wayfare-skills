@@ -1600,6 +1600,16 @@ mkdir "$R2/.plans"
 S2="$(hero_work_store "$R2" 2>/dev/null)"
 check "store: healthy .plans survives a legacy symlink" "$R2/.plans" "$S2"
 
+# A link one level down redirects every item or message write the same way a
+# linked .plans/ would.
+for sub in items inbox; do
+  RL="$TMP/link-$sub"; git init -q "$RL"; mkdir -p "$RL/.plans" "$TMP/elsewhere-$sub"
+  ln -s "$TMP/elsewhere-$sub" "$RL/.plans/$sub"
+  hero_work_store "$RL" >/dev/null 2>&1
+  check "store: symlinked .plans/$sub refused" "1" "$?"
+  check "store: link target untouched ($sub)" "0" "$(find "$TMP/elsewhere-$sub" -mindepth 1 | wc -l | tr -d ' ')"
+done
+
 # Both legacy dirs: my-work (newer) wins; shadowed plan-work is warned loudly.
 R3="$TMP/mig3"; git init -q "$R3"
 mkdir "$R3/my-work" "$R3/plan-work"; touch "$R3/my-work/a.md" "$R3/plan-work/b.md"
@@ -1992,7 +2002,17 @@ printf -- '---\nmsg_id: m-ee1111\ntype: ask\nfrom: hiro\nto: ds\nabout: 35\nstat
 check "deposit: rejects status outside enum"  "no"  "$(hero_msg_deposit "$W3" m-ee1111 "$TMP/badstatus.md" >/dev/null 2>&1 && echo yes || echo no)"
 # No temp may survive ANY path, a recipient's glob reading a half-message is
 # a request acted on in half. Asserted after the failure cases, not before.
-check "deposit: leaves no temp behind"        "0" "$(find "$W3/inbox" -name '.*.tmp' | wc -l | tr -d ' ')"
+# A sibling's committed `.plans/inbox -> somewhere` must not carry the
+# message out of its checkout.
+W5="$TMP/linkinbox/.plans"; mkdir -p "$W5" "$TMP/linkinbox-elsewhere"
+ln -s "$TMP/linkinbox-elsewhere" "$W5/inbox"
+printf -- '---\nmsg_id: m-ff1111\ntype: ask\nfrom: hiro\nto: ds\nabout: 37\nstatus: new\n---\n' > "$TMP/linked.md"
+check "deposit: refuses a symlinked inbox"    "no"  "$(hero_msg_deposit "$W5" m-ff1111 "$TMP/linked.md" >/dev/null 2>&1 && echo yes || echo no)"
+check "deposit: link target untouched"        "0"   "$(find "$TMP/linkinbox-elsewhere" -mindepth 1 | wc -l | tr -d ' ')"
+W6="$TMP/linkstore-real"; mkdir -p "$W6/inbox"; ln -s "$W6" "$TMP/linkstore-link"
+check "deposit: refuses a symlinked store"    "no"  "$(hero_msg_deposit "$TMP/linkstore-link" m-ff1111 "$TMP/linked.md" >/dev/null 2>&1 && echo yes || echo no)"
+check "deposit: linked store target untouched" "0"  "$(find "$W6/inbox" -mindepth 1 | wc -l | tr -d ' ')"
+check "deposit: leaves no temp behind"        "0" "$(find "$W3/inbox" -name '.*.tmp*' | wc -l | tr -d ' ')"
 if command -v zsh >/dev/null 2>&1; then
   check "msg find: empty inbox under zsh, rc 1" "no" "$(zsh -c ". '$LIB'; hero_msg_find '$TMP/w4/.plans' hiro 27" >/dev/null 2>&1 && echo yes || echo no)"
   # The empty-inbox case proves nullglob does not abort; it does not prove the

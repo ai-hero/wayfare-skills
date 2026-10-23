@@ -39,9 +39,39 @@ done
 TARGET_ROOT="${1:-$(git rev-parse --show-toplevel)}"
 DRIFT=0
 
+# A clone keeps a committed symlink, and cp writes through one, so a target
+# repo could aim .claude, rules/, hooks/ or a file itself anywhere on this
+# machine, ~/.claude/rules included. Refuse a link at any component of the
+# path we write.
+refuse_symlinked() { # PATH under TARGET_ROOT
+  local p="$TARGET_ROOT" part parts
+  IFS=/ read -ra parts <<<"${1#"$TARGET_ROOT"/}"
+  for part in "${parts[@]}"; do
+    p="$p/$part"
+    if [[ -L "$p" ]]; then
+      echo "ERROR: $p is a symlink; refusing to write through it" >&2
+      exit 1
+    fi
+  done
+}
+
+# Through a temp file in the same folder, so the final path is only ever
+# replaced by rename, never opened for writing.
+write_file() { # SRC DST
+  local tmp
+  tmp=$(mktemp "$(dirname "$2")/.$(basename "$2").XXXXXX")
+  if cp "$1" "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$2"; then
+    return 0
+  fi
+  rm -f "$tmp"
+  return 1
+}
+
 # copy_or_flag SOURCE TARGET: install, no-op, or flag drift.
 copy_or_flag() {
   local src="$1" dst="$2"
+  refuse_symlinked "$dst"
+  refuse_symlinked "$dst.new"
   mkdir -p "$(dirname "$dst")"
 
   if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
@@ -50,7 +80,7 @@ copy_or_flag() {
   fi
 
   if [[ -f "$dst" ]]; then
-    cp "$src" "$dst.new"
+    write_file "$src" "$dst.new"
     echo "EXISTS: $dst"
     echo "  Wrote new version to $dst.new"
     echo "  Diff:  diff -u $dst $dst.new"
@@ -59,7 +89,7 @@ copy_or_flag() {
     return 0
   fi
 
-  cp "$src" "$dst"
+  write_file "$src" "$dst"
   echo "INSTALLED: $dst"
 }
 
@@ -72,12 +102,13 @@ copy_or_flag() {
 # because nothing prompts a reconciliation for a file nobody expects to change.
 create_once() {
   local src="$1" dst="$2"
+  refuse_symlinked "$dst"
   mkdir -p "$(dirname "$dst")"
   if [[ -f "$dst" ]]; then
     echo "OK: $dst exists (repo-owned; never modified by this installer)"
     return 0
   fi
-  cp "$src" "$dst"
+  write_file "$src" "$dst"
   echo "INSTALLED: $dst (repo-owned from here: edit freely, re-vendoring never touches it)"
 }
 
@@ -105,6 +136,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
+refuse_symlinked "$SETTINGS"
 mkdir -p "$(dirname "$SETTINGS")"
 [[ -f "$SETTINGS" ]] || echo '{}' > "$SETTINGS"
 

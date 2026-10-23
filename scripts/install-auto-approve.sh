@@ -68,6 +68,36 @@ for ext in yaml yml; do
   fi
 done
 
+# A clone keeps a committed symlink, and cp writes through one, so a target
+# repo could aim .github, the workflows folder or the file itself anywhere on
+# this machine. Refuse a link at any component of the path we write.
+refuse_symlinked() { # PATH under TARGET_ROOT
+  local p="$TARGET_ROOT" part parts
+  IFS=/ read -ra parts <<<"${1#"$TARGET_ROOT"/}"
+  for part in "${parts[@]}"; do
+    p="$p/$part"
+    if [[ -L "$p" ]]; then
+      echo "ERROR: $p is a symlink; refusing to write through it" >&2
+      exit 1
+    fi
+  done
+}
+
+# Through a temp file in the same folder, so the final path is only ever
+# replaced by rename, never opened for writing.
+write_file() { # SRC DST
+  local tmp
+  tmp=$(mktemp "$(dirname "$2")/.$(basename "$2").XXXXXX")
+  if cp "$1" "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$2"; then
+    return 0
+  fi
+  rm -f "$tmp"
+  return 1
+}
+
+refuse_symlinked "$TARGET"
+refuse_symlinked "$TARGET.new"
+
 mkdir -p "$TARGET_DIR"
 
 if [[ -f "$TARGET" ]] && cmp -s "$SOURCE" "$TARGET"; then
@@ -76,7 +106,7 @@ if [[ -f "$TARGET" ]] && cmp -s "$SOURCE" "$TARGET"; then
 fi
 
 if [[ -f "$TARGET" ]]; then
-  cp "$SOURCE" "$TARGET.new"
+  write_file "$SOURCE" "$TARGET.new"
   echo "EXISTS: $TARGET"
   echo "  Wrote new version to $TARGET.new"
   echo "  Diff:    diff -u $TARGET $TARGET.new"
@@ -107,6 +137,6 @@ if [[ -f "$TARGET" ]]; then
   exit 2
 fi
 
-cp "$SOURCE" "$TARGET"
+write_file "$SOURCE" "$TARGET"
 echo "INSTALLED: $TARGET"
 post_install_notes

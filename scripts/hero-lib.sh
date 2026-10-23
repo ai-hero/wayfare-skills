@@ -968,7 +968,7 @@ hero_store_path() { # [ROOT]
 # the new name.
 # shellcheck disable=SC2120  # optional arg; callers usually rely on the default
 hero_work_store() {
-  local root store legacy
+  local root store legacy sub
   store=$(hero_store_path "${1:-}")
   root=${store%/.plans}
 
@@ -989,6 +989,14 @@ hero_work_store() {
     echo "hero_work_store: refusing to use '$store'; it is a symlink" >&2
     return 1
   fi
+  # The same redirect one level down: every item and message write lands in
+  # items/ or inbox/, so a link there is a link at the store.
+  for sub in items inbox PLAN.md; do
+    if [ -L "$store/$sub" ]; then
+      echo "hero_work_store: refusing to use '$store'; $sub is a symlink" >&2
+      return 1
+    fi
+  done
   for legacy in my-work plan-work; do
     # `[ -d ]` is true for a symlink to a directory, and `mv` renames the
     # LINK: a repo that commits `my-work -> ../../../.claude` (git preserves
@@ -1425,13 +1433,24 @@ hero_msg_deposit() { # TARGET_STORE MSG_ID BODY_FILE
     *) echo "hero_msg_deposit: status '${st:-<absent>}' is outside the enum; the recipient's unread count cannot classify it" >&2; return 1 ;;
   esac
   [ -d "$1/inbox" ] || { echo "hero_msg_deposit: $1/inbox does not exist; the target has no mailbox; report it, do not create one" >&2; return 1; }
+  # The target is a sibling checkout, and a clone keeps a committed symlink:
+  # `.plans/inbox -> ~/.claude/commands` would turn a message into a file the
+  # next session loads as an instruction. Refuse a link anywhere between the
+  # store and the inbox, by asking where the inbox physically is.
+  if [ -L "$1" ] || [ -L "$1/inbox" ] ||
+     [ "$(cd "$1/inbox" 2>/dev/null && pwd -P)" != "$(cd "$1" 2>/dev/null && pwd -P)/inbox" ]; then
+    echo "hero_msg_deposit: $1/inbox resolves outside $1 through a symlink; nothing was deposited" >&2
+    return 1
+  fi
   dest="$1/inbox/$2.md"
   # `[ -e ] && { ...; }` would leave the happy path returning 1 under `set -e`.
   if [ -e "$dest" ]; then
     echo "hero_msg_deposit: $dest already exists; allocate a new id rather than overwrite a message" >&2
     return 1
   fi
-  tmp="$1/inbox/.$2.$$.tmp"
+  # mktemp, not a pid-derived name: a predictable name is one a planted
+  # symlink can sit on, and `cat >` follows it.
+  tmp=$(mktemp "$1/inbox/.$2.tmp.XXXXXX") || { echo "hero_msg_deposit: cannot create a temp file in $1/inbox; nothing was deposited" >&2; return 1; }
   cat "$3" > "$tmp"; rc=$?
   if [ "$rc" -ne 0 ]; then
     rm -f "$tmp"

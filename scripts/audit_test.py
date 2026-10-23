@@ -1516,7 +1516,7 @@ class EngineAtOrigin(unittest.TestCase):
         self.assertIn("ZZ-NEW", p.stdout, "a check added on origin/main is listed")
         self.assertIn("ran-origin-engine", p.stderr, "origin/main's engine code ran")
         self.assertRegex(p.stdout, r"engine: origin/main @ ([0-9a-f]+) in .*\nassets: origin/main @ \1 in ")
-        self.assertRegex(p.stderr, r"(?m)^engine: origin/main @ [0-9a-f]+, not ", "the re-exec says so where --md does not")
+        self.assertRegex(p.stderr, r"(?m)^engine: origin/main @ [0-9a-f]+, not ", "the re-exec names itself on stderr, whatever the output format")
 
     def test_failed_engine_fetch_is_labelled_engine(self):
         git(self.plugin, "remote", "set-url", "origin", str(self.root / "gone"))
@@ -1608,6 +1608,18 @@ class HeroMdField(unittest.TestCase):
 
     def test_absent_file_is_none(self):
         self.assertIsNone(audit.hero_md_field(pathlib.Path("/nonexistent/HERO.md"), "x"))
+
+    def test_a_block_that_is_not_an_h2_is_an_error(self):
+        for block in ("Repository", "### Sub"):
+            with self.subTest(block=block), self.assertRaises(ValueError):
+                audit.hero_md_field(pathlib.Path("/nonexistent/HERO.md"), "x", block)
+
+    def test_line_splitting_matches_awk(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = pathlib.Path(d) / "HERO.md"
+            f.write_text("## Repository\n- x: y\x0c- published-files: VERSION.md\n")
+            self.assertIsNone(audit.hero_md_field(f, "published-files", "## Repository"),
+                              "a form feed is not a line break to awk")
 
 
 class ExtractTar(unittest.TestCase):
@@ -1864,6 +1876,33 @@ class RuleNotSpelling(unittest.TestCase):
         r = self.repo({"HERO.md": "## Repository\n- default-branch: main\n", "VERSION.md": self.CHANGELOG_STYLE})
         for cid in ("PLACE-04", "REL-01"):
             self.assertEqual(self.verdict(cid, r), (audit.FAIL, "VERSION.md"), cid)
+
+    def test_published_file_exempts_only_itself(self):
+        r = self.repo({"HERO.md": self.PUBLISHED.format("VERSION.md, docs/notes.txt"),
+                       "VERSION.md": self.CHANGELOG_STYLE, "notes.txt": "x\n"})
+        self.assertEqual(self.verdict("PLACE-04", r), (audit.FAIL, "notes.txt"),
+                         "a nested entry exempts nothing, and a declaration exempts no other loose file")
+
+    def test_refused_value_is_named_in_the_fail(self):
+        r = self.repo({"HERO.md": self.PUBLISHED.format("-VERSION.md"), "VERSION.md": self.CHANGELOG_STYLE})
+        with contextlib.redirect_stderr(io.StringIO()):
+            for cid in ("PLACE-04", "REL-01"):
+                st, detail = self.verdict(cid, r)
+                self.assertEqual(st, audit.FAIL, cid)
+                self.assertIn("refusing 'published-files'", detail, cid)
+
+    def test_overridden_declaration_says_why(self):
+        r = self.repo({"HERO.md": self.PUBLISHED.format("VERSION"), "VERSION": "1.2.3\n"})
+        self.assertIn("declared in published-files, but holds a version", self.verdict("REL-01", r)[1])
+
+    def test_declared_symlink_is_never_exempt(self):
+        r = git_repo(self.root, "r")
+        write(r, "HERO.md", self.PUBLISHED.format("VERSION.md"))
+        write(self.root, "outside.md", self.CHANGELOG_STYLE)
+        (r / "VERSION.md").symlink_to(self.root / "outside.md")
+        git(r, "add", "-A")
+        git(r, "commit", "-q", "-m", "x")
+        self.assertEqual(self.verdict("REL-01", r)[0], audit.FAIL)
 
     def test_published_files_outside_repository_section_is_ignored(self):
         r = self.repo({"HERO.md": "## Code Quality\n- published-files: VERSION.md\n", "VERSION.md": self.CHANGELOG_STYLE})

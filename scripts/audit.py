@@ -349,14 +349,27 @@ def tracked(repo, *pathspecs):
     return out.splitlines()
 
 
-def hero_md_field(path, key, block=""):
+# awk's [[:space:]]. str.strip() and splitlines() also act on Unicode spaces
+# and separators, which would let the audit read a field the shell reader does
+# not.
+_AWK_SPACE = " \t\n\v\f\r"
+
+
+def hero_md_field(path, key, block="", refused=None):
     """The value of `- key:` in a HERO.md, or None when it is absent, empty, or
-    refused as unsafe. The Python twin of hero-lib.sh's hero_md_field for an
-    H2 BLOCK or none; HeroMdField in audit_test.py holds the two to one answer
-    on the same file, so the audit never reads a field the skills read
-    differently. HERO.md is the audited repo's own content."""
+    refused. The Python twin of hero-lib.sh's hero_md_field for an H2 BLOCK or
+    none; HeroMdField in audit_test.py holds the two to one answer on the same
+    file, so the audit never reads a field the skills read differently.
+
+    HERO.md is the audited repo's content, so a value starting with `-` or
+    holding a control character is refused, as the shell reader refuses it.
+    A refusal is appended to `refused` when a list is passed, so a caller can
+    say why a declaration had no effect."""
+    block = block.rstrip(_AWK_SPACE)
+    if block and not block.startswith("## "):
+        raise ValueError(f"hero_md_field: block must be '' or an H2 heading line, got {block!r}")
     try:
-        lines = pathlib.Path(path).read_text(errors="replace").splitlines()
+        lines = pathlib.Path(path).read_text(errors="replace").split("\n")
     except OSError:
         return None
     fence = inblk = False
@@ -368,12 +381,12 @@ def hero_md_field(path, key, block=""):
         if fence:
             continue
         if re.match(r"##+ ", line):
-            heading = line.rstrip()
+            heading = line.rstrip(_AWK_SPACE)
             if heading.startswith("## "):
                 inblk = heading == block
             continue
         if (not block or inblk) and line.startswith(f"- {key}:"):
-            v = re.sub(r" *#.*", "", line.split(":", 1)[1].lstrip(" "), count=1).strip()
+            v = re.sub(r" *#.*", "", line.split(":", 1)[1].lstrip(" "), count=1).strip(_AWK_SPACE)
             if v:
                 value = v
                 break
@@ -381,22 +394,33 @@ def hero_md_field(path, key, block=""):
     if not value:
         return None
     if value.startswith("-") or any(ord(c) < 32 or ord(c) == 127 for c in value):
-        print(f"hero_md_field: refusing '{key}' in {pathlib.Path(path).name}: {value!r}", file=sys.stderr)
+        why = f"refusing '{key}' in {pathlib.Path(path).name}: {value!r}"
+        print(f"hero_md_field: {why}", file=sys.stderr)
+        if refused is not None:
+            refused.append(why)
         return None
     return value
 
 
 def published_files(repo):
-    """Root files HERO.md declares as published (`- published-files:` under
-    ## Repository, comma-separated). PLACE-04 and REL-01 exempt them by name,
-    and each PASS detail names them, so every exemption shows in the table."""
-    v = hero_md_field(repo / "HERO.md", "published-files", "## Repository") or ""
-    names = (p.strip() for p in v.split(","))
-    return sorted({p for p in names if p and "/" not in p})
+    """(names, problem) for the root files HERO.md declares as published
+    (`- published-files:` under ## Repository, comma-separated). PLACE-04 and
+    REL-01 exempt them by name and name them in the PASS detail, so every
+    exemption shows in the table. `problem` is the refusal when the value was
+    unsafe, which the FAIL detail carries: otherwise a declaration that had no
+    effect looks like one that was never written."""
+    refused = []
+    v = hero_md_field(repo / "HERO.md", "published-files", "## Repository", refused) or ""
+    names = (p.strip(_AWK_SPACE) for p in v.split(","))
+    return sorted({p for p in names if p and "/" not in p}), "; ".join(refused)
 
 
 def _published_note(paths):
     return f"published-files exempts {', '.join(paths)}" if paths else ""
+
+
+def _with(detail, extra):
+    return "; ".join(x for x in (detail, extra) if x)
 
 
 def uncommented(text):
@@ -1651,7 +1675,7 @@ def _(r):
     # A root .go file is a module's own source only when a root go.mod makes
     # it one; _ROOT_OK is a regex over names and cannot see the repo.
     root_module = "go.mod" in files
-    published = published_files(r)
+    published, problem = published_files(r)
     loose, exempt = [], []
     for f in files:
         if f.startswith("."):
@@ -1662,8 +1686,8 @@ def _(r):
             continue
         (exempt if f in published else loose).append(f)
     if loose:
-        return FAIL, ", ".join(sorted(loose))
-    return PASS, "; ".join(x for x in ("root is clean", _published_note(sorted(exempt))) if x)
+        return FAIL, _with(", ".join(sorted(loose)), problem)
+    return PASS, _with("root is clean", _published_note(sorted(exempt)))
 
 
 @check("DOC-03")
@@ -3406,11 +3430,24 @@ _HOLDS_A_VERSION = re.compile(
 @check("REL-01")
 def _(r):
     hits = tracked(r, "CHANGELOG*", "changelog*", "VERSION", "VERSION.*", "version.md")
-    published = published_files(r)
-    exempt = [h for h in hits if h in published
-              and not _HOLDS_A_VERSION.search((r / h).read_text(errors="replace"))]
+    published, problem = published_files(r)
+    exempt, overridden = [], []
+    for h in hits:
+        if h not in published:
+            continue
+        # A symlink or a FIFO is never exempt: following one reads outside the
+        # repo, and reading a FIFO hangs the whole fleet run.
+        p = r / h
+        if p.is_symlink() or not p.is_file() or _HOLDS_A_VERSION.search(p.read_text(errors="replace")):
+            overridden.append(h)
+        else:
+            exempt.append(h)
     hits = [h for h in hits if h not in exempt]
-    return (FAIL, ", ".join(hits)) if hits else (PASS, _published_note(exempt))
+    if hits:
+        note = (f"declared in published-files, but holds a version or is not a regular file: {', '.join(overridden)}"
+                if overridden else "")
+        return FAIL, _with(_with(", ".join(hits), note), problem)
+    return PASS, _published_note(exempt)
 
 
 # Which extension a repo needs, by what it runs. One row per tool; the

@@ -13,9 +13,10 @@ check: lint test validate
 # a direct call would need those tools installed separately and could run a
 # different version than the commit hook enforces.
 
-# semgrep scans every file, not the changed ones: findings sat on main unseen
-# because a push scans only what it pushes, and `--config=auto` can start
-# flagging a file nobody touched. Network and slowness are the accepted cost.
+# semgrep scans every file, not the changed ones: the pre-push hook scans only
+# the files a push changes, and `--config=auto` rules change underneath, so a
+# file nobody touched can start failing. Network and slowness are the accepted
+# cost.
 
 # Static checks: shell, prose and semgrep.
 lint:

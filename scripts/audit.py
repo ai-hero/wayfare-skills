@@ -2314,7 +2314,7 @@ _EXPR = re.compile(r"\$\{\{(.*?)\}\}", re.S)
 _EVENT_REF = re.compile(
     r"github\.event\b((?:\s*(?:\.\s*[A-Za-z0-9_*-]+|\[[^\]]*\]))*)"
 )
-_SEGMENT = re.compile(r"\.\s*([A-Za-z0-9_*-]+)|\[\s*(?:'([^']*)'|\"([^\"]*)\"|([^\]]*?))\s*\]")
+_SEGMENT = re.compile(r"\.\s*([A-Za-z0-9_*-]+)|\[\s*(?:'([^']*)'|\"([^\"]*)\"|[^\]]*)\s*\]")
 _FREE_STRING = re.compile(r"\bgithub\.head_ref\b|\binputs\.[A-Za-z0-9_-]+")
 
 
@@ -2326,7 +2326,7 @@ def _untrusted_splice(text):
             return m.group(0)
         for ref in _EVENT_REF.finditer(expr):
             leaf = None
-            for named, sq, dq, _idx in _SEGMENT.findall(ref.group(1)):
+            for named, sq, dq in _SEGMENT.findall(ref.group(1)):
                 leaf = named or sq or dq or None
             if leaf not in _SAFE_EVENT_LEAVES:
                 return ref.group(0)

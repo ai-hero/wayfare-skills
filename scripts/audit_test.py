@@ -695,6 +695,8 @@ class CI01(unittest.TestCase):
             "ai-hero/hero-skills/.github/workflows/auto-approve.yaml@main",
             "ai-hero/wayfare-skills-fork/.github/workflows/auto-approve.yaml@main",
             "ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@feature",
+            "evil/act@main # uses: ai-hero/wayfare-skills/.github/workflows/x.yaml@main",
+            "evil/act@main # @0000000000000000000000000000000000000000",
         ):
             with self.subTest(uses=uses):
                 st, detail = self._check(uses)
@@ -726,10 +728,39 @@ class CI13(unittest.TestCase):
             "github.event.pull_request.head.repo.full_name",
             "github.head_ref",
             "inputs.gh_env",
+            "GITHUB.EVENT.issue.title",
+            "github.Event.comment.body",
+            "Github.Head_Ref",
+            "github['event'].issue.title",
+            "github['event']['issue']['title']",
+            "github['head_ref']",
+            "inputs['x']",
+            "Inputs.x",
+            "github.event.client_payload.sha",
+            "github.event.inputs['number']",
+            "format('}}{0}', github.event.issue.title)",
+            "toJSON(github)",
         ):
             with self.subTest(expr=expr):
                 st, detail = self._run(expr)
                 self.assertEqual(st, audit.FAIL, detail)
+
+    def test_env_resplicing_an_untrusted_value_fails(self):
+        st, detail = self._check(
+            "      - env:\n"
+            "          T: ${{ github.event.issue.title }}\n"
+            "        run: echo \"${{ env.T }}\"\n"
+        )
+        self.assertEqual(st, audit.FAIL, detail)
+
+    def test_env_holding_a_safe_value_passes(self):
+        st, detail = self._check(
+            "      - env:\n"
+            "          N: ${{ github.event.issue.number }}\n"
+            "          T: ${{ github.event.issue.title }}\n"
+            "        run: echo \"${{ env.N }}\" \"$T\"\n"
+        )
+        self.assertEqual(st, audit.PASS, detail)
 
     def test_github_script_splice_fails(self):
         st, detail = self._check(
@@ -746,7 +777,8 @@ class CI13(unittest.TestCase):
             "      - run: |\n"
             "          echo ${{ github.event.issue.number }} ${{ github.event.comment.id }}\n"
             "          echo ${{ github.event.pull_request.head.sha }} ${{ github.event_name }}\n"
-            "          echo ${{ github.sha }}\n"
+            "          echo ${{ github.sha }} ${{ steps.x.outputs.inputs }}\n"
+            "          echo ${{ github.event.workflow_run.head_sha }} ${{ github.event.pull_request.head.repo.fork }}\n"
             "      - uses: actions/github-script@0000000000000000000000000000000000000000\n"
             "        env:\n"
             "          TITLE: ${{ github.event.issue.title }}\n"

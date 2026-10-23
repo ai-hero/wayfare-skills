@@ -1609,6 +1609,22 @@ for sub in items inbox; do
   check "store: symlinked .plans/$sub refused" "1" "$?"
   check "store: link target untouched ($sub)" "0" "$(find "$TMP/elsewhere-$sub" -mindepth 1 | wc -l | tr -d ' ')"
 done
+# File links too: PLAN.md takes every next_id, .deploy-pending is appended
+# to, and an item file is edited in place.
+for sub in PLAN.md .deploy-pending items/001-x.md; do
+  RL="$TMP/flink-${sub//\//-}"; git init -q "$RL"; mkdir -p "$RL/.plans/items"
+  printf 'victim\n' > "$RL.victim"
+  ln -s "$RL.victim" "$RL/.plans/$sub"
+  hero_work_store "$RL" >/dev/null 2>&1
+  check "store: symlinked .plans/$sub refused" "1" "$?"
+  check "store: link target untouched ($sub)" "victim" "$(cat "$RL.victim")"
+done
+# A legacy store migrated into place carries its links with it; the check
+# has to see the store as it is after the move, not before.
+RM="$TMP/mig-link"; git init -q "$RM"; mkdir -p "$RM/my-work" "$TMP/mig-elsewhere"
+ln -s "$TMP/mig-elsewhere" "$RM/my-work/items"
+hero_work_store "$RM" >/dev/null 2>&1
+check "store: link carried in by migration refused" "1" "$?"
 
 # Both legacy dirs: my-work (newer) wins; shadowed plan-work is warned loudly.
 R3="$TMP/mig3"; git init -q "$R3"
@@ -2012,6 +2028,8 @@ check "deposit: link target untouched"        "0"   "$(find "$TMP/linkinbox-else
 W6="$TMP/linkstore-real"; mkdir -p "$W6/inbox"; ln -s "$W6" "$TMP/linkstore-link"
 check "deposit: refuses a symlinked store"    "no"  "$(hero_msg_deposit "$TMP/linkstore-link" m-ff1111 "$TMP/linked.md" >/dev/null 2>&1 && echo yes || echo no)"
 check "deposit: linked store target untouched" "0"  "$(find "$W6/inbox" -mindepth 1 | wc -l | tr -d ' ')"
+check "deposit: refuses a linked store/ with a trailing slash" "no" "$(hero_msg_deposit "$TMP/linkstore-link/" m-ff1111 "$TMP/linked.md" >/dev/null 2>&1 && echo yes || echo no)"
+check "deposit: trailing-slash target untouched" "0" "$(find "$W6/inbox" -mindepth 1 | wc -l | tr -d ' ')"
 check "deposit: leaves no temp behind"        "0" "$(find "$W3/inbox" -name '.*.tmp*' | wc -l | tr -d ' ')"
 if command -v zsh >/dev/null 2>&1; then
   check "msg find: empty inbox under zsh, rc 1" "no" "$(zsh -c ". '$LIB'; hero_msg_find '$TMP/w4/.plans' hiro 27" >/dev/null 2>&1 && echo yes || echo no)"

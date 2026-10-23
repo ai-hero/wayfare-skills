@@ -76,6 +76,26 @@ ln -s "$OUTSIDE/rules" "$d/.claude/rules"
 check "link dir: rc" "1" "$rc"
 check "link dir: nothing written outside" "0" "$(find "$OUTSIDE/rules" -type f | wc -l | tr -d ' ')"
 
+# settings.json decides which hooks run. A live link would have its target
+# read and copied into the repo; a dangling one would be created by `echo '{}' >`.
+echo '{"mine": true}' > "$OUTSIDE/settings.json"
+d=$(fixture link_settings)
+mkdir -p "$d/.claude"
+ln -s "$OUTSIDE/settings.json" "$d/.claude/settings.json"
+"$INSTALLER" "$d" >/dev/null 2>&1; rc=$?
+check "link settings: rc" "1" "$rc"
+check "link settings: target untouched" '{"mine": true}' "$(cat "$OUTSIDE/settings.json")"
+check "link settings: still a link" "yes" "$([[ -L "$d/.claude/settings.json" ]] && echo yes || echo no)"
+# Refused before the first write, so nothing is half-installed.
+check "link settings: nothing installed" "no" "$([[ -e "$d/.claude/rules/design-system.md" ]] && echo yes || echo no)"
+
+d=$(fixture dangling_settings)
+mkdir -p "$d/.claude"
+ln -s "$OUTSIDE/absent-settings.json" "$d/.claude/settings.json"
+"$INSTALLER" "$d" >/dev/null 2>&1; rc=$?
+check "dangling settings: rc" "1" "$rc"
+check "dangling settings: target not created" "no" "$([[ -e "$OUTSIDE/absent-settings.json" ]] && echo yes || echo no)"
+
 echo ""
 echo "install-design-system.test.sh: $PASS passed, $FAIL failed"
 [[ $FAIL -eq 0 ]]

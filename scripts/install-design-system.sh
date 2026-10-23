@@ -18,7 +18,8 @@
 #
 # Exit codes:
 #   0  everything installed or already up to date
-#   1  source files missing, or settings.json could not be wired
+#   1  source files missing, a target path is a symlink (nothing written),
+#      or settings.json could not be wired
 #   2  an existing file differs; .new written, caller must reconcile
 
 set -euo pipefail
@@ -70,8 +71,6 @@ write_file() { # SRC DST
 # copy_or_flag SOURCE TARGET: install, no-op, or flag drift.
 copy_or_flag() {
   local src="$1" dst="$2"
-  refuse_symlinked "$dst"
-  refuse_symlinked "$dst.new"
   mkdir -p "$(dirname "$dst")"
 
   if [[ -f "$dst" ]] && cmp -s "$src" "$dst"; then
@@ -102,7 +101,6 @@ copy_or_flag() {
 # because nothing prompts a reconciliation for a file nobody expects to change.
 create_once() {
   local src="$1" dst="$2"
-  refuse_symlinked "$dst"
   mkdir -p "$(dirname "$dst")"
   if [[ -f "$dst" ]]; then
     echo "OK: $dst exists (repo-owned; never modified by this installer)"
@@ -112,6 +110,18 @@ create_once() {
   echo "INSTALLED: $dst (repo-owned from here: edit freely, re-vendoring never touches it)"
 }
 
+SETTINGS="$TARGET_ROOT/.claude/settings.json"
+
+# Every path is checked before the first write, so a refusal leaves nothing
+# half-installed.
+for f in rules/design-system.md hooks/check-design-tokens.sh \
+         hooks/check-design-tokens.test.sh; do
+  refuse_symlinked "$TARGET_ROOT/.claude/$f"
+  refuse_symlinked "$TARGET_ROOT/.claude/$f.new"
+done
+refuse_symlinked "$TARGET_ROOT/.claude/rules/design-system.local.md"
+refuse_symlinked "$SETTINGS"
+
 copy_or_flag "$SRC_RULE" "$TARGET_ROOT/.claude/rules/design-system.md"
 copy_or_flag "$SRC_HOOK" "$TARGET_ROOT/.claude/hooks/check-design-tokens.sh"
 chmod +x "$TARGET_ROOT/.claude/hooks/check-design-tokens.sh" 2>/dev/null || true
@@ -120,7 +130,6 @@ chmod +x "$TARGET_ROOT/.claude/hooks/check-design-tokens.test.sh" 2>/dev/null ||
 create_once "$SRC_LOCAL_STUB" "$TARGET_ROOT/.claude/rules/design-system.local.md"
 
 # --- Wire the PostToolUse hook into .claude/settings.json ---------------------
-SETTINGS="$TARGET_ROOT/.claude/settings.json"
 # The inner quotes are part of the command string: the value is run through a
 # shell, so an unquoted $CLAUDE_PROJECT_DIR word-splits on a clone whose path
 # contains a space and the hook silently never runs.
@@ -136,7 +145,6 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 0
 fi
 
-refuse_symlinked "$SETTINGS"
 mkdir -p "$(dirname "$SETTINGS")"
 [[ -f "$SETTINGS" ]] || echo '{}' > "$SETTINGS"
 

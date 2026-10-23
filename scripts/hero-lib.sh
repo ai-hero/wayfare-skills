@@ -968,7 +968,7 @@ hero_store_path() { # [ROOT]
 # the new name.
 # shellcheck disable=SC2120  # optional arg; callers usually rely on the default
 hero_work_store() {
-  local root store legacy sub
+  local root store legacy link
   store=$(hero_store_path "${1:-}")
   root=${store%/.plans}
 
@@ -989,14 +989,6 @@ hero_work_store() {
     echo "hero_work_store: refusing to use '$store'; it is a symlink" >&2
     return 1
   fi
-  # The same redirect one level down: every item and message write lands in
-  # items/ or inbox/, so a link there is a link at the store.
-  for sub in items inbox PLAN.md; do
-    if [ -L "$store/$sub" ]; then
-      echo "hero_work_store: refusing to use '$store'; $sub is a symlink" >&2
-      return 1
-    fi
-  done
   for legacy in my-work plan-work; do
     # `[ -d ]` is true for a symlink to a directory, and `mv` renames the
     # LINK: a repo that commits `my-work -> ../../../.claude` (git preserves
@@ -1027,6 +1019,15 @@ hero_work_store() {
     # targets $root's excludes even when the caller's cwd is another repo.
     ( cd "$root" && hero_exclude_add "$legacy/" ) || return 1
   done
+  # The same redirect anywhere inside: items/, inbox/, PLAN.md,
+  # .deploy-pending and each item file are all written through, and a store
+  # has no legitimate link. Checked after the migration, which can move a
+  # committed link in with the legacy folder.
+  link=$(find "$store" -type l 2>/dev/null | head -n 1)
+  if [ -n "$link" ]; then
+    echo "hero_work_store: refusing to use '$store'; '$link' is a symlink" >&2
+    return 1
+  fi
   mkdir -p "$store" || {
     echo "hero_work_store: cannot create '$store'" >&2
     return 1
@@ -1423,6 +1424,9 @@ hero_msg_find() { # STORE FROM ABOUT
 # and `status` inside its enum.
 hero_msg_deposit() { # TARGET_STORE MSG_ID BODY_FILE
   local dest tmp st body_id rc
+  # `[ -L store/ ]` follows the link and answers false, so a trailing slash
+  # would slip a linked store past the refusal below.
+  set -- "${1%/}" "$2" "$3"
   [ -r "$3" ] || { echo "hero_msg_deposit: cannot read $3" >&2; return 1; }
   hero_is_msg_id "$2" || { echo "hero_msg_deposit: '$2' is not a message id (m- plus six lowercase hex)" >&2; return 1; }
   body_id=$(hero_item_field "$3" msg_id)

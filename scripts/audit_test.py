@@ -1563,6 +1563,53 @@ class EngineAtOrigin(unittest.TestCase):
         self.assertNotEqual(p.returncode, 0, "the bare fixture repo fails checks, and the child's code propagates")
 
 
+class HeroMdField(unittest.TestCase):
+    """audit.hero_md_field answers what hero-lib.sh's hero_md_field answers:
+    the skills and the engine read one HERO.md, and a disagreement means the
+    audit exempts a file the skills say is not declared, or the reverse."""
+
+    TEXT = """# HERO
+- published-files: top-level-wins
+## Code Quality
+- linters: ruff, shellcheck # trailing comment
+- published-files: wrong-section
+```markdown
+## Repository
+- published-files: fenced
+```
+## Repository
+- merge-method:
+- merge-method: "squash"
+- published-files:   VERSION.md, NOTES.md   # two
+- hostile: --upload-pack=x
+- quoted: 'a'
+- hashed: a#b
+### Sub
+- under-h3: kept
+## Deployment
+- under-h3: other
+"""
+    CASES = [(k, b) for k in ("published-files", "linters", "merge-method", "hostile", "quoted",
+                             "hashed", "under-h3", "missing")
+             for b in ("", "## Repository", "## Code Quality", "## Deployment", "## Nowhere")]
+
+    def test_parity_with_the_shell_reader(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = pathlib.Path(d) / "HERO.md"
+            f.write_text(self.TEXT)
+            for key, block in self.CASES:
+                with self.subTest(key=key, block=block):
+                    p = subprocess.run(["bash", "-c", '. "$1"; hero_md_field "$2" "$3" "$4"', "_",
+                                        str(HERE / "hero-lib.sh"), str(f), key, block],
+                                       capture_output=True, text=True, env=CLEAN_ENV)
+                    want = p.stdout if p.returncode == 0 else None
+                    with contextlib.redirect_stderr(io.StringIO()):
+                        self.assertEqual(audit.hero_md_field(f, key, block), want)
+
+    def test_absent_file_is_none(self):
+        self.assertIsNone(audit.hero_md_field(pathlib.Path("/nonexistent/HERO.md"), "x"))
+
+
 class ExtractTar(unittest.TestCase):
     """_extract_tar is the only guard on 3.9.6, where `filter="data"` does not
     exist. Each case also runs with `data_filter` removed, so the 3.9 branch
@@ -1790,6 +1837,37 @@ class RuleNotSpelling(unittest.TestCase):
         r = self.repo({"go.mod": "module x\n", "notes.txt": "x\n"})
         st, detail = self.verdict("PLACE-04", r)
         self.assertEqual((st, detail), (audit.FAIL, "notes.txt"))
+
+    # published-files: PLACE-04 and REL-01
+    PUBLISHED = "# HERO\n\n## Repository\n- default-branch: main\n- published-files: {}\n"
+    CHANGELOG_STYLE = "# Registry changes\n\n## 2026-10-19\n- the token endpoint moved\n"
+
+    def test_published_changelog_style_file_passes_both(self):
+        r = self.repo({"HERO.md": self.PUBLISHED.format("VERSION.md"), "VERSION.md": self.CHANGELOG_STYLE})
+        for cid in ("PLACE-04", "REL-01"):
+            st, detail = self.verdict(cid, r)
+            self.assertEqual(st, audit.PASS, f"{cid}: {detail}")
+            self.assertIn("published-files exempts VERSION.md", detail, cid)
+
+    def test_published_file_holding_a_version_still_fails_rel01(self):
+        for name, text in (("VERSION", "1.2.3\n"), ("VERSION.md", "v2.0.0-rc.1\n"),
+                           ("VERSION.md", "# Changes\n\n## [Unreleased]\n- x\n"),
+                           ("VERSION.md", "# Changes\n\n## 1.4.0 - 2026-10-01\n- x\n")):
+            with self.subTest(text=text):
+                r = self.repo({"HERO.md": self.PUBLISHED.format(name), name: text})
+                st, detail = self.verdict("REL-01", r)
+                self.assertEqual(st, audit.FAIL)
+                self.assertIn(name, detail)
+                shutil.rmtree(r)
+
+    def test_undeclared_version_md_fails_both(self):
+        r = self.repo({"HERO.md": "## Repository\n- default-branch: main\n", "VERSION.md": self.CHANGELOG_STYLE})
+        for cid in ("PLACE-04", "REL-01"):
+            self.assertEqual(self.verdict(cid, r), (audit.FAIL, "VERSION.md"), cid)
+
+    def test_published_files_outside_repository_section_is_ignored(self):
+        r = self.repo({"HERO.md": "## Code Quality\n- published-files: VERSION.md\n", "VERSION.md": self.CHANGELOG_STYLE})
+        self.assertEqual(self.verdict("REL-01", r)[0], audit.FAIL)
 
     # JUST-01
     BASE = "".join(f"{n}:\n    echo\n" for n in ("test", "lint", "typecheck", "clean", "format"))

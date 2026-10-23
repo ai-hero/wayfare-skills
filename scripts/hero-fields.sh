@@ -165,6 +165,7 @@ wayfare-audit-compliance|Connections::issues|compliance-reach|the tool that reac
 wayfare-audit-compliance|Connections::issues|compliance-team|the team confirmed control findings are filed under
 wayfare-audit-compliance|Connections::issues|compliance-project|the project confirmed control findings belong to
 wayfare-audit-compliance|Connections::issues|compliance-label|the label every finding ticket carries
+wayfare-audit-compliance|Repository|published-files|root files the repo publishes on purpose, such as a consumer-facing VERSION.md log, which PLACE-04 and REL-01 exempt and name in their PASS detail
 wayfare-ship-pr|Connections::issues|type|the tracker a merged fix's finding ticket is moved to In Review in, when compliance-type is unset
 wayfare-ship-pr|Connections::issues|reach|the tool that comments on that ticket, when compliance-reach is unset
 wayfare-ship-pr|Connections::issues|compliance-type|the tracker the finding tickets live in

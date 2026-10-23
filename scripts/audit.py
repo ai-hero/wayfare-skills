@@ -349,6 +349,55 @@ def tracked(repo, *pathspecs):
     return out.splitlines()
 
 
+def hero_md_field(path, key, block=""):
+    """The value of `- key:` in a HERO.md, or None when it is absent, empty, or
+    refused as unsafe. The Python twin of hero-lib.sh's hero_md_field for an
+    H2 BLOCK or none; HeroMdField in audit_test.py holds the two to one answer
+    on the same file, so the audit never reads a field the skills read
+    differently. HERO.md is the audited repo's own content."""
+    try:
+        lines = pathlib.Path(path).read_text(errors="replace").splitlines()
+    except OSError:
+        return None
+    fence = inblk = False
+    value = ""
+    for line in lines:
+        if line.startswith("```"):
+            fence = not fence
+            continue
+        if fence:
+            continue
+        if re.match(r"##+ ", line):
+            heading = line.rstrip()
+            if heading.startswith("## "):
+                inblk = heading == block
+            continue
+        if (not block or inblk) and line.startswith(f"- {key}:"):
+            v = re.sub(r" *#.*", "", line.split(":", 1)[1].lstrip(" "), count=1).strip()
+            if v:
+                value = v
+                break
+    value = re.sub(r"[\"']$", "", re.sub(r"^[\"']", "", value))
+    if not value:
+        return None
+    if value.startswith("-") or any(ord(c) < 32 or ord(c) == 127 for c in value):
+        print(f"hero_md_field: refusing '{key}' in {pathlib.Path(path).name}: {value!r}", file=sys.stderr)
+        return None
+    return value
+
+
+def published_files(repo):
+    """Root files HERO.md declares as published (`- published-files:` under
+    ## Repository, comma-separated). PLACE-04 and REL-01 exempt them by name,
+    and each PASS detail names them, so every exemption shows in the table."""
+    v = hero_md_field(repo / "HERO.md", "published-files", "## Repository") or ""
+    return sorted({p.strip() for p in v.split(",") if p.strip() and "/" not in p.strip()})
+
+
+def _published_note(paths):
+    return f"published-files exempts {', '.join(paths)}" if paths else ""
+
+
 def uncommented(text):
     """Strip YAML comments so a checker can't match the prose ABOUT a bug
     and report it as the bug.
@@ -1601,7 +1650,8 @@ def _(r):
     # A root .go file is a module's own source only when a root go.mod makes
     # it one; _ROOT_OK is a regex over names and cannot see the repo.
     root_module = "go.mod" in files
-    loose = []
+    published = published_files(r)
+    loose, exempt = [], []
     for f in files:
         if f.startswith("."):
             continue
@@ -1609,8 +1659,10 @@ def _(r):
             continue
         if root_module and re.fullmatch(r"[^/]+\.go", f):
             continue
-        loose.append(f)
-    return (FAIL, ", ".join(sorted(loose))) if loose else (PASS, "root is clean")
+        (exempt if f in published else loose).append(f)
+    if loose:
+        return FAIL, ", ".join(sorted(loose))
+    return PASS, "; ".join(x for x in ("root is clean", _published_note(sorted(exempt))) if x)
 
 
 @check("DOC-03")
@@ -3343,10 +3395,21 @@ def _(r):
     return (PASS, "") if re.search(r'\.status|"ok"', body) else (FAIL, "checks HTTP code only")
 
 
+# A declared published file still fails REL-01 when it reads as the repo's own
+# version: a bare version string, or a changelog's `## [Unreleased]` / `## 1.2.3`
+# headings. Without this, declaring a real VERSION file would silence the check.
+_HOLDS_A_VERSION = re.compile(
+    r"\A\s*v?\d+(\.\d+)+\S*\s*\Z|^#+\s*\[?(unreleased|v?\d+\.\d+\.\d+)", re.I | re.M)
+
+
 @check("REL-01")
 def _(r):
     hits = tracked(r, "CHANGELOG*", "changelog*", "VERSION", "VERSION.*", "version.md")
-    return (FAIL, ", ".join(hits)) if hits else (PASS, "")
+    published = published_files(r)
+    exempt = [h for h in hits if h in published
+              and not _HOLDS_A_VERSION.search((r / h).read_text(errors="replace"))]
+    hits = [h for h in hits if h not in exempt]
+    return (FAIL, ", ".join(hits)) if hits else (PASS, _published_note(exempt))
 
 
 # Which extension a repo needs, by what it runs. One row per tool; the

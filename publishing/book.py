@@ -3,12 +3,13 @@
     ./publish book          -> $PUBLISH_OUT/dist/book.pdf
 
 Layout lives in `book/book.css`; this module writes the HTML (with an inline max-height on shrunk
-figures), solves figure placement against rendered pages, and fetches local assets for WeasyPrint.
-A layout fault is fixed there or here, never in the PDF.
+figures), solves figure placement against rendered pages, restricts WeasyPrint's fetches to local
+assets and fonts, and downloads the pinned Manrope font when it is missing. A layout fault is fixed there or here, never in the PDF.
 """
 import functools
 import hashlib
 import html
+import http.client
 import json
 import os
 import re
@@ -40,14 +41,22 @@ MANROPE_SHA256 = "3ae11c49db0455a3cc33e37d380f20fdb8c7f8b41dc07625c177e3d87a9d6a
 FETCH_TIMEOUT = 60
 
 
+def sha256_of(path):
+    with open(path, "rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
 def fetch_manrope(dest, url=MANROPE_URL, sha256=MANROPE_SHA256):
-    """Download to a temp name and move into place only once the digest matches, so a truncated or
-    swapped file never sits where `font_faces` treats an existing file as good."""
+    """Check the digest before writing, and write through a temp name, so a truncated or swapped
+    file never sits where `font_faces` looks for the font."""
     os.makedirs(os.path.dirname(dest), exist_ok=True)
     tmp = dest + ".part"
     try:
-        with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
-            body = r.read()
+        try:
+            with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+                body = r.read()
+        except (OSError, http.client.HTTPException) as e:
+            raise SystemExit(f"book: cannot download Manrope from {url}: {e}; place the font at {dest}")
         got = hashlib.sha256(body).hexdigest()
         if got != sha256:
             raise SystemExit(f"book: Manrope sha256 mismatch: expected {sha256}, got {got}")
@@ -66,18 +75,25 @@ def local_roots():
     return [os.path.realpath(r) for r in roots]
 
 
+# WeasyPrint logs a failed fetch to a NullHandler and drops the resource, so every refusal is kept
+# here and `main` fails the build on any: otherwise a figure or font would vanish with exit 0.
+REFUSED = set()
+
+
 def local_fetcher(url, *args, **kwargs):
-    """WeasyPrint's url_fetcher for every render. Manuscript HTML is untrusted: an `<img src=http://...>`
-    or a `file:///` link in it would otherwise be fetched at render time. Raising makes WeasyPrint
-    skip the resource, not fail the page."""
+    """WeasyPrint's url_fetcher for every render built through `weasy_html()`. Manuscript HTML is
+    untrusted: an `<img src=http://...>` or a `file:///` link in it would otherwise be fetched at
+    render time. Raising makes WeasyPrint skip the resource, not fail the page."""
     from weasyprint.urls import default_url_fetcher
     if url.startswith("data:"):
         return default_url_fetcher(url, *args, **kwargs)
     parts = urllib.parse.urlparse(url)
     if parts.scheme != "file" or parts.netloc not in ("", "localhost"):
+        REFUSED.add(url)
         raise ValueError(f"book: refusing to fetch {url}")
     path = os.path.realpath(urllib.request.url2pathname(parts.path))
     if not any(path == r or path.startswith(r + os.sep) for r in local_roots()):
+        REFUSED.add(url)
         raise ValueError(f"book: refusing to fetch {url}: outside the asset and font paths")
     return default_url_fetcher(url, *args, **kwargs)
 
@@ -92,7 +108,8 @@ def esc(s):
 
 
 def font_faces():
-    if not os.path.exists(FONTS["Manrope"]):
+    # A file left by the unpinned fetch this replaced is checked too, not trusted for existing.
+    if not os.path.exists(FONTS["Manrope"]) or sha256_of(FONTS["Manrope"]) != MANROPE_SHA256:
         fetch_manrope(FONTS["Manrope"])
     missing = [p for p in FONTS.values() if not os.path.exists(p)]
     if missing:
@@ -936,6 +953,8 @@ def main():
                     print(f"book: floated {fid} in the whole book")
                     splits, document, html_text, score = trial, tried, text, s
                     break
+    if REFUSED:
+        raise SystemExit("book: the render refused, and so left out, " + ", ".join(sorted(REFUSED)))
     os.makedirs(paths.DIST, exist_ok=True)
     with open(os.path.join(paths.BUILD, "book.html"), "w", encoding="utf-8") as f:
         f.write(html_text)

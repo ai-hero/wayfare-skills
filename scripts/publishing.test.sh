@@ -120,6 +120,7 @@ check("a repeated id is a problem", ["OEBPS/ch-1.xhtml: id x is used twice"], pr
 
 import hashlib
 import pathlib
+import urllib.error
 import urllib.request
 
 import paths
@@ -160,8 +161,29 @@ font = os.path.join(tmp, "italic.woff2")
 open(font, "wb").close()
 book.GEIST_ITALIC = font
 check("a font file the book names is allowed", False, refused(pathlib.Path(font).as_uri()))
-check("a protocol-relative href is not site-relative", [],
-      [h for h in ("//evil.example", "/\\evil.example") if web.SITE_HREF.match(h)])
+roots_ok = {}
+for name, path in [("Manrope", book.FONTS["Manrope"]), ("turned table", os.path.join(paths.BUILD, "book", "t.svg")),
+                   ("author photo", os.path.join(paths.EDITIONS, "author.jpg"))]:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    open(path, "wb").close()
+    roots_ok[name] = not refused(pathlib.Path(path).as_uri())
+check("every root the book reads from is allowed", {k: True for k in roots_ok}, roots_ok)
+check("a sibling folder sharing the assets prefix is refused", True,
+      refused(pathlib.Path(paths.ASSETS + "-x", "f.png").as_uri()))
+book.REFUSED.clear()
+refused("http://127.0.0.1:9/x.png")
+check("a refusal is recorded for the build to fail on", {"http://127.0.0.1:9/x.png"}, book.REFUSED)
+book.REFUSED.clear()
+
+kept = {h: web.clean(f'<a href="{h}">x</a>') for h in ("/book/x", "#a", "https://x.example", "mailto:a@b.example")}
+check("a site, anchor, https or mailto href is kept", {h: f'<a href="{h}">x</a>' for h in kept}, kept)
+dropped = {h: web.clean(f'<a href="{h}">x</a>') for h in
+           ("//evil.example", "/\\evil.example", "/&#9;/evil.example", "/&#10;/evil.example", " //evil.example",
+            "javascript:alert(1)")}
+check("a protocol-relative or script href loses its href", {h: "<a>x</a>" for h in dropped}, dropped)
+
+import source
+check("an escaped pipe keeps a table cell whole", ["a | b", "c"], source.unescape_pipes(["a \\", " b", "c"]))
 
 
 def fake_urlopen(body):
@@ -196,8 +218,39 @@ try:
 finally:
     urllib.request.urlopen = real_urlopen
 check("a matching digest moves the file into place", ["m.ttf"], os.listdir(os.path.dirname(dest)))
+check("a matching digest writes the downloaded bytes", b"font", open(dest, "rb").read())
 check("MANROPE_URL names a commit, not a branch", True,
-      "/raw/b31870aff700ab7a1d74fa0c6887d95beb9e0037/" in book.MANROPE_URL)
+      re.search(r"/raw/[0-9a-f]{40}/", book.MANROPE_URL) is not None)
+
+
+def failing_urlopen(url, timeout=None):
+    raise urllib.error.URLError("no route")
+
+
+urllib.request.urlopen = failing_urlopen
+try:
+    book.fetch_manrope(dest + "2")
+    outcome = "no error"
+except SystemExit as e:
+    outcome = str(e)
+finally:
+    urllib.request.urlopen = real_urlopen
+check("a failed download names the URL and where to put the font", True,
+      book.MANROPE_URL in outcome and dest + "2" in outcome)
+
+with open(book.FONTS["Manrope"], "wb") as f:
+    f.write(b"an old unpinned font")
+calls = []
+real_fetch = book.fetch_manrope
+book.fetch_manrope = calls.append
+try:
+    try:
+        book.font_faces()
+    except SystemExit:
+        pass
+finally:
+    book.fetch_manrope = real_fetch
+check("a Manrope file with the wrong digest is fetched again", [book.FONTS["Manrope"]], calls)
 
 sys.exit(1 if failed else 0)
 EOF

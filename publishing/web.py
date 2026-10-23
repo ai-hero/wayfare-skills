@@ -208,8 +208,14 @@ def register_posts(posts, chapters):
         subprocess.run(["node", generator], cwd=WEBSITE, check=True, stdout=subprocess.DEVNULL)
 
 
-# `//host` and `/\host` are protocol-relative to a browser, not site paths.
+# `//host` and `/\host` are protocol-relative to a browser, not site paths. A browser also drops
+# tab, CR and LF anywhere in a URL (so `/&#9;/host` is `//host`) and C0 controls and spaces at its
+# ends, so the href is matched, and written, as the browser will read it.
 SITE_HREF = re.compile(r"^(https?:|mailto:|#|/(?![/\\]))")
+
+
+def browser_href(href):
+    return re.sub(r"[\t\r\n]", "", href).strip("".join(map(chr, range(0x21))))
 
 
 class Inline(HTMLParser):
@@ -228,7 +234,7 @@ class Inline(HTMLParser):
         if tag not in self.KEEP:
             return
         if tag == "a":
-            href = dict(attrs).get("href") or ""
+            href = browser_href(dict(attrs).get("href") or "")
             if not SITE_HREF.match(href):
                 return self.out.append("<a>")
             return self.out.append(f'<a href="{html.escape(href, quote=True)}">')

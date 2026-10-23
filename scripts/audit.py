@@ -195,11 +195,15 @@ def read_fleet(root):
     return fields, repos
 
 
-def configure(root=None):
+def configure(root=None, load_overlay=True):
     """Bind ROOT, FAMILY, REGISTER, TEMPLATE and REPO_DIR — from FLEET.md when
     inside a fleet, else from the current repo alone. Called by main() and by
     consistency.py; the import-time call below makes the module usable from
-    tests without one."""
+    tests without one.
+
+    The import-time call passes load_overlay=False: it runs in whatever engine
+    was invoked, before run_at_origin() decides which engine runs, so loading
+    the register's checkers.py there executes fleet code under a stale engine."""
     global ROOT, FAMILY, REGISTER, TEMPLATE
     if root:
         root = pathlib.Path(root).resolve()
@@ -252,7 +256,8 @@ def configure(root=None):
         names.append(row["name"])
         GROUP_REPOS.setdefault(row["group"], set()).add(row["name"])
     FAMILY = tuple(names)
-    _load_overlay_checkers()
+    if load_overlay:
+        _load_overlay_checkers()
 
 
 def _load_overlay_checkers():
@@ -2723,10 +2728,12 @@ def run_at_origin(script):
         return None
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="audit-engine-"))
     try:
-        sha, note = _plugin_at_origin(_PLUGIN_HOME, tmp, ("scripts/audit.py", "scripts/consistency.py", "assets"))
+        sha, note = _plugin_at_origin(_PLUGIN_HOME, tmp, ("scripts/audit.py", "scripts/consistency.py", "assets"),
+                                      "engine")
         if not sha:
             _ENGINE_NOTE = f"working tree {HERE} ({note}; register and checkers may be stale)"
             return None
+        print(f"engine: {_PLUGIN_REMOTE}/{_PLUGIN_BRANCH} @ {sha}, not the invoked tree {HERE}", file=sys.stderr)
         rc = subprocess.run([sys.executable, str(tmp / "scripts" / script), *sys.argv[1:]],
                             env={**os.environ, _ENGINE_MARKER: note}).returncode
         return rc if rc >= 0 else 128 - rc
@@ -2759,7 +2766,7 @@ def reference_assets():
             note = os.environ[_ENGINE_MARKER]
         else:
             tmp = pathlib.Path(tempfile.mkdtemp(prefix="audit-assets-"))
-            _sha, note = _plugin_at_origin(_PLUGIN_HOME, tmp, ("assets",))
+            _sha, note = _plugin_at_origin(_PLUGIN_HOME, tmp, ("assets",), "assets")
             _PLUGIN_ASSETS = tmp / "assets"
         yield note
     finally:
@@ -2768,11 +2775,12 @@ def reference_assets():
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _plugin_at_origin(plugin, dest, paths):
+def _plugin_at_origin(plugin, dest, paths, label):
     """(sha, note) for `plugin`'s origin/main, with `paths` extracted under
     `dest`; sha is None, and nothing extracted, when there is no origin/main to
-    read. A failed fetch is reported and the last-fetched origin/main is used:
-    falling back to the working tree is the defect reference_assets() fixes."""
+    read. A failed fetch is reported under `label`, what the fetch was for, and
+    the last-fetched origin/main is used: falling back to the working tree is
+    the defect reference_assets() fixes."""
     ref = f"{_PLUGIN_REMOTE}/{_PLUGIN_BRANCH}"
     if not (plugin / ".git").exists():
         return None, f"absent ({plugin} is not a git checkout; asset checks read MANUAL)"
@@ -2786,7 +2794,7 @@ def _plugin_at_origin(plugin, dest, paths):
     stale = ""
     if rc:
         stale = f"  (fetch failed: {err or f'rc={rc}'}; {ref} as last fetched)"
-        print(f"assets: git fetch in {plugin} failed: {err or f'rc={rc}'}", file=sys.stderr)
+        print(f"{label}: git fetch in {plugin} failed: {err or f'rc={rc}'}", file=sys.stderr)
     rc, sha, _err = sh3(plugin, f"git rev-parse --verify -q --short {ref}^{{commit}}")
     if rc or not sha:
         return None, f"absent ({ref} does not resolve in {plugin}; asset checks read MANUAL){stale}"
@@ -3752,11 +3760,12 @@ def main():
 
 
 # Bind once at import so tests and consistency.py get a usable module; main()
-# re-binds when --fleet is given. A broken cwd (unreadable FLEET.md, a mapped
+# re-binds, and loads the overlay, once run_at_origin() has picked the engine.
+# A broken cwd (unreadable FLEET.md, a mapped
 # register that is not cloned) must not sink `--help` or an explicit --fleet,
 # so the import-time call swallows the exit and leaves the module unbound.
 try:
-    configure()
+    configure(load_overlay=False)
 except SystemExit as _e:
     print(f"audit: not configured from cwd ({_e}); pass --fleet or run inside a fleet", file=sys.stderr)
 

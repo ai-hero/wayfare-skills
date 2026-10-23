@@ -29,7 +29,8 @@ def _plugin_root():
 
 
 # Mirrors scripts/audit.py's in_git_worktree rather than importing it:
-# importing audit.py runs its configure() and loads the fleet overlay.
+# importing audit.py runs its configure(), which shells out to git and parses
+# FLEET.md at import time.
 def _in_git_worktree(d):
     home = os.path.realpath(os.path.expanduser("~"))
     while True:

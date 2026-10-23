@@ -966,6 +966,16 @@ class Configured(unittest.TestCase):
         self.assertFalse(marker.exists(), "the clone's .fleet/checkers.py executed")
         self.assertIn("inside a git work tree", p.stderr)
 
+    def test_import_runs_no_checkers_until_configured(self):
+        marker = self.root / "ran"
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n", checkers=f"open({str(marker)!r}, 'w').close()\n")
+        p = subprocess.run([sys.executable, "-c", "import audit"], cwd=str(self.root),
+                           capture_output=True, text=True, env={**CLEAN_ENV, "PYTHONPATH": str(HERE)})
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertFalse(marker.exists(), "importing audit.py ran the fleet's checkers.py")
+        audit.configure(self.root)
+        self.assertTrue(marker.exists(), "configure() loads the overlay")
+
     def test_fleet_root_walks_ancestors_of_a_clone(self):
         clone = git_repo(self.root, "clone")
         docs = clone / "docs"
@@ -1500,6 +1510,14 @@ class EngineAtOrigin(unittest.TestCase):
         self.assertIn("ZZ-NEW", p.stdout, "a check added on origin/main is listed")
         self.assertIn("ran-origin-engine", p.stderr, "origin/main's engine code ran")
         self.assertRegex(p.stdout, r"engine: origin/main @ ([0-9a-f]+) in .*\nassets: origin/main @ \1 in ")
+        self.assertRegex(p.stderr, r"(?m)^engine: origin/main @ [0-9a-f]+, not ", "the re-exec says so where --md does not")
+
+    def test_failed_engine_fetch_is_labelled_engine(self):
+        git(self.plugin, "remote", "set-url", "origin", str(self.root / "gone"))
+        p = self.run_script("audit.py", "--md")
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("engine: git fetch in ", p.stderr)
+        self.assertNotIn("assets: git fetch", p.stderr)
 
     def test_json_header_goes_to_stderr(self):
         p = self.run_script("audit.py", "--json")

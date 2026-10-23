@@ -968,7 +968,7 @@ hero_store_path() { # [ROOT]
 # the new name.
 # shellcheck disable=SC2120  # optional arg; callers usually rely on the default
 hero_work_store() {
-  local root store legacy
+  local root store legacy link
   store=$(hero_store_path "${1:-}")
   root=${store%/.plans}
 
@@ -1019,6 +1019,15 @@ hero_work_store() {
     # targets $root's excludes even when the caller's cwd is another repo.
     ( cd "$root" && hero_exclude_add "$legacy/" ) || return 1
   done
+  # The same redirect anywhere inside: items/, inbox/, PLAN.md,
+  # .deploy-pending and each item file are all written through, and a store
+  # has no legitimate link. Checked after the migration, which can move a
+  # committed link in with the legacy folder.
+  link=$(find "$store" -type l 2>/dev/null | head -n 1)
+  if [ -n "$link" ]; then
+    echo "hero_work_store: refusing to use '$store'; '$link' is a symlink" >&2
+    return 1
+  fi
   mkdir -p "$store" || {
     echo "hero_work_store: cannot create '$store'" >&2
     return 1
@@ -1415,6 +1424,9 @@ hero_msg_find() { # STORE FROM ABOUT
 # and `status` inside its enum.
 hero_msg_deposit() { # TARGET_STORE MSG_ID BODY_FILE
   local dest tmp st body_id rc
+  # `[ -L store/ ]` follows the link and answers false, so a trailing slash
+  # would slip a linked store past the refusal below.
+  set -- "${1%/}" "$2" "$3"
   [ -r "$3" ] || { echo "hero_msg_deposit: cannot read $3" >&2; return 1; }
   hero_is_msg_id "$2" || { echo "hero_msg_deposit: '$2' is not a message id (m- plus six lowercase hex)" >&2; return 1; }
   body_id=$(hero_item_field "$3" msg_id)
@@ -1425,13 +1437,24 @@ hero_msg_deposit() { # TARGET_STORE MSG_ID BODY_FILE
     *) echo "hero_msg_deposit: status '${st:-<absent>}' is outside the enum; the recipient's unread count cannot classify it" >&2; return 1 ;;
   esac
   [ -d "$1/inbox" ] || { echo "hero_msg_deposit: $1/inbox does not exist; the target has no mailbox; report it, do not create one" >&2; return 1; }
+  # The target is a sibling checkout, and a clone keeps a committed symlink:
+  # `.plans/inbox -> ~/.claude/commands` would turn a message into a file the
+  # next session loads as an instruction. Refuse a link anywhere between the
+  # store and the inbox, by asking where the inbox physically is.
+  if [ -L "$1" ] || [ -L "$1/inbox" ] ||
+     [ "$(cd "$1/inbox" 2>/dev/null && pwd -P)" != "$(cd "$1" 2>/dev/null && pwd -P)/inbox" ]; then
+    echo "hero_msg_deposit: $1/inbox resolves outside $1 through a symlink; nothing was deposited" >&2
+    return 1
+  fi
   dest="$1/inbox/$2.md"
   # `[ -e ] && { ...; }` would leave the happy path returning 1 under `set -e`.
   if [ -e "$dest" ]; then
     echo "hero_msg_deposit: $dest already exists; allocate a new id rather than overwrite a message" >&2
     return 1
   fi
-  tmp="$1/inbox/.$2.$$.tmp"
+  # mktemp, not a pid-derived name: a predictable name is one a planted
+  # symlink can sit on, and `cat >` follows it.
+  tmp=$(mktemp "$1/inbox/.$2.tmp.XXXXXX") || { echo "hero_msg_deposit: cannot create a temp file in $1/inbox; nothing was deposited" >&2; return 1; }
   cat "$3" > "$tmp"; rc=$?
   if [ "$rc" -ne 0 ]; then
     rm -f "$tmp"

@@ -692,25 +692,32 @@ def _(r):
     bad = 0
     for w in wfs:
         for line in w.read_text().splitlines():
-            if not re.search(r"^\s*(-\s*)?uses:", line):
+            # Judge the value alone: searching the whole line let a trailing
+            # `# uses: ai-hero/wayfare-skills/...@main` comment exempt any action.
+            m = re.match(r"""^\s*(?:-\s*)?uses:\s*["']?([^\s"'#]+)""", line)
+            if not m:
                 continue
-            # A first-party ai-hero/* reusable WORKFLOW may ride `main` or a
+            ref = m.group(1)
+            # The shared wayfare-skills reusable WORKFLOW may ride `main` or a
             # v-tag — the CI-01 carve-out. Narrow on every axis:
-            #   - only a reusable workflow, not a plain ai-hero action, which
-            #     is no kind of fleet-wide distribution mechanism;
+            #   - only ai-hero/wayfare-skills, never any ai-hero repo: members
+            #     can create repos in the org, and a caller aimed at one (or at
+            #     ai-hero/hero-skills, the pre-rename path anyone could claim) hands
+            #     whoever owns it ANTHROPIC_API_KEY and pull-requests: write;
+            #   - only a reusable workflow, not a plain action, which is no
+            #     kind of fleet-wide distribution mechanism;
             #   - only `main`, the callee's PROTECTED default branch, never an
             #     arbitrary branch. @main is acceptable BECAUSE the plugin repo
             #     gates main on review — approval required, stale approvals
             #     dismissed, last-push approval required. A feature branch is
-            #     gated on nothing, and this caller hands the callee
-            #     ANTHROPIC_API_KEY and pull-requests: write;
+            #     gated on nothing;
             #   - a v-tag stays permitted for repos not yet migrated.
-            if re.search(
-                r"uses:\s*ai-hero/[^/]+/\.github/workflows/[^@\s]+@(main|v[0-9][^\s]*)\s*(#.*)?$",
-                line,
+            if re.fullmatch(
+                rf"ai-hero/{_SHARED_WORKFLOW_OWNER}/\.github/workflows/[^@]+@(main|v[0-9]\S*)",
+                ref,
             ):
                 continue
-            if not re.search(r"@[0-9a-f]{40}", line):
+            if not re.search(r"@[0-9a-f]{40}$", ref):
                 bad += 1
     return (FAIL, f"{bad} unpinned") if bad else (PASS, "")
 
@@ -2289,23 +2296,97 @@ def _(r):
     return PASS, "server-side init + wrapped fetch"
 
 
-# Attacker-controllable FREE-STRING contexts that must reach a shell only via
-# env:, never spliced into `run:`. This is deliberately narrow:
+# Attacker-controllable contexts that must reach a shell or a github-script
+# body only via env:, never spliced into the source text.
 #
-#   - inputs.* and github.head_ref carry arbitrary strings.
-#   - github.event.*.{body,title,name,...} are the free-text/branch fields a
-#     PR or comment author controls.
+# Every github.event reference is untrusted unless its LEAF is on the safe
+# list below, wherever in the expression it sits: format(), toJSON() and
+# join() pass the string straight through. Matching a list of unsafe suffixes
+# instead is how workflow_run.head_branch and commits[0].message got through;
+# an event payload has more free-text fields than any list names. inputs,
+# github.head_ref, and anything under client_payload or event.inputs are
+# arbitrary whatever the leaf is called.
 #
-# It excludes what is NOT a shell-injection vector, so it does not false-fire on
-# the safe splices auto-approve.yaml relies on: github.sha / github.ref_name /
-# github.repository (trusted slugs), the numeric .number / .id, and
-# steps.*.outputs (values the workflow itself produced and, for the verdict,
-# pins to an enum before use). The deploy-summary bug this exists for was
-# inputs.gh_env spliced into a heredoc — squarely inside this set.
-_UNTRUSTED_RUN = re.compile(
-    r"\$\{\{\s*(github\.head_ref\b|inputs\.[A-Za-z0-9_]+"
-    r"|github\.event\.[A-Za-z0-9_.]*(body|title|name|ref|label|message|login|email|description))"
+# The expression language ignores case in names and accepts index syntax on
+# any object, so `GITHUB.EVENT.issue.title` and `github['event'].issue.title`
+# are the same splice; matching only the dotted lowercase spelling passed both.
+#
+# Safe leaves are numbers, shas and booleans, the shapes the shared
+# auto-approve workflow splices (issue.number, comment.id). A leaf that is an
+# index (commits[0]) or the bare payload (toJSON(github.event)) is the whole
+# object, so it is not safe either.
+_SAFE_EVENT_LEAVES = frozenset({
+    "number", "id", "sha", "head_sha", "before", "after", "run_id",
+    "run_number", "run_attempt", "draft", "merged", "fork", "forced",
+    "created", "deleted",
+})
+_ARBITRARY_EVENT_KEYS = frozenset({"client_payload", "inputs"})
+# `}}` inside a quoted literal does not close the expression, and a quote is
+# escaped by doubling it.
+_EXPR = re.compile(r"\$\{\{((?:'(?:[^']|'')*'|[^'}]|\}(?!\}))*)\}\}")
+_KEY = r"""\.\s*([A-Za-z0-9_*-]+)|\[\s*(?:'([^']*)'|"([^"]*)"|[^\]]*)\s*\]"""
+_CONTEXT_REF = re.compile(
+    rf"(?<![\w.])(github|inputs|env)\b((?:\s*(?:{_KEY}))*)", re.I
 )
+_SEGMENT = re.compile(_KEY)
+
+
+def _ref_path(tail):
+    """The keys after a context name, lowercased; None for a dynamic index."""
+    return [
+        (named or sq or dq or "").lower() or None
+        for named, sq, dq in _SEGMENT.findall(tail)
+    ]
+
+
+def _untrusted_splice(text, env=None):
+    """The first untrusted reference spliced into `text`, or None. `env` maps
+    lowercased env names in scope to their values: `${{ env.T }}` re-splices
+    whatever T was set from."""
+    env = env or {}
+    for expr in _EXPR.findall(text):
+        for ref in _CONTEXT_REF.finditer(expr):
+            root, path = ref.group(1).lower(), _ref_path(ref.group(2))
+            if root == "inputs":
+                return ref.group(0)
+            if root == "env":
+                names = [path[0]] if path and path[0] else list(env)
+                if any(isinstance(env.get(n), str) and _untrusted_splice(env[n])
+                       for n in names):
+                    return ref.group(0)
+                continue
+            if not path or path[0] in (None, "head_ref"):
+                return ref.group(0)
+            if path[0] != "event":
+                continue
+            event = path[1:]
+            if (not event or event[-1] not in _SAFE_EVENT_LEAVES
+                    or _ARBITRARY_EVENT_KEYS & set(event)):
+                return ref.group(0)
+    return None
+
+
+def _script_sites(step):
+    """The source texts a step executes: `run:`, and `with.script` on
+    actions/github-script, which is JavaScript with the same splice problem."""
+    run = step.get("run")
+    if isinstance(run, str):
+        yield run
+    if str(step.get("uses") or "").startswith("actions/github-script"):
+        with_ = step.get("with")
+        script = with_.get("script") if isinstance(with_, dict) else None
+        if isinstance(script, str):
+            yield script
+
+
+def _env_scope(*blocks):
+    """Workflow, job and step env: merged, inner wins, names lowercased the
+    way the expression language looks them up."""
+    out = {}
+    for b in blocks:
+        if isinstance(b, dict):
+            out.update({str(k).lower(): v for k, v in b.items()})
+    return out
 
 
 @check("CI-13")
@@ -2313,13 +2394,12 @@ def _(r):
     wfs = workflows(r)
     if not wfs:
         return NA, "no workflows"
-    hits = []
+    hits, unreadable = [], []
     for wf in wfs:
         try:
-            doc = yaml.safe_load(wf.read_text())
-        except Exception:
-            continue
-        if not isinstance(doc, dict):
+            doc = _wf_doc(wf)
+        except Unreadable as e:
+            unreadable.append(str(e))
             continue
         for job in (doc.get("jobs") or {}).values():
             if not isinstance(job, dict):
@@ -2327,12 +2407,16 @@ def _(r):
             for step in job.get("steps") or []:
                 if not isinstance(step, dict):
                     continue
-                run = step.get("run")
-                if isinstance(run, str) and _UNTRUSTED_RUN.search(run):
-                    hits.append(f"{wf.name}:{(step.get('name') or 'run')}")
+                env = _env_scope(doc.get("env"), job.get("env"), step.get("env"))
+                for text in _script_sites(step):
+                    ref = _untrusted_splice(text, env)
+                    if ref:
+                        hits.append(f"{wf.name}:{(step.get('name') or 'run')} ({ref.strip()})")
     if hits:
-        return FAIL, "untrusted context spliced into run: " + "; ".join(sorted(set(hits))[:3])
-    return PASS, "untrusted context reaches shell via env: only"
+        return FAIL, "untrusted context spliced into a script: " + "; ".join(sorted(set(hits))[:3])
+    if unreadable:
+        return MANUAL, "unreadable workflow: " + "; ".join(unreadable[:3])
+    return PASS, "no untrusted context spliced into run: or github-script"
 
 
 @check("HLT-04")

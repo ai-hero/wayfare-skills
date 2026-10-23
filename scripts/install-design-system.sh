@@ -18,7 +18,8 @@
 #
 # Exit codes:
 #   0  everything installed or already up to date
-#   1  source files missing, or settings.json could not be wired
+#   1  source files missing, a target path is a symlink (nothing written),
+#      or settings.json could not be wired
 #   2  an existing file differs; .new written, caller must reconcile
 
 set -euo pipefail
@@ -39,6 +40,34 @@ done
 TARGET_ROOT="${1:-$(git rev-parse --show-toplevel)}"
 DRIFT=0
 
+# A clone keeps a committed symlink, and cp writes through one, so a target
+# repo could aim .claude, rules/, hooks/ or a file itself anywhere on this
+# machine, ~/.claude/rules included. Refuse a link at any component of the
+# path we write.
+refuse_symlinked() { # PATH under TARGET_ROOT
+  local p="$TARGET_ROOT" part parts
+  IFS=/ read -ra parts <<<"${1#"$TARGET_ROOT"/}"
+  for part in "${parts[@]}"; do
+    p="$p/$part"
+    if [[ -L "$p" ]]; then
+      echo "ERROR: $p is a symlink; refusing to write through it" >&2
+      exit 1
+    fi
+  done
+}
+
+# Through a temp file in the same folder, so the final path is only ever
+# replaced by rename, never opened for writing.
+write_file() { # SRC DST
+  local tmp
+  tmp=$(mktemp "$(dirname "$2")/.$(basename "$2").XXXXXX")
+  if cp "$1" "$tmp" && chmod 644 "$tmp" && mv "$tmp" "$2"; then
+    return 0
+  fi
+  rm -f "$tmp"
+  return 1
+}
+
 # copy_or_flag SOURCE TARGET: install, no-op, or flag drift.
 copy_or_flag() {
   local src="$1" dst="$2"
@@ -50,7 +79,7 @@ copy_or_flag() {
   fi
 
   if [[ -f "$dst" ]]; then
-    cp "$src" "$dst.new"
+    write_file "$src" "$dst.new"
     echo "EXISTS: $dst"
     echo "  Wrote new version to $dst.new"
     echo "  Diff:  diff -u $dst $dst.new"
@@ -59,7 +88,7 @@ copy_or_flag() {
     return 0
   fi
 
-  cp "$src" "$dst"
+  write_file "$src" "$dst"
   echo "INSTALLED: $dst"
 }
 
@@ -77,9 +106,21 @@ create_once() {
     echo "OK: $dst exists (repo-owned; never modified by this installer)"
     return 0
   fi
-  cp "$src" "$dst"
+  write_file "$src" "$dst"
   echo "INSTALLED: $dst (repo-owned from here: edit freely, re-vendoring never touches it)"
 }
+
+SETTINGS="$TARGET_ROOT/.claude/settings.json"
+
+# Every path is checked before the first write, so a refusal leaves nothing
+# half-installed.
+for f in rules/design-system.md hooks/check-design-tokens.sh \
+         hooks/check-design-tokens.test.sh; do
+  refuse_symlinked "$TARGET_ROOT/.claude/$f"
+  refuse_symlinked "$TARGET_ROOT/.claude/$f.new"
+done
+refuse_symlinked "$TARGET_ROOT/.claude/rules/design-system.local.md"
+refuse_symlinked "$SETTINGS"
 
 copy_or_flag "$SRC_RULE" "$TARGET_ROOT/.claude/rules/design-system.md"
 copy_or_flag "$SRC_HOOK" "$TARGET_ROOT/.claude/hooks/check-design-tokens.sh"
@@ -89,7 +130,6 @@ chmod +x "$TARGET_ROOT/.claude/hooks/check-design-tokens.test.sh" 2>/dev/null ||
 create_once "$SRC_LOCAL_STUB" "$TARGET_ROOT/.claude/rules/design-system.local.md"
 
 # --- Wire the PostToolUse hook into .claude/settings.json ---------------------
-SETTINGS="$TARGET_ROOT/.claude/settings.json"
 # The inner quotes are part of the command string: the value is run through a
 # shell, so an unquoted $CLAUDE_PROJECT_DIR word-splits on a clone whose path
 # contains a space and the hook silently never runs.

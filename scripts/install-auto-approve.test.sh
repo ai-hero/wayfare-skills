@@ -95,6 +95,34 @@ check "both: rc" "2" "$rc"
 check "both: adopts .yaml" "yes" "$([[ -f "$d/.github/workflows/auto-approve.yaml.new" ]] && echo yes || echo no)"
 check "both: warns about the duplicate" "yes" "$(grep -qi 'also exists' <<<"$out" && echo yes || echo no)"
 
+# --- symlinks are refused, and their targets left alone ---------------------
+# A clone keeps a committed symlink; writing through one lands the caller (or
+# its .new) wherever the target repo pointed it.
+OUTSIDE="$WORK/outside"
+mkdir -p "$OUTSIDE"
+echo "victim" > "$OUTSIDE/victim.yaml"
+d=$(fixture link_file)
+ln -s "$OUTSIDE/victim.yaml" "$d/.github/workflows/auto-approve.yaml"
+out=$("$INSTALLER" "$d" 2>&1); rc=$?
+check "link file: rc" "1" "$rc"
+check "link file: target untouched" "victim" "$(cat "$OUTSIDE/victim.yaml")"
+check "link file: names the link" "yes" "$(grep -q 'is a symlink' <<<"$out" && echo yes || echo no)"
+
+d=$(fixture link_new)
+echo "old: true" > "$d/.github/workflows/auto-approve.yaml"
+ln -s "$OUTSIDE/victim.yaml" "$d/.github/workflows/auto-approve.yaml.new"
+out=$("$INSTALLER" "$d" 2>&1); rc=$?
+check "link .new: rc" "1" "$rc"
+check "link .new: target untouched" "victim" "$(cat "$OUTSIDE/victim.yaml")"
+
+d=$(fixture link_dir)
+rm -rf "$d/.github"
+mkdir -p "$OUTSIDE/gh"
+ln -s "$OUTSIDE/gh" "$d/.github"
+out=$("$INSTALLER" "$d" 2>&1); rc=$?
+check "link dir: rc" "1" "$rc"
+check "link dir: nothing written outside" "0" "$(find "$OUTSIDE/gh" -type f | wc -l | tr -d ' ')"
+
 # --- missing source is distinguishable from a failed write ------------------
 FAKE="$WORK/fakeplugin"
 mkdir -p "$FAKE/scripts"

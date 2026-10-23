@@ -669,6 +669,69 @@ class CI14(unittest.TestCase):
             self.assertIn("npm@/b: catch-all batches majors", detail)
 
 
+class CI13(unittest.TestCase):
+    """Every form an attacker string reaches a script in FAILs; numeric and
+    sha fields pass; a workflow that cannot be parsed is MANUAL, never PASS."""
+
+    def _check(self, steps_yaml):
+        with tempfile.TemporaryDirectory() as d:
+            r = pathlib.Path(d)
+            write(r, ".github/workflows/w.yaml",
+                  "on: push\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n" + steps_yaml)
+            return audit.CHECKS["CI-13"](r)
+
+    def _run(self, expr):
+        return self._check(f"      - run: echo \"${{{{ {expr} }}}}\"\n")
+
+    def test_each_injection_form_fails(self):
+        for expr in (
+            "github.event.workflow_run.head_branch",
+            "github.event.commits[0].message",
+            "format('{0}', github.event.issue.title)",
+            "toJSON(github.event.comment)",
+            "toJSON(github.event)",
+            "github.event['pull_request']['title']",
+            "github.event.pull_request.head.repo.full_name",
+            "github.head_ref",
+            "inputs.gh_env",
+        ):
+            with self.subTest(expr=expr):
+                st, detail = self._run(expr)
+                self.assertEqual(st, audit.FAIL, detail)
+
+    def test_github_script_splice_fails(self):
+        st, detail = self._check(
+            "      - uses: actions/github-script@0000000000000000000000000000000000000000\n"
+            "        with:\n"
+            "          script: |\n"
+            "            const t = `${{ github.event.issue.title }}`\n"
+        )
+        self.assertEqual(st, audit.FAIL, detail)
+        self.assertIn("github.event.issue.title", detail)
+
+    def test_allowlisted_fields_pass(self):
+        st, detail = self._check(
+            "      - run: |\n"
+            "          echo ${{ github.event.issue.number }} ${{ github.event.comment.id }}\n"
+            "          echo ${{ github.event.pull_request.head.sha }} ${{ github.event_name }}\n"
+            "          echo ${{ github.sha }}\n"
+            "      - uses: actions/github-script@0000000000000000000000000000000000000000\n"
+            "        env:\n"
+            "          TITLE: ${{ github.event.issue.title }}\n"
+            "        with:\n"
+            "          script: console.log(process.env.TITLE, ${{ github.event.issue.number }})\n"
+        )
+        self.assertEqual(st, audit.PASS, detail)
+
+    def test_unparseable_workflow_is_manual(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = pathlib.Path(d)
+            write(r, ".github/workflows/w.yaml", "on: [push\njobs: {\n")
+            st, detail = audit.CHECKS["CI-13"](r)
+            self.assertEqual(st, audit.MANUAL, detail)
+            self.assertIn("w.yaml", detail)
+
+
 class HookSegments(unittest.TestCase):
     PC = "repos:\n- repo: a\n  hooks:\n  - id: markdownlint\n    args: [--fix]\n  - id: codespell\n    args: [--disable=x]\n- repo: b\n  hooks:\n  - id: semgrep\n    # a comment\n    args:\n    - --config=auto\n    - --error\n"
 

@@ -2289,23 +2289,58 @@ def _(r):
     return PASS, "server-side init + wrapped fetch"
 
 
-# Attacker-controllable FREE-STRING contexts that must reach a shell only via
-# env:, never spliced into `run:`. This is deliberately narrow:
+# Attacker-controllable contexts that must reach a shell or a github-script
+# body only via env:, never spliced into the source text.
 #
-#   - inputs.* and github.head_ref carry arbitrary strings.
-#   - github.event.*.{body,title,name,...} are the free-text/branch fields a
-#     PR or comment author controls.
+# Every github.event.* reference is untrusted unless its LEAF is on the safe
+# list below, wherever in the expression it sits: format(), toJSON(), join()
+# and contains() pass the string straight through. Matching a list of unsafe
+# suffixes instead is how workflow_run.head_branch and commits[0].message got
+# through; an event payload has more free-text fields than any list names.
+# inputs.* and github.head_ref are arbitrary strings too.
 #
-# It excludes what is NOT a shell-injection vector, so it does not false-fire on
-# the safe splices auto-approve.yaml relies on: github.sha / github.ref_name /
-# github.repository (trusted slugs), the numeric .number / .id, and
-# steps.*.outputs (values the workflow itself produced and, for the verdict,
-# pins to an enum before use). The deploy-summary bug this exists for was
-# inputs.gh_env spliced into a heredoc — squarely inside this set.
-_UNTRUSTED_RUN = re.compile(
-    r"\$\{\{\s*(github\.head_ref\b|inputs\.[A-Za-z0-9_]+"
-    r"|github\.event\.[A-Za-z0-9_.]*(body|title|name|ref|label|message|login|email|description))"
+# Safe leaves are numbers, shas and booleans, the shapes the shared
+# auto-approve workflow splices (issue.number, comment.id). A leaf that is an
+# index (commits[0]) or the bare payload (toJSON(github.event)) is the whole
+# object, so it is not safe either.
+_SAFE_EVENT_LEAVES = frozenset({
+    "number", "id", "sha", "before", "after", "run_id", "run_number",
+    "run_attempt", "draft", "merged", "forced", "created", "deleted",
+})
+_EXPR = re.compile(r"\$\{\{(.*?)\}\}", re.S)
+_EVENT_REF = re.compile(
+    r"github\.event\b((?:\s*(?:\.\s*[A-Za-z0-9_*-]+|\[[^\]]*\]))*)"
 )
+_SEGMENT = re.compile(r"\.\s*([A-Za-z0-9_*-]+)|\[\s*(?:'([^']*)'|\"([^\"]*)\"|([^\]]*?))\s*\]")
+_FREE_STRING = re.compile(r"\bgithub\.head_ref\b|\binputs\.[A-Za-z0-9_-]+")
+
+
+def _untrusted_splice(text):
+    """The first untrusted reference spliced into `text`, or None."""
+    for expr in _EXPR.findall(text):
+        m = _FREE_STRING.search(expr)
+        if m:
+            return m.group(0)
+        for ref in _EVENT_REF.finditer(expr):
+            leaf = None
+            for named, sq, dq, _idx in _SEGMENT.findall(ref.group(1)):
+                leaf = named or sq or dq or None
+            if leaf not in _SAFE_EVENT_LEAVES:
+                return ref.group(0)
+    return None
+
+
+def _script_sites(step):
+    """The source texts a step executes: `run:`, and `with.script` on
+    actions/github-script, which is JavaScript with the same splice problem."""
+    run = step.get("run")
+    if isinstance(run, str):
+        yield run
+    if str(step.get("uses") or "").startswith("actions/github-script"):
+        with_ = step.get("with")
+        script = with_.get("script") if isinstance(with_, dict) else None
+        if isinstance(script, str):
+            yield script
 
 
 @check("CI-13")
@@ -2313,13 +2348,12 @@ def _(r):
     wfs = workflows(r)
     if not wfs:
         return NA, "no workflows"
-    hits = []
+    hits, unreadable = [], []
     for wf in wfs:
         try:
-            doc = yaml.safe_load(wf.read_text())
-        except Exception:
-            continue
-        if not isinstance(doc, dict):
+            doc = _wf_doc(wf)
+        except Unreadable as e:
+            unreadable.append(str(e))
             continue
         for job in (doc.get("jobs") or {}).values():
             if not isinstance(job, dict):
@@ -2327,12 +2361,15 @@ def _(r):
             for step in job.get("steps") or []:
                 if not isinstance(step, dict):
                     continue
-                run = step.get("run")
-                if isinstance(run, str) and _UNTRUSTED_RUN.search(run):
-                    hits.append(f"{wf.name}:{(step.get('name') or 'run')}")
+                for text in _script_sites(step):
+                    ref = _untrusted_splice(text)
+                    if ref:
+                        hits.append(f"{wf.name}:{(step.get('name') or 'run')} ({ref})")
     if hits:
-        return FAIL, "untrusted context spliced into run: " + "; ".join(sorted(set(hits))[:3])
-    return PASS, "untrusted context reaches shell via env: only"
+        return FAIL, "untrusted context spliced into a script: " + "; ".join(sorted(set(hits))[:3])
+    if unreadable:
+        return MANUAL, "unreadable workflow: " + "; ".join(unreadable[:3])
+    return PASS, "untrusted context reaches scripts via env: only"
 
 
 @check("HLT-04")

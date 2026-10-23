@@ -40,12 +40,12 @@ checks:
   applies_to: all
   rule: >
     Every third-party action is pinned to a 40-character commit SHA with the
-    version in a trailing comment. No mutable tags. ONE exception: a
-    first-party reusable WORKFLOW under the fleet's own org may reference
-    `main` — the callee's protected default branch — or a v-prefixed release
-    tag. Any other branch is never acceptable, and a plain first-party action
-    is not covered: the carve-out is for the fleet's distribution mechanism,
-    not for the org.
+    version in a trailing comment. No mutable tags. ONE exception: a reusable
+    WORKFLOW in ai-hero/wayfare-skills, the fleet's shared workflow repo, may
+    reference `main` — the callee's protected default branch — or a
+    v-prefixed release tag. Any other branch is never acceptable, and neither
+    any other ai-hero repo nor a plain first-party action is covered: the
+    carve-out is for the fleet's distribution mechanism, not for the org.
   why: >
     A repointed tag silently changes what runs in a workflow that holds
     registry and deploy credentials. The carve-out is the price of a shared
@@ -64,9 +64,11 @@ checks:
     # WRONG - the carve-out is for a reusable workflow, not a plain
     # first-party action, and never for a branch other than the default
     - uses: ai-hero/some-action@some-branch
+    # WRONG - any other ai-hero repo, including the pre-rename hero-skills path
+    uses: ai-hero/hero-skills/.github/workflows/auto-approve.yaml@main
   detect:
     method: script
-    description: every `uses:` in .github/workflows/ carries a 40-hex SHA, except a first-party reusable workflow under the plugin's org (`ai-hero/`, the owner of the shared auto-approve workflow) at `@main` or a v-tag
+    description: every `uses:` in .github/workflows/ carries a 40-hex SHA, except a reusable workflow in `ai-hero/wayfare-skills` (the owner of the shared auto-approve workflow) at `@main` or a v-tag
 
 - id: CI-02
   control: C-SUPPLY

@@ -694,19 +694,22 @@ def _(r):
         for line in w.read_text().splitlines():
             if not re.search(r"^\s*(-\s*)?uses:", line):
                 continue
-            # A first-party ai-hero/* reusable WORKFLOW may ride `main` or a
+            # The shared wayfare-skills reusable WORKFLOW may ride `main` or a
             # v-tag — the CI-01 carve-out. Narrow on every axis:
-            #   - only a reusable workflow, not a plain ai-hero action, which
-            #     is no kind of fleet-wide distribution mechanism;
+            #   - only ai-hero/wayfare-skills, never any ai-hero repo: members
+            #     can create repos in the org, and a caller aimed at one (or at
+            #     the unclaimed ai-hero/hero-skills, the pre-rename path) hands
+            #     whoever owns it ANTHROPIC_API_KEY and pull-requests: write;
+            #   - only a reusable workflow, not a plain action, which is no
+            #     kind of fleet-wide distribution mechanism;
             #   - only `main`, the callee's PROTECTED default branch, never an
             #     arbitrary branch. @main is acceptable BECAUSE the plugin repo
             #     gates main on review — approval required, stale approvals
             #     dismissed, last-push approval required. A feature branch is
-            #     gated on nothing, and this caller hands the callee
-            #     ANTHROPIC_API_KEY and pull-requests: write;
+            #     gated on nothing;
             #   - a v-tag stays permitted for repos not yet migrated.
             if re.search(
-                r"uses:\s*ai-hero/[^/]+/\.github/workflows/[^@\s]+@(main|v[0-9][^\s]*)\s*(#.*)?$",
+                rf"uses:\s*ai-hero/{_SHARED_WORKFLOW_OWNER}/\.github/workflows/[^@\s]+@(main|v[0-9][^\s]*)\s*(#.*)?$",
                 line,
             ):
                 continue

@@ -669,6 +669,38 @@ class CI14(unittest.TestCase):
             self.assertIn("npm@/b: catch-all batches majors", detail)
 
 
+class CI01(unittest.TestCase):
+    """Only ai-hero/wayfare-skills' reusable workflow may ride @main: any
+    other ai-hero repo can be created by an org member and would be handed
+    the caller's secrets."""
+
+    def _check(self, uses):
+        with tempfile.TemporaryDirectory() as d:
+            r = pathlib.Path(d)
+            write(r, ".github/workflows/w.yaml",
+                  f"on: push\njobs:\n  j:\n    uses: {uses}\n")
+            return audit.CHECKS["CI-01"](r)
+
+    def test_vendored_caller_passes(self):
+        caller = (HERE.parent / "assets/auto-approve/caller.yaml").read_text()
+        with tempfile.TemporaryDirectory() as d:
+            r = pathlib.Path(d)
+            write(r, ".github/workflows/auto-approve.yaml", caller)
+            st, detail = audit.CHECKS["CI-01"](r)
+            self.assertEqual(st, audit.PASS, detail)
+
+    def test_other_ai_hero_repos_at_main_fail(self):
+        for uses in (
+            "ai-hero/other-repo/.github/workflows/x.yaml@main",
+            "ai-hero/hero-skills/.github/workflows/auto-approve.yaml@main",
+            "ai-hero/wayfare-skills-fork/.github/workflows/auto-approve.yaml@main",
+            "ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@feature",
+        ):
+            with self.subTest(uses=uses):
+                st, detail = self._check(uses)
+                self.assertEqual(st, audit.FAIL, detail)
+
+
 class CI13(unittest.TestCase):
     """Every form an attacker string reaches a script in FAILs; numeric and
     sha fields pass; a workflow that cannot be parsed is MANUAL, never PASS."""

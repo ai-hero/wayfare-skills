@@ -699,6 +699,12 @@ class References(unittest.TestCase):
         self.assertEqual(audit._fleet_section("x\n## Fleet\nb\n"), "## Fleet\nb\n")
         self.assertEqual(audit._fleet_section("x\n## Fleet\nb\n## C\nd\n"), "## Fleet\nb")
 
+    def test_this_repos_fleet_section_matches_the_asset(self):
+        root = HERE.parent
+        verdict = audit._matches_reference(root / "AGENTS.md", root / "assets/fleet/agents-md-fleet-section.md",
+                                           audit._fleet_section)
+        self.assertEqual(verdict[0], audit.PASS, f"VNDR-02 on this repo's AGENTS.md: {verdict}")
+
 
 class HookRevs(unittest.TestCase):
     def tearDown(self):

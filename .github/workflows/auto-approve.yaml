@@ -58,7 +58,8 @@ jobs:
     # Defense in depth on the trigger:
     # 1. `author_association` pre-filter: only OWNER/MEMBER/COLLABORATOR
     #    start a runner at all. It does NOT imply write access: a MEMBER
-    #    or COLLABORATOR can hold read or triage. The first step, "Gate —
+    #    or COLLABORATOR can hold read or triage, and on a public repo an
+    #    org MEMBER can hold no role at all. The first step, "Gate —
     #    commenter can write", is what requires write before a real
     #    APPROVE is posted or the API key is spent. Keep both.
     # 2. The command must START the comment, and a wayfare self-review is
@@ -78,25 +79,32 @@ jobs:
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
 
     steps:
-      # First, and no later step but the crash reporter may opt out of the
-      # default success() condition: a failure here is what stops every
-      # step that can approve or call the model.
+      # The run's only stop for a commenter without write, so it stays
+      # first, with no `if:` and no continue-on-error (a skipped or
+      # tolerated failure lets every later step run), and no later step
+      # but the crash reporter may opt out of the default success().
       - name: Gate — commenter can write
+        id: actor
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           LOGIN: ${{ github.event.comment.user.login }}
+          COMMENT_ID: ${{ github.event.comment.id }}
         run: |
           # test: begin actor-permission
           # `.permission` folds maintain into write and triage into read.
           # Anything outside the allow-list, an empty answer or a failed
-          # call included, stops the run.
+          # call included, stops the run. A refusal answers with a reaction
+          # only, never the crash notice: that notice PATCHes the PR's
+          # verdict comment, which a read-only member must not be able to
+          # overwrite.
           PERMISSION=$(gh api "/repos/$REPO/collaborators/$LOGIN/permission" --jq .permission) || PERMISSION=
           case "$PERMISSION" in
             admin|maintain|write) ;;
             *)
-              printf '%s\n' "@$LOGIN has ${PERMISSION:-unknown} permission on this repo; only a commenter with write, maintain or admin can run auto-approve." > lane_error.txt
-              echo "::error::$(cat lane_error.txt)"
+              echo "::error::@$LOGIN has ${PERMISSION:-unknown} permission on this repo; only a commenter with write, maintain or admin can run auto-approve."
+              gh api --method POST "/repos/$REPO/issues/comments/$COMMENT_ID/reactions" -f content="-1" > /dev/null \
+                || echo "::warning::could not react to the trigger comment"
               exit 1 ;;
           esac
           # test: end actor-permission
@@ -1335,8 +1343,8 @@ jobs:
             -f content="$EMOJI"
 
       - name: Report a crashed run
-        # A step that dies before Post result leaves the PR with nothing but
-        # the 👀. ship-pr then polls a "failed run with no verdict". Say so
+        # A step that dies before Post result leaves the PR with no verdict,
+        # at most the 👀. ship-pr then polls a "failed run with no verdict". Say so
         # on the PR, with the run URL, so the failure is where the author is
         # looking.
         #
@@ -1348,8 +1356,9 @@ jobs:
         # outcome of "" (the step never ran) still reports, which is the case
         # this step was written for. cancelled() is here because the job's
         # timeout-minutes is how a hung model call ends, and failure() does
-        # not fire on that.
-        if: (failure() || cancelled()) && steps.post_result.outcome != 'success'
+        # not fire on that. A refused commenter (the actor gate) is not a
+        # crash, and this step would overwrite the verdict comment for them.
+        if: (failure() || cancelled()) && steps.post_result.outcome != 'success' && steps.actor.outcome != 'failure'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

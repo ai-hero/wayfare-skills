@@ -70,50 +70,66 @@ for job in yaml.safe_load(open(sys.argv[1]))["jobs"].values():
             print(step.get("name"), len(run))
 ' "$WF" 2>&1)"
 
-# step NAME -> that step's lines, up to the next step.
-step_if() { awk -v n="$1" '$0 ~ "- name: " n "$" { f = 1; next } f && /^      - name:/ { exit } f' "$WF"; }
+# step_if NAME -> the lines after that step's `- name:`, up to the next step.
+# An exact match, not a regex: a name with `(` or `.` would otherwise miss.
+# Feed it to grep -q through a here-string, never a pipe: grep -q exits on the
+# first match, awk takes SIGPIPE writing the rest, and pipefail turns a found
+# match into "no" whenever the step outlasts the pipe buffer.
+step_if() { awk -v n="      - name: $1" '$0 == n { f = 1; next } f && /^      - name:/ { exit } f' "$WF"; }
 
 # --- actor-permission -------------------------------------------------------
-# The trigger's `if:` admits OWNER, MEMBER and COLLABORATOR, and a MEMBER or
-# COLLABORATOR can hold read or triage. This step is what holds the run to a
-# commenter who can write. `gh` is stubbed to print what `--jq .permission`
-# would; GitHub's `.permission` already folds maintain into write and triage
-# into read, so the raw role names are fed too in case that ever changes.
-actor() { # PERMISSION_OUT [GH_RC] -> "rc|lane_error present"
+# `gh` is stubbed: the permission lookup prints what `--jq .permission` would,
+# and the refusal's reaction is logged separately. The raw role names are fed
+# too, so the allow-list holds even if `.permission` stopped folding them.
+actor() { # PERMISSION_OUT [GH_RC] [REACT_RC] -> "rc|reacted"
   mkdir -p "$WORK/bin"
   { echo '#!/usr/bin/env bash'
+    echo 'case "$*" in'
+    echo "  *reactions*) printf '%s\\n' \"\$*\" >> $WORK/gh_react; exit ${3:-0} ;;"
+    echo 'esac'
     echo "printf '%s\\n' \"\$*\" >> $WORK/gh_argv"
     echo "printf '%s' '$1'"
     echo "exit ${2:-0}"
   } > "$WORK/bin/gh"
   chmod +x "$WORK/bin/gh"
-  : > "$WORK/gh_argv"; rm -f "$WORK/lane_error.txt"
-  ( cd "$WORK" && PATH="$WORK/bin:$PATH" REPO=o/r LOGIN=alice \
+  : > "$WORK/gh_argv"; : > "$WORK/gh_react"
+  ( cd "$WORK" && PATH="$WORK/bin:$PATH" REPO=o/r LOGIN=alice COMMENT_ID=42 \
     bash -e "$WORK/actor-permission.sh" ) >/dev/null 2>&1
-  printf '%s|%s' "$?" "$([[ -s "$WORK/lane_error.txt" ]] && echo yes || echo no)"
+  printf '%s|%s' "$?" "$(grep -q 'issues/comments/42/reactions' "$WORK/gh_react" && echo yes || echo no)"
 }
-for perm in read triage none; do
-  check "actor-permission: $perm commenter stops the run, reason for the PR" "1|yes" "$(actor "$perm")"
+for perm in read triage none null; do
+  check "actor-permission: $perm commenter stops the run with a -1 reaction" "1|yes" "$(actor "$perm")"
 done
 for perm in write maintain admin; do
-  check "actor-permission: $perm commenter proceeds" "0|no" "$(actor "$perm")"
+  check "actor-permission: $perm commenter proceeds, no reaction" "0|no" "$(actor "$perm")"
 done
 check "actor-permission: a failed lookup fails closed" "1|yes" "$(actor write 1)"
 check "actor-permission: an empty answer fails closed" "1|yes" "$(actor '')"
+check "actor-permission: a failed reaction still stops the run" "1|yes" "$(actor read 0 1)"
 check "actor-permission: the lookup asks about the commenter, in this repo" \
   "api /repos/o/r/collaborators/alice/permission --jq .permission" \
   "$(actor write >/dev/null; cat "$WORK/gh_argv")"
-# A stopped step is a stopped run only because every later step keeps the
-# default `success()` condition. One that opts out with always() or failure()
-# runs for the refused commenter too, so only the crash reporter may.
-steps_named() { sed -n 's/^      - name: //p' "$WF"; }
-check "actor-permission: it is the job's first step" "Gate — commenter can write" "$(steps_named | head -1)"
+
+# The step only stops the run while all of this holds; each of these edits
+# was mutation-tested to let a read-only commenter reach the APPROVE.
+GATE=$(step_if 'Gate — commenter can write')
+check "actor-permission: it is the job's first step, named or not" "      - name: Gate — commenter can write" \
+  "$(awk '/^    steps:/ { f = 1; next } f && /^      - / { print; exit }' "$WF")"
+check "actor-permission: the gate has no if: and no continue-on-error" "no" \
+  "$(grep -qE '^        (if|continue-on-error):' <<<"$GATE" && echo yes || echo no)"
+check "actor-permission: the login is the comment author's" "yes" \
+  "$(grep -qxF '          LOGIN: ${{ github.event.comment.user.login }}' <<<"$GATE" && echo yes || echo no)"
 check "actor-permission: the login reaches the shell through env, never inlined" "no" \
-  "$(step_if 'Gate — commenter can write' | sed -n '/run: |/,$p' | grep -qF '${{' && echo yes || echo no)"
+  "$(grep -qF '${{' <<<"$(sed -n '/run: |/,$p' <<<"$GATE")" && echo yes || echo no)"
+steps_named() { sed -n 's/^      - name: //p' "$WF"; }
 OPTED_OUT=$(steps_named | while IFS= read -r s; do
-  step_if "$s" | grep -vE '^ *#' | grep -qE '(always|failure|cancelled)\(\)' && printf '%s;' "$s"
+  grep -qE '(always|failure|cancelled) *\(\)' <<<"$(step_if "$s" | grep -vE '^ *#')" && printf '%s;' "$s"
 done)
 check "actor-permission: only the crash reporter runs after a stopped step" "Report a crashed run;" "$OPTED_OUT"
+# The crash notice PATCHes the PR's verdict comment. Run for a refused
+# commenter, it let a read-only member overwrite an APPROVE verdict.
+check "actor-permission: the crash reporter stands down on a refusal" "yes" \
+  "$(grep -qF "steps.actor.outcome != 'failure'" <<<"$(step_if 'Report a crashed run' | grep -E '^        if:')" && echo yes || echo no)"
 
 # --- classify ---------------------------------------------------------------
 # shellcheck disable=SC1091

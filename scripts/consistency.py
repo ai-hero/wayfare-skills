@@ -100,10 +100,12 @@ def main():
         sys.exit(f"register checkout missing: {audit.REGISTER} — clone it before regenerating its table")
     OUT = audit.REGISTER / "CONSISTENCY.md"
     controls, checks = audit.load_register()
+    _src, reviewed, register_note = audit.register_source()
     repos = audit.family_repos()
     with audit.reference_assets() as assets_note:
         print(f"engine: {audit.engine_note()}", file=sys.stderr)
         print(f"assets: {assets_note}", file=sys.stderr)
+        print(f"register: {register_note}", file=sys.stderr)
         if a.no_snapshot:
             matrix, _fails, errors = audit.run_matrix(checks, repos)
         else:
@@ -139,12 +141,15 @@ def main():
     L.append("| ✅ | complies today |")
     L.append("| ❌ | still drifting |")
     L.append("| – | doesn't apply (no Go, no UI, no image — or `applies_to` names a group this repo is not in) |")
-    L.append("| ? | no automated checker — needs a human, not a guess |")
+    L.append("| ? | no automated checker, or the register is unreviewed — needs a human, not a guess |")
     L.append("")
     L.append("The repo columns are computed live, this run. No check names a")
     L.append("repo, so nothing here is remembered from a previous sweep — a")
     L.append("cell is what the checker found just now.")
     L.append("")
+    if not reviewed:
+        L.append(f"**Register unreviewed:** {register_note.split('UNREVIEWED: ', 1)[-1]}.")
+        L.append("")
 
     total = sum(1 for _c, cells in rows for x in cells if x == "FAIL")
     L.append(f"**{total} (check × repo) results failing.** "

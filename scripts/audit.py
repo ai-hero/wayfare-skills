@@ -46,9 +46,18 @@ it, so checkers and register come from one sha. HERO_SKILLS_PLUGIN=<checkout>
 runs the invoked engine and reads that checkout's working tree instead, to test
 unmerged work. The report header names which one was used (`engine:` and
 `assets:`).
+
+The fleet's overlay (CONTROLS.yaml, CHECKS.yaml, checkers.py) is read from a
+commit of the register checkout: origin/main when it has an `origin` remote,
+else HEAD (`register:` in the header). Only a register with no .git is read
+from its working tree. Anything short of a clean, pushed, freshly fetched
+origin/main is unreviewed: the header names why, the overlay's changes to
+baseline records are dropped, its own checks read MANUAL, checkers.py is not
+loaded, and --fail-on exits 3.
 """
 
 import argparse
+import atexit
 import contextlib
 import importlib.util
 import io
@@ -261,14 +270,18 @@ def configure(root=None, load_overlay=True):
 
 
 def _load_overlay_checkers():
-    """Import REGISTER/checkers.py, the fleet's own checkers, once. It sees this
+    """Import the fleet's own checkers.py once, from register_source()'s
+    extraction and only when that is reviewed. It sees this
     module as `audit` whatever name it was loaded under (`__main__` from the
     CLI, `audit` from consistency.py and the tests), so `from audit import
     check` inside it binds to THIS module's registry rather than a second copy
     that would register into a table nobody reads."""
     if REGISTER is None or REGISTER in _OVERLAY_LOADED:
         return
-    f = REGISTER / "checkers.py"
+    src, reviewed, note = register_source()
+    if not reviewed:
+        return
+    f = src / "checkers.py"
     if not f.is_file():
         return
     # Loaded under `audit` by consistency.py and the tests, `__main__` by the
@@ -281,8 +294,87 @@ def _load_overlay_checkers():
     try:
         spec.loader.exec_module(mod)
     except Exception as e:  # a broken overlay must not read as "no overlay"
-        sys.exit(f"{f}: could not load the fleet's checkers: {type(e).__name__}: {e}")
+        sys.exit(f"{REGISTER / 'checkers.py'} ({note.split('  ')[0]}): could not load the fleet's checkers: "
+                 f"{type(e).__name__}: {e}")
     _OVERLAY_LOADED.add(REGISTER)
+
+
+_REGISTER_OWN = ("CONTROLS.yaml", "CHECKS.yaml", "checkers.py")
+_REGISTER_READ = {}   # REGISTER -> (dir, reviewed, note), one resolution per process
+# The full refname, never `origin/main`: a local branch or tag of that name
+# shadows the short form, and would pass an unpushed commit off as reviewed.
+_REGISTER_REF = "refs/remotes/origin/main"
+
+
+def register_source():
+    """(dir, reviewed, note): where the overlay is read from, whether that is
+    reviewed, and the report header's `register:` text.
+
+    The overlay is read from a commit extracted to a temporary directory:
+    origin/main, freshly fetched, when the register has an `origin` remote and
+    that resolves, else HEAD. Reviewed means origin/main, fetched this run, with
+    no uncommitted or unpushed change to the three files. Cached, so
+    checkers.py and the YAML come from one sha even when origin/main moves
+    between the two reads. The one working-tree read is a register with no
+    .git: read in place, never reviewed, so its checkers.py never runs.
+
+    Reviewed trusts the remote: the engine does not check that its main
+    requires a PR, which is the operator's branch protection to hold."""
+    if REGISTER is None:
+        return None, True, "none (outside a fleet; baseline only)"
+    if REGISTER not in _REGISTER_READ:
+        _REGISTER_READ[REGISTER] = _resolve_register(REGISTER)
+    return _REGISTER_READ[REGISTER]
+
+
+def _resolve_register(reg):
+    if not (reg / ".git").exists():
+        return reg, False, (f"working tree {reg}  UNREVIEWED: no .git, so nothing is reviewed; "
+                            "checkers.py not loaded, overlay checks read MANUAL")
+    problems, ref = [], None
+    if sh(reg, "git remote get-url origin")[0] == 0:
+        # The explicit refspec updates the ref whatever remote.origin.fetch says,
+        # and a failed fetch is unreviewed: the ref is a local file anyone can
+        # rewrite, and only a fetch puts the remote's main back in it.
+        if _fetch(reg, "register", f"+refs/heads/main:{_REGISTER_REF}"):
+            problems.append("fetching origin main failed")
+        if sh(reg, f"git rev-parse --verify -q {_REGISTER_REF}^{{commit}}")[0] == 0:
+            ref = _REGISTER_REF
+        else:
+            problems.append("origin/main does not resolve")
+    else:
+        problems.append("no origin remote, so nothing is reviewed")
+    _rc, sha = sh(reg, f"git rev-parse --verify -q --short {ref or 'HEAD'}^{{commit}}")
+    read = "origin/main" if ref else "HEAD"
+    files = " ".join(_REGISTER_OWN)
+    # A git command that failed has proved nothing clean, so it is a problem too.
+    rc, dirty = sh(reg, f"git status --porcelain -- {files}")
+    if rc:
+        problems.append("git status failed")
+    elif dirty:
+        problems.append("uncommitted: " + ", ".join(line.split(None, 1)[-1] for line in dirty.splitlines()))
+    if ref:
+        rc, ahead = sh(reg, f"git rev-list --count {ref}..HEAD -- {files}")
+        if rc or ahead != "0":
+            problems.append(f"{ahead or '?'} unpushed commit(s) touch the register")
+    dest = pathlib.Path(tempfile.mkdtemp(prefix="audit-register-"))
+    atexit.register(shutil.rmtree, dest, True)
+    if sha:
+        rc, present = sh(reg, f"git ls-tree --name-only {sha} -- {files}")
+        if rc:
+            problems.append("git ls-tree failed")
+        elif present:
+            p = subprocess.run(["git", "archive", "--format=tar", sha, "--", *present.split()],
+                               cwd=reg, capture_output=True, env=_ENV, timeout=60)
+            if p.returncode:
+                sys.exit(f"git archive {read} in {reg} failed: {p.stderr.decode().strip()}")
+            _extract_tar(p.stdout, dest, f"git archive {read} in {reg}")
+    else:
+        problems.append(f"{read} does not resolve, so the overlay is empty")
+    note = f"{read} @ {sha or '?'} in {reg}"
+    if problems:
+        note += f"  UNREVIEWED: {'; '.join(problems)}; overlay checks read MANUAL"
+    return dest, not problems, note
 
 
 def applies(check, repo_name):
@@ -2945,17 +3037,7 @@ def _plugin_at_origin(plugin, dest, paths, label):
     ref = f"{_PLUGIN_REMOTE}/{_PLUGIN_BRANCH}"
     if not (plugin / ".git").exists():
         return None, f"absent ({plugin} is not a git checkout; asset checks read MANUAL)"
-    # A hung fetch or a credential prompt must fall back like any failed fetch,
-    # not end the audit in a TimeoutExpired traceback.
-    try:
-        rc, _out, err = sh3(plugin, "GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes' "
-                                    f"git fetch -q {_PLUGIN_REMOTE} {_PLUGIN_BRANCH}")
-    except subprocess.TimeoutExpired as e:
-        rc, err = 124, f"timed out after {e.timeout:g}s"
-    stale = ""
-    if rc:
-        stale = f"  (fetch failed: {err or f'rc={rc}'}; {ref} as last fetched)"
-        print(f"{label}: git fetch in {plugin} failed: {err or f'rc={rc}'}", file=sys.stderr)
+    stale = _fetch(plugin, label)
     rc, sha, _err = sh3(plugin, f"git rev-parse --verify -q --short {ref}^{{commit}}")
     if rc or not sha:
         return None, f"absent ({ref} does not resolve in {plugin}; asset checks read MANUAL){stale}"
@@ -2965,6 +3047,21 @@ def _plugin_at_origin(plugin, dest, paths, label):
         raise RuntimeError(f"git archive {ref} in {plugin} failed: {p.stderr.decode().strip()}")
     _extract_tar(p.stdout, dest, f"git archive {ref} in {plugin}")
     return sha, f"{ref} @ {sha} in {plugin}{stale}"
+
+
+def _fetch(repo, label, refspec=_PLUGIN_BRANCH):
+    """Fetch `refspec` from origin in `repo`: "" on success, else the header's
+    note that origin/main is as last fetched. A hung fetch or a credential
+    prompt falls back like any failed fetch, not in a TimeoutExpired traceback."""
+    try:
+        rc, _out, err = sh3(repo, "GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes' "
+                                  f"git fetch -q {_PLUGIN_REMOTE} {shlex.quote(refspec)}")
+    except subprocess.TimeoutExpired as e:
+        rc, err = 124, f"timed out after {e.timeout:g}s"
+    if not rc:
+        return ""
+    print(f"{label}: git fetch in {repo} failed: {err or f'rc={rc}'}", file=sys.stderr)
+    return f"  (fetch failed: {err or f'rc={rc}'}; {_PLUGIN_REMOTE}/{_PLUGIN_BRANCH} as last fetched)"
 
 
 def _extract_tar(data, dest, origin):
@@ -3587,16 +3684,18 @@ def _(r):
     return _matches_reference(doc, _PLUGIN_ASSETS / "fleet" / "agents-md-fleet-section.md", _fleet_section)
 
 
-def _register_file(base, name):
+def _register_file(base, name, shown=None):
     """One register file as a mapping, or {} when absent. Every malformed
     shape exits naming the FILE: these are edited by hand in a private
     checkout the engine reads at a computed path, and a bare traceback does
-    not say which of the four files was at fault."""
-    f = base / name
-    if not f.is_file():
+    not say which of the four files was at fault. `shown` is that name when
+    `base` is a temporary extraction, which is gone by the time anyone reads it."""
+    path = base / name
+    if not path.is_file():
         return {}
+    f = shown or path
     try:
-        doc = yaml.safe_load(f.read_text())
+        doc = yaml.safe_load(path.read_text())
     except yaml.YAMLError as e:
         sys.exit(f"{f}: not valid YAML: {e}")
     if doc is None:
@@ -3623,25 +3722,37 @@ def _register_file(base, name):
 def load_register():
     """(controls by id, checks): the baseline merged with the fleet's overlay
     by id — an overlay record's fields replace the baseline record's, and an
-    overlay record with a new id is added. Referential integrity holds on
+    overlay record with a new id is added. An unreviewed overlay (see
+    register_source) only adds: its records for baseline ids are dropped, so
+    the baseline runs as shipped, and its new checks read MANUAL. Referential integrity holds on
     the merged result: a check naming an unknown control is a broken row; a
     control no check tests is an objective nothing verifies — the GATE-01
     failure, one level up."""
     base_c = _register_file(BASELINE, "CONTROLS.yaml")
     base_k = _register_file(BASELINE, "CHECKS.yaml")
-    over_c = _register_file(REGISTER, "CONTROLS.yaml") if REGISTER else {}
-    over_k = _register_file(REGISTER, "CHECKS.yaml") if REGISTER else {}
+    src, reviewed, note = register_source()
+    at = note.split("  ")[0]
+    over_c = _register_file(src, "CONTROLS.yaml", f"{REGISTER / 'CONTROLS.yaml'} ({at})") if src else {}
+    over_k = _register_file(src, "CHECKS.yaml", f"{REGISTER / 'CHECKS.yaml'} ({at})") if src else {}
     ctrl = {c["id"]: dict(c) for c in base_c.get("controls") or []}
+    # Unreviewed, a record for a baseline id is dropped, never merged and
+    # marked MANUAL: marking it would let an unreviewed edit switch a baseline
+    # gate off, and a control's severity decides --fail-on for its checks.
     for c in over_c.get("controls") or []:
-        ctrl.setdefault(c["id"], {}).update(c)
+        if reviewed or c["id"] not in ctrl:
+            ctrl.setdefault(c["id"], {}).update(c)
     by_id = {k["id"]: dict(k) for k in base_k.get("checks") or []}
     for k in over_k.get("checks") or []:
         base = by_id.get(k["id"])
+        if base and not reviewed:
+            continue
         # Re-parenting a baseline check under another control makes --json's
         # `control` lie to whoever groups items by it; say so instead.
         if base and k.get("control") and k["control"] != base.get("control"):
             sys.exit(f"overlay check {k['id']} moves control {base.get('control')} -> {k['control']}; the overlay may add fields, not re-parent")
         by_id.setdefault(k["id"], {}).update(k)
+        if not reviewed:
+            by_id[k["id"]]["_unreviewed"] = True
     checks = list(by_id.values())
     # The merged result is what runs, so it is what gets validated: a record
     # missing a field the renderers index would crash AFTER the whole matrix
@@ -3679,7 +3790,7 @@ def load_register():
             sys.exit(f"check {k['id']}: severity {k['severity']!r} is not one of high|medium|low")
         _no_repo_names("check", k)
         manual = ((k.get("detect") or {}).get("method") == "manual")
-        if k["id"] not in CHECKS and not manual:
+        if k["id"] not in CHECKS and not manual and not k.get("_unreviewed"):
             unimplemented.append(k["id"])
         # A manual check is verified by a person reading it. With no checker
         # and no exemplar repo to diff against, an `example:` is the only thing
@@ -3805,6 +3916,10 @@ def run_matrix(checks, repos):
         cells = []
         for rn in repos:
             fn = CHECKS.get(c["id"])
+            # Before applies(): an unreviewed applies_to must not move a cell either.
+            if c.get("_unreviewed"):
+                cells.append((MANUAL, "register unreviewed"))
+                continue
             if not applies(c, rn):
                 want = c.get("applies_to")
                 cells.append((NA, f"applies_to: {want if isinstance(want, str) else ', '.join(want)}"))
@@ -3884,7 +3999,8 @@ def main():
                 rows, fails, errors = run_matrix(checks, repos)
 
     w = max(len(r) for r in repos) + 2
-    print(f"engine: {engine_note()}\nassets: {assets_note}\n", file=sys.stderr if a.json else sys.stdout)
+    print(f"engine: {engine_note()}\nassets: {assets_note}\nregister: {register_source()[2]}\n",
+          file=sys.stderr if a.json else sys.stdout)
     if a.json:
         # ERROR cells go out too, flagged: a consumer that only saw FAILs would
         # read a broken checker as a passing one.
@@ -3941,6 +4057,11 @@ def main():
         want = set(a.fail_on.split(","))
         if any(sev_of(f[0], ctrl) in want for f in fails):
             return 1
+        # The overlay's checks read MANUAL here, and MANUAL never trips the
+        # gate, so exit 0 would pass the fleet on checks nobody ran.
+        if not register_source()[1]:
+            print("--fail-on: the register is unreviewed, so the gate cannot pass", file=sys.stderr)
+            return 3
     return 0
 
 

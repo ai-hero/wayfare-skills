@@ -925,7 +925,8 @@ class AppliesTo(unittest.TestCase):
 
 def fleet_fixture(root, fleet_md, overlay=None, checkers=None):
     """A fleet folder: FLEET.md, a `.fleet/` register with the given overlay
-    text (or an empty one), and repos named by the caller."""
+    text (or an empty one), and repos named by the caller. The register has no
+    .git, so it is unreviewed until review_register() commits and pushes it."""
     write(root, "FLEET.md", fleet_md)
     reg = root / ".fleet"
     reg.mkdir(exist_ok=True)
@@ -934,6 +935,27 @@ def fleet_fixture(root, fleet_md, overlay=None, checkers=None):
     if checkers is not None:
         write(root, ".fleet/checkers.py", checkers)
     return root
+
+
+def review_register(root, remote=True):
+    """Commit the fixture's `.fleet/` and, with `remote`, push it to a bare
+    `origin`: the reviewed state. With `remote=False` it stays unreviewed: the
+    overlay's own checks read MANUAL and checkers.py is not loaded."""
+    reg = root / ".fleet"
+    git(reg, "init", "-q", "-b", "main")
+    git(reg, "config", "user.email", "t@example.com")
+    git(reg, "config", "user.name", "t")
+    git(reg, "add", "-A")
+    git(reg, "commit", "-q", "--allow-empty", "-m", "register")
+    if remote:
+        bare = root / "register-origin.git"
+        # -b main: with no init.defaultBranch (CI's runner) the bare HEAD names
+        # master, and a clone of it checks out nothing.
+        git(root, "init", "-q", "--bare", "-b", "main", str(bare))
+        git(reg, "remote", "add", "origin", str(bare))
+        git(reg, "push", "-q", "origin", "main")
+        git(reg, "fetch", "-q", "origin")
+    return reg
 
 
 class Configured(unittest.TestCase):
@@ -950,6 +972,7 @@ class Configured(unittest.TestCase):
         audit.REPO_DIR.clear(); audit.REPO_DIR.update(dirs)
         audit.GROUP_REPOS.clear(); audit.GROUP_REPOS.update(groups)
         audit._OVERLAY_LOADED.clear()
+        audit._REGISTER_READ.clear()
         self.tmp.cleanup()
 
     FLEET = """# Fleet
@@ -1102,6 +1125,7 @@ class Configured(unittest.TestCase):
     def test_import_runs_no_checkers_until_configured(self):
         marker = self.root / "ran"
         fleet_fixture(self.root, "## Fleet\n- name: fx\n", checkers=f"open({str(marker)!r}, 'w').close()\n")
+        review_register(self.root)
         p = subprocess.run([sys.executable, "-c", "import audit"], cwd=str(self.root),
                            capture_output=True, text=True, env={**CLEAN_ENV, "PYTHONPATH": str(HERE)})
         self.assertEqual(p.returncode, 0, p.stderr)
@@ -1204,6 +1228,13 @@ class Register(unittest.TestCase):
         audit.BASELINE = self.root / "base"
         audit.REGISTER = self.root / "over"
         audit.GROUP_REPOS.clear()
+        # Merge and validation are what these tests pin, so the plain `over/`
+        # directory reads as reviewed unless a test says otherwise.
+        self.reviewed = True
+        patcher = mock.patch.object(audit, "register_source",
+                                    side_effect=lambda: (self.root / "over", self.reviewed, "over @ test"))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def tearDown(self):
         audit.BASELINE, audit.REGISTER, groups = self.saved
@@ -1262,6 +1293,21 @@ class Register(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.load("", "controls:\n- id: C-Q\n  title: Q\n  severity: low\n  intent: q\n")
 
+    def test_unreviewed_overlay_only_adds(self):
+        """Its new records load (the check as a MANUAL row); its changes to a
+        baseline control and a baseline check are dropped, not merged."""
+        self.reviewed = False
+        ctrl, checks = self.load(
+            "checks:\n- id: A-1\n  title: renamed\n  applies_to: [infra]\n"
+            "- id: A-2\n  control: C-B\n  scope: ci\n  title: two\n  detect: {method: manual}\n",
+            "controls:\n- id: C-A\n  severity: low\n- id: C-B\n  title: B\n  severity: low\n  intent: b\n")
+        self.assertEqual(ctrl["C-A"]["severity"], "high")
+        self.assertIn("C-B", ctrl)
+        by = {k["id"]: k for k in checks}
+        self.assertEqual(by["A-1"]["title"], "one")
+        self.assertNotIn("applies_to", by["A-1"])
+        self.assertEqual({i: bool(k.get("_unreviewed")) for i, k in by.items()}, {"A-1": False, "A-2": True})
+
     def test_malformed_yaml_names_the_file(self):
         with self.assertRaises(SystemExit) as cm:
             self.load("checks: [\n")
@@ -1287,6 +1333,7 @@ class JsonOutput(unittest.TestCase):
                           checkers="from audit import check, FAIL\n@check('ZZ-1')\ndef _(r):\n    raise RuntimeError('boom')\n")
             write(root, ".fleet/CONTROLS.yaml", "controls:\n- id: C-ZZ\n  title: z\n  severity: low\n  intent: z\n")
             write(root, ".fleet/CHECKS.yaml", "checks:\n- id: CI-02\n  applies_to: [apps]\n  example: |\n    version: 2\n- id: ZZ-1\n  control: C-ZZ\n  scope: repo\n  title: boom\n")
+            review_register(root)
             git_repo(root, "a")
             p = subprocess.run([sys.executable, str(HERE / "audit.py"), "--fleet", str(root), "--no-snapshot", "--json", "--repo", "a"],
                                capture_output=True, text=True, env=CLEAN_ENV)
@@ -1378,6 +1425,7 @@ class Consistency(unittest.TestCase):
                       overlay="checks:\n- id: CI-02\n  applies_to: [apps]\n")
         write(root, ".fleet/CONTROLS.yaml",
               "controls:\n- id: C-SUPPLY\n  title: s\n  severity: high\n  intent: s\n")
+        review_register(root)
         for name in ("a", "b"):
             git_repo(root, name)
         return root
@@ -1416,6 +1464,7 @@ class Consistency(unittest.TestCase):
             for name in ("a", "b"):
                 self.assertRegex(body, r"\|\s*%s\s*\|" % name)
             self.assertIn("checks under", body)
+            self.assertNotIn("Register unreviewed", body)
             # The closing summary is the line that used to raise.
             self.assertIn("wrote", p.stdout)
             self.assertIn("failing", p.stdout)
@@ -1457,6 +1506,193 @@ class Consistency(unittest.TestCase):
                 cwd=str(root / "lonely"), capture_output=True, text=True, env=CLEAN_ENV)
             self.assertNotEqual(p.returncode, 0)
             self.assertIn("not inside a fleet", p.stderr, p.stdout)
+
+    def test_unreviewed_register_is_named_in_the_table(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d).resolve()
+            self._fleet(root)
+            write(root, ".fleet/CHECKS.yaml", "checks: []\n")
+            p = self._run(root, "--stdout")
+            self.assertEqual(p.returncode, 0, p.stderr)
+            self.assertIn("**Register unreviewed:** uncommitted: CHECKS.yaml", p.stdout)
+            self.assertIn("register: origin/main @", p.stderr)
+
+
+class ReviewedRegister(unittest.TestCase):
+    """The overlay is read at a commit of the register (origin/main, else HEAD),
+    and anything short of a clean, pushed, fetched origin/main drops its
+    changes to baseline records, reads its own checks MANUAL and loads no
+    checkers.py. Run end to end: the header and the cells are what a person
+    reads. The overlay narrows baseline CI-02 and adds ZZ-9, whose checker
+    lives in checkers.py."""
+    FLEET = "## Fleet\n- name: fx\n## Repos\n### a\n- group: apps\n\n### b\n- group: infra\n"
+    MANUAL_ROW = [audit.MARK[audit.MANUAL]] * 2
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.tmp.name).resolve()
+        self.ran = self.root / "ran"
+        fleet_fixture(self.root, self.FLEET,
+                      overlay="checks:\n- id: CI-02\n  applies_to: [apps]\n"
+                              "- id: ZZ-9\n  control: C-ZZ\n  scope: repo\n  title: own\n",
+                      checkers=self.marker(self.ran)
+                      + "from audit import check, PASS\n@check('ZZ-9')\ndef _(r):\n    return PASS, ''\n")
+        write(self.root, ".fleet/CONTROLS.yaml",
+              "controls:\n- id: C-ZZ\n  title: z\n  severity: high\n  intent: z\n")
+        for name in ("a", "b"):
+            git_repo(self.root, name)
+        self.reg = self.root / ".fleet"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    @staticmethod
+    def marker(path):
+        return f"open({str(path)!r}, 'w').close()\n"
+
+    def run_audit(self, *extra):
+        return subprocess.run([sys.executable, str(HERE / "audit.py"), "--fleet", str(self.root), "--no-snapshot",
+                               "--md", *extra], capture_output=True, text=True, env=CLEAN_ENV)
+
+    def assert_unreviewed(self, rows):
+        self.assertEqual(rows["ZZ-9"], self.MANUAL_ROW, "the overlay's own check reads MANUAL")
+        self.assertNotEqual(rows["CI-02"][1], audit.MARK[audit.NA], "the overlay's change to a baseline check is dropped")
+        self.assertNotIn(audit.MARK[audit.MANUAL], rows["CI-02"], "a baseline check still runs")
+
+    def audit(self):
+        p = self.run_audit()
+        self.assertIn(p.returncode, (0, 1), p.stderr)
+        header = next(l for l in p.stdout.splitlines() if l.startswith("register: "))
+        rows = {}
+        for line in p.stdout.splitlines():
+            cells = [c.strip() for c in line.split("|")]
+            if len(cells) > 4 and cells[2].startswith("**"):
+                rows[cells[2].split("**")[1]] = [c.split(" ")[0] for c in cells[4:-1]]
+        return header, rows
+
+    def test_reviewed_reads_origin_main_and_runs_its_checkers(self):
+        review_register(self.root)
+        header, rows = self.audit()
+        self.assertIn("register: origin/main @", header)
+        self.assertNotIn("UNREVIEWED", header)
+        self.assertTrue(self.ran.exists(), "origin/main's checkers.py loads")
+        self.assertEqual(rows["ZZ-9"], [audit.MARK[audit.PASS]] * 2)
+        self.assertEqual(rows["CI-02"][1], audit.MARK[audit.NA], "the overlay's applies_to holds")
+        other = self.root / "other"
+        git(self.root, "clone", "-q", str(self.root / "register-origin.git"), str(other))
+        write(other, "CHECKS.yaml", (self.reg / "CHECKS.yaml").read_text().replace("[apps]", "[infra]"))
+        git(other, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qam", "infra")
+        git(other, "push", "-q", "origin", "main")
+        header, rows = self.audit()
+        self.assertNotIn("UNREVIEWED", header, "a checkout behind origin/main is not unreviewed")
+        self.assertEqual(rows["CI-02"][0], audit.MARK[audit.NA], "the merged change is read, not the stale HEAD")
+
+    def test_uncommitted_edit_changes_no_result_and_is_named(self):
+        review_register(self.root)
+        _header, before = self.audit()
+        self.ran.unlink()
+        dirty = self.root / "dirty"
+        write(self.reg, "CHECKS.yaml", "checks:\n- id: CI-01\n  applies_to: [infra]\n")
+        write(self.reg, "checkers.py", self.marker(dirty))
+        header, rows = self.audit()
+        self.assertIn("UNREVIEWED: uncommitted: CHECKS.yaml, checkers.py", header)
+        self.assertFalse(dirty.exists(), "the working tree's checkers.py ran")
+        self.assertFalse(self.ran.exists(), "an unreviewed register loads no checkers.py")
+        self.assertEqual(rows["CI-01"], before["CI-01"], "the uncommitted applies_to moved a cell")
+        self.assert_unreviewed(rows)
+
+    def test_unpushed_commit_is_unreviewed(self):
+        review_register(self.root)
+        local = self.root / "local"
+        write(self.reg, "checkers.py", self.marker(local))
+        git(self.reg, "commit", "-qam", "unpushed")
+        header, rows = self.audit()
+        self.assertIn("1 unpushed commit(s) touch the register", header)
+        self.assertFalse(local.exists())
+        self.assert_unreviewed(rows)
+
+    def test_a_local_ref_named_origin_main_is_not_the_remote(self):
+        review_register(self.root)
+        local = self.root / "local"
+        write(self.reg, "checkers.py", self.marker(local))
+        git(self.reg, "commit", "-qam", "unpushed")
+        git(self.reg, "branch", "origin/main")
+        git(self.reg, "tag", "origin/main")
+        header, rows = self.audit()
+        self.assertIn("1 unpushed commit(s) touch the register", header)
+        self.assertFalse(local.exists(), "a shadowing branch or tag passed an unpushed checkers.py off as reviewed")
+        self.assert_unreviewed(rows)
+
+    def test_a_forged_tracking_ref_is_overwritten_by_the_fetch(self):
+        review_register(self.root)
+        local = self.root / "local"
+        write(self.reg, "checkers.py", self.marker(local))
+        git(self.reg, "commit", "-qam", "unpushed")
+        git(self.reg, "config", "--unset-all", "remote.origin.fetch")
+        git(self.reg, "update-ref", "refs/remotes/origin/main", "HEAD")
+        header, _rows = self.audit()
+        self.assertIn("unpushed commit(s)", header)
+        self.assertFalse(local.exists())
+
+    def test_a_remote_that_cannot_be_fetched_is_unreviewed(self):
+        review_register(self.root, remote=False)
+        git(self.reg, "remote", "add", "origin", str(self.root / "missing.git"))
+        header, rows = self.audit()
+        self.assertIn("fetching origin main failed", header)
+        self.assertIn("origin/main does not resolve", header)
+        self.assertIn("register: HEAD @", header)
+        self.assertFalse(self.ran.exists())
+        self.assert_unreviewed(rows)
+
+    def test_other_files_in_the_register_do_not_unreview_it(self):
+        review_register(self.root)
+        write(self.reg, "CONSISTENCY.md", "generated\n")
+        write(self.reg, "README.md", "x\n")
+        git(self.reg, "add", "README.md")
+        git(self.reg, "commit", "-qm", "readme")
+        header, rows = self.audit()
+        self.assertNotIn("UNREVIEWED", header)
+        self.assertTrue(self.ran.exists())
+        self.assertEqual(rows["ZZ-9"], [audit.MARK[audit.PASS]] * 2)
+
+    def test_no_remote_reads_head_unreviewed(self):
+        review_register(self.root, remote=False)
+        header, rows = self.audit()
+        self.assertIn("register: HEAD @", header)
+        self.assertIn("no origin remote", header)
+        self.assertFalse(self.ran.exists(), "HEAD's checkers.py is not reviewed code")
+        self.assert_unreviewed(rows)
+
+    def test_no_git_loads_no_checkers(self):
+        header, rows = self.audit()
+        self.assertIn("UNREVIEWED: no .git", header)
+        self.assertFalse(self.ran.exists(), "a register with no .git ran its checkers.py")
+        self.assert_unreviewed(rows)
+
+    def test_fail_on_cannot_pass_an_unreviewed_register(self):
+        review_register(self.root, remote=False)
+        p = self.run_audit("--control", "C-ZZ", "--fail-on", "high")
+        self.assertEqual(p.returncode, 3, p.stderr)
+        self.assertIn("register is unreviewed", p.stderr)
+
+    def test_fail_on_passes_a_reviewed_register(self):
+        review_register(self.root)
+        p = self.run_audit("--control", "C-ZZ", "--fail-on", "high")
+        self.assertEqual(p.returncode, 0, p.stderr)
+
+    def test_a_reviewed_overlay_retunes_a_baseline_control(self):
+        write(self.root, ".fleet/CONTROLS.yaml",
+              "controls:\n- id: C-ZZ\n  title: z\n  severity: high\n  intent: z\n- id: C-SUPPLY\n  severity: low\n")
+        review_register(self.root)
+        saved = audit.REGISTER
+        audit.REGISTER = self.reg
+        self.addCleanup(setattr, audit, "REGISTER", saved)
+        self.addCleanup(audit._REGISTER_READ.clear)
+        with mock.patch.dict(audit.GROUP_REPOS, clear=True), contextlib.redirect_stderr(io.StringIO()):
+            ctrl, _checks = audit.load_register()
+        self.assertEqual(ctrl["C-SUPPLY"]["severity"], "low")
+
+
 class CI20Owner(unittest.TestCase):
     """CI-20 must not be silenceable by the repo it is auditing.
 

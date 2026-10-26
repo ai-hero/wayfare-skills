@@ -287,20 +287,23 @@ WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfar
 (`FAIL` | `ERROR`), `check`, `control`, `repo`, `severity`, `title`, `reference`
 (a row name, or null), `detail`, `rule`. MANUAL cells are not printed, because
 they are not findings; a check declared manual is the register saying a person
-verifies it. Propose one item per **control** that has a failing check, never
-one per check. A control is the outcome ("third-party code cannot change under
-us"), its checks are the Definition of Done lines. `type: task` +
-`shape: dependency` when the **highest** failing check's severity under that
-control is `high`, `type: task` + `shape: structural` otherwise;
-`origin: wayfare`; `status: planning` with the rule text as the `## Approach`
-and the `detail` per check as the evidence in `## Context`; `source` = the paths
-the checks name. When `reference` names another repo, say so in `## Context`.
-The fix is to match that repo's file, not to invent one, and never propose
-changing the reference. A repo that carries a copy of the register (REG-01) is
-an item like any other: the copy goes, the register lives in the fleet's
-checkout. An `ERROR` cell is `unverified`, the checker broke, which is a finding
-about the engine, not about this repo, and never a proposed item. A repo outside
-any fleet says so in one line and audits against the baseline only.
+verifies it. Read the `register:` line in `compliance.err` too: `UNREVIEWED`
+there means the fleet's own checks were not run (they read MANUAL), so say so in
+the lane rather than reading their absence from the JSON as a pass. Propose one
+item per **control** that has a failing check, never one per check. A control is
+the outcome ("third-party code cannot change under us"), its checks are the
+Definition of Done lines. `type: task` + `shape: dependency` when the
+**highest** failing check's severity under that control is `high`, `type: task`
+\+ `shape: structural` otherwise; `origin: wayfare`; `status: planning` with the
+rule text as the `## Approach` and the `detail` per check as the evidence in
+`## Context`; `source` = the paths the checks name. When `reference` names
+another repo, say so in `## Context`. The fix is to match that repo's file, not
+to invent one, and never propose changing the reference. A repo that carries a
+copy of the register (REG-01) is an item like any other: the copy goes, the
+register lives in the fleet's checkout. An `ERROR` cell is `unverified`, the
+checker broke, which is a finding about the engine, not about this repo, and
+never a proposed item. A repo outside any fleet says so in one line and audits
+against the baseline only.
 
 **After the accepted items are written, file the confirmed control findings**
 through [finding-tickets.md](finding-tickets.md), on the `issues` connection's

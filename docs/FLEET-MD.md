@@ -72,7 +72,19 @@ Rules:
    to; `template-port` is recorded for the operator. `register` names the
    checkout holding the fleet's compliance overlay (default `.fleet/`); a mapped
    register that is not cloned stops the engine rather than running
-   baseline-only.
+   baseline-only. The register is reviewed the way code is: it has a private
+   `origin` remote whose `main` takes changes only through a reviewed PR, and
+   the engine reads `CONTROLS.yaml`, `CHECKS.yaml` and `checkers.py` from
+   `origin/main`, fetched that run, not from the working tree. The engine trusts
+   that remote's branch protection; it does not check it. A register with no
+   remote, or whose `origin/main` does not resolve, is read at its HEAD, and
+   only a register with no `.git` is read from its working tree. Anything short
+   of a clean, pushed, freshly fetched `origin/main` is unreviewed: an
+   uncommitted or unpushed change to those three files, a failed fetch, no
+   remote, or no `.git` at all. Then the report header's `register:` line names
+   which, the overlay's changes to baseline controls and checks are dropped, its
+   own checks read MANUAL, the register's `checkers.py` is not loaded, and
+   `--fail-on` exits 3.
 2. **`## Groups`**, names are yours, one line each saying what membership means.
    `none` is reserved and always means not-fleet.
 3. **`## Repos`**, one `### NAME` block per checkout. `NAME` is the folder name,
@@ -192,7 +204,8 @@ whose subject is the folder rather than a repo.
   the audit would execute the clone's `.fleet/checkers.py`; both
   `hero_fleet_root` and the audit's `fleet_root()` pass it over with a stderr
   note. The test is on the folder holding `FLEET.md`, never the register, so a
-  `.fleet/` that is its own git checkout under a plain fleet folder still loads.
+  `.fleet/` that is its own git checkout under a plain fleet folder still loads
+  (its `checkers.py` runs only from a reviewed `origin/main`; see rule 1).
   Keeping the fleet folder itself under git stops it resolving.
 - **Reading it as the org inventory.** `gh repo list ORG` is what exists;
   `FLEET.md` is what you have. `sync` may print the difference; it never adds a

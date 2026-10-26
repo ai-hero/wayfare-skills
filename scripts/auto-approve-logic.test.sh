@@ -557,14 +557,16 @@ check "gates-report: fleet workflow keeps its own reason" "REQUEST_CHANGES|no|ye
 check "gates-report: a plain gate failure" "REQUEST_CHANGES|no|no|no" "$(gr false pass)"
 # The steps that can approve must require the caller check, or a mismatch
 # reaches the model anyway. Those are `if:` expressions, not bash, so the text
-# is what can be pinned.
+# is what can be pinned. Here-strings, never `step_if ... | grep -q`: grep -q
+# exits on the first match, awk takes SIGPIPE writing the rest, and pipefail
+# turns a found match into "no" whenever the step outlasts the pipe buffer.
 step_if() { awk -v n="$1" '$0 ~ "- name: " n "$" { f = 1; next } f && /^      - name:/ { exit } f' "$WF"; }
 for step in "Dependency-bot lane" "Claude verification"; do
   check "gates: $step requires caller_check == pass" "yes" \
-    "$(step_if "$step" | grep -qF "steps.pr.outputs.caller_check == 'pass'" && echo yes || echo no)"
+    "$(grep -qF "steps.pr.outputs.caller_check == 'pass'" <<<"$(step_if "$step")" && echo yes || echo no)"
 done
 check "gates: the short-circuit fires on caller_check != pass" "yes" \
-  "$(step_if "Short-circuit on gate failure" | grep -qF "steps.pr.outputs.caller_check != 'pass'" && echo yes || echo no)"
+  "$(grep -qF "steps.pr.outputs.caller_check != 'pass'" <<<"$(step_if "Short-circuit on gate failure")" && echo yes || echo no)"
 
 # --- ci-decision ------------------------------------------------------------
 ci() { # CHECKS_TSV HAS_WORKFLOWS -> "passed|first line of ci_status"
@@ -657,9 +659,9 @@ check "verdict: two headers in review.md -> REQUEST_CHANGES, whichever comes fir
 # The override is only as good as its wiring: the env line, and the id it reads.
 step_of() { awk -v n="      - name: $1" '$0 == n { on = 1; print; next } on && /^      - name: / { exit } on' "$WF"; }
 check "verdict: Resolve final verdict is told whether the short-circuit ran" "yes" \
-  "$(step_of 'Resolve final verdict' | grep -qxF '          GATES_OUTCOME: ${{ steps.gates.outcome }}' && echo yes || echo no)"
+  "$(grep -qxF '          GATES_OUTCOME: ${{ steps.gates.outcome }}' <<<"$(step_of 'Resolve final verdict')" && echo yes || echo no)"
 check "verdict: ...and the short-circuit is the step with id gates" "yes" \
-  "$(step_of 'Short-circuit on gate failure' | grep -qxF '        id: gates' && echo yes || echo no)"
+  "$(grep -qxF '        id: gates' <<<"$(step_of 'Short-circuit on gate failure')" && echo yes || echo no)"
 
 # --- model-write ------------------------------------------------------------
 # The write that produces model.md sat outside any marked block, so a

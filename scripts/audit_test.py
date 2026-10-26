@@ -2375,7 +2375,7 @@ class RuleNotSpelling(unittest.TestCase):
             self.assertEqual(self.ci08({name: text}), (audit.FAIL, f"{name} (PR runs not cancelled)"), name)
 
     def test_ci08_pr_keyed_cancelling_group_passes(self):
-        for key in ("ref", "head_ref", "event.pull_request.number"):
+        for key in ("ref", "head_ref", "event.number", "event.pull_request.number"):
             for cancel in ("true", "${{ github.event_name == 'pull_request' }}"):
                 text = self.PR_CONC.format(key=key, cancel=cancel)
                 self.assertEqual(self.ci08({"d.yaml": text}), (audit.PASS, ""), (key, cancel))
@@ -2387,6 +2387,15 @@ class RuleNotSpelling(unittest.TestCase):
         self.assertEqual(self.ci08({"ci.yaml": every}), (audit.PASS, ""))
         one = "on: {pull_request: {}}\njobs:\n" + job.format(n="a", c=conc) + job.format(n="b", c="")
         self.assertEqual(self.ci08({"ci.yaml": one})[0], audit.FAIL)
+        flat = "    concurrency: t-${{ github.ref }}\n"
+        stringy = "on: {pull_request: {}}\njobs:\n" + job.format(n="a", c=flat)
+        self.assertEqual(self.ci08({"ci.yaml": stringy})[0], audit.FAIL)
+        bad_top = "concurrency: {group: '${{ github.workflow }}', cancel-in-progress: false}\n" + every
+        self.assertEqual(self.ci08({"ci.yaml": bad_top})[0], audit.FAIL)
+
+    def test_ci08_racing_pr_workflow_reports_once(self):
+        text = "on: pull_request\n" + self.PUSH_JOB.format(conc="")
+        self.assertEqual(self.ci08({"build.yaml": text}), (audit.FAIL, "build.yaml"))
 
     def test_ci08_race_only_workflow_still_needs_no_pr_key(self):
         text = "on:\n  push:\n    branches: [main]\nconcurrency:\n  group: release\n" + self.PUSH_JOB.format(conc="")

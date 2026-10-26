@@ -1243,7 +1243,7 @@ def _job_races(job):
     return bool(_RACE_SIGNAL.search(yaml.safe_dump(job, width=10**9)))
 
 
-_PR_KEY = re.compile(r"\bgithub\.(?:ref|head_ref|event\.pull_request\.number)\b")
+_PR_KEY = re.compile(r"\bgithub\.(?:ref|head_ref|event\.number|event\.pull_request\.number)\b")
 
 
 def _cancels_superseded_pr_runs(conc):
@@ -1288,10 +1288,12 @@ def _(r):
                     missing.append(w.name)
             continue
         jobs = doc.get("jobs") if isinstance(doc.get("jobs"), dict) else {}
+        # A workflow-level group applies on top of the job-level ones, so a
+        # bad one is not rescued by good groups on every job.
         if "pull_request" in _wf_on(doc) and not (
-            _cancels_superseded_pr_runs(doc.get("concurrency"))
-            or (jobs and all(isinstance(j, dict) and _cancels_superseded_pr_runs(j.get("concurrency"))
-                             for j in jobs.values()))
+            _cancels_superseded_pr_runs(doc["concurrency"]) if "concurrency" in doc
+            else jobs and all(isinstance(j, dict) and _cancels_superseded_pr_runs(j.get("concurrency"))
+                              for j in jobs.values())
         ):
             stale.append(w.name)
         racers = [j for j in jobs.values() if _job_races(j)]

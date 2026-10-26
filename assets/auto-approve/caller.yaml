@@ -61,8 +61,8 @@ jobs:
     #
     # The zizmor ignore below is for consumers that run zizmor, which flags
     # this line as unpinned-uses. CI-20 holds every consumer's caller to this
-    # file byte for byte, so the ignore is here even though this repo does not
-    # run zizmor; remove it from a consumer and CI-20 fails.
+    # file byte for byte, so the ignore is in every consumer's copy, whether or
+    # not it runs zizmor; remove it from one and CI-20 fails.
     uses: ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@main # zizmor: ignore[unpinned-uses] — see above: no upstream tags, so a pin would never be bumped
     # Never `secrets: inherit` — it hands the callee every secret this repo
     # holds. Name only what the callee declares.

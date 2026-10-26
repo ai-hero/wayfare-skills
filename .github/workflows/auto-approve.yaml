@@ -287,23 +287,28 @@ jobs:
           jq -r '.previous_filename // empty' files.jsonl > previous_files.txt
           # test: end files-list
 
-          # In this repo, neither the model nor the scripted
-          # lanes may approve a change to a path listed in
+          # In this repo, neither the model nor the scripted lanes may
+          # approve a change to a path listed in
           # .github/auto-approve-human-review.txt (its header says why each
           # is there); a human always reviews it. Read from main, never the
-          # PR's head or base: a PR that could edit the list could drop
-          # itself from it. Keyed on $REPO, which the PR cannot change,
-          # so the suite can run the block with `env REPO=... bash`, same as
-          # the bot-lane block above.
+          # PR's head or base: either can be a branch the author controls,
+          # and a list read from there could drop the PR's own paths. Spelled
+          # refs/heads/main: a bare `main` resolves a tag of that name first,
+          # and anyone with write can push a tag that no branch protection
+          # covers. Keyed on $REPO, which the PR cannot change, so the suite
+          # can run the block with `env REPO=... bash`, same as the bot-lane
+          # block above.
           # test: begin fleet-workflow
           FLEET_WORKFLOW=false
           : > fleet_paths.md
           if [ "$REPO" = "ai-hero/wayfare-skills" ]; then
             PATTERNS=()
             if gh api -H "Accept: application/vnd.github.raw" \
-                 "/repos/$REPO/contents/.github/auto-approve-human-review.txt?ref=main" \
+                 "/repos/$REPO/contents/.github/auto-approve-human-review.txt?ref=refs/heads/main" \
                  > human_review.txt 2>>human_review_err.log; then
-              while IFS= read -r pat; do PATTERNS+=("$pat"); done \
+              # `|| [ -n "$pat" ]`: read fails on a last line with no
+              # newline, which would drop that entry and fail open on it.
+              while IFS= read -r pat || [ -n "$pat" ]; do PATTERNS+=("$pat"); done \
                 < <(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; /^(#|$)/d' human_review.txt)
             fi
             # An unreadable or entry-less list fails closed: read as empty,
@@ -313,6 +318,9 @@ jobs:
               echo "::warning::could not read a non-empty .github/auto-approve-human-review.txt at main:"
               cat human_review_err.log 2>/dev/null || true
             else
+              # A case-insensitive checkout (macOS, Windows) loads
+              # `.MCP.json` as `.mcp.json`, so case must not dodge the list.
+              shopt -s nocasematch
               while IFS= read -r f; do
                 [ -n "$f" ] || continue
                 for pat in "${PATTERNS[@]}"; do
@@ -320,11 +328,12 @@ jobs:
                   # shellcheck disable=SC2053
                   if [[ $f == $pat ]]; then
                     FLEET_WORKFLOW=true
-                    printf -- '- `%s` (listed as `%s`)\n' "$f" "$pat" >> fleet_paths.md
+                    printf -- '- `%s` (listed as `%s`)\n' "${f//\`/}" "$pat" >> fleet_paths.md
                     break
                   fi
                 done
               done < <(cat changed_files.txt previous_files.txt)
+              shopt -u nocasematch
             fi
           fi
           echo "fleet_workflow=$FLEET_WORKFLOW" >> "$GITHUB_OUTPUT"

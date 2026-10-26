@@ -405,15 +405,21 @@ check "files-list: a renamed entry's previous_filename lands in previous_files.t
   "$(files_list "$FILE_A$FILE_B" 2 >/dev/null; grep -qxF b_old.go "$WORK/previous_files.txt" && echo yes || echo no)"
 
 # --- fleet-workflow ----------------------------------------------------------
-# The paths only a person may approve here are listed in one file, read from
-# main. The stub serves THIS checkout's copy of that file as main's, so the
-# fixtures below test the real list, not a retyped one.
+# The stub serves THIS checkout's copy of the list as main's, so the fixtures
+# below test the real list, not a retyped one. Like the real contents API it
+# returns raw bytes only for the raw Accept header and JSON otherwise: JSON
+# read as a list is non-empty and matches nothing, which fails open.
 HUMAN_LIST="$HERE/../.github/auto-approve-human-review.txt"
 fw_list() { # LIST_FILE_OR_EMPTY [GH_RC] -> installs the gh stub
   mkdir -p "$WORK/fwbin"
   { echo '#!/usr/bin/env bash'
     echo "printf '%s\\n' \"\$*\" >> $WORK/fw_argv"
-    [ -n "$1" ] && echo "cat '$1'"
+    if [ -n "$1" ]; then
+      echo 'case "$*" in'
+      echo "  *'Accept: application/vnd.github.raw'*) cat '$1' ;;"
+      echo "  *) echo '{\"encoding\": \"base64\", \"content\": \"aG9va3MvKgo=\"}' ;;"
+      echo 'esac'
+    fi
     echo "exit ${2:-0}"
   } > "$WORK/fwbin/gh"
   chmod +x "$WORK/fwbin/gh"
@@ -447,6 +453,18 @@ scripts/hero-lib.sh|sourced by the Stop hook
 .agents/plugins/marketplace.json|the agents marketplace
 plugin.json|the portable manifest
 .mcp.json|plugin MCP servers
+.lsp.json|plugin language servers
+settings.json|plugin root settings
+agents/reviewer.md|a plugin agent
+commands/x.md|a plugin command
+output-styles/x.md|a plugin output style
+.claude/settings.json|maintainer session settings
+.claude/rules/comments.md|maintainer session rules
+.vscode/tasks.json|maintainer editor tasks
+hooks/sub/x.sh|* crosses /
+.MCP.json|a case variant a case-insensitive checkout loads
+Hooks/Hooks.json|a case variant of a hook
+Scripts/Hero-Lib.sh|a case variant of what the hook sources
 EOF
 check "fleet-workflow: a listed path among others -> true" "true" \
   "$(fw ai-hero/wayfare-skills 'skills/x/SKILL.md\nscripts/hero-lib.sh\nREADME.md\n')"
@@ -467,7 +485,7 @@ docs/hooks/x.md|hooks/ is anchored at the root
 scripts/hero-lib.sh.bak|an exact name, not a prefix
 EOF
 check "fleet-workflow: the list is read from main, in this repo" "yes" \
-  "$(fw ai-hero/wayfare-skills 'foo.go\n' >/dev/null; grep -qF '/repos/ai-hero/wayfare-skills/contents/.github/auto-approve-human-review.txt?ref=main' "$WORK/fw_argv" && echo yes || echo no)"
+  "$(fw ai-hero/wayfare-skills 'foo.go\n' >/dev/null; grep -qF '/repos/ai-hero/wayfare-skills/contents/.github/auto-approve-human-review.txt?ref=refs/heads/main' "$WORK/fw_argv" && echo yes || echo no)"
 # A consumer's own copy of this workflow never has github.repository ==
 # ai-hero/wayfare-skills, so its PRs stay auto-approvable and never fetch.
 check "fleet-workflow: consumer repo, file changed -> false" "false" \
@@ -485,7 +503,28 @@ check "fleet-workflow: a list with no entries -> inconclusive" "inconclusive" "$
 printf '# x\n  hooks/*  \n' > "$WORK/padded_list.txt"
 fw_list "$WORK/padded_list.txt"
 check "fleet-workflow: an entry padded with spaces still matches" "true" "$(fw ai-hero/wayfare-skills 'hooks/a.sh\n')"
+printf 'hooks/*\n.mcp.json' > "$WORK/no_eol_list.txt"
+fw_list "$WORK/no_eol_list.txt"
+check "fleet-workflow: the last entry counts with no trailing newline" "true" "$(fw ai-hero/wayfare-skills '.mcp.json\n')"
 fw_list "$HUMAN_LIST"
+check "fleet-workflow: a backtick in a matched name cannot break the report's code span" "no" \
+  "$(fw ai-hero/wayfare-skills 'hooks/a`b.sh\n' >/dev/null; grep -qF 'a`b' "$WORK/fleet_paths.md" && echo yes || echo no)"
+
+# An entry that matches nothing protects nothing and raises no error, so the
+# real list's entries are held to the shapes that can match a path.
+BAD_ENTRIES=$(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; /^(#|$)/d' "$HUMAN_LIST" \
+  | grep -E '^(/|\./)|/$|[[:space:]]|#' || true)
+check "fleet-workflow: no list entry is anchored, a directory, or carries a comment" "" "$BAD_ENTRIES"
+
+# The output only holds anything while every lane that can approve requires
+# it to be `false`, and the short-circuit fires on anything else, including
+# `inconclusive`.
+for step in "Dependency-bot lane" "Claude verification"; do
+  check "gates: $step requires fleet_workflow == false" "yes" \
+    "$(grep -qF "steps.pr.outputs.fleet_workflow == 'false'" <<<"$(step_if "$step")" && echo yes || echo no)"
+done
+check "gates: the short-circuit fires on fleet_workflow != false" "yes" \
+  "$(grep -qF "steps.pr.outputs.fleet_workflow != 'false'" <<<"$(step_if "Short-circuit on gate failure")" && echo yes || echo no)"
 
 # --- gates-report -----------------------------------------------------------
 # The short-circuit step's report, read by the loose verdict parser.

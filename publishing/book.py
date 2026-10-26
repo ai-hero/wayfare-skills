@@ -80,13 +80,12 @@ def local_roots():
 REFUSED = set()
 
 
-def local_fetcher(url, *args, **kwargs):
-    """WeasyPrint's url_fetcher for every render built through `weasy_html()`. Manuscript HTML is
+def check_fetch(url):
+    """Raise for any URL a render built through `weasy_html()` may not read. Manuscript HTML is
     untrusted: an `<img src=http://...>` or a `file:///` link in it would otherwise be fetched at
     render time. Raising makes WeasyPrint skip the resource, not fail the page."""
-    from weasyprint.urls import default_url_fetcher
     if url.startswith("data:"):
-        return default_url_fetcher(url, *args, **kwargs)
+        return
     parts = urllib.parse.urlparse(url)
     if parts.scheme != "file" or parts.netloc not in ("", "localhost"):
         REFUSED.add(url)
@@ -95,12 +94,20 @@ def local_fetcher(url, *args, **kwargs):
     if not any(path == r or path.startswith(r + os.sep) for r in local_roots()):
         REFUSED.add(url)
         raise ValueError(f"book: refusing to fetch {url}: outside the asset and font paths")
-    return default_url_fetcher(url, *args, **kwargs)
 
 
 def weasy_html():
     from weasyprint import HTML
-    return functools.partial(HTML, url_fetcher=local_fetcher)
+    from weasyprint.urls import URLFetcher
+
+    # Since WeasyPrint 70 a url_fetcher must be a URLFetcher: a plain function still renders,
+    # but its first refusal crashes the render on a missing `_fail_on_errors`.
+    class LocalFetcher(URLFetcher):
+        def fetch(self, url, headers=None):
+            check_fetch(url)
+            return super().fetch(url, headers)
+
+    return functools.partial(HTML, url_fetcher=LocalFetcher())
 
 
 def esc(s):

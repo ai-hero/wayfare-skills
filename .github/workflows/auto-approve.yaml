@@ -725,16 +725,18 @@ jobs:
               } > threads.md
             else
               echo "passed=false" >> "$GITHUB_OUTPUT"
-              # The gsub is load-bearing, not cosmetic: a quoted reviewer comment
-              # must never contribute a line of its own, or a comment body
-              # containing "## Verdict" would be found by the verdict parser.
+              # The gsubs are load-bearing, not cosmetic: no quoted field may
+              # contribute a line of its own, or a "## Verdict" in it would be
+              # found by the verdict parser. The path is a file name the PR
+              # author chose, and a file name can hold a newline.
               UNRESOLVED_LIST=$(jq -r '
+                def oneline: gsub("[\r\n]"; " ");
                 [.data.repository.pullRequest.reviewThreads.nodes[]
                   | select(.isResolved == false)
                   | select(.isOutdated == false)
-                  | (.comments.nodes[0].path // "?") + " — @" +
-                    (.comments.nodes[0].author.login // "?") + ": " +
-                    ((.comments.nodes[0].body // "") | gsub("\n"; " ") | .[0:120])
+                  | ((.comments.nodes[0].path // "?") | oneline) + " — @" +
+                    ((.comments.nodes[0].author.login // "?") | oneline) + ": " +
+                    ((.comments.nodes[0].body // "") | oneline | .[0:120])
                 ] | .[] | "- " + .
               ' threads.json)
               {
@@ -1107,6 +1109,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ steps.pr.outputs.number }}
           HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          GATES_OUTCOME: ${{ steps.gates.outcome }}
         run: |
           # model.md, when it exists, is the verdict source, not review.md:
           # "Claude verification" writes it only on a complete model
@@ -1123,8 +1126,9 @@ jobs:
           # Only a real model response is held to the strict shape below:
           # exactly one Verdict header and one each of the three check
           # headers, and never APPROVE beside a ❌ on one of them. The
-          # scripted lanes never write model.md, because that verdict is
-          # our own trusted text, not something to parse defensively. A
+          # scripted lanes never write model.md; their verdict is our own
+          # text, but the gate reports they quote ahead of it are not, so
+          # review.md is held to one Verdict header too. A
           # model that opens a second "## Verdict" (its own, or one echoed
           # out of the untrusted input) or drops a check fails closed
           # rather than being read as whichever header happened first.
@@ -1178,6 +1182,17 @@ jobs:
             fi
           else
             VERDICT_TOKEN=$(parse_loose_verdict review.md)
+            if [ "$(grep -c '^## Verdict[[:space:]]*:\?[[:space:]]*$' review.md || true)" -ne 1 ]; then
+              VERDICT_TOKEN=REQUEST_CHANGES
+            fi
+          fi
+          # A failed gate is a refusal whatever review.md says: that report
+          # quotes thread text the PR author controls ahead of the
+          # short-circuit's own verdict. `!= skipped`, not `= success`, so a
+          # renamed step id (an empty outcome) refuses every run instead of
+          # silently dropping this override.
+          if [ "${GATES_OUTCOME:-}" != skipped ]; then
+            VERDICT_TOKEN=REQUEST_CHANGES
           fi
           # test: end verdict-parse
 

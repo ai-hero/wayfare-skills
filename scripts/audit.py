@@ -332,13 +332,16 @@ def _resolve_register(reg):
     read = ref or "HEAD"
     _rc, sha = sh(reg, f"git rev-parse --verify -q --short {read}^{{commit}}")
     files = " ".join(_REGISTER_OWN)
-    _rc, dirty = sh(reg, f"git status --porcelain -- {files}")
-    if dirty:
+    # A git command that failed has proved nothing clean, so it is a problem too.
+    rc, dirty = sh(reg, f"git status --porcelain -- {files}")
+    if rc:
+        problems.append("git status failed")
+    elif dirty:
         problems.append("uncommitted: " + ", ".join(line.split(None, 1)[-1] for line in dirty.splitlines()))
     if ref:
-        _rc, ahead = sh(reg, f"git rev-list --count origin/main..HEAD -- {files}")
-        if ahead not in ("", "0"):
-            problems.append(f"{ahead} unpushed commit(s) touch the register")
+        rc, ahead = sh(reg, f"git rev-list --count origin/main..HEAD -- {files}")
+        if rc or ahead != "0":
+            problems.append(f"{ahead or '?'} unpushed commit(s) touch the register")
     dest = pathlib.Path(tempfile.mkdtemp(prefix="audit-register-"))
     atexit.register(shutil.rmtree, dest, True)
     if sha:

@@ -141,6 +141,7 @@ def refused(url):
 
 
 fetched = []
+book.REFUSED.clear()
 real_fetch = weasyprint.urls.URLFetcher.fetch
 weasyprint.urls.URLFetcher.fetch = lambda self, url, headers=None: fetched.append(url) or real_fetch(self, url, headers)
 try:
@@ -151,11 +152,16 @@ try:
 finally:
     weasyprint.urls.URLFetcher.fetch = real_fetch
 check("a render fetches only the asset it names", [pathlib.Path(local_png).as_uri()], fetched)
+check("a render records what it refused", True,
+      {"http://127.0.0.1:9/x.png", "file:///etc/hosts"} <= book.REFUSED)
 check("a remote image is refused", True, refused("http://127.0.0.1:9/x.png"))
 check("an out-of-tree file is refused", True, refused("file:///etc/hosts"))
 check("a dot-dot path out of the assets is refused", True,
       refused(pathlib.Path(paths.ASSETS, "..", "..", "x").as_uri()))
 check("a file on another host is refused", True, refused("file://example.com/etc/hosts"))
+book.REFUSED.clear()
+check("a file URL with an empty host segment is refused and recorded", (True, {"file:////etc/hosts"}),
+      (refused("file:////etc/hosts"), set(book.REFUSED)))
 check("a data URI still loads", False, refused("data:image/png;base64,iVBORw0KGgo="))
 font = os.path.join(tmp, "italic.woff2")
 open(font, "wb").close()

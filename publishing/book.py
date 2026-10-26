@@ -13,6 +13,7 @@ import http.client
 import json
 import os
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -90,7 +91,11 @@ def check_fetch(url):
     if parts.scheme != "file" or parts.netloc not in ("", "localhost"):
         REFUSED.add(url)
         raise ValueError(f"book: refusing to fetch {url}")
-    path = os.path.realpath(urllib.request.url2pathname(parts.path))
+    try:
+        path = os.path.realpath(urllib.request.url2pathname(parts.path))
+    except urllib.error.URLError:
+        REFUSED.add(url)
+        raise ValueError(f"book: refusing to fetch {url}: not a local path")
     if not any(path == r or path.startswith(r + os.sep) for r in local_roots()):
         REFUSED.add(url)
         raise ValueError(f"book: refusing to fetch {url}: outside the asset and font paths")
@@ -100,14 +105,17 @@ def weasy_html():
     from weasyprint import HTML
     from weasyprint.urls import URLFetcher
 
-    # Since WeasyPrint 70 a url_fetcher must be a URLFetcher: a plain function still renders,
-    # but its first refusal crashes the render on a missing `_fail_on_errors`.
+    # Since WeasyPrint 70 a url_fetcher must be a URLFetcher: a plain function's first refusal
+    # crashes the render on a missing `_fail_on_errors`.
     class LocalFetcher(URLFetcher):
         def fetch(self, url, headers=None):
             check_fetch(url)
             return super().fetch(url, headers)
 
-    return functools.partial(HTML, url_fetcher=LocalFetcher())
+    # A redirect refused by `check_fetch` leaves URLFetcher's `_request` set, and the next fetch on
+    # this shared instance would open it. No redirect, and no scheme that could produce one.
+    fetcher = LocalFetcher(allow_redirects=False, allowed_protocols={"file", "data"})
+    return functools.partial(HTML, url_fetcher=fetcher)
 
 
 def esc(s):

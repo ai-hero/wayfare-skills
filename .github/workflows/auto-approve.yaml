@@ -56,12 +56,11 @@ jobs:
     # within this; the ceiling just stops a hung step from pinning a runner.
     timeout-minutes: 20
     # Defense in depth on the trigger:
-    # 1. `author_association` gate: only OWNER/MEMBER/COLLABORATOR (the
-    #    associations that imply write access) can invoke. This is
-    #    load-bearing, not decorative: the workflow posts a real APPROVE
-    #    review and spends an API key, so without it any commenter, e.g.
-    #    on a public fork or clone, could trigger an approval and burn
-    #    the key.
+    # 1. `author_association` pre-filter: only OWNER/MEMBER/COLLABORATOR
+    #    start a runner at all. It does NOT imply write access: a MEMBER
+    #    or COLLABORATOR can hold read or triage. The first step, "Gate —
+    #    commenter can write", is what requires write before a real
+    #    APPROVE is posted or the API key is spent. Keep both.
     # 2. The command must START the comment, and a wayfare self-review is
     #    never a command. With `contains`, MENTIONING @auto-approve anywhere in
     #    any comment ran this and posted a real APPROVE, and review-pr's
@@ -79,6 +78,29 @@ jobs:
       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
 
     steps:
+      # First, and no later step but the crash reporter may opt out of the
+      # default success() condition: a failure here is what stops every
+      # step that can approve or call the model.
+      - name: Gate — commenter can write
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          LOGIN: ${{ github.event.comment.user.login }}
+        run: |
+          # test: begin actor-permission
+          # `.permission` folds maintain into write and triage into read.
+          # Anything outside the allow-list, an empty answer or a failed
+          # call included, stops the run.
+          PERMISSION=$(gh api "/repos/$REPO/collaborators/$LOGIN/permission" --jq .permission) || PERMISSION=
+          case "$PERMISSION" in
+            admin|maintain|write) ;;
+            *)
+              printf '%s\n' "@$LOGIN has ${PERMISSION:-unknown} permission on this repo; only a commenter with write, maintain or admin can run auto-approve." > lane_error.txt
+              echo "::error::$(cat lane_error.txt)"
+              exit 1 ;;
+          esac
+          # test: end actor-permission
+
       - name: Get PR details
         id: pr
         env:

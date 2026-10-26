@@ -141,7 +141,7 @@ def main():
     L.append("| ✅ | complies today |")
     L.append("| ❌ | still drifting |")
     L.append("| – | doesn't apply (no Go, no UI, no image — or `applies_to` names a group this repo is not in) |")
-    L.append("| ? | no automated checker — needs a human, not a guess |")
+    L.append("| ? | no automated checker, or the register is unreviewed — needs a human, not a guess |")
     L.append("")
     L.append("The repo columns are computed live, this run. No check names a")
     L.append("repo, so nothing here is remembered from a previous sweep — a")

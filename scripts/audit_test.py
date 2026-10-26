@@ -949,7 +949,9 @@ def review_register(root, remote=True):
     git(reg, "commit", "-q", "--allow-empty", "-m", "register")
     if remote:
         bare = root / "register-origin.git"
-        git(root, "init", "-q", "--bare", str(bare))
+        # -b main: with no init.defaultBranch (CI's runner) the bare HEAD names
+        # master, and a clone of it checks out nothing.
+        git(root, "init", "-q", "--bare", "-b", "main", str(bare))
         git(reg, "remote", "add", "origin", str(bare))
         git(reg, "push", "-q", "origin", "main")
         git(reg, "fetch", "-q", "origin")

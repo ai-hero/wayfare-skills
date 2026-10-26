@@ -51,7 +51,7 @@ run_block() { # NAME [env assignments...] -> runs in $WORK under bash -e
   ( cd "$WORK" && env "$@" bash -e "$WORK/$name.sh" )
 }
 
-for name in classify diff-filter go-pkgs claims ci-decision verdict-parse bot-lane files-list fleet-workflow submit-verdict crash-notice prior-review tree-guard contents-fetch threads-paginate untag model-write; do
+for name in classify diff-filter go-pkgs claims ci-decision verdict-parse bot-lane files-list fleet-workflow caller-match gates-report submit-verdict crash-notice prior-review tree-guard contents-fetch threads-paginate untag model-write; do
   extract "$name" > "$WORK/$name.sh"
   check "extract: $name non-empty" "yes" "$([[ -s "$WORK/$name.sh" ]] && echo yes || echo no)"
   check "extract: $name parses" "0" "$(bash -n "$WORK/$name.sh" 2>/dev/null; echo $?)"
@@ -358,6 +358,141 @@ check "fleet-workflow: this repo, renamed away -> true" "true" \
   "$(fw "ai-hero/wayfare-skills" 'assets/renamed.yaml\nfoo.go\n' '.github/workflows/auto-approve.yaml\n')"
 check "fleet-workflow: consumer repo, same rename -> false" "false" \
   "$(fw "some-org/consumer" 'assets/renamed.yaml\n' '.github/workflows/auto-approve.yaml\n')"
+
+# --- caller-match -----------------------------------------------------------
+# CI-20 at PR time. A consumer PR that adds, edits, renames or deletes a
+# workflow calling the shared workflow must leave it byte-identical to the
+# vendored caller.yaml; otherwise the model alone could approve a caller
+# repointed at another ref or given `secrets: inherit`, and issue_comment would
+# run the merged version with the secret. `gh` is stubbed as the contents API
+# over a fixture tree, $WORK/fs/OWNER/REPO/REF/PATH; a missing file fails the
+# call the way a 404 or an outage does.
+VENDORED="$HERE/../assets/auto-approve/caller.yaml"
+CALLER=.github/workflows/auto-approve.yaml
+put() { # REPO REF PATH SOURCE_FILE
+  mkdir -p "$(dirname "$WORK/fs/$1/$2/$3")"
+  cp "$4" "$WORK/fs/$1/$2/$3"
+}
+sed 's/ANTHROPIC_API_KEY: .*/inherit/' "$VENDORED" > "$WORK/drift_caller.yaml"
+sed 's#auto-approve.yaml@main#auto-approve.yaml@evil#' "$VENDORED" > "$WORK/repointed_caller.yaml"
+sed 's#ai-hero/wayfare-skills/#ai-hero/hero-skills/#' "$VENDORED" > "$WORK/stale_caller.yaml"
+printf 'name: CI\non: push\njobs: {}\n' > "$WORK/plain_wf.yaml"
+printf 'name: Auto Approve\non: issue_comment\njobs:\n  x:\n    uses: evil/x/.github/workflows/y.yaml@main\n    secrets: inherit\n' > "$WORK/hijack_wf.yaml"
+mkdir -p "$WORK/cmbin"
+cat > "$WORK/cmbin/gh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$STUB_ARGV"
+for a in "$@"; do case "$a" in /repos/*) url=$a ;; esac; done
+p=${url#/repos/}
+ref=${p##*\?ref=}
+p=${p%%\?*}
+f="$STUB_FS/${p%%/contents/*}/$ref/${p#*/contents/}"
+[ -f "$f" ] || exit 1
+cat "$f"
+STUB
+chmod +x "$WORK/cmbin/gh"
+cm_reset() {
+  rm -rf "$WORK/fs" "$WORK/caller.md"
+  : > "$WORK/out"; : > "$WORK/cm_argv"
+  put ai-hero/wayfare-skills main assets/auto-approve/caller.yaml "$VENDORED"
+}
+cm() { # FILES_JSONL [REPO] -> "caller_check|caller.md names CI-20?"
+  printf '%s\n' "$1" > "$WORK/files.jsonl"
+  ( cd "$WORK" && PATH="$WORK/cmbin:$PATH" STUB_FS="$WORK/fs" STUB_ARGV="$WORK/cm_argv" \
+    REPO="${2:-o/r}" HEAD_SHA=head1 BASE_SHA=base1 \
+    GITHUB_OUTPUT="$WORK/out" bash -e "$WORK/caller-match.sh" ) >/dev/null 2>&1
+  printf '%s|%s' "$(sed -n 's/^caller_check=//p' "$WORK/out")" \
+    "$(grep -qF CI-20 "$WORK/caller.md" 2>/dev/null && echo yes || echo no)"
+}
+fj() { # STATUS FILENAME [PREVIOUS] -> one files.jsonl record
+  jq -nc --arg s "$1" --arg f "$2" --arg p "${3-}" \
+    '{filename: $f, status: $s} + (if $p == "" then {} else {previous_filename: $p} end)'
+}
+
+cm_reset; put o/r base1 $CALLER "$WORK/stale_caller.yaml"; put o/r head1 $CALLER "$VENDORED"
+check "caller-match: re-vendored caller equals caller.yaml -> pass" "pass|no" \
+  "$(cm "$(fj modified $CALLER)")"
+cm_reset; put o/r base1 $CALLER "$VENDORED"; put o/r head1 $CALLER "$WORK/drift_caller.yaml"
+check "caller-match: caller edited away (secrets: inherit) -> mismatch naming CI-20" "mismatch|yes" \
+  "$(cm "$(fj modified $CALLER)")"
+cm_reset; put o/r base1 $CALLER "$VENDORED"; put o/r head1 $CALLER "$WORK/repointed_caller.yaml"
+check "caller-match: caller repointed at another ref -> mismatch" "mismatch|yes" \
+  "$(cm "$(fj modified $CALLER)")"
+cm_reset; put o/r base1 $CALLER "$VENDORED"; put o/r head1 $CALLER "$WORK/hijack_wf.yaml"
+check "caller-match: caller replaced by a workflow that no longer calls it -> mismatch" "mismatch|yes" \
+  "$(cm "$(fj modified $CALLER)")"
+cm_reset; put o/r base1 $CALLER "$VENDORED"
+check "caller-match: caller deleted -> mismatch" "mismatch|yes" \
+  "$(cm "$(fj removed $CALLER)")"
+cm_reset; put o/r base1 $CALLER "$VENDORED"; put o/r head1 .github/workflows/aa.yml "$WORK/drift_caller.yaml"
+check "caller-match: caller renamed and edited -> mismatch" "mismatch|yes" \
+  "$(cm "$(fj renamed .github/workflows/aa.yml $CALLER)")"
+cm_reset; put o/r base1 $CALLER "$VENDORED"; put o/r head1 docs/old-caller.yaml "$VENDORED"
+check "caller-match: caller renamed out of .github/workflows -> mismatch" "mismatch|yes" \
+  "$(cm "$(fj renamed docs/old-caller.yaml $CALLER)")"
+cm_reset; put o/r base1 $CALLER "$VENDORED"; put o/r head1 .github/workflows/aa.yaml "$VENDORED"
+check "caller-match: caller renamed with its bytes intact -> pass" "pass|no" \
+  "$(cm "$(fj renamed .github/workflows/aa.yaml $CALLER)")"
+cm_reset; put o/r head1 .github/workflows/second.yaml "$WORK/drift_caller.yaml"
+check "caller-match: a new workflow calling the shared one, drifted -> mismatch" "mismatch|yes" \
+  "$(cm "$(fj added .github/workflows/second.yaml)")"
+cm_reset; put o/r base1 .github/workflows/ci.yaml "$WORK/plain_wf.yaml"; put o/r head1 .github/workflows/ci.yaml "$WORK/plain_wf.yaml"
+check "caller-match: a workflow that never calls the shared one -> pass" "pass|no" \
+  "$(cm "$(fj modified .github/workflows/ci.yaml)")"
+check "caller-match: ...and the vendored copy is never fetched" "no" \
+  "$(grep -q wayfare-skills "$WORK/cm_argv" && echo yes || echo no)"
+cm_reset
+check "caller-match: no workflow file changed -> pass with no fetch" "pass|no|0" \
+  "$(cm "$(fj modified src/app.go)")|$(wc -l < "$WORK/cm_argv" | tr -d ' ')"
+cm_reset; put o/r base1 $CALLER "$VENDORED"; put o/r head1 $CALLER "$VENDORED"
+rm "$WORK/fs/ai-hero/wayfare-skills/main/assets/auto-approve/caller.yaml"
+check "caller-match: vendored caller unreadable -> inconclusive" "inconclusive|yes" \
+  "$(cm "$(fj modified $CALLER)")"
+cm_reset; put o/r base1 $CALLER "$VENDORED"; put o/r head1 $CALLER "$VENDORED"
+: > "$WORK/fs/ai-hero/wayfare-skills/main/assets/auto-approve/caller.yaml"
+check "caller-match: an empty vendored caller is no reference -> inconclusive" "inconclusive|yes" \
+  "$(cm "$(fj modified $CALLER)")"
+cm_reset; put o/r base1 $CALLER "$VENDORED"
+check "caller-match: the PR's own copy unreadable -> inconclusive" "inconclusive|yes" \
+  "$(cm "$(fj modified $CALLER)")"
+cm_reset; put o/r head1 $CALLER "$VENDORED"
+check "caller-match: the base copy unreadable -> inconclusive" "inconclusive|yes" \
+  "$(cm "$(fj modified $CALLER)")"
+# The plugin repo has no caller. The shared workflow it owns is the
+# fleet-workflow guard's, which already sends any change to it to a person.
+cm_reset; put ai-hero/wayfare-skills base1 $CALLER "$VENDORED"
+check "caller-match: the plugin repo itself is not a consumer -> pass" "pass|no" \
+  "$(cm "$(fj removed $CALLER)" ai-hero/wayfare-skills)"
+
+# --- gates-report -----------------------------------------------------------
+# The short-circuit step's report, read by the loose verdict parser.
+gr() { # FLEET_WORKFLOW CALLER_CHECK -> "VERDICT_TOKEN|names CI-20?|names fleet-wide?"
+  printf '## Prior Review: ok\n' > "$WORK/prior_review.md"
+  printf '## Unresolved Comments: ok\n' > "$WORK/threads.md"
+  printf '## CI: ok\n' > "$WORK/ci.md"
+  printf -- '- %s differs from the vendored caller\n' "$CALLER" > "$WORK/caller.md"
+  rm -f "$WORK/model.md" "$WORK/review.md"
+  ( cd "$WORK" && FLEET_WORKFLOW="$1" CALLER_CHECK="$2" bash -e "$WORK/gates-report.sh" \
+    && . "$WORK/verdict-parse.sh" \
+    && printf '%s|%s|%s' "$VERDICT_TOKEN" \
+         "$(grep -qF CI-20 review.md && echo yes || echo no)" \
+         "$(grep -qF 'fleet-wide workflow' review.md && echo yes || echo no)" )
+}
+check "gates-report: caller mismatch -> REQUEST_CHANGES naming CI-20" "REQUEST_CHANGES|yes|no" "$(gr false mismatch)"
+check "gates-report: caller check inconclusive -> REQUEST_CHANGES naming CI-20" "REQUEST_CHANGES|yes|no" "$(gr false inconclusive)"
+check "gates-report: caller check never ran -> REQUEST_CHANGES" "REQUEST_CHANGES|yes|no" "$(gr false '')"
+check "gates-report: fleet workflow keeps its own reason" "REQUEST_CHANGES|no|yes" "$(gr true pass)"
+check "gates-report: a plain gate failure" "REQUEST_CHANGES|no|no" "$(gr false pass)"
+# The steps that can approve must require the caller check, or a mismatch
+# reaches the model anyway. Those are `if:` expressions, not bash, so the text
+# is what can be pinned.
+step_if() { awk -v n="$1" '$0 ~ "- name: " n "$" { f = 1; next } f && /^      - name:/ { exit } f' "$WF"; }
+for step in "Dependency-bot lane" "Claude verification"; do
+  check "gates: $step requires caller_check == pass" "yes" \
+    "$(step_if "$step" | grep -qF "steps.pr.outputs.caller_check == 'pass'" && echo yes || echo no)"
+done
+check "gates: the short-circuit fires on caller_check != pass" "yes" \
+  "$(step_if "Short-circuit on gate failure" | grep -qF "steps.pr.outputs.caller_check != 'pass'" && echo yes || echo no)"
 
 # --- ci-decision ------------------------------------------------------------
 ci() { # CHECKS_TSV HAS_WORKFLOWS -> "passed|first line of ci_status"
@@ -711,16 +846,22 @@ check "prior-review: a past auto-approve run does not bootstrap it" "false" \
 # then see has_workflows=0 and, absent a registered check-run, pass with
 # "No CI in this repo". `gh` is stubbed so both the fetch failure and a
 # truncated response are under test, not just the happy path.
-tree_guard() { # TREE_JSON [GH_RC] -> "rc|has_workflows|lane_error_present"
-  printf '%s' "$1" > "$WORK/tree_stub.json"
+#
+# has_workflows is true when EITHER tree has the directory. The head alone let
+# a PR delete every workflow, register no checks, and take the "No CI" pass.
+tree_guard() { # HEAD_TREE_JSON [BASE_TREE_JSON] [HEAD_RC] [BASE_RC] -> "rc|has_workflows|lane_error_present"
+  printf '%s' "$1" > "$WORK/tree_head.json"
+  printf '%s' "${2-$1}" > "$WORK/tree_base.json"
   mkdir -p "$WORK/bin"
   { echo '#!/usr/bin/env bash'
-    echo "cat $WORK/tree_stub.json"
-    echo "exit ${2:-0}"
+    echo 'case "$*" in'
+    echo "  *base456*) cat $WORK/tree_base.json; exit ${4:-0} ;;"
+    echo "  *) cat $WORK/tree_head.json; exit ${3:-0} ;;"
+    echo 'esac'
   } > "$WORK/bin/gh"
   chmod +x "$WORK/bin/gh"
   : > "$WORK/out"; rm -f "$WORK/lane_error.txt"
-  ( cd "$WORK" && PATH="$WORK/bin:$PATH" REPO=o/r HEAD_SHA=abc123 \
+  ( cd "$WORK" && PATH="$WORK/bin:$PATH" REPO=o/r HEAD_SHA=abc123 BASE_SHA=base456 \
     GITHUB_OUTPUT="$WORK/out" bash -e "$WORK/tree-guard.sh" ) >/dev/null 2>&1
   local rc=$?
   printf '%s|%s|%s' "$rc" "$(sed -n 's/^has_workflows=//p' "$WORK/out")" \
@@ -731,13 +872,27 @@ TREE_NO_WF='{"tree":[{"path":"README.md","type":"blob"}],"truncated":false}'
 TREE_TRUNCATED='{"tree":[{"path":"README.md","type":"blob"}],"truncated":true}'
 
 check "tree-guard: a failed fetch fails closed with a crash notice, not a pass" "1||yes" \
-  "$(tree_guard '' 1)"
+  "$(tree_guard '' '' 1)"
 check "tree-guard: workflows dir present -> has_workflows=true" "0|true|no" \
   "$(tree_guard "$TREE_WITH_WF")"
 check "tree-guard: no workflows dir -> has_workflows=false" "0|false|no" \
   "$(tree_guard "$TREE_NO_WF")"
 check "tree-guard: a truncated tree fails closed rather than trusting an absence" "1||yes" \
   "$(tree_guard "$TREE_TRUNCATED")"
+check "tree-guard: head deletes every workflow, base had them -> has_workflows=true" "0|true|no" \
+  "$(tree_guard "$TREE_NO_WF" "$TREE_WITH_WF")"
+check "tree-guard: head adds the first workflow -> has_workflows=true" "0|true|no" \
+  "$(tree_guard "$TREE_WITH_WF" "$TREE_NO_WF")"
+check "tree-guard: a failed base fetch fails closed" "1||yes" \
+  "$(tree_guard "$TREE_WITH_WF" "$TREE_WITH_WF" 0 1)"
+check "tree-guard: a truncated base tree fails closed" "1||yes" \
+  "$(tree_guard "$TREE_NO_WF" "$TREE_TRUNCATED")"
+# End to end through the CI gate: the base tree is what turns a PR that
+# deleted every workflow into a pending gate instead of the "No CI" pass.
+HW=$(tree_guard "$TREE_NO_WF" "$TREE_WITH_WF" | cut -d'|' -f2)
+check "ci: PR deletes every workflow, no checks -> fails" "false" "$(ci '' "$HW" | cut -d'|' -f1)"
+HW=$(tree_guard "$TREE_NO_WF" "$TREE_NO_WF" | cut -d'|' -f2)
+check "ci: no workflows at base or head, no checks -> passes" "true" "$(ci '' "$HW" | cut -d'|' -f1)"
 
 # --- contents-fetch -------------------------------------------------------
 # Percent-encoding of the changed-file path, and the 404-vs-unreadable

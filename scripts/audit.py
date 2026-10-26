@@ -1243,6 +1243,18 @@ def _job_races(job):
     return bool(_RACE_SIGNAL.search(yaml.safe_dump(job, width=10**9)))
 
 
+_PR_KEY = re.compile(r"\bgithub\.(?:ref|head_ref|event\.pull_request\.number)\b")
+
+
+def _cancels_superseded_pr_runs(conc):
+    """A concurrency block that cancels the older run of the same PR. The
+    string form sets only a group, and cancel-in-progress defaults to false."""
+    if not isinstance(conc, dict) or not _PR_KEY.search(str(conc.get("group", ""))):
+        return False
+    cancel = conc.get("cancel-in-progress")
+    return cancel is True or (isinstance(cancel, str) and "${{" in cancel)
+
+
 @check("CI-08")
 def _(r):
     wfs = workflows(r)
@@ -1255,7 +1267,11 @@ def _(r):
     # top or on a job, and a repo that scopes it per racing job is following
     # the rule. The auto-approve exemption is the same reasoning applied by
     # name: it is a reusable caller with no signal of its own.
-    missing, racing = [], 0
+    # A pull_request workflow is held to more: a push to the PR must cancel
+    # the superseded run, so its group must be keyed on the PR. A group keyed
+    # only on the workflow cancels other PRs' runs, and cancel-in-progress
+    # false queues the new run behind the stale one, which still runs to the end.
+    missing, racing, stale = [], 0, []
     for w in wfs:
         text = w.read_text()
         if w.stem == "auto-approve":
@@ -1272,6 +1288,12 @@ def _(r):
                     missing.append(w.name)
             continue
         jobs = doc.get("jobs") if isinstance(doc.get("jobs"), dict) else {}
+        if "pull_request" in _wf_on(doc) and not (
+            _cancels_superseded_pr_runs(doc.get("concurrency"))
+            or (jobs and all(isinstance(j, dict) and _cancels_superseded_pr_runs(j.get("concurrency"))
+                             for j in jobs.values()))
+        ):
+            stale.append(w.name)
         racers = [j for j in jobs.values() if _job_races(j)]
         if not racers:
             continue
@@ -1280,8 +1302,8 @@ def _(r):
             continue
         if not all(isinstance(j, dict) and j.get("concurrency") for j in racers):
             missing.append(w.name)
-    if missing:
-        return FAIL, ",".join(missing)
+    if missing or stale:
+        return FAIL, ",".join(missing + [f"{n} (PR runs not cancelled)" for n in stale if n not in missing])
     if not racing:
         # Nothing races. A repo that declares concurrency anyway follows the
         # rule, so it keeps its PASS; only a repo with neither is n/a.

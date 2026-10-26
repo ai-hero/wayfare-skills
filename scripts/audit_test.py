@@ -2302,6 +2302,7 @@ class RuleNotSpelling(unittest.TestCase):
     # CI-08
     def ci08(self, files):
         r = self.root / "c"
+        shutil.rmtree(r, ignore_errors=True)
         for name, text in files.items():
             write(r, f".github/workflows/{name}", text)
         return self.verdict("CI-08", r)
@@ -2359,6 +2360,40 @@ class RuleNotSpelling(unittest.TestCase):
     def test_ci08_a_comment_is_not_a_signal(self):
         st, _ = self.ci08({"ci.yaml": "# we used to git push here\njobs:\n  t:\n    steps:\n      - run: just test\n"})
         self.assertEqual(st, audit.NA)
+
+    PR_CONC = "on:\n  pull_request:\nconcurrency:\n  group: x-${{{{ github.{key} }}}}\n  cancel-in-progress: {cancel}\njobs: {{}}\n"
+
+    def test_ci08_pr_workflow_must_cancel_superseded_runs(self):
+        cases = {
+            "a.yaml": "on:\n  pull_request:\njobs: {}\n",
+            "b.yaml": "on: [pull_request]\nconcurrency:\n  group: ${{ github.workflow }}\n"
+                      "  cancel-in-progress: true\njobs: {}\n",
+            "c.yml": self.PR_CONC.format(key="ref", cancel="false"),
+            "s.yaml": "on: pull_request\nconcurrency: pr-${{ github.ref }}\njobs: {}\n",
+        }
+        for name, text in cases.items():
+            self.assertEqual(self.ci08({name: text}), (audit.FAIL, f"{name} (PR runs not cancelled)"), name)
+
+    def test_ci08_pr_keyed_cancelling_group_passes(self):
+        for key in ("ref", "head_ref", "event.pull_request.number"):
+            for cancel in ("true", "${{ github.event_name == 'pull_request' }}"):
+                text = self.PR_CONC.format(key=key, cancel=cancel)
+                self.assertEqual(self.ci08({"d.yaml": text}), (audit.PASS, ""), (key, cancel))
+
+    def test_ci08_pr_rule_accepts_job_level_only_on_every_job(self):
+        conc = "    concurrency:\n      group: t-${{ github.ref }}\n      cancel-in-progress: true\n"
+        job = "  {n}:\n{c}    steps:\n      - run: just test\n"
+        every = "on: {pull_request: {}}\njobs:\n" + job.format(n="a", c=conc) + job.format(n="b", c=conc)
+        self.assertEqual(self.ci08({"ci.yaml": every}), (audit.PASS, ""))
+        one = "on: {pull_request: {}}\njobs:\n" + job.format(n="a", c=conc) + job.format(n="b", c="")
+        self.assertEqual(self.ci08({"ci.yaml": one})[0], audit.FAIL)
+
+    def test_ci08_race_only_workflow_still_needs_no_pr_key(self):
+        text = "on:\n  push:\n    branches: [main]\nconcurrency:\n  group: release\n" + self.PUSH_JOB.format(conc="")
+        self.assertEqual(self.ci08({"release.yaml": text}), (audit.PASS, ""))
+
+    def test_ci08_auto_approve_is_exempt_from_the_pr_rule(self):
+        self.assertEqual(self.ci08({"auto-approve.yaml": "on: pull_request\njobs: {}\n"})[0], audit.NA)
 
     # CTR-01
     NODE_CI = (

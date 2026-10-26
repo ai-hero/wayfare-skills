@@ -72,7 +72,15 @@ Rules:
    to; `template-port` is recorded for the operator. `register` names the
    checkout holding the fleet's compliance overlay (default `.fleet/`); a mapped
    register that is not cloned stops the engine rather than running
-   baseline-only.
+   baseline-only. The register is reviewed the way code is: it has a private
+   `origin` remote whose `main` takes changes only through a reviewed PR, and
+   the engine reads `CONTROLS.yaml`, `CHECKS.yaml` and `checkers.py` from
+   `origin/main` (after a fetch), never from the working tree. A register with
+   no remote is read at its HEAD. Anything short of a clean, pushed
+   `origin/main` is unreviewed: an uncommitted or unpushed change to those three
+   files, no remote, or no `.git` at all. The report header's `register:` line
+   names which, every check the overlay defines or changes reads MANUAL, and the
+   register's `checkers.py` is not loaded.
 2. **`## Groups`**, names are yours, one line each saying what membership means.
    `none` is reserved and always means not-fleet.
 3. **`## Repos`**, one `### NAME` block per checkout. `NAME` is the folder name,

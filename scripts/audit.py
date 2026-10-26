@@ -46,9 +46,16 @@ it, so checkers and register come from one sha. HERO_SKILLS_PLUGIN=<checkout>
 runs the invoked engine and reads that checkout's working tree instead, to test
 unmerged work. The report header names which one was used (`engine:` and
 `assets:`).
+
+The fleet's overlay (CONTROLS.yaml, CHECKS.yaml, checkers.py) is read from a
+commit of the register checkout, never its working tree: origin/main when it
+has an `origin` remote, else HEAD (`register:` in the header). Anything short
+of a clean, pushed origin/main is unreviewed: the header names why, every check
+the overlay defines or changes reads MANUAL, and checkers.py is not loaded.
 """
 
 import argparse
+import atexit
 import contextlib
 import importlib.util
 import io
@@ -268,7 +275,10 @@ def _load_overlay_checkers():
     that would register into a table nobody reads."""
     if REGISTER is None or REGISTER in _OVERLAY_LOADED:
         return
-    f = REGISTER / "checkers.py"
+    src, reviewed, _note = register_source()
+    if not reviewed:
+        return
+    f = src / "checkers.py"
     if not f.is_file():
         return
     # Loaded under `audit` by consistency.py and the tests, `__main__` by the
@@ -283,6 +293,68 @@ def _load_overlay_checkers():
     except Exception as e:  # a broken overlay must not read as "no overlay"
         sys.exit(f"{f}: could not load the fleet's checkers: {type(e).__name__}: {e}")
     _OVERLAY_LOADED.add(REGISTER)
+
+
+_REGISTER_OWN = ("CONTROLS.yaml", "CHECKS.yaml", "checkers.py")
+_REGISTER_READ = {}   # REGISTER -> (dir, reviewed, note), one resolution per process
+
+
+def register_source():
+    """(dir, reviewed, note): where the overlay is read from, whether that is
+    reviewed, and the report header's `register:` text.
+
+    The overlay is read from a commit extracted to a temporary directory, never
+    the working tree: origin/main when the register has an `origin` remote,
+    else HEAD. Reviewed means origin/main, with no uncommitted or unpushed
+    change to the three files. Cached, so checkers.py and the YAML come from
+    one sha even when origin/main moves between the two reads. A register with
+    no .git is read in place but never reviewed, so its checkers.py never runs."""
+    if REGISTER is None:
+        return None, True, "none (outside a fleet; baseline only)"
+    if REGISTER not in _REGISTER_READ:
+        _REGISTER_READ[REGISTER] = _resolve_register(REGISTER)
+    return _REGISTER_READ[REGISTER]
+
+
+def _resolve_register(reg):
+    if not (reg / ".git").exists():
+        return reg, False, (f"working tree {reg}  UNREVIEWED: no .git, so nothing is reviewed; "
+                            "checkers.py not loaded, overlay checks read MANUAL")
+    problems, stale, ref = [], "", None
+    if sh(reg, "git remote get-url origin")[0] == 0:
+        stale = _fetch(reg, "register")
+        if sh(reg, "git rev-parse --verify -q origin/main^{commit}")[0] == 0:
+            ref = "origin/main"
+        else:
+            problems.append("origin/main does not resolve")
+    else:
+        problems.append("no origin remote, so nothing is reviewed")
+    read = ref or "HEAD"
+    _rc, sha = sh(reg, f"git rev-parse --verify -q --short {read}^{{commit}}")
+    files = " ".join(_REGISTER_OWN)
+    _rc, dirty = sh(reg, f"git status --porcelain -- {files}")
+    if dirty:
+        problems.append("uncommitted: " + ", ".join(line.split(None, 1)[-1] for line in dirty.splitlines()))
+    if ref:
+        _rc, ahead = sh(reg, f"git rev-list --count origin/main..HEAD -- {files}")
+        if ahead not in ("", "0"):
+            problems.append(f"{ahead} unpushed commit(s) touch the register")
+    dest = pathlib.Path(tempfile.mkdtemp(prefix="audit-register-"))
+    atexit.register(shutil.rmtree, dest, True)
+    if sha:
+        _rc, present = sh(reg, f"git ls-tree --name-only {sha} -- {files}")
+        if present:
+            p = subprocess.run(["git", "archive", "--format=tar", sha, "--", *present.split()],
+                               cwd=reg, capture_output=True, env=_ENV, timeout=60)
+            if p.returncode:
+                sys.exit(f"git archive {read} in {reg} failed: {p.stderr.decode().strip()}")
+            _extract_tar(p.stdout, dest, f"git archive {read} in {reg}")
+    else:
+        problems.append(f"{read} does not resolve, so the overlay is empty")
+    note = f"{read} @ {sha or '?'} in {reg}{stale}"
+    if problems:
+        note += f"  UNREVIEWED: {'; '.join(problems)}; overlay checks read MANUAL"
+    return dest, not problems, note
 
 
 def applies(check, repo_name):
@@ -2945,17 +3017,7 @@ def _plugin_at_origin(plugin, dest, paths, label):
     ref = f"{_PLUGIN_REMOTE}/{_PLUGIN_BRANCH}"
     if not (plugin / ".git").exists():
         return None, f"absent ({plugin} is not a git checkout; asset checks read MANUAL)"
-    # A hung fetch or a credential prompt must fall back like any failed fetch,
-    # not end the audit in a TimeoutExpired traceback.
-    try:
-        rc, _out, err = sh3(plugin, "GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes' "
-                                    f"git fetch -q {_PLUGIN_REMOTE} {_PLUGIN_BRANCH}")
-    except subprocess.TimeoutExpired as e:
-        rc, err = 124, f"timed out after {e.timeout:g}s"
-    stale = ""
-    if rc:
-        stale = f"  (fetch failed: {err or f'rc={rc}'}; {ref} as last fetched)"
-        print(f"{label}: git fetch in {plugin} failed: {err or f'rc={rc}'}", file=sys.stderr)
+    stale = _fetch(plugin, label)
     rc, sha, _err = sh3(plugin, f"git rev-parse --verify -q --short {ref}^{{commit}}")
     if rc or not sha:
         return None, f"absent ({ref} does not resolve in {plugin}; asset checks read MANUAL){stale}"
@@ -2965,6 +3027,21 @@ def _plugin_at_origin(plugin, dest, paths, label):
         raise RuntimeError(f"git archive {ref} in {plugin} failed: {p.stderr.decode().strip()}")
     _extract_tar(p.stdout, dest, f"git archive {ref} in {plugin}")
     return sha, f"{ref} @ {sha} in {plugin}{stale}"
+
+
+def _fetch(repo, label):
+    """Fetch origin main in `repo`: "" on success, else the header's note that
+    origin/main is as last fetched. A hung fetch or a credential prompt falls
+    back like any failed fetch, not in a TimeoutExpired traceback."""
+    try:
+        rc, _out, err = sh3(repo, "GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes' "
+                                  f"git fetch -q {_PLUGIN_REMOTE} {_PLUGIN_BRANCH}")
+    except subprocess.TimeoutExpired as e:
+        rc, err = 124, f"timed out after {e.timeout:g}s"
+    if not rc:
+        return ""
+    print(f"{label}: git fetch in {repo} failed: {err or f'rc={rc}'}", file=sys.stderr)
+    return f"  (fetch failed: {err or f'rc={rc}'}; {_PLUGIN_REMOTE}/{_PLUGIN_BRANCH} as last fetched)"
 
 
 def _extract_tar(data, dest, origin):
@@ -3629,11 +3706,15 @@ def load_register():
     failure, one level up."""
     base_c = _register_file(BASELINE, "CONTROLS.yaml")
     base_k = _register_file(BASELINE, "CHECKS.yaml")
-    over_c = _register_file(REGISTER, "CONTROLS.yaml") if REGISTER else {}
-    over_k = _register_file(REGISTER, "CHECKS.yaml") if REGISTER else {}
+    src, reviewed, _note = register_source()
+    over_c = _register_file(src, "CONTROLS.yaml") if src else {}
+    over_k = _register_file(src, "CHECKS.yaml") if src else {}
     ctrl = {c["id"]: dict(c) for c in base_c.get("controls") or []}
     for c in over_c.get("controls") or []:
-        ctrl.setdefault(c["id"], {}).update(c)
+        # An unreviewed overlay may not retune a baseline control: its severity
+        # decides --fail-on for every baseline check under it that sets none.
+        if reviewed or c["id"] not in ctrl:
+            ctrl.setdefault(c["id"], {}).update(c)
     by_id = {k["id"]: dict(k) for k in base_k.get("checks") or []}
     for k in over_k.get("checks") or []:
         base = by_id.get(k["id"])
@@ -3642,6 +3723,8 @@ def load_register():
         if base and k.get("control") and k["control"] != base.get("control"):
             sys.exit(f"overlay check {k['id']} moves control {base.get('control')} -> {k['control']}; the overlay may add fields, not re-parent")
         by_id.setdefault(k["id"], {}).update(k)
+        if not reviewed:
+            by_id[k["id"]]["_unreviewed"] = True
     checks = list(by_id.values())
     # The merged result is what runs, so it is what gets validated: a record
     # missing a field the renderers index would crash AFTER the whole matrix
@@ -3679,7 +3762,7 @@ def load_register():
             sys.exit(f"check {k['id']}: severity {k['severity']!r} is not one of high|medium|low")
         _no_repo_names("check", k)
         manual = ((k.get("detect") or {}).get("method") == "manual")
-        if k["id"] not in CHECKS and not manual:
+        if k["id"] not in CHECKS and not manual and not k.get("_unreviewed"):
             unimplemented.append(k["id"])
         # A manual check is verified by a person reading it. With no checker
         # and no exemplar repo to diff against, an `example:` is the only thing
@@ -3805,6 +3888,10 @@ def run_matrix(checks, repos):
         cells = []
         for rn in repos:
             fn = CHECKS.get(c["id"])
+            # Before applies(): an unreviewed applies_to must not move a cell either.
+            if c.get("_unreviewed"):
+                cells.append((MANUAL, "register unreviewed"))
+                continue
             if not applies(c, rn):
                 want = c.get("applies_to")
                 cells.append((NA, f"applies_to: {want if isinstance(want, str) else ', '.join(want)}"))
@@ -3884,7 +3971,8 @@ def main():
                 rows, fails, errors = run_matrix(checks, repos)
 
     w = max(len(r) for r in repos) + 2
-    print(f"engine: {engine_note()}\nassets: {assets_note}\n", file=sys.stderr if a.json else sys.stdout)
+    print(f"engine: {engine_note()}\nassets: {assets_note}\nregister: {register_source()[2]}\n",
+          file=sys.stderr if a.json else sys.stdout)
     if a.json:
         # ERROR cells go out too, flagged: a consumer that only saw FAILs would
         # read a broken checker as a passing one.

@@ -286,7 +286,6 @@ UNRESOLVED=$(gh api graphql -f query='
         reviewThreads(first: 100) {
           nodes {
             isResolved
-            isOutdated
             comments(first: 1) { nodes { path author { login } body } }
           }
         }
@@ -294,7 +293,7 @@ UNRESOLVED=$(gh api graphql -f query='
     }
   }
 ' -f owner="$OWNER" -f repo="$REPO" -F pr=$PR_NUMBER \
-  --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | select(.isOutdated == false)] | length')
+  --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false)] | length')
 
 # 3c — No active CHANGES_REQUESTED review left standing. A
 # CHANGES_REQUESTED is "active" if it is the latest review from that

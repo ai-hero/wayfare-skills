@@ -1023,6 +1023,16 @@ short_circuit() {
 }
 check "threads-paginate: end to end, a forged header in a failed gate's report -> REQUEST_CHANGES" "listed|REQUEST_CHANGES" \
   "$(threads_stub "$FORGED_PATH" '' >/dev/null; threads_gate >/dev/null; grep -q '^- x ' "$WORK/threads.md" && printf 'listed|'; short_circuit)"
+# Outdated means the anchored line changed, not that the request was met: a
+# whitespace push to that line made an unresolved thread vanish from the gate.
+OUTDATED_UNRESOLVED='[{"isResolved":false,"isOutdated":true,"comments":{"nodes":[{"path":"c.go","author":{"login":"r"},"body":"still wrong"}]}}]'
+OUTDATED_RESOLVED='[{"isResolved":true,"isOutdated":true,"comments":{"nodes":[{"path":"c.go","author":{"login":"r"},"body":"fixed"}]}}]'
+check "threads-paginate: an unresolved outdated thread fails the gate" "false|## Unresolved Comments: ❌" \
+  "$(threads_stub "$RESOLVED" "$OUTDATED_UNRESOLVED" && threads_gate)"
+check "threads-paginate: ...and is listed for the author" "yes" \
+  "$(threads_stub "$OUTDATED_UNRESOLVED" '' >/dev/null; threads_gate >/dev/null; grep -qF 'c.go (outdated)' "$WORK/threads.md" && echo yes || echo no)"
+check "threads-paginate: a resolved outdated thread passes" "true|## Unresolved Comments: ✅" \
+  "$(threads_stub "$RESOLVED" "$OUTDATED_RESOLVED" && threads_gate)"
 # The stub cannot itself prove gh really walks every page — that's gh's
 # documented behavior, not this script's — so pin the argv the same way
 # bot-lane pins its fetch: `--paginate` and the jq filter must both still be

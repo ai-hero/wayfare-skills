@@ -130,6 +130,8 @@ jobs:
           jq -r '.body // ""' pr.json | head -c 4000 > pr_body.txt
           HEAD_SHA=$(jq -r '.head.sha' pr.json)
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          BASE_SHA=$(jq -r '.base.sha' pr.json)
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
 
           # Dependency bots get the scripted gates and CI, not the model:
           # every model finding on a bot PR in the run history to date was the
@@ -339,11 +341,12 @@ jobs:
           echo "fleet_workflow=$FLEET_WORKFLOW" >> "$GITHUB_OUTPUT"
           # test: end fleet-workflow
 
-          # Recursive repo file tree at HEAD. It lets the verifier confirm
-          # claims about files that exist outside the diff (tests,
-          # migrations, indexes, etc.) without re-fetching them all, and the
-          # CI gate below reads has_workflows from it rather than grepping
-          # the capped text.
+          # Recursive repo file trees at HEAD and at the base. The head tree
+          # lets the verifier confirm claims about files that exist outside
+          # the diff (tests, migrations, indexes, etc.) without re-fetching
+          # them all; the CI gate below reads has_workflows from both trees
+          # rather than grepping the capped text, and the caller gate reads
+          # file modes from tree.json.
           #
           # `bash -e` has no pipefail, so piping this fetch straight into
           # `head -c` would swallow a `gh api` failure and leave an empty
@@ -360,6 +363,13 @@ jobs:
           # entries) is silently incomplete rather than failed; the model's
           # missing-file check would then trust an absence that is really a
           # cutoff, so fail closed on it the same as a fetch error.
+          # A body that is not a tree (a proxy page, a cut-off response) would
+          # read below as "no workflows", the absence the CI gate passes on.
+          if ! jq -e '.tree | type == "array"' tree.json > /dev/null 2>&1; then
+            printf '%s\n' "the repo tree at $HEAD_SHA did not parse as a tree, so the CI and missing-file checks cannot run." > lane_error.txt
+            echo "::error::$(cat lane_error.txt) Re-run \`@auto-approve\`."
+            exit 1
+          fi
           if [ "$(jq -r '.truncated // false' tree.json)" = true ]; then
             printf '%s\n' "the repo tree at $HEAD_SHA was truncated by the API, so the missing-file check cannot trust an absence." > lane_error.txt
             echo "::error::$(cat lane_error.txt) Re-run \`@auto-approve\`."
@@ -367,7 +377,27 @@ jobs:
           fi
           jq -r '.tree[] | select(.type == "blob") | .path' tree.json \
             | head -c 300000 > repo_tree.txt
-          if jq -e '.tree[] | select(.path == ".github/workflows")' tree.json > /dev/null; then
+          # The base tree too, guarded the same way: read from the head alone,
+          # a PR that deletes every workflow, the caller included, registers no
+          # checks and takes the "No CI in this repo" pass below. Either tree
+          # having workflows means CI is expected.
+          if ! gh api "/repos/$REPO/git/trees/$BASE_SHA?recursive=1" > base_tree.json; then
+            printf '%s\n' "could not read the repo tree at the base $BASE_SHA, so the CI check cannot run." > lane_error.txt
+            echo "::error::$(cat lane_error.txt) Re-run \`@auto-approve\`."
+            exit 1
+          fi
+          if ! jq -e '.tree | type == "array"' base_tree.json > /dev/null 2>&1; then
+            printf '%s\n' "the repo tree at the base $BASE_SHA did not parse as a tree, so the CI check cannot run." > lane_error.txt
+            echo "::error::$(cat lane_error.txt) Re-run \`@auto-approve\`."
+            exit 1
+          fi
+          if [ "$(jq -r '.truncated // false' base_tree.json)" = true ]; then
+            printf '%s\n' "the repo tree at the base $BASE_SHA was truncated by the API, so the CI check cannot trust an absence." > lane_error.txt
+            echo "::error::$(cat lane_error.txt) Re-run \`@auto-approve\`."
+            exit 1
+          fi
+          if jq -e '.tree[] | select(.path == ".github/workflows")' tree.json > /dev/null \
+             || jq -e '.tree[] | select(.path == ".github/workflows")' base_tree.json > /dev/null; then
             echo "has_workflows=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_workflows=false" >> "$GITHUB_OUTPUT"
@@ -594,6 +624,133 @@ jobs:
           gh api --method POST \
             /repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
             -f content="eyes"
+
+      # In a consumer, the file that calls this one is what issue_comment
+      # runs from the default branch, with ANTHROPIC_API_KEY. Approved by the
+      # model alone, a caller repointed at another ref would hand that secret
+      # to code nobody reviewed, and one set to inherit hands over every
+      # secret. So any workflow this PR touches whose base or head calls this
+      # one must equal assets/auto-approve/caller.yaml at main byte for byte.
+      # That is CI-20, but keyed on content rather than the audit's one path,
+      # and a deletion fails here where the audit reports NA. A byte match,
+      # not a YAML or semantic comparison: the caller is installed verbatim,
+      # so any difference is drift, and a comparison that normalises is one
+      # more parser an author can find a gap in. Read from main because no
+      # context names the commit this run came from: github.workflow_sha is
+      # the caller's. In this repo caller.yaml itself needs a person, through
+      # .github/auto-approve-human-review.txt.
+      - name: Gate — auto-approve caller matches the vendored copy
+        id: caller
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+        run: |
+          # test: begin caller-match
+          # Matched against each job's `uses:` as YAML resolves it, never the
+          # raw text: a double-quoted scalar can spell the path with escapes
+          # (`auto\x2Dapprove`, an escaped line break) that GitHub decodes and
+          # a grep never sees, and a comment that only mentions the path is
+          # not a call. Case-insensitive because GitHub resolves the owner and
+          # repo that way. The pre-rename name keeps a stale caller held:
+          # deleting or hand-editing one is still a mismatch.
+          # An empty ref reads the default branch, not the PR, and every
+          # comparison would then pass against the wrong file.
+          : "${HEAD_SHA:?HEAD_SHA is unset}" "${BASE_SHA:?BASE_SHA is unset}"
+          CALLER_RE='ai-hero/(wayfare|hero)-skills/\.github/workflows/auto-approve\.ya?ml'
+          fetch_at() { # REF PATH OUT, from this repo
+            local enc
+            enc=$(jq -rn --arg p "$2" '$p | split("/") | map(@uri) | join("/")')
+            gh api -H "Accept: application/vnd.github.raw" \
+              "/repos/$REPO/contents/$enc?ref=$1" > "$3" 2>>caller_err.log
+          }
+          calls_shared() { # FILE -> 0 calls this workflow, 1 does not, 2 unparsable
+            yq -o=json 'explode(.)' "$1" > cm_doc.json 2>>caller_err.log || return 2
+            jq -se --arg re "$CALLER_RE" \
+              '[.[] | .jobs | objects | .[] | objects | .uses | strings | test($re; "i")] | any' \
+              cm_doc.json > /dev/null 2>>caller_err.log
+            case $? in 0) return 0 ;; 1) return 1 ;; *) return 2 ;; esac
+          }
+          CALLER_CHECK=pass
+          flag() { # mismatch|inconclusive MESSAGE: a mismatch is never downgraded
+            [ "$1" = inconclusive ] && [ "$CALLER_CHECK" = mismatch ] || CALLER_CHECK=$1
+            printf -- '- %s\n' "$2" >> caller.md
+          }
+          : > caller.md
+          if [ "$REPO" != "ai-hero/wayfare-skills" ]; then
+            # @tsv, unlike files-list: a tab, newline or backslash in a path is
+            # escaped rather than splitting the record. An escaped path is
+            # refused below, not fetched: `x\y` renders as `x\\y`, which is a
+            # different file that can exist.
+            jq -r 'select((.filename | startswith(".github/workflows/"))
+                     or ((.previous_filename // "") | startswith(".github/workflows/")))
+                   | [.status, .filename, (.previous_filename // "")] | @tsv' \
+              files.jsonl > workflow_changes.tsv
+            REF_READ=
+            while IFS=$'\t' read -r st head_path prev_path; do
+              [ -z "$head_path" ] && continue
+              case "$head_path$prev_path" in
+                *\\*)
+                  flag inconclusive "a workflow path in this PR holds a tab, newline or backslash, so it cannot be checked: \`$head_path\`."
+                  continue ;;
+              esac
+              base_path=$head_path
+              case "$st" in
+                added) base_path= ;;
+                renamed|copied) base_path=$prev_path ;;
+              esac
+              [ "$st" = removed ] && head_path_live= || head_path_live=$head_path
+              rm -f cm_base cm_head
+              if { [ -n "$base_path" ] && ! fetch_at "$BASE_SHA" "$base_path" cm_base; } \
+                 || { [ -n "$head_path_live" ] && ! fetch_at "$HEAD_SHA" "$head_path_live" cm_head; }; then
+                flag inconclusive "could not read \`$head_path\` at the base or the head. If the default branch changed it since this PR branched, rebase first."
+                continue
+              fi
+              calls=no
+              for side in cm_base cm_head; do
+                [ -f "$side" ] || continue
+                calls_shared "$side" && rc=0 || rc=$?
+                case "$rc" in
+                  0) calls=yes ;;
+                  1) ;;
+                  *) [ "$calls" = yes ] || calls=unparsable ;;
+                esac
+              done
+              if [ "$calls" = unparsable ]; then
+                flag inconclusive "could not parse \`$head_path\` as YAML, so it cannot be checked."
+                continue
+              fi
+              [ "$calls" = yes ] || continue
+              if [ -z "$REF_READ" ]; then
+                if gh api -H "Accept: application/vnd.github.raw" \
+                     "/repos/ai-hero/wayfare-skills/contents/assets/auto-approve/caller.yaml?ref=main" \
+                     > caller_ref.yaml 2>>caller_err.log && [ -s caller_ref.yaml ]; then
+                  REF_READ=ok
+                else
+                  REF_READ=failed
+                fi
+              fi
+              if [ "$REF_READ" != ok ]; then
+                flag inconclusive "could not read the vendored caller to compare \`$head_path\` against."
+              elif [ -z "$head_path_live" ] || ! [[ "$head_path_live" =~ ^\.github/workflows/[^/]+\.ya?ml$ ]]; then
+                flag mismatch "\`${prev_path:-$head_path}\` calls the shared workflow, and this PR deletes it or moves it where it no longer runs."
+              elif jq -e --arg p "$head_path_live" '.tree[] | select(.path == $p and .mode == "120000")' tree.json > /dev/null; then
+                flag mismatch "\`$head_path_live\` calls the shared workflow but is a symlink, not the vendored file."
+              elif ! cmp -s cm_head caller_ref.yaml; then
+                flag mismatch "\`$head_path\` calls the shared workflow but differs from the vendored caller."
+              fi
+            done < workflow_changes.tsv
+          fi
+          if [ "$CALLER_CHECK" = mismatch ]; then
+            printf '%s\n' "CI-20 holds this repo's auto-approve caller to assets/auto-approve/caller.yaml in ai-hero/wayfare-skills at main, byte for byte. Re-vendor it from there (the installer copies from your local plugin checkout, so update that to main first) rather than editing it here." >> caller.md
+          fi
+          echo "caller_check=$CALLER_CHECK" >> "$GITHUB_OUTPUT"
+          if [ "$CALLER_CHECK" = inconclusive ] && [ -s caller_err.log ]; then
+            echo "::warning::auto-approve caller check could not read or parse a file:"
+            cat caller_err.log
+          fi
+          # test: end caller-match
 
       - name: Gate — prior review present
         id: prior_review
@@ -849,8 +1006,8 @@ jobs:
           gh api "/repos/${{ github.repository }}/commits/$HEAD_SHA/status" \
             --jq '.statuses[] | [.context, (if .state == "pending" then "in_progress" else "completed" end), .state] | @tsv' \
             >> checks.tsv
-          # has_workflows comes from the "Get PR details" step's tree read
-          # (steps.pr.outputs.has_workflows, a boolean), not from grepping
+          # has_workflows comes from the "Get PR details" step's head and base
+          # tree reads (steps.pr.outputs.has_workflows, a boolean), not from grepping
           # repo_tree.txt here: that text is capped at 300KB and a large
           # monorepo can push `.github/workflows/` past the cut, which read
           # as "no workflows" and skipped the zero-checks-but-workflows-exist
@@ -911,9 +1068,11 @@ jobs:
           steps.prior_review.outputs.passed != 'true' ||
           steps.threads.outputs.passed != 'true' ||
           steps.ci.outputs.passed != 'true' ||
-          steps.pr.outputs.fleet_workflow != 'false'
+          steps.pr.outputs.fleet_workflow != 'false' ||
+          steps.caller.outputs.caller_check != 'pass'
         env:
           FLEET_WORKFLOW: ${{ steps.pr.outputs.fleet_workflow }}
+          CALLER_CHECK: ${{ steps.caller.outputs.caller_check }}
         run: |
           # test: begin gates-report
           {
@@ -923,6 +1082,16 @@ jobs:
             echo ""
             cat ci.md
             echo ""
+            if [ "$CALLER_CHECK" = "mismatch" ]; then
+              echo "## Auto-approve Caller: ❌"
+              cat caller.md
+              echo ""
+            elif [ "$CALLER_CHECK" != "pass" ]; then
+              echo "## Auto-approve Caller: ❌"
+              echo "Could not determine whether this PR keeps the auto-approve caller identical to the vendored one (CI-20), so failing closed rather than risk approving a caller nobody compared."
+              cat caller.md 2>/dev/null || true
+              echo ""
+            fi
             if [ "$FLEET_WORKFLOW" = "true" ]; then
               echo "## Fleet Workflow: ❌"
               echo "This PR changes a path listed in .github/auto-approve-human-review.txt. Each one ships to every consumer on merge or runs on every plugin user's machine, so a human must approve it:"
@@ -939,6 +1108,14 @@ jobs:
               echo "## Verdict"
               echo "REQUEST_CHANGES"
               echo "fleet workflow check inconclusive: human approval required. Re-run \`@auto-approve\`."
+            elif [ "$CALLER_CHECK" = "mismatch" ]; then
+              echo "## Verdict"
+              echo "REQUEST_CHANGES"
+              echo "auto-approve caller differs from the vendored caller.yaml (CI-20): re-vendor it, then re-run \`@auto-approve\`."
+            elif [ "$CALLER_CHECK" != "pass" ]; then
+              echo "## Verdict"
+              echo "REQUEST_CHANGES"
+              echo "auto-approve caller check inconclusive (CI-20). Fix what the section above names (rebase if the base moved), then re-run \`@auto-approve\`."
             else
               echo "## Verdict"
               echo "REQUEST_CHANGES"
@@ -954,7 +1131,8 @@ jobs:
           steps.threads.outputs.passed == 'true' &&
           steps.ci.outputs.passed == 'true' &&
           steps.pr.outputs.deps_bot == 'true' &&
-          steps.pr.outputs.fleet_workflow == 'false'
+          steps.pr.outputs.fleet_workflow == 'false' &&
+          steps.caller.outputs.caller_check == 'pass'
         run: |
           {
             cat prior_review.md
@@ -977,7 +1155,8 @@ jobs:
           steps.threads.outputs.passed == 'true' &&
           steps.ci.outputs.passed == 'true' &&
           steps.pr.outputs.deps_bot != 'true' &&
-          steps.pr.outputs.fleet_workflow == 'false'
+          steps.pr.outputs.fleet_workflow == 'false' &&
+          steps.caller.outputs.caller_check == 'pass'
         id: verify
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

@@ -1,8 +1,7 @@
 version: 2
 
 updates:
-  # This repo ships shell, Markdown and YAML — no package ecosystem to track.
-  # github-actions is the one that matters: it is the supply chain for the
+  # github-actions is the one that matters most: it is the supply chain for the
   # workflow ~25 repos execute through auto-approve.yaml.
   - package-ecosystem: github-actions
     directory: /
@@ -15,5 +14,19 @@ updates:
       default-days: 7
     groups:
       actions-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  # The publishing venv renders manuscript HTML through WeasyPrint and parses
+  # PDFs with PyMuPDF. Dependabot watches only the ecosystems listed here, so
+  # without this entry no alert or PR ever reaches those pins.
+  - package-ecosystem: pip
+    directory: /publishing
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      publishing-minor-patch:
         patterns: ["*"]
         update-types: [minor, patch]

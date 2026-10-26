@@ -134,28 +134,34 @@ Image.new("RGB", (4, 4), "white").save(local_png)
 
 def refused(url):
     try:
-        book.local_fetcher(url)
+        book.check_fetch(url)
     except ValueError:
         return True
     return False
 
 
 fetched = []
-real_fetcher = weasyprint.urls.default_url_fetcher
-weasyprint.urls.default_url_fetcher = lambda url, *a, **k: fetched.append(url) or real_fetcher(url, *a, **k)
+book.REFUSED.clear()
+real_fetch = weasyprint.urls.URLFetcher.fetch
+weasyprint.urls.URLFetcher.fetch = lambda self, url, headers=None: fetched.append(url) or real_fetch(self, url, headers)
 try:
     hostile = ('<p><img src="http://127.0.0.1:9/x.png"><img src="file:///etc/hosts">'
                '<img src="../../../etc/hosts"><img src="fig.png">'
                '<a rel="attachment" href="file:///etc/hosts">x</a></p>')
     book.weasy_html()(string=hostile, base_url=paths.ASSETS + "/").render()
 finally:
-    weasyprint.urls.default_url_fetcher = real_fetcher
+    weasyprint.urls.URLFetcher.fetch = real_fetch
 check("a render fetches only the asset it names", [pathlib.Path(local_png).as_uri()], fetched)
+check("a render records what it refused", True,
+      {"http://127.0.0.1:9/x.png", "file:///etc/hosts"} <= book.REFUSED)
 check("a remote image is refused", True, refused("http://127.0.0.1:9/x.png"))
 check("an out-of-tree file is refused", True, refused("file:///etc/hosts"))
 check("a dot-dot path out of the assets is refused", True,
       refused(pathlib.Path(paths.ASSETS, "..", "..", "x").as_uri()))
 check("a file on another host is refused", True, refused("file://example.com/etc/hosts"))
+book.REFUSED.clear()
+check("a file URL with an empty host segment is refused and recorded", (True, {"file:////etc/hosts"}),
+      (refused("file:////etc/hosts"), set(book.REFUSED)))
 check("a data URI still loads", False, refused("data:image/png;base64,iVBORw0KGgo="))
 font = os.path.join(tmp, "italic.woff2")
 open(font, "wb").close()

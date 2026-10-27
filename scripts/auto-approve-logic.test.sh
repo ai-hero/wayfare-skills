@@ -535,7 +535,8 @@ check "gates: the short-circuit fires on fleet_workflow != false" "yes" \
 # over a fixture tree, $WORK/fs/OWNER/REPO/REF/PATH; a missing file fails the
 # call the way a 404 or an outage does. Like the real API, the stub returns raw
 # bytes only for the raw Accept header and base64 JSON otherwise: without the
-# header nothing would ever match, and every caller edit would pass.
+# header no file would be recognised as a caller, and every caller edit would
+# pass.
 VENDORED="$HERE/../assets/auto-approve/caller.yaml"
 CALLER=.github/workflows/auto-approve.yaml
 put() { # REPO REF PATH SOURCE_FILE
@@ -554,6 +555,8 @@ printf '%s\n' "$*" >> "$STUB_ARGV"
 for a in "$@"; do case "$a" in /repos/*) url=$a ;; esac; done
 p=${url#/repos/}
 ref=${p##*\?ref=}
+# The real API reads an empty ref as the default branch, here `main`.
+[ -n "$ref" ] || ref=main
 p=${p%%\?*}
 enc=${p#*/contents/}
 f="$STUB_FS/${p%%/contents/*}/$ref/$(printf '%b' "${enc//%/\\x}")"
@@ -568,12 +571,12 @@ cm_reset() {
   rm -rf "$WORK/fs" "$WORK/caller.md"
   : > "$WORK/out"; : > "$WORK/cm_argv"
   printf '{"tree":[]}' > "$WORK/tree.json"
-  put ai-hero/wayfare-skills main assets/auto-approve/caller.yaml "$VENDORED"
+  put ai-hero/wayfare-skills refs/heads/main assets/auto-approve/caller.yaml "$VENDORED"
 }
 cm() { # FILES_JSONL [REPO] -> "caller_check|caller.md gives the CI-20 re-vendor advice?"
   printf '%s\n' "$1" > "$WORK/files.jsonl"
   ( cd "$WORK" && PATH="$WORK/cmbin:$PATH" STUB_FS="$WORK/fs" STUB_ARGV="$WORK/cm_argv" \
-    REPO="${2:-o/r}" HEAD_SHA=head1 BASE_SHA="${CM_BASE-base1}" \
+    REPO="${2:-o/r}" HEAD_SHA="${CM_HEAD-head1}" BASE_SHA="${CM_BASE-base1}" \
     GITHUB_OUTPUT="$WORK/out" bash -e "$WORK/caller-match.sh" ) >/dev/null 2>&1
   printf '%s|%s' "$(sed -n 's/^caller_check=//p' "$WORK/out")" \
     "$(grep -q 'CI-20.*Re-vendor' "$WORK/caller.md" 2>/dev/null && echo yes || echo no)"
@@ -619,11 +622,11 @@ cm_reset
 check "caller-match: no workflow file changed -> pass with no fetch" "pass|no|0" \
   "$(cm "$(fj modified src/app.go)")|$(wc -l < "$WORK/cm_argv" | tr -d ' ')"
 cm_reset; put o/r base1 $CALLER "$VENDORED"; put o/r head1 $CALLER "$VENDORED"
-rm "$WORK/fs/ai-hero/wayfare-skills/main/assets/auto-approve/caller.yaml"
+rm "$WORK/fs/ai-hero/wayfare-skills/refs/heads/main/assets/auto-approve/caller.yaml"
 check "caller-match: vendored caller unreadable -> inconclusive" "inconclusive|no" \
   "$(cm "$(fj modified $CALLER)")"
 cm_reset; put o/r base1 $CALLER "$VENDORED"; put o/r head1 $CALLER "$VENDORED"
-: > "$WORK/fs/ai-hero/wayfare-skills/main/assets/auto-approve/caller.yaml"
+: > "$WORK/fs/ai-hero/wayfare-skills/refs/heads/main/assets/auto-approve/caller.yaml"
 check "caller-match: an empty vendored caller is no reference -> inconclusive" "inconclusive|no" \
   "$(cm "$(fj modified $CALLER)")"
 cm_reset; put o/r base1 $CALLER "$VENDORED"
@@ -648,6 +651,9 @@ check "caller-match: a new caller split by an escaped line break -> mismatch" "m
 esc_wf 'AI-Hero/Wayfare-Skills/.github/workflows/auto-approve.yaml@evil'
 cm_reset; put o/r head1 $NEW "$WORK/esc_wf.yaml"
 check "caller-match: a new caller in mixed case -> mismatch" "mismatch|yes" "$(cm "$(fj added $NEW)")"
+printf 'on: issue_comment\nx: &u "ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@evil"\njobs:\n  a:\n    uses: *u\n' > "$WORK/esc_wf.yaml"
+cm_reset; put o/r head1 $NEW "$WORK/esc_wf.yaml"
+check "caller-match: a new caller spelled through a YAML alias -> mismatch" "mismatch|yes" "$(cm "$(fj added $NEW)")"
 esc_wf 'ai-hero/hero-skills/.github/workflows/auto-approve.yml@main'
 cm_reset; put o/r head1 $NEW "$WORK/esc_wf.yaml"
 check "caller-match: a new caller on the pre-rename path -> mismatch" "mismatch|yes" "$(cm "$(fj added $NEW)")"
@@ -696,11 +702,24 @@ check "caller-match: the plugin repo itself is not a consumer -> pass" "pass|no"
 
 # The check is its own step, so the SHAs reach it through env:. An empty one
 # reads the default branch instead, so it stops the step rather than passing.
-cm_reset; put o/r base1 $CALLER "$VENDORED"; put o/r head1 $CALLER "$WORK/drift_caller.yaml"
+cm_reset; put o/r main $CALLER "$VENDORED"; put o/r base1 $CALLER "$VENDORED"; put o/r head1 $CALLER "$WORK/drift_caller.yaml"
+check "caller-match: no head SHA -> no verdict at all" "|no" "$(CM_HEAD='' cm "$(fj modified $CALLER)")"
+cm_reset; put o/r main $CALLER "$WORK/drift_caller.yaml"; put o/r base1 $CALLER "$VENDORED"; put o/r head1 $CALLER "$WORK/drift_caller.yaml"
 check "caller-match: no base SHA -> no verdict at all" "|no" "$(CM_BASE='' cm "$(fj modified $CALLER)")"
+# Without the head tree the symlink test cannot run, and the contents API
+# follows a symlink, so the bytes alone would pass.
+cm_reset; put o/r base1 $CALLER "$VENDORED"; put o/r head1 $CALLER "$VENDORED"; rm "$WORK/tree.json"
+check "caller-match: head tree missing -> inconclusive" "inconclusive|no" "$(cm "$(fj modified $CALLER)")"
+cm_reset; put o/r base1 $CALLER "$VENDORED"; put o/r head1 .github/workflows/aa.yaml "$VENDORED"
+check "caller-match: caller copied with its bytes intact -> pass" "pass|no" \
+  "$(cm "$(fj copied .github/workflows/aa.yaml $CALLER)")"
+check "gates: the short-circuit reads caller_check from the caller step" "yes" \
+  "$(grep -qxF '          CALLER_CHECK: ${{ steps.caller.outputs.caller_check }}' <<<"$(step_if "Short-circuit on gate failure")" && echo yes || echo no)"
 CALLER_STEP=$(step_if "Gate — auto-approve caller matches the vendored copy")
 check "caller-match: the step reads both SHAs from Get PR details" "yes|yes" \
   "$(grep -qxF '          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}' <<<"$CALLER_STEP" && echo yes || echo no)|$(grep -qxF '          BASE_SHA: ${{ steps.pr.outputs.base_sha }}' <<<"$CALLER_STEP" && echo yes || echo no)"
+check "caller-match: the reference is read from the main branch, never a tag named main" "yes" \
+  "$(grep -qF 'contents/assets/auto-approve/caller.yaml?ref=refs/heads/main' <<<"$CALLER_STEP" && echo yes || echo no)"
 check "caller-match: Get PR details publishes base_sha" "yes" \
   "$(grep -qF 'echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"' <<<"$(step_if "Get PR details")" && echo yes || echo no)"
 
@@ -757,6 +776,7 @@ check "ci: legacy status error fails" "false|Failing checks on abc123 — fix th
 check "ci: legacy status pending" "false|Checks still running on abc123 — wait for them to finish, then re-run \`@auto-approve\`." "$(ci 'scout\tin_progress\tpending\n' true)"
 check "ci: no checks but repo has workflows -> pending" "false|No checks registered on abc123 yet, but the repo has workflows — wait for CI to start, then re-run \`@auto-approve\`." "$(ci '' true)"
 check "ci: no checks and no workflows -> skip" "true|No CI in this repo (no workflows, no checks on abc123)." "$(ci '' false)"
+check "ci: no checks and has_workflows unset -> not the No CI pass" "false" "$(ci '' '' | cut -d'|' -f1)"
 # A check name is text a PR's own workflow can choose, and ci.md lists it
 # ahead of the short-circuit's verdict. @tsv escapes a newline in it; a filter
 # that dropped @tsv would let the name open a line of its own.
@@ -1086,10 +1106,10 @@ check "prior-review: a past auto-approve run does not bootstrap it" "false" \
 
 # --- tree-guard ---------------------------------------------------------
 # Under `bash -e` with no pipefail, a `gh api | head -c` failure here would
-# leave an empty repo_tree.txt while the step kept going; the CI gate would
-# then see has_workflows=0 and, absent a registered check-run, pass with
-# "No CI in this repo". `gh` is stubbed so both the fetch failure and a
-# truncated response are under test, not just the happy path.
+# leave an empty tree while the step kept going; the CI gate would then see
+# no workflows and, absent a registered check-run, pass with "No CI in this
+# repo". `gh` is stubbed so a failed fetch, a body that is not a tree and a
+# truncated response, at the head and the base, are under test.
 #
 # has_workflows is true when EITHER tree has the directory. Read from the head
 # alone, a PR that deletes every workflow registers no checks and takes the

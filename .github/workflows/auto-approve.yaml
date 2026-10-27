@@ -349,20 +349,16 @@ jobs:
           # file modes from tree.json.
           #
           # `bash -e` has no pipefail, so piping this fetch straight into
-          # `head -c` would swallow a `gh api` failure and leave an empty
-          # repo_tree.txt; the CI gate would then read HAS_WORKFLOWS=0 and,
-          # absent a registered check-run, take the "no CI in this repo"
-          # branch and pass. Check the exit status directly instead.
+          # `head -c` would swallow a `gh api` failure, and an empty tree
+          # reads as no workflows, which the CI gate passes as "No CI in this
+          # repo" when no check-run is registered. Check the exit status
+          # directly instead.
           # test: begin tree-guard
           if ! gh api "/repos/$REPO/git/trees/$HEAD_SHA?recursive=1" > tree.json; then
             printf '%s\n' "could not read the repo tree at $HEAD_SHA, so the CI and missing-file checks cannot run." > lane_error.txt
             echo "::error::$(cat lane_error.txt) Re-run \`@auto-approve\`."
             exit 1
           fi
-          # A truncated tree (GitHub caps the recursive listing at 100000
-          # entries) is silently incomplete rather than failed; the model's
-          # missing-file check would then trust an absence that is really a
-          # cutoff, so fail closed on it the same as a fetch error.
           # A body that is not a tree (a proxy page, a cut-off response) would
           # read below as "no workflows", the absence the CI gate passes on.
           if ! jq -e '.tree | type == "array"' tree.json > /dev/null 2>&1; then
@@ -370,6 +366,10 @@ jobs:
             echo "::error::$(cat lane_error.txt) Re-run \`@auto-approve\`."
             exit 1
           fi
+          # A truncated tree (GitHub caps the recursive listing at 100000
+          # entries) is silently incomplete rather than failed; the model's
+          # missing-file check would then trust an absence that is really a
+          # cutoff, so fail closed on it the same as a fetch error.
           if [ "$(jq -r '.truncated // false' tree.json)" = true ]; then
             printf '%s\n' "the repo tree at $HEAD_SHA was truncated by the API, so the missing-file check cannot trust an absence." > lane_error.txt
             echo "::error::$(cat lane_error.txt) Re-run \`@auto-approve\`."
@@ -627,17 +627,21 @@ jobs:
 
       # In a consumer, the file that calls this one is what issue_comment
       # runs from the default branch, with ANTHROPIC_API_KEY. Approved by the
-      # model alone, a caller repointed at another ref would hand that secret
-      # to code nobody reviewed, and one set to inherit hands over every
-      # secret. So any workflow this PR touches whose base or head calls this
-      # one must equal assets/auto-approve/caller.yaml at main byte for byte.
+      # model or the bot lane alone, a caller repointed at another ref would
+      # hand that secret to code nobody reviewed, and one set to inherit hands
+      # over every secret. So any workflow this PR touches whose base or head
+      # calls this one must equal assets/auto-approve/caller.yaml at main byte
+      # for byte. Only a workflow that calls this one is held; a new workflow
+      # that reads the secret some other way is the model's to judge.
       # That is CI-20, but keyed on content rather than the audit's one path,
       # and a deletion fails here where the audit reports NA. A byte match,
       # not a YAML or semantic comparison: the caller is installed verbatim,
       # so any difference is drift, and a comparison that normalises is one
       # more parser an author can find a gap in. Read from main because no
       # context names the commit this run came from: github.workflow_sha is
-      # the caller's. In this repo caller.yaml itself needs a person, through
+      # the caller's. Spelled refs/heads/main for the reason the human-review
+      # read gives: a tag named main would otherwise become the reference
+      # every consumer is held to. In this repo caller.yaml itself needs a person, through
       # .github/auto-approve-human-review.txt.
       - name: Gate — auto-approve caller matches the vendored copy
         id: caller
@@ -656,7 +660,7 @@ jobs:
           # repo that way. The pre-rename name keeps a stale caller held:
           # deleting or hand-editing one is still a mismatch.
           # An empty ref reads the default branch, not the PR, and every
-          # comparison would then pass against the wrong file.
+          # comparison would then judge the wrong file.
           : "${HEAD_SHA:?HEAD_SHA is unset}" "${BASE_SHA:?BASE_SHA is unset}"
           CALLER_RE='ai-hero/(wayfare|hero)-skills/\.github/workflows/auto-approve\.ya?ml'
           fetch_at() { # REF PATH OUT, from this repo
@@ -724,7 +728,7 @@ jobs:
               [ "$calls" = yes ] || continue
               if [ -z "$REF_READ" ]; then
                 if gh api -H "Accept: application/vnd.github.raw" \
-                     "/repos/ai-hero/wayfare-skills/contents/assets/auto-approve/caller.yaml?ref=main" \
+                     "/repos/ai-hero/wayfare-skills/contents/assets/auto-approve/caller.yaml?ref=refs/heads/main" \
                      > caller_ref.yaml 2>>caller_err.log && [ -s caller_ref.yaml ]; then
                   REF_READ=ok
                 else
@@ -735,6 +739,9 @@ jobs:
                 flag inconclusive "could not read the vendored caller to compare \`$head_path\` against."
               elif [ -z "$head_path_live" ] || ! [[ "$head_path_live" =~ ^\.github/workflows/[^/]+\.ya?ml$ ]]; then
                 flag mismatch "\`${prev_path:-$head_path}\` calls the shared workflow, and this PR deletes it or moves it where it no longer runs."
+              elif ! jq -e '.tree | type == "array"' tree.json > /dev/null 2>&1; then
+                # Without the tree, jq's error reads as "not a symlink" below.
+                flag inconclusive "could not read the head tree to check that \`$head_path_live\` is not a symlink."
               elif jq -e --arg p "$head_path_live" '.tree[] | select(.path == $p and .mode == "120000")' tree.json > /dev/null; then
                 flag mismatch "\`$head_path_live\` calls the shared workflow but is a symlink, not the vendored file."
               elif ! cmp -s cm_head caller_ref.yaml; then
@@ -1011,7 +1018,9 @@ jobs:
           # repo_tree.txt here: that text is capped at 300KB and a large
           # monorepo can push `.github/workflows/` past the cut, which read
           # as "no workflows" and skipped the zero-checks-but-workflows-exist
-          # branch below.
+          # branch below. Only an explicit `false` takes the "No CI" pass: it
+          # is all that stops a PR deleting every workflow, so an empty value
+          # (a renamed output, a step that never set it) must not read as one.
 
           # test: begin ci-decision
           # Deny-list on conclusion: `success`, `neutral` and `skipped` pass.
@@ -1046,7 +1055,7 @@ jobs:
               echo ""
               printf '%s\n' "$PENDING" | awk -F'\t' '{print "- " $1 " (" ($3 == "" ? $2 : $3) ")"}'
             } > ci.md
-          elif [ "$TOTAL" -eq 0 ] && [ "${HAS_WORKFLOWS:-false}" = true ]; then
+          elif [ "$TOTAL" -eq 0 ] && [ "${HAS_WORKFLOWS:-}" != false ]; then
             echo "passed=false" >> "$GITHUB_OUTPUT"
             echo "No checks registered on $HEAD_SHA yet, but the repo has workflows — wait for CI to start, then re-run \`@auto-approve\`." > ci_status.txt
             { echo "## CI: ❌"; cat ci_status.txt; } > ci.md

@@ -92,6 +92,7 @@ GROUP_REPOS = {}    # FLEET.md group -> set of family repo names; see applies()
 
 PASS, FAIL, NA, MANUAL, ERROR = "PASS", "FAIL", "n/a", "MANUAL", "ERROR"
 STATUSES = {PASS, FAIL, NA, MANUAL, ERROR}
+SEVERITIES = ("high", "medium", "low")
 
 # The repos this register governs. Explicit, and it has to be — but the
 # decision is FLEET.md's, not this file's: a row whose group is not `none` is
@@ -2828,7 +2829,7 @@ _PLUGIN_REPO = "wayfare-skills"
 # exclusion set. The two overlap but answer different questions, and merging
 # them would put a file in one job because it belonged in the other.
 _REGISTER_ARTIFACTS = ("CONTROLS.yaml", "CHECKS.yaml", "CONSISTENCY.md",
-                       "scripts/audit.py", "scripts/consistency.py",
+                       "FIRST_SEEN.json", "scripts/audit.py", "scripts/consistency.py",
                        ".claude/skills/consistency-audit")
 
 
@@ -3743,6 +3744,14 @@ def _register_file(base, name, shown=None):
     return doc
 
 
+def _register_pair(name):
+    """(baseline doc, overlay doc, reviewed) for one register file."""
+    src, reviewed, note = register_source()
+    shown = f"{REGISTER / name} ({note.split('  ')[0]})"
+    over = _register_file(src, name, shown) if src else {}
+    return _register_file(BASELINE, name), over, reviewed
+
+
 def load_register():
     """(controls by id, checks): the baseline merged with the fleet's overlay
     by id — an overlay record's fields replace the baseline record's, and an
@@ -3752,12 +3761,8 @@ def load_register():
     the merged result: a check naming an unknown control is a broken row; a
     control no check tests is an objective nothing verifies — the GATE-01
     failure, one level up."""
-    base_c = _register_file(BASELINE, "CONTROLS.yaml")
-    base_k = _register_file(BASELINE, "CHECKS.yaml")
-    src, reviewed, note = register_source()
-    at = note.split("  ")[0]
-    over_c = _register_file(src, "CONTROLS.yaml", f"{REGISTER / 'CONTROLS.yaml'} ({at})") if src else {}
-    over_k = _register_file(src, "CHECKS.yaml", f"{REGISTER / 'CHECKS.yaml'} ({at})") if src else {}
+    base_c, over_c, reviewed = _register_pair("CONTROLS.yaml")
+    base_k, over_k, _reviewed = _register_pair("CHECKS.yaml")
     ctrl = {c["id"]: dict(c) for c in base_c.get("controls") or []}
     # Unreviewed, a record for a baseline id is dropped, never merged and
     # marked MANUAL: marking it would let an unreviewed edit switch a baseline
@@ -3783,7 +3788,7 @@ def load_register():
     # ran; a severity outside the enum would silently never match --fail-on;
     # an overlay id that matches no checker and is not declared manual is a
     # gate that silently does not run — the register's own definition of high.
-    sev_ok = {"high", "medium", "low"}
+    sev_ok = set(SEVERITIES)
     unimplemented = []
     exampleless = []
     # A rule may not name a repo. `reference:` and `known_violations` are
@@ -3850,6 +3855,31 @@ def load_register():
     order = {c: i for i, c in enumerate(ctrl)}
     checks.sort(key=lambda k: (order.get(k["control"], 99), k["id"]))
     return ctrl, checks
+
+
+def load_deadlines():
+    """{severity: days}: CONTROLS.yaml's `deadlines:`, the baseline's with a
+    reviewed overlay's values over it. Every severity must carry one: a
+    missing key would leave that severity's failures never overdue, which
+    reads exactly like a fleet with nothing late."""
+    base, over, reviewed = _register_pair("CONTROLS.yaml")
+    out = {}
+    for where, doc in (("baseline", base), ("overlay", over if reviewed else {})):
+        d = doc.get("deadlines")
+        if d is not None and not isinstance(d, dict):
+            sys.exit(f"{where} CONTROLS.yaml: `deadlines:` must map a severity to days")
+        out.update(d or {})
+    extra = sorted(set(out) - set(SEVERITIES))
+    if extra:
+        sys.exit(f"deadlines: {extra} is not one of {'|'.join(SEVERITIES)}")
+    missing = [s for s in SEVERITIES if s not in out]
+    if missing:
+        sys.exit(f"deadlines: no deadline for {missing}; every severity needs one")
+    for s, days in out.items():
+        # bool is an int in Python, and `high: yes` would read as one day.
+        if isinstance(days, bool) or not isinstance(days, int) or days < 1:
+            sys.exit(f"deadlines: {s}: {days!r} is not a whole number of days, 1 or more")
+    return out
 
 
 def family_repos():

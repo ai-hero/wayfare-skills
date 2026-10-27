@@ -8,6 +8,7 @@ matching nothing is indistinguishable from a clean input, so a regression
 reads as a fleet that got better."""
 
 import contextlib
+import datetime
 import importlib.util
 import io
 import os
@@ -1321,6 +1322,38 @@ class Register(unittest.TestCase):
         ctrl, checks = self.load("checks:\n- id: A-1\n  applies_to: [Apps, go]\n")
         self.assertTrue(audit.applies(checks[0], "a"), "group names are case-insensitive")
 
+    def deadlines(self, base, overlay=""):
+        write(self.root, "base/CONTROLS.yaml", base)
+        if overlay:
+            write(self.root, "over/CONTROLS.yaml", overlay)
+        return audit.load_deadlines()
+
+    def test_shipped_baseline_has_a_deadline_per_severity(self):
+        audit.BASELINE = HERE.parent / "assets" / "compliance"
+        self.assertEqual(audit.load_deadlines(), {"high": 14, "medium": 30, "low": 90})
+
+    def test_reviewed_overlay_retunes_a_deadline(self):
+        base = "deadlines: {high: 14, medium: 30, low: 90}\n"
+        self.assertEqual(self.deadlines(base, "deadlines: {high: 7}\n")["high"], 7)
+        self.reviewed = False
+        self.assertEqual(self.deadlines(base, "deadlines: {high: 7}\n")["high"], 14,
+                         "an unreviewed overlay retunes nothing")
+
+    def test_bad_deadlines_rejected(self):
+        cases = {
+            "deadlines: {high: 14, medium: 30}\n": "no deadline for ['low']",
+            "deadlines: {critical: 3, high: 14, medium: 30, low: 90}\n": "not one of",
+            "deadlines: {high: 0, medium: 30, low: 90}\n": "whole number",
+            "deadlines: {high: yes, medium: 30, low: 90}\n": "whole number",
+            "deadlines: {high: '14', medium: 30, low: 90}\n": "whole number",
+            "deadlines: [14, 30, 90]\n": "must map",
+        }
+        for base, why in cases.items():
+            with self.subTest(base=base):
+                with self.assertRaises(SystemExit) as cm:
+                    self.deadlines(base)
+                self.assertIn(why, str(cm.exception))
+
 
 class JsonOutput(unittest.TestCase):
     """The --json contract wayfare's compliance stage parses: one object per
@@ -1468,6 +1501,78 @@ class Consistency(unittest.TestCase):
             # The closing summary is the line that used to raise.
             self.assertIn("wrote", p.stdout)
             self.assertIn("failing", p.stdout)
+
+    def _ci02_row(self, root):
+        body = (root / ".fleet" / "CONSISTENCY.md").read_text()
+        row = [l for l in body.splitlines() if l.startswith("| **CI-02**")]
+        self.assertTrue(row, "no CI-02 row in the table")
+        return body, [c.strip() for c in row[0].split("|")]
+
+    def _seen(self, root, days_ago, extra=None):
+        d = (datetime.date.today() - datetime.timedelta(days=days_ago)).isoformat()
+        seen = {"CI-02": {"a": d}, **(extra or {})}
+        write(root, ".fleet/FIRST_SEEN.json", json.dumps({"started": "2026-01-01", "seen": seen}))
+
+    def test_failure_age_carries_over_and_passes_its_deadline(self):
+        """CI-02 fails in repo `a` and is medium, so 30 days is on time and 31
+        is late. The date must carry over from FIRST_SEEN.json, not restart
+        each run, and a cell that no longer fails must drop out of it."""
+        with tempfile.TemporaryDirectory() as d:
+            root = self._fleet(pathlib.Path(d).resolve())
+            p = self._run(root)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            _body, cells = self._ci02_row(root)
+            self.assertIn("❌ 0d", cells)
+            state = json.loads((root / ".fleet" / "FIRST_SEEN.json").read_text())
+            self.assertEqual(state["seen"], {"CI-02": {"a": datetime.date.today().isoformat()}})
+
+            self._seen(root, 30)
+            self.assertEqual(self._run(root).returncode, 0)
+            body, cells = self._ci02_row(root)
+            self.assertIn("❌ 30d", cells)
+            self.assertNotIn("## Past deadline", body)
+
+            self._seen(root, 31, {"ZZ-99": {"b": "2026-01-01"}})
+            p = self._run(root)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            body, cells = self._ci02_row(root)
+            self.assertIn("❌ 31d overdue", cells)
+            self.assertIn("1 past their deadline", body)
+            self.assertIn("- **CI-02** in a: failing 31 days, medium deadline 30 days", body)
+            self.assertIn("It started on 2026-01-01", body)
+            state = json.loads((root / ".fleet" / "FIRST_SEEN.json").read_text())
+            self.assertEqual(list(state["seen"]), ["CI-02"], "a cell gone from the table drops out")
+            self.assertEqual(state["started"], "2026-01-01")
+
+    def test_only_a_pass_clears_a_first_seen_date(self):
+        """An unreviewed register turns overlay checks MANUAL for a run; that
+        has not fixed anything, so the late failure must keep its date."""
+        spec = importlib.util.spec_from_file_location("consistency", HERE / "consistency.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        today = datetime.date(2026, 10, 27)
+        with tempfile.TemporaryDirectory() as d:
+            path = write(pathlib.Path(d), "FIRST_SEEN.json", json.dumps({"started": "2026-01-01", "seen": {
+                "X-1": {"a": "2026-02-01", "b": "2026-02-01", "c": "2026-02-01"},
+                "X-2": {"a": "2026-02-01"}}}))
+            started, seen = mod.first_seen(path, {
+                ("X-1", "a"): "FAIL", ("X-1", "b"): "MANUAL", ("X-1", "c"): "PASS",
+                ("X-3", "a"): "FAIL", ("X-3", "b"): "n/a"}, today)
+        self.assertEqual(started, "2026-01-01")
+        self.assertEqual(seen, {"X-1": {"a": "2026-02-01", "b": "2026-02-01"},
+                                "X-3": {"a": "2026-10-27"}},
+                         "PASS and a cell gone from the table clear; MANUAL keeps; a new FAIL is today")
+
+    def test_unreadable_first_seen_stops_before_writing(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = self._fleet(pathlib.Path(d).resolve())
+            for text in ("{", '{"started": "2026-01-01"}', '{"started": "2026-01-01", "seen": {"CI-02": {"a": "soon"}}}'):
+                with self.subTest(text=text):
+                    write(root, ".fleet/FIRST_SEEN.json", text)
+                    p = self._run(root)
+                    self.assertNotEqual(p.returncode, 0)
+                    self.assertIn("unreadable first-seen state", p.stderr)
+                    self.assertFalse((root / ".fleet" / "CONSISTENCY.md").exists())
 
     def test_no_retired_columns(self):
         """The register names no repo, so neither derived column may return."""

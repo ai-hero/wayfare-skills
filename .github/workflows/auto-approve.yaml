@@ -83,11 +83,16 @@ jobs:
         id: pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        # No ${{ }} in this run block. A block holding one is evaluated as a
+        # single expression, and past 21,000 characters GitHub rejects the
+        # whole workflow at startup: every caller's run fails with zero jobs
+        # and no message. Pass contexts through env: above instead.
         run: |
-          PR_NUMBER=${{ github.event.issue.number }}
           echo "number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
-          gh api /repos/${{ github.repository }}/pulls/$PR_NUMBER > pr.json
+          gh api "/repos/$REPO/pulls/$PR_NUMBER" > pr.json
           jq -r '.title' pr.json > pr_title.txt
           # Truncated ONCE, here. The grounding search below and the prompt
           # both read this file; deriving them from different byte counts asks
@@ -106,7 +111,6 @@ jobs:
           # author stays dependabot[bot]; keyed on the author alone, that
           # commit would be approved with no model and no human reading it.
           BOT_RE='^(dependabot|renovate)(\[bot\])?$'
-          REPO="${{ github.repository }}"
 
           # test: begin bot-lane
           # `gh api --jq` takes exactly ONE argument and has no `--arg` of its
@@ -215,7 +219,7 @@ jobs:
           DIFF_OK=true
           if ! gh api \
                -H "Accept: application/vnd.github.v3.diff" \
-               /repos/${{ github.repository }}/pulls/$PR_NUMBER \
+               "/repos/$REPO/pulls/$PR_NUMBER" \
                > pr.diff 2>diff_err.log; then
             DIFF_OK=false
             printf '(unified diff unavailable — the diff API failed, typically because the PR exceeds GitHub'"'"'s 300-file diff limit: %s. Review the per-file post-merge contents in the FULL FILES section and the changed-files list below instead.)\n' \
@@ -230,7 +234,7 @@ jobs:
           # String interpolation, not @tsv: @tsv escapes a backslash in a path
           # to `\\` and `read -r` keeps it, so the contents fetch 404s and the
           # file is reported deleted.
-          gh api --paginate "/repos/${{ github.repository }}/pulls/$PR_NUMBER/files?per_page=100" \
+          gh api --paginate "/repos/$REPO/pulls/$PR_NUMBER/files?per_page=100" \
             --jq '.[]' > files.jsonl
 
           # test: begin files-list

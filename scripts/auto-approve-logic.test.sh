@@ -57,6 +57,19 @@ for name in classify diff-filter go-pkgs claims ci-decision verdict-parse bot-la
   check "extract: $name parses" "0" "$(bash -n "$WORK/$name.sh" 2>/dev/null; echo $?)"
 done
 
+# A run: holding ${{ }} is one expression, and GitHub caps an expression at
+# 21,000 characters. Over the cap, every caller's run fails at startup with
+# zero jobs and no error text, and actionlint does not catch it.
+check "expression length: no run: with \${{ }} reaches 21,000 characters" "" \
+  "$(python3 -c '
+import sys, yaml
+for job in yaml.safe_load(open(sys.argv[1]))["jobs"].values():
+    for step in job.get("steps", []):
+        run = step.get("run", "")
+        if "${{" in run and len(run) >= 21000:
+            print(step.get("name"), len(run))
+' "$WF" 2>&1)"
+
 # --- classify ---------------------------------------------------------------
 # shellcheck disable=SC1091
 source "$WORK/classify.sh"

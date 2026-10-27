@@ -46,16 +46,17 @@ def connect(*topics):
             _warn(f"label cache {name}.sqlite not found in {DATA}; queries on {name}.* will fail")
     # a view over a source that isn't ingested yet would fail the whole script, so each view names its sources
     block, needs = [], set()
-    for line in open(views):
-        if line.startswith("-- needs:"): needs = set(line[9:].split())
-        block.append(line)
-        if line.rstrip().endswith(";"):
-            if needs <= attached:
-                con.executescript("".join(block))
-            else:
-                view = re.search(r"CREATE\s+TEMP\s+VIEW\s+(\w+)", "".join(block), re.I)
-                _warn(f"skipped view {view.group(1) if view else '?'}: missing {', '.join(sorted(needs - attached))}")
-            block, needs = [], set()
+    with open(views) as f:
+        for line in f:
+            if line.startswith("-- needs:"): needs = set(line[9:].split())
+            block.append(line)
+            if line.rstrip().endswith(";"):
+                if needs <= attached:
+                    con.executescript("".join(block))
+                else:
+                    view = re.search(r"CREATE\s+TEMP\s+VIEW\s+(\w+)", "".join(block), re.I)
+                    _warn(f"skipped view {view.group(1) if view else '?'}: missing {', '.join(sorted(needs - attached))}")
+                block, needs = [], set()
     return con
 
 if __name__ == "__main__":

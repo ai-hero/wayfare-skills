@@ -15,6 +15,7 @@ everything it needs is a query over the cube's attached sources and views.
 import csv, importlib, os, pkgutil, sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from bank.generate_human_stubs import module_name
 from cube.db import connect
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -29,11 +30,30 @@ def bank_row(rq_id):
     return None
 
 
+def check_modules(mods):
+    """Raise ValueError unless every module declares a string QUESTION, a callable answer, and an RQ_ID
+    that is its own filename (module_name's spelling, STUB_ prefix optional) and no other module's.
+    A stub left beside its real module would otherwise make `runner.py RQ_ID` run both."""
+    errors, seen = [], {}
+    for m in mods:
+        name, rq_id = m.__name__.rsplit(".", 1)[-1], getattr(m, "RQ_ID", None)
+        if not isinstance(getattr(m, "QUESTION", None), str) or not callable(getattr(m, "answer", None)):
+            errors.append(f"{name}.py lacks a QUESTION string or an answer(con) function")
+        if not isinstance(rq_id, str) or name not in (module_name(rq_id), module_name(rq_id).removeprefix("STUB_")):
+            errors.append(f"{name}.py declares RQ_ID {rq_id!r}, which does not match its filename")
+        elif rq_id in seen:
+            errors.append(f"{name}.py and {seen[rq_id]}.py both declare RQ_ID {rq_id!r}")
+        else:
+            seen[rq_id] = name
+    if errors:
+        raise ValueError("questions/: " + "; ".join(errors))
+
+
 def discover():
-    for _, name, _ in pkgutil.iter_modules([HERE]):
-        if name in ("runner", "__init__"):
-            continue
-        yield importlib.import_module(f"questions.{name}")
+    mods = [importlib.import_module(f"questions.{name}")
+            for _, name, _ in pkgutil.iter_modules([HERE]) if name not in ("runner", "__init__")]
+    check_modules(mods)
+    return mods
 
 
 def run_one(mod, con):
@@ -49,7 +69,7 @@ def run_one(mod, con):
 def main():
     con = connect()
     target = sys.argv[1] if len(sys.argv) > 1 else None
-    mods = list(discover())
+    mods = discover()
     if target:
         mods = [m for m in mods if m.RQ_ID == target]
         if not mods:

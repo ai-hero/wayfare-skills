@@ -14,8 +14,8 @@ shared wayfare-skills plugin, not fleet-specific tooling):
 - Facts FLEET.md/HERO.md don't carry at all -- a baseline before/after
   cutoff date, which repos have no roadmap yet, which app IS the design
   system, role labels finer than a FLEET.md group -- come from
-  .analysis/config.json (gitignored, per-installation), not from this
-  file. See analysis/config.example.json for the shape. A fleet with no
+  .analysis/config.json (gitignored, per-installation; WAYFARE_ANALYSIS_CONFIG
+  names another file, for a test fixture), not from this file. See analysis/config.example.json for the shape. A fleet with no
   config file just gets empty defaults; every question that reads one of
   these should handle that (e.g. BASELINE_CUTOFF is None, not a guess).
 """
@@ -68,7 +68,11 @@ ROOT = _fleet_root()
 # analysis/ingest/fleet.py -> repo root's gitignored .analysis/data (large, personal, rebuildable)
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".analysis", "data")
 
-_CONFIG_PATH = os.path.join(os.path.dirname(OUT), "config.json")
+_CONFIG_PATH = os.environ.get("WAYFARE_ANALYSIS_CONFIG") or os.path.join(os.path.dirname(OUT), "config.json")
+# A missing default config means empty defaults, but a missing override is a typo: read as empty, it
+# would put every repo in APP with no error.
+if os.environ.get("WAYFARE_ANALYSIS_CONFIG") and not os.path.isfile(_CONFIG_PATH):
+    sys.exit(f"ingest/fleet.py: WAYFARE_ANALYSIS_CONFIG={_CONFIG_PATH} does not exist")
 
 
 def _load_config():
@@ -123,6 +127,12 @@ EXTRA_REPOS = [r for r in _config.get("extra_repos", []) if os.path.isdir(os.pat
 OUT_OF_SCOPE = set(_config.get("out_of_scope_repos", []))
 ALL_REPOS = FLEET_REPOS + DESIGN_REPOS + [PLUGIN_REPO_NAME] + EXTRA_REPOS
 
+APP = "app"
+APP_NO_FEATURES = "app, no features yet"
+ALLIED = "allied"
+OUT_OF_SCOPE_CATEGORY = "out of scope"
+CATEGORIES = (APP, APP_NO_FEATURES, ALLIED, OUT_OF_SCOPE_CATEGORY)
+
 # The repo with FLEET.md group: template -- None if the fleet has none
 # declared (a fleet with no template-and-clones shape, or FLEET.md not yet
 # updated). Detectors that need "the template" must handle None, not assume
@@ -151,13 +161,15 @@ def role_of(repo):
 
 
 def category_of(repo):
-    """'app' (what the factory builds), 'app, no features yet' (config's no_roadmap_yet),
-    'allied' (what it builds with: the plugin, the template, infrastructure), or
-    'out of scope' (config's out_of_scope_repos)."""
-    if repo in OUT_OF_SCOPE: return "out of scope"
-    if repo == PLUGIN_REPO_NAME or GROUPS.get(repo) in ("template", "infra"): return "allied"
-    if repo in NO_ROADMAP_YET: return "app, no features yet"
-    return "app"
+    """APP (what the factory builds), APP_NO_FEATURES (config's no_roadmap_yet), ALLIED (what it
+    builds with: the plugin, the template, infrastructure), or OUT_OF_SCOPE_CATEGORY (config's
+    out_of_scope_repos), in that reverse order of precedence."""
+    if repo in OUT_OF_SCOPE: return OUT_OF_SCOPE_CATEGORY
+    if repo == PLUGIN_REPO_NAME or GROUPS.get(repo) in ("template", "infra"): return ALLIED
+    if repo in NO_ROADMAP_YET: return APP_NO_FEATURES
+    return APP
+
+
 def dims(ts):
     """ts: datetime or ISO string → the shared time keys."""
     d = ts if isinstance(ts, dt.datetime) else dt.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))

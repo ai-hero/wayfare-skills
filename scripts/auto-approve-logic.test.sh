@@ -51,7 +51,7 @@ run_block() { # NAME [env assignments...] -> runs in $WORK under bash -e
   ( cd "$WORK" && env "$@" bash -e "$WORK/$name.sh" )
 }
 
-for name in actor-permission classify diff-filter go-pkgs claims ci-decision verdict-parse bot-lane files-list fleet-workflow submit-verdict crash-notice prior-review tree-guard contents-fetch threads-paginate untag model-write; do
+for name in actor-permission classify diff-filter go-pkgs claims ci-decision verdict-parse bot-lane files-list fleet-workflow gates-report submit-verdict crash-notice prior-review tree-guard contents-fetch threads-paginate untag model-write; do
   extract "$name" > "$WORK/$name.sh"
   check "extract: $name non-empty" "yes" "$([[ -s "$WORK/$name.sh" ]] && echo yes || echo no)"
   check "extract: $name parses" "0" "$(bash -n "$WORK/$name.sh" 2>/dev/null; echo $?)"
@@ -405,33 +405,145 @@ check "files-list: a renamed entry's previous_filename lands in previous_files.t
   "$(files_list "$FILE_A$FILE_B" 2 >/dev/null; grep -qxF b_old.go "$WORK/previous_files.txt" && echo yes || echo no)"
 
 # --- fleet-workflow ----------------------------------------------------------
+# The stub serves THIS checkout's copy of the list as main's, so the fixtures
+# below test the real list, not a retyped one. Like the real contents API it
+# returns raw bytes only for the raw Accept header and JSON otherwise: JSON
+# read as a list is non-empty and matches nothing, which fails open.
+HUMAN_LIST="$HERE/../.github/auto-approve-human-review.txt"
+fw_list() { # LIST_FILE_OR_EMPTY [GH_RC] -> installs the gh stub
+  mkdir -p "$WORK/fwbin"
+  { echo '#!/usr/bin/env bash'
+    echo "printf '%s\\n' \"\$*\" >> $WORK/fw_argv"
+    if [ -n "$1" ]; then
+      echo 'case "$*" in'
+      echo "  *'Accept: application/vnd.github.raw'*) cat '$1' ;;"
+      echo "  *) echo '{\"encoding\": \"base64\", \"content\": \"aG9va3MvKgo=\"}' ;;"
+      echo 'esac'
+    fi
+    echo "exit ${2:-0}"
+  } > "$WORK/fwbin/gh"
+  chmod +x "$WORK/fwbin/gh"
+}
 # REPO CHANGED_FILES [PREVIOUS_FILES] -> the fleet_workflow output value
 fw() {
   printf '%b' "$2" > "$WORK/changed_files.txt"
   printf '%b' "${3:-}" > "$WORK/previous_files.txt"
-  : > "$WORK/out"
-  ( cd "$WORK" && REPO="$1" GITHUB_OUTPUT="$WORK/out" bash -e "$WORK/fleet-workflow.sh" ) >/dev/null 2>&1
+  : > "$WORK/out"; : > "$WORK/fw_argv"
+  ( cd "$WORK" && PATH="$WORK/fwbin:$PATH" REPO="$1" GITHUB_OUTPUT="$WORK/out" \
+    bash -e "$WORK/fleet-workflow.sh" ) >/dev/null 2>&1
   sed -n 's/^fleet_workflow=//p' "$WORK/out"
 }
-check "fleet-workflow: this repo, file changed -> true" "true" \
-  "$(fw "ai-hero/wayfare-skills" '.github/workflows/auto-approve.yaml\nfoo.go\n')"
-check "fleet-workflow: this repo, file untouched -> false" "false" \
-  "$(fw "ai-hero/wayfare-skills" 'foo.go\nbar.go\n')"
+fw_cases() { # EXPECTED, with PATH|WHY lines on stdin
+  local want=$1 fpath_case why
+  while IFS='|' read -r fpath_case why; do
+    check "fleet-workflow: $fpath_case ($why) -> $want" "$want" "$(fw ai-hero/wayfare-skills "$fpath_case\n")"
+  done
+}
+fw_list "$HUMAN_LIST"
+fw_cases true <<'EOF'
+.github/workflows/auto-approve.yaml|the shared workflow
+assets/auto-approve/caller.yaml|the vendored caller
+.github/auto-approve-human-review.txt|the list itself
+hooks/hooks.json|the hook registry
+hooks/check-deferrals.sh|the Stop hook
+hooks/new-hook.sh|a hook added later
+scripts/hero-lib.sh|sourced by the Stop hook
+.claude-plugin/plugin.json|the Claude Code manifest
+.claude-plugin/marketplace.json|the marketplace source
+.agents/plugins/marketplace.json|the agents marketplace
+plugin.json|the portable manifest
+.mcp.json|plugin MCP servers
+.lsp.json|plugin language servers
+settings.json|plugin root settings
+agents/reviewer.md|a plugin agent
+commands/x.md|a plugin command
+output-styles/x.md|a plugin output style
+.claude/settings.json|maintainer session settings
+.claude/rules/comments.md|maintainer session rules
+.vscode/tasks.json|maintainer editor tasks
+hooks/sub/x.sh|* crosses /
+.MCP.json|a case variant a case-insensitive checkout loads
+Hooks/Hooks.json|a case variant of a hook
+Scripts/Hero-Lib.sh|a case variant of what the hook sources
+EOF
+check "fleet-workflow: a listed path among others -> true" "true" \
+  "$(fw ai-hero/wayfare-skills 'skills/x/SKILL.md\nscripts/hero-lib.sh\nREADME.md\n')"
+# A rename reports the OLD path only in previous_filename.
+check "fleet-workflow: renamed away from hooks/ -> true" "true" \
+  "$(fw ai-hero/wayfare-skills 'docs/old-hook.sh\n' 'hooks/check-deferrals.sh\n')"
+check "fleet-workflow: shared workflow renamed away -> true" "true" \
+  "$(fw ai-hero/wayfare-skills 'assets/renamed.yaml\nfoo.go\n' '.github/workflows/auto-approve.yaml\n')"
+check "fleet-workflow: the matched path is reported" "yes" \
+  "$(fw ai-hero/wayfare-skills 'hooks/hooks.json\n' >/dev/null; grep -qF 'hooks/hooks.json' "$WORK/fleet_paths.md" && echo yes || echo no)"
+# Everything else stays auto-approvable, including neighbours of listed paths.
+fw_cases false <<'EOF'
+scripts/hero-fields.sh|another script
+skills/wayfare-ship-pr/WORKFLOW.md|a skill
+assets/auto-approve/README.md|a sibling asset
+apps/foo/.github/workflows/auto-approve.yaml|a nested copy
+docs/hooks/x.md|hooks/ is anchored at the root
+scripts/hero-lib.sh.bak|an exact name, not a prefix
+EOF
+check "fleet-workflow: the list is read from main, in this repo" "yes" \
+  "$(fw ai-hero/wayfare-skills 'foo.go\n' >/dev/null; grep -qF '/repos/ai-hero/wayfare-skills/contents/.github/auto-approve-human-review.txt?ref=refs/heads/main' "$WORK/fw_argv" && echo yes || echo no)"
 # A consumer's own copy of this workflow never has github.repository ==
-# ai-hero/wayfare-skills, so its own workflow-file PRs stay auto-approvable —
-# this exemption is this repo's alone.
+# ai-hero/wayfare-skills, so its PRs stay auto-approvable and never fetch.
 check "fleet-workflow: consumer repo, file changed -> false" "false" \
-  "$(fw "some-org/consumer" '.github/workflows/auto-approve.yaml\n')"
-# Exact path match, not a substring: a nested copy at a different path is a
-# different file, not the one that ships fleet-wide from this repo's root.
-check "fleet-workflow: nested path is not the fleet file -> false" "false" \
-  "$(fw "ai-hero/wayfare-skills" 'apps/foo/.github/workflows/auto-approve.yaml\n')"
-# A rename reports the OLD path only in previous_filename; .filename is the
-# NEW path, which never mentions auto-approve.yaml at all.
-check "fleet-workflow: this repo, renamed away -> true" "true" \
-  "$(fw "ai-hero/wayfare-skills" 'assets/renamed.yaml\nfoo.go\n' '.github/workflows/auto-approve.yaml\n')"
+  "$(fw some-org/consumer '.github/workflows/auto-approve.yaml\nhooks/x.sh\n')"
 check "fleet-workflow: consumer repo, same rename -> false" "false" \
-  "$(fw "some-org/consumer" 'assets/renamed.yaml\n' '.github/workflows/auto-approve.yaml\n')"
+  "$(fw some-org/consumer 'assets/renamed.yaml\n' '.github/workflows/auto-approve.yaml\n')"
+check "fleet-workflow: ...and the list is never fetched there" "0" "$(wc -l < "$WORK/fw_argv" | tr -d ' ')"
+# Fail closed: a list that cannot be read, or reads as empty, is not a list
+# that says nothing needs a person.
+fw_list "" 1
+check "fleet-workflow: the list unreadable -> inconclusive" "inconclusive" "$(fw ai-hero/wayfare-skills 'foo.go\n')"
+printf '# only comments\n\n   \n' > "$WORK/empty_list.txt"
+fw_list "$WORK/empty_list.txt"
+check "fleet-workflow: a list with no entries -> inconclusive" "inconclusive" "$(fw ai-hero/wayfare-skills 'foo.go\n')"
+printf '# x\n  hooks/*  \n' > "$WORK/padded_list.txt"
+fw_list "$WORK/padded_list.txt"
+check "fleet-workflow: an entry padded with spaces still matches" "true" "$(fw ai-hero/wayfare-skills 'hooks/a.sh\n')"
+printf 'hooks/*\n.mcp.json' > "$WORK/no_eol_list.txt"
+fw_list "$WORK/no_eol_list.txt"
+check "fleet-workflow: the last entry counts with no trailing newline" "true" "$(fw ai-hero/wayfare-skills '.mcp.json\n')"
+fw_list "$HUMAN_LIST"
+check "fleet-workflow: a backtick in a matched name cannot break the report's code span" "no" \
+  "$(fw ai-hero/wayfare-skills 'hooks/a`b.sh\n' >/dev/null; grep -qF 'a`b' "$WORK/fleet_paths.md" && echo yes || echo no)"
+
+# An entry that matches nothing protects nothing and raises no error, so the
+# real list's entries are held to the shapes that can match a path.
+BAD_ENTRIES=$(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; /^(#|$)/d' "$HUMAN_LIST" \
+  | grep -E '^(/|\./)|/$|[[:space:]]|#' || true)
+check "fleet-workflow: no list entry is anchored, a directory, or carries a comment" "" "$BAD_ENTRIES"
+
+# The output only holds anything while every lane that can approve requires
+# it to be `false`, and the short-circuit fires on anything else, including
+# `inconclusive`.
+for step in "Dependency-bot lane" "Claude verification"; do
+  check "gates: $step requires fleet_workflow == false" "yes" \
+    "$(grep -qF "steps.pr.outputs.fleet_workflow == 'false'" <<<"$(step_if "$step")" && echo yes || echo no)"
+done
+check "gates: the short-circuit fires on fleet_workflow != false" "yes" \
+  "$(grep -qF "steps.pr.outputs.fleet_workflow != 'false'" <<<"$(step_if "Short-circuit on gate failure")" && echo yes || echo no)"
+
+# --- gates-report -----------------------------------------------------------
+# The short-circuit step's report, read by the loose verdict parser.
+gr() { # FLEET_WORKFLOW -> "VERDICT_TOKEN|names fleet-wide?"
+  printf '## Prior Review: ok\n' > "$WORK/prior_review.md"
+  printf '## Unresolved Comments: ok\n' > "$WORK/threads.md"
+  printf '## CI: ok\n' > "$WORK/ci.md"
+  printf -- '- `hooks/x.sh` (listed as `hooks/*`)\n' > "$WORK/fleet_paths.md"
+  rm -f "$WORK/model.md" "$WORK/review.md"
+  ( cd "$WORK" && FLEET_WORKFLOW="$1" bash -e "$WORK/gates-report.sh" \
+    && . "$WORK/verdict-parse.sh" \
+    && printf '%s|%s' "$VERDICT_TOKEN" \
+         "$(grep -qF 'fleet-wide change' review.md && echo yes || echo no)" )
+}
+check "gates-report: fleet workflow keeps its own reason" "REQUEST_CHANGES|yes" "$(gr true)"
+check "gates-report: ...and names the listed path it matched" "yes" \
+  "$(gr true >/dev/null; grep -qF 'hooks/x.sh' "$WORK/review.md" && echo yes || echo no)"
+check "gates-report: an unreadable list fails closed" "REQUEST_CHANGES|yes" "$(gr inconclusive)"
+check "gates-report: a plain gate failure" "REQUEST_CHANGES|no" "$(gr false)"
 
 # --- ci-decision ------------------------------------------------------------
 ci() { # CHECKS_TSV HAS_WORKFLOWS -> "passed|first line of ci_status"

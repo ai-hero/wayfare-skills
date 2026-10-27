@@ -287,18 +287,56 @@ jobs:
           jq -r '.previous_filename // empty' files.jsonl > previous_files.txt
           # test: end files-list
 
-          # Neither the model nor the scripted lanes may approve a change to
-          # this file — a human always reviews it. Guarded by $REPO so a
-          # consumer running its own copy, whose github.repository is never
-          # ai-hero/wayfare-skills, is unaffected, and so the test suite can
-          # exercise this block with `env REPO=... bash`, same as the
-          # bot-lane block above.
+          # In this repo, neither the model nor the scripted lanes may
+          # approve a change to a path listed in
+          # .github/auto-approve-human-review.txt (its header says why each
+          # is there); a human always reviews it. Read from main, never the
+          # PR's head or base: either can be a branch the author controls,
+          # and a list read from there could drop the PR's own paths. Spelled
+          # refs/heads/main: a bare `main` resolves a tag of that name first,
+          # and anyone with write can push a tag that no branch protection
+          # covers. Keyed on $REPO, which the PR cannot change, so the suite
+          # can run the block with `env REPO=... bash`, same as the bot-lane
+          # block above.
           # test: begin fleet-workflow
-          if [ "$REPO" = "ai-hero/wayfare-skills" ] && { grep -qxF ".github/workflows/auto-approve.yaml" changed_files.txt || grep -qxF ".github/workflows/auto-approve.yaml" previous_files.txt; }; then
-            echo "fleet_workflow=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "fleet_workflow=false" >> "$GITHUB_OUTPUT"
+          FLEET_WORKFLOW=false
+          : > fleet_paths.md
+          if [ "$REPO" = "ai-hero/wayfare-skills" ]; then
+            PATTERNS=()
+            if gh api -H "Accept: application/vnd.github.raw" \
+                 "/repos/$REPO/contents/.github/auto-approve-human-review.txt?ref=refs/heads/main" \
+                 > human_review.txt 2>>human_review_err.log; then
+              # `|| [ -n "$pat" ]`: read fails on a last line with no
+              # newline, which would drop that entry and fail open on it.
+              while IFS= read -r pat || [ -n "$pat" ]; do PATTERNS+=("$pat"); done \
+                < <(sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//; /^(#|$)/d' human_review.txt)
+            fi
+            # An unreadable or entry-less list fails closed: read as empty,
+            # it would say nothing here needs a person.
+            if [ "${#PATTERNS[@]}" -eq 0 ]; then
+              FLEET_WORKFLOW=inconclusive
+              echo "::warning::could not read a non-empty .github/auto-approve-human-review.txt at main:"
+              cat human_review_err.log 2>/dev/null || true
+            else
+              # A case-insensitive checkout (macOS, Windows) loads
+              # `.MCP.json` as `.mcp.json`, so case must not dodge the list.
+              shopt -s nocasematch
+              while IFS= read -r f; do
+                [ -n "$f" ] || continue
+                for pat in "${PATTERNS[@]}"; do
+                  # Unquoted on purpose: the right side of == is a glob.
+                  # shellcheck disable=SC2053
+                  if [[ $f == $pat ]]; then
+                    FLEET_WORKFLOW=true
+                    printf -- '- `%s` (listed as `%s`)\n' "${f//\`/}" "$pat" >> fleet_paths.md
+                    break
+                  fi
+                done
+              done < <(cat changed_files.txt previous_files.txt)
+              shopt -u nocasematch
+            fi
           fi
+          echo "fleet_workflow=$FLEET_WORKFLOW" >> "$GITHUB_OUTPUT"
           # test: end fleet-workflow
 
           # Recursive repo file tree at HEAD. It lets the verifier confirm
@@ -873,7 +911,10 @@ jobs:
           steps.threads.outputs.passed != 'true' ||
           steps.ci.outputs.passed != 'true' ||
           steps.pr.outputs.fleet_workflow != 'false'
+        env:
+          FLEET_WORKFLOW: ${{ steps.pr.outputs.fleet_workflow }}
         run: |
+          # test: begin gates-report
           {
             cat prior_review.md
             echo ""
@@ -881,17 +922,18 @@ jobs:
             echo ""
             cat ci.md
             echo ""
-            if [ "${{ steps.pr.outputs.fleet_workflow }}" = "true" ]; then
+            if [ "$FLEET_WORKFLOW" = "true" ]; then
               echo "## Fleet Workflow: ❌"
-              echo "This PR changes .github/workflows/auto-approve.yaml, which ships to every consumer on merge with no per-repo PR — a human must approve it."
+              echo "This PR changes a path listed in .github/auto-approve-human-review.txt. Each one ships to every consumer on merge or runs on every plugin user's machine, so a human must approve it:"
+              cat fleet_paths.md 2>/dev/null || true
               echo ""
               echo "## Verdict"
               echo "REQUEST_CHANGES"
-              echo "fleet-wide workflow: human approval required"
+              echo "fleet-wide change: human approval required"
               echo "Once a human approves this PR, dismiss this bot review before merging — branch protection counts it as changes requested."
-            elif [ "${{ steps.pr.outputs.fleet_workflow }}" != "false" ]; then
+            elif [ "$FLEET_WORKFLOW" != "false" ]; then
               echo "## Fleet Workflow: ❌"
-              echo "Could not determine whether this PR touches .github/workflows/auto-approve.yaml — failing closed rather than risk shipping an unreviewed fleet-wide change."
+              echo "Could not read the paths that need a human (.github/auto-approve-human-review.txt at main), so failing closed rather than risk shipping an unreviewed fleet-wide change."
               echo ""
               echo "## Verdict"
               echo "REQUEST_CHANGES"
@@ -902,6 +944,7 @@ jobs:
               echo "Auto-approve gates failed — fix the items above and re-run \`@auto-approve\`."
             fi
           } > review.md
+          # test: end gates-report
 
       - name: Dependency-bot lane
         id: deps_bot

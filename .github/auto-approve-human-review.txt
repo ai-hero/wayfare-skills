@@ -1,0 +1,46 @@
+# Paths in ai-hero/wayfare-skills that auto-approve never approves; a person
+# must. Each one ships to every consumer on merge, decides what runs on a
+# plugin user's or maintainer's machine without being asked, or guards this
+# list.
+#
+# auto-approve.yaml reads this file from main, never from the PR it judges,
+# so a PR cannot shorten the list that judges it. The file also lists itself,
+# so a PR cannot shorten it for every PR after it.
+#
+# One bash glob per line, matched against the whole path, ignoring case (a
+# case-insensitive checkout loads `.MCP.json` as `.mcp.json`); `*` matches
+# across `/`. A line starting with `#` is a comment; a `#` anywhere else is
+# part of the pattern, so an entry with a trailing comment never matches.
+# Blank lines are ignored. A list with no entries fails closed.
+
+# The reusable workflow ~25 repos run at @main, and the caller every
+# consumer's copy is held to byte for byte.
+.github/workflows/auto-approve.yaml
+assets/auto-approve/caller.yaml
+.github/auto-approve-human-review.txt
+
+# Hooks run in every session of everyone with the plugin enabled, and the
+# Stop hook sources hero-lib.sh.
+hooks/*
+scripts/hero-lib.sh
+
+# Manifests decide what installs and can register hooks or MCP servers
+# anywhere in the tree: Claude Code's, then other agents'.
+.claude-plugin/*
+.mcp.json
+plugin.json
+.agents/plugins/*
+
+# What Claude Code loads from a plugin root with no manifest edit: language
+# servers start a process when a matching file opens, and root settings,
+# agents, commands and output styles shape every session.
+.lsp.json
+settings.json
+agents/*
+commands/*
+output-styles/*
+
+# Run for a maintainer who opens this checkout, which is also the installed
+# plugin and holds a token that can approve fleet-wide.
+.claude/*
+.vscode/*

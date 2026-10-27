@@ -133,7 +133,7 @@ check "severity: survives" "high" "$(hero_item_field "$S/items/001-a.md" severit
 
 R=$(newrepo stat); S="$R/.plans"
 i=0
-for st in new todo planning ready implementing committed reviewing 'done' queued delivered rejected; do
+for st in new todo planning ready implementing committed reviewing 'done' queued delivered rejected review accepted; do
   i=$((i + 1))
   item "$R" "0$(printf %02d $i)-s.md" "---
 id: $i
@@ -145,7 +145,7 @@ status: $st
 
 x"
 done
-bash "$MIG" "$S" >/dev/null 2>&1
+OUT=$(bash "$MIG" "$S" 2>&1)
 sr() { printf '%s %s' "$(hero_item_field "$S/items/$1" status)" "$(hero_item_field "$S/items/$1" resolution)"; }
 check "status: new"          "new "        "$(sr 001-s.md)"
 check "status: todo -> accepted" "accepted " "$(sr 002-s.md)"
@@ -158,6 +158,12 @@ check "status: done -> done/shipped" "done shipped" "$(sr 008-s.md)"
 check "status: queued -> ready" "ready "    "$(sr 009-s.md)"
 check "status: delivered -> done/delivered" "done delivered" "$(sr 010-s.md)"
 check "status: rejected -> done/rejected" "done rejected" "$(sr 011-s.md)"
+# A store already partly on schema-1 statuses keeps them. Without their own
+# arm they fell to the unrecognized one, which resets an open PR's item to new.
+check "status: review"       "review "     "$(sr 012-s.md)"
+check "status: accepted"     "accepted "   "$(sr 013-s.md)"
+check "current statuses migrate without warning" "0" \
+  "$(printf '%s' "$OUT" | grep -c 'unrecognized status' | tr -d ' ')"
 
 # Suspension stops being a status: the item goes back to where it was and
 # `awaiting` is what makes it suspended. A dropped suspended_from would have

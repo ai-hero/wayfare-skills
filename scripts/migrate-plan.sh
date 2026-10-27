@@ -104,7 +104,7 @@ derive_status() { # STATUS SUSPENDED_FROM FILE
   case "$s" in
     new)                       NSTATUS=new ;;
     todo)                      NSTATUS=accepted ;;
-    planning|ready)            NSTATUS=$s ;;
+    accepted|planning|ready|review) NSTATUS=$s ;;
     queued)                    NSTATUS=ready ;;
     implementing|in-progress|active) NSTATUS=active ;;
     committed)                 NSTATUS=committed ;;

@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta, timezone
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.dirname(HERE), os.path.dirname(os.path.dirname(HERE))]
 from cube.db import connect as _connect  # noqa: E402
-from record import SESSION_FULL_WEEKS, adoption, changeset_facts, gap_range, gap_weeks, rows, stage_of, week_of  # noqa: E402
+from record import BOOK, SESSION_FULL_WEEKS, adoption, changeset_facts, gap_range, gap_weeks, rows, stage_of, week_of  # noqa: E402
 from evolution import MONTHS, WEEKS, q_cost_saving_changes, q_weekly_change_sets_by_stage, q_observable_work_share  # noqa: E402
 from ingest.fleet import role_of  # noqa: E402
 
@@ -186,27 +186,32 @@ def q_work_by_repo_where(con):
 # ---------------------------------------------------------------- Q apps-vs-factory-work
 
 def q_apps_vs_factory_work_factory_share(con):
-    """Weekly share of non-Dependabot change sets that went to allied repos (the factory itself)."""
+    """Weekly share of non-Dependabot change sets that went to allied repos (the factory itself). Book work is
+    counted apart, in neither the apps nor the allied repos."""
     cs = [f for f in work(changeset_facts(con))]
-    allied = defaultdict(int)
-    plugin = defaultdict(int)
-    total = defaultdict(int)
+    allied_cs = [f for f in cs if f["category"] == "allied" and not f["book"]]
+    apps, allied, plugin, book, total = (defaultdict(int) for _ in range(5))
     for f in cs:
         total[f["week"]] += 1
-        if f["category"] == "allied":
+        if f["book"]:
+            book[f["week"]] += 1
+        elif f["category"] == "allied":
             allied[f["week"]] += 1
             if f["repo"] == "wayfare-skills":
                 plugin[f["week"]] += 1
+        else:
+            apps[f["week"]] += 1
     share = [round(allied[w] / total[w], 3) if total[w] else None for w in WEEKS]
     by_repo = defaultdict(lambda: [0] * len(MONTHS))
-    for f in cs:
-        if f["category"] == "allied" and f["month"] in MONTHS:
+    for f in allied_cs:
+        if f["month"] in MONTHS:
             by_repo[f["repo"]][MONTHS.index(f["month"])] += 1
     m_tot = Counter(f["month"] for f in cs)
-    m_all = Counter(f["month"] for f in cs if f["category"] == "allied")
+    m_all = Counter(f["month"] for f in allied_cs)
     month_share = [round(m_all[m] / m_tot[m], 3) if m_tot[m] else None for m in MONTHS]
     return {"weeks": WEEKS, "share": share, "allied": [allied[w] for w in WEEKS],
-            "apps": [total[w] - allied[w] for w in WEEKS], "plugin": [plugin[w] for w in WEEKS],
+            "apps": [apps[w] for w in WEEKS], "plugin": [plugin[w] for w in WEEKS],
+            "book": [book[w] for w in WEEKS],
             "month_share": month_share, "by_repo": dict(by_repo),
             "overall": round(sum(allied.values()) / sum(total.values()), 3),
             "since_jul": round(sum(m_all[m] for m in MONTHS if m >= "2026-07") /
@@ -342,7 +347,7 @@ def q_weekly_factory_cost(con):
 WORK_GROUPS = {"feature": "Feature", "feat": "Feature", "design_ui": "Feature", "fix": "Fix", "security": "Security",
                "refactor": "Refactor, test, docs", "test": "Refactor, test, docs", "docs": "Refactor, test, docs",
                "factory": "Upkeep", "ci_build": "Upkeep", "dependency": "Upkeep", "chore": "Upkeep"}
-GROUPS = ["Feature", "Fix", "Security", "Refactor, test, docs", "Upkeep"]
+GROUPS = ["Feature", "Fix", "Security", "Refactor, test, docs", "Upkeep", BOOK]
 THEME_CHAPTER = {
     "product": ("fleet", "Fleet scope and apps"), "fleet_apps": ("fleet", "Fleet scope and apps"),
     "harness": ("agent_harness", "The harness"), "human_loop": ("owner", "Human in the loop"),
@@ -353,6 +358,7 @@ THEME_CHAPTER = {
     "compliance": ("compliance", "Compliance and drift"), "deploy_infra": ("deployment", "Deployment and infrastructure"),
     "spend": ("spend", "Spend and cost"), "factory": ("agent_harness, skills", "The harness; skills"),
     "dependencies": ("security, compliance", "Security; compliance and drift"),
+    "book": ("none", "None: the code that built this book"),
 }
 # The shared label sometimes answers with a work type where a theme belongs, and puts Dependabot
 # bumps under spend or harness; these fold both back into the topic list.
@@ -362,7 +368,7 @@ THEME_NAME = {"product": "App features", "fleet_apps": "Fleet and apps", "harnes
               "knowledge": "Knowledge", "architecture": "Architecture", "work_items": "Work items",
               "rework": "Rework", "security": "Security", "cross_repo": "Cross-repo", "compliance": "Compliance",
               "deploy_infra": "Deploy and infra", "spend": "Spend", "factory": "Factory process",
-              "dependencies": "Dependencies"}
+              "dependencies": "Dependencies", "book": BOOK}
 
 
 def _labels(con):
@@ -382,8 +388,8 @@ def _lab(f, lab):
 def q_work_kind_mix_work_type(con):
     lab = _labels(con)
     all_cs = [f for f in changeset_facts(con) if f["day"] >= "2026-01-01"]
-    cs = [f for f in all_cs if _lab(f, lab) and _lab(f, lab)[0] in WORK_GROUPS]
-    g = lambda f: WORK_GROUPS[_lab(f, lab)[0]]
+    cs = [f for f in all_cs if f["book"] or (_lab(f, lab) and _lab(f, lab)[0] in WORK_GROUPS)]
+    g = lambda f: BOOK if f["book"] else WORK_GROUPS[_lab(f, lab)[0]]
     series = {t: [0] * len(WEEKS) for t in GROUPS}
     by_month = defaultdict(Counter)
     by_repo = defaultdict(Counter)
@@ -395,7 +401,7 @@ def q_work_kind_mix_work_type(con):
     share = {t: [round(by_month[m][t] / sum(by_month[m].values()), 3) if by_month[m] else None for m in MONTHS]
              for t in GROUPS}
     tot = Counter(g(f) for f in cs)
-    raw = Counter(_lab(f, lab)[0] for f in cs)
+    raw = Counter(_lab(f, lab)[0] for f in cs if not f["book"])
     n = sum(tot.values())
     q = lambda months, t: round(sum(by_month[m][t] for m in months) / max(1, sum(sum(by_month[m].values()) for m in months)), 3)
     return {"weeks": WEEKS, "series": series, "share_by_month": share, "by_repo": {r: dict(v) for r, v in by_repo.items()},
@@ -411,11 +417,14 @@ def q_work_kind_mix_work_type(con):
 def q_work_by_theme_themes(con):
     lab = _labels(con)
     def t(f):
+        if f["book"]:
+            return "book"
         if f["dependabot"]:
             return "dependencies"
         return THEME_FIX.get(_lab(f, lab)[1], _lab(f, lab)[1])
-    labelled = [f for f in changeset_facts(con) if f["day"] >= "2026-01-01" and _lab(f, lab)]
-    cs = [f for f in labelled if t(f) in THEME_CHAPTER]
+    facts = [f for f in changeset_facts(con) if f["day"] >= "2026-01-01"]
+    labelled = [f for f in facts if _lab(f, lab)]
+    cs = [f for f in facts if (f["book"] or _lab(f, lab)) and t(f) in THEME_CHAPTER]
     by_month = defaultdict(Counter)
     for f in cs:
         by_month[f["month"]][t(f)] += 1
@@ -425,9 +434,9 @@ def q_work_by_theme_themes(con):
              for x in themes}
     n = sum(tot.values())
     return {"months": MONTHS, "share": share, "themes": themes, "totals": dict(tot), "n": n,
-            "refolded": sum(1 for f in labelled if not f["dependabot"] and _lab(f, lab)[1] in THEME_FIX),
+            "refolded": sum(1 for f in labelled if not f["dependabot"] and not f["book"] and _lab(f, lab)[1] in THEME_FIX),
             "dependabot_relabelled": sum(1 for f in labelled if f["dependabot"] and _lab(f, lab)[1] != "dependency"),
-            "unmapped": len(labelled) - len(cs),
+            "unmapped": sum(1 for f in labelled if t(f) not in THEME_CHAPTER),
             "table": [(THEME_NAME[x], tot[x], round(tot[x] / n, 3), *THEME_CHAPTER[x]) for x in themes]}
 
 

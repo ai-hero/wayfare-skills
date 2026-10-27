@@ -13,12 +13,14 @@ EDITIONS = {
     "technical": lambda: importlib.import_module("technical"),
     "web": lambda: importlib.import_module("web"),
     "slides": lambda: importlib.import_module("slides"),
+    "guides": lambda: importlib.import_module("guides"),
     "cover": lambda: importlib.import_module("cover"),
     "kindle": lambda: importlib.import_module("kindle"),
 }
 # `book` draws the cover itself (the wrap's spine needs the page count); `cover` redraws it alone.
 # `kindle` is not in `all`: the store edition is built only when a KDP upload is being prepared.
-TARGETS = ["source", "book", "technical", "web", "slides"]
+# `slides` is not in `all` either: the field guides replaced the talk deck, which still builds by name.
+TARGETS = ["source", "book", "technical", "web", "guides"]
 
 
 def run(name):

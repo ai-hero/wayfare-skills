@@ -35,7 +35,7 @@ from PIL import Image
 
 import paths
 from html.parser import HTMLParser
-from inline import EXAMPLE_TITLE, md_html, sub_notes
+from inline import EXAMPLE_TITLE, md_html, sub_notes, subtitle_line
 
 WEBSITE = os.environ.get("WEBSITE_DIR", os.path.join(paths.WORKSPACE, "website", ".claude", "worktrees", "book"))
 TEMPLATES = os.path.join(paths.HERE, "web", "site")
@@ -463,7 +463,8 @@ def main():
     links = evidence_links(appendix, slugs)
     references = {r["n"]: r for r in book["references"]}
     chapters = [chapter(c, assets, posts, references, links) for c in book["chapters"]]
-    meta = {k: book["meta"].get(k, "") for k in ("title", "subtitle", "author", "affiliation", "edition", "date")}
+    meta = {k: book["meta"].get(k, "") for k in ("title", "author", "affiliation", "edition", "date")}
+    meta["subtitle"] = subtitle_line(book["meta"])
     pre = book.get("preface")
     index = {"meta": meta, "preface": {"title": pre["title"], "html": [clean(b["html"]) for b in pre["blocks"]]}
              if pre else None, "chapters": []}

@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(HERE, "slides"))
 
 import paths  # noqa: E402
 import slide_template as P  # noqa: E402
-from inline import md_plain  # noqa: E402
+from inline import md_plain, subtitle_line  # noqa: E402
 from slide_text import RefError, chapter, find_figure, find_sentence, section, takeaway  # noqa: E402
 
 MANIFEST = os.path.join(paths.EDITIONS, "slides.json")
@@ -46,8 +46,8 @@ def title(prs, doc, spec):
     meta = doc["meta"]
     s = P.add(prs, "Title")
     P.fill(s, 0, meta["title"])
-    if meta.get("subtitle"):
-        P.fill(s, 1, meta["subtitle"])
+    if subtitle_line(meta):
+        P.fill(s, 1, subtitle_line(meta))
     else:
         P.drop(s, 1)
     P.fill(s, 11, f"{meta['author']} · {meta['affiliation']} · {meta['date']}")

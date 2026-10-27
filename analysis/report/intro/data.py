@@ -21,13 +21,13 @@ sys.path[:0] = [HERE, os.path.dirname(HERE), os.path.dirname(os.path.dirname(HER
 from cube.db import connect as _connect  # noqa: E402
 from record import BOOK, SESSION_FULL_WEEKS, adoption, changeset_facts, gap_range, gap_weeks, rows, stage_of, week_of  # noqa: E402
 from evolution import MONTHS, WEEKS, q_cost_saving_changes, q_weekly_change_sets_by_stage, q_observable_work_share  # noqa: E402
-from ingest.fleet import role_of  # noqa: E402
+from ingest.fleet import ALLIED, APP, APP_CATEGORIES, APP_NO_FEATURES, role_of  # noqa: E402
 
 FLEET = os.path.expanduser(os.environ.get("WAYFARE_FLEET_ROOT", "~/workspaces/aihero"))
 PLUGIN = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 CH01_DB = os.path.join(PLUGIN, ".analysis", "data", "intro.sqlite")
 LATEST = "2026-10-01"
-APPS = ("app", "app, no features yet")
+APPS = APP_CATEGORIES
 # Session logs are missing, then partial, over record.gap_range() (W33-W34), so those days are left out of every
 # session-based average and share.
 OUTAGE = gap_range()
@@ -89,7 +89,7 @@ def q_fleet_roster(con):
     active = defaultdict(set)
     for f in cs:
         active[f["week"]].add((f["category"], f["repo"]))
-    cats = ["app", "app, no features yet", "allied"]
+    cats = [APP, APP_NO_FEATURES, ALLIED]
     series = {c: [sum(1 for k, _ in active[w] if k == c) for w in WEEKS] for c in cats}
     n = Counter(f["repo"] for f in cs)
     roster = []
@@ -97,7 +97,7 @@ def q_fleet_roster(con):
         roster.append({"repo": r, "category": a["category"], "role": role_of(r), "first": a["first"],
                        "first_2026": max(a["first"], "2026-01-01"), "change_sets": n[r],
                        "stage": stage_of(con, r, LATEST), "description": DESCRIPTIONS.get(r, "")})
-    order = {"app": 0, "app, no features yet": 1, "allied": 2}
+    order = {APP: 0, APP_NO_FEATURES: 1, ALLIED: 2}
     roster.sort(key=lambda x: (order[x["category"]], -x["change_sets"]))
     counts = Counter(x["category"] for x in roster)
     joined = {c: [sum(1 for x in roster if x["category"] == c and x["first"] <= week_end(w)) for w in WEEKS]
@@ -189,13 +189,13 @@ def q_apps_vs_factory_work_factory_share(con):
     """Weekly share of non-Dependabot change sets that went to allied repos (the factory itself). Book work is
     counted apart, in neither the apps nor the allied repos."""
     cs = [f for f in work(changeset_facts(con))]
-    allied_cs = [f for f in cs if f["category"] == "allied" and not f["book"]]
+    allied_cs = [f for f in cs if f["category"] == ALLIED and not f["book"]]
     apps, allied, plugin, book, total = (defaultdict(int) for _ in range(5))
     for f in cs:
         total[f["week"]] += 1
         if f["book"]:
             book[f["week"]] += 1
-        elif f["category"] == "allied":
+        elif f["category"] == ALLIED:
             allied[f["week"]] += 1
             if f["repo"] == "wayfare-skills":
                 plugin[f["week"]] += 1
@@ -267,7 +267,7 @@ def q_codebase_size(con):
     fleet_raw = [sum(cumulative(raw[r])[i] for r in raw) for i in range(len(WEEKS))]
     cats = {"Apps": [0] * len(WEEKS), "Allied repos": [0] * len(WEEKS)}
     for r, v in per_repo.items():
-        k = "Allied repos" if ad[r]["category"] == "allied" else "Apps"
+        k = "Allied repos" if ad[r]["category"] == ALLIED else "Apps"
         cats[k] = [a + b for a, b in zip(cats[k], v)]
     month_idx = [max(i for i, w in enumerate(WEEKS) if week_start(w)[:7] <= m) for m in MONTHS]
     by_repo_month = {r: [per_repo[r][i] for i in month_idx] for r in sorted(per_repo, key=lambda r: -per_repo[r][-1])[:8]}

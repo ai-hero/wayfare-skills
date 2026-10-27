@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 import records as R  # noqa: E402
 from record import adoption, changeset_facts, rows, stage_of, week_of  # noqa: E402
+from ingest.fleet import ALLIED, APP, APP_NO_FEATURES  # noqa: E402
 from evolution import WEEKS, MONTHS, APPS  # noqa: E402
 
 CH_DB = os.path.join(HERE, "..", "..", "..", ".analysis", "data", "architecture.sqlite")
@@ -207,7 +208,7 @@ def q_design_record_adoption_exists(con):
     repos = in_scope(con)
     first = {r: (R.versions(r)[0]["day"] if R.versions(r) else None) for r in repos}
     born = {r: first_commit(r) for r in repos}
-    label = {"app": "Apps", "app, no features yet": "Apps, no features yet", "allied": "Allied repos"}
+    label = {APP: "Apps", APP_NO_FEATURES: "Apps, no features yet", ALLIED: "Allied repos"}
     cats = ["Apps", "Apps, no features yet", "Allied repos", "No design record"]
     series = {c: [0] * len(WEEKS) for c in cats}
     for i, w in enumerate(WEEKS):
@@ -237,7 +238,7 @@ def q_design_record_adoption_exists(con):
 def q_design_record_growth_growth(con):
     ad = adoption(con)
     repos = [r for r in in_scope(con) if R.versions(r)]
-    label = {"app": "Apps", "app, no features yet": "Apps, no features yet", "allied": "Allied repos"}
+    label = {APP: "Apps", APP_NO_FEATURES: "Apps, no features yet", ALLIED: "Allied repos"}
     cats = ["Apps", "Apps, no features yet", "Allied repos"]
     edits = {c: [0] * len(WEEKS) for c in cats}
     for r in repos:

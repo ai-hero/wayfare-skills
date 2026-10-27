@@ -25,6 +25,7 @@ sys.path.insert(0, ANALYSIS)
 sys.path.insert(0, os.path.dirname(HERE))
 from cube.db import connect  # noqa: E402
 import record as F  # noqa: E402
+from ingest.fleet import APP_CATEGORIES  # noqa: E402
 
 DATA = os.path.join(os.path.dirname(ANALYSIS), ".analysis", "data")
 MIRRORS = os.path.join(DATA, "mirrors")
@@ -36,7 +37,7 @@ TODAY = "2026-10-01"
 # Session logs are missing or partial over the gap. Only session-derived series (sessions, spend) are
 # affected; plan logs, git and memory files are not, so they are charted as recorded.
 NO_SESSION_DATA = F.gap_range()
-APPS = ("app", "app, no features yet")
+APPS = APP_CATEGORIES
 
 
 def week_end(w):

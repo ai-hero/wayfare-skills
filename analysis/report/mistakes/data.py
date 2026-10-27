@@ -18,7 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.dirname(HERE), os.path.dirname(os.path.dirname(HERE))]
 from cube.db import connect as _connect  # noqa: E402
 from record import STAGES, STUDY_START, adoption, changeset_facts, commit_facts, gap_events, gap_weeks, rows, stage_of, week_of  # noqa: E402
-from ingest.fleet import OUT_OF_SCOPE  # noqa: E402
+from ingest.fleet import ALLIED, APP, APP_CATEGORIES, APP_NO_FEATURES, OUT_OF_SCOPE  # noqa: E402
 from facts import fix_changesets, fix_method  # noqa: E402
 
 WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
@@ -32,7 +32,7 @@ MISTAKE_LOG_EVENT = ("2026-09-19", "Mistake log (#104)")
 DATA_END = date(2026, 10, 1)     # last day in git.commits; a fix window is complete only if it ends by then
 ITEMS_FROM, SESSIONS_FROM = "2026-W30", "2026-W32"
 RENAMES = {"hero-skills": "wayfare-skills"}
-APPS = ("app", "app, no features yet")
+APPS = APP_CATEGORIES
 
 THEME_NAMES = {
     "logic_bug": "Logic bug", "incomplete": "Left something out", "docs_prose": "Docs, comments or PR text",
@@ -369,7 +369,7 @@ def q_fix_forwards_fixforward(con):
     w7 = weekly_count((v["week"], 1) for k, v in prs.items() if fixed_in.get(k, 1e9) <= 7)
     series = {"Fixed forward within 7 days": share(w7, w_all), "Within 3 days": share(w3, w_all)}
     by_cat = {}
-    for c in ("app", "app, no features yet", "allied"):
+    for c in (APP, APP_NO_FEATURES, ALLIED):
         ks = [k for k, v in prs.items() if v["category"] == c]
         if ks:
             by_cat[c] = (round(sum(1 for k in ks if fixed_in.get(k, 1e9) <= 7) / len(ks), 3), len(ks))

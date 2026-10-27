@@ -16,7 +16,7 @@ from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ingest.fleet import REPO_ALIASES  # noqa: E402
+from ingest.fleet import ALLIED, APP, APP_CATEGORIES, APP_NO_FEATURES, OUT_OF_SCOPE_CATEGORY, REPO_ALIASES  # noqa: E402
 from record import (CATEGORIES, STAGES, adoption, changeset_facts, commit_facts,  # noqa: E402
                        gap_events, gap_weeks, rows, week_of, weekly)
 
@@ -27,7 +27,7 @@ SESSIONS_FROM_WEEK = "2026-W32"
 # Session-derived weeks in the gap (record.gap_weeks) are unknown or understated, not zero: blank them.
 GAP_WEEKS = set().union(*gap_weeks())
 SESSION_GAP = gap_events()
-APPS = ("app", "app, no features yet")
+APPS = APP_CATEGORIES
 
 # Changes to the factory made to save cost or time, from wayfare-skills' history.
 COST_EVENTS = [
@@ -151,7 +151,7 @@ def q_commit_message_style(con):
     length = [mean([len(c["subject"]) for c in wk[w]]) if len(wk[w]) >= 3 else None for w in WEEKS]
     body = [mean([len(c["body"]) for c in wk[w]]) if len(wk[w]) >= 3 else None for w in WEEKS]
     sentence = [c for c in cf if not c["conventional"] and c["day"] >= "2026-09-01"]
-    repos = [r for r in adoption(con) if adoption(con)[r]["category"] != "out of scope"]
+    repos = [r for r in adoption(con) if adoption(con)[r]["category"] != OUT_OF_SCOPE_CATEGORY]
     by_repo = by_repo_month(cf, lambda c: c["conventional"], lambda v: round(sum(v) / len(v), 3),
                             repos=[r for r in app_repos(con, 6)] + ["wayfare-skills", "hero-template"])
     titles = rows(con, "SELECT repo, month, title FROM github.prs WHERE merged_ts IS NOT NULL AND head_ref NOT LIKE 'dependabot/%'")
@@ -185,8 +185,8 @@ def q_change_set_size_over_time(con):
 
 def q_weekly_change_sets_by_stage(con):
     cs = changeset_facts(con)
-    key = lambda f: "Dependabot" if f["dependabot"] else {"app": "Apps", "app, no features yet": "Apps, no features yet",
-                                                          "allied": "Allied repos"}[f["category"]]
+    key = lambda f: "Dependabot" if f["dependabot"] else {APP: "Apps", APP_NO_FEATURES: "Apps, no features yet",
+                                                          ALLIED: "Allied repos"}[f["category"]]
     cats = ["Apps", "Apps, no features yet", "Allied repos", "Dependabot"]
     series = weekly(cs, key, weeks=WEEKS, cats=cats)
     monthly = defaultdict(lambda: defaultdict(int))
@@ -195,8 +195,8 @@ def q_weekly_change_sets_by_stage(con):
             monthly[f["repo"]][f["month"]] += 1
     reps = app_repos(con, 8)
     return {"weeks": WEEKS, "series": series, "by_repo": {r: [monthly[r].get(m, 0) for m in MONTHS] for r in reps},
-            "by_stage_per_week": {s: round(sum(1 for f in cs if f["stage"] == s and f["category"] == "app" and not f["dependabot"])
-                                           / max(1, len({(f["repo"], f["week"]) for f in cs if f["stage"] == s and f["category"] == "app"})), 1)
+            "by_stage_per_week": {s: round(sum(1 for f in cs if f["stage"] == s and f["category"] == APP and not f["dependabot"])
+                                           / max(1, len({(f["repo"], f["week"]) for f in cs if f["stage"] == s and f["category"] == APP})), 1)
                                   for s in STAGES}}
 
 
@@ -396,7 +396,7 @@ def q_change_sets_per_pr(con):
         meta[(f["repo"], f["pr"])] = f
     prs = [dict(meta[k], sets=v) for k, v in per_pr.items()]
     series = {}
-    for c, name in (("app", "Apps"), ("app, no features yet", "Apps, no features yet"), ("allied", "Allied repos")):
+    for c, name in ((APP, "Apps"), (APP_NO_FEATURES, "Apps, no features yet"), (ALLIED, "Allied repos")):
         wk = per_week([p for p in prs if p["category"] == c], lambda p: p["sets"])
         series[name] = [mean(wk[w]) if len(wk[w]) >= 3 else None for w in WEEKS]
     by_stage = {s: mean([p["sets"] for p in prs if p["stage"] == s and p["category"] in APPS]) for s in STAGES}

@@ -132,6 +132,7 @@ APP_NO_FEATURES = "app, no features yet"
 ALLIED = "allied"
 OUT_OF_SCOPE_CATEGORY = "out of scope"
 CATEGORIES = (APP, APP_NO_FEATURES, ALLIED, OUT_OF_SCOPE_CATEGORY)
+APP_CATEGORIES = (APP, APP_NO_FEATURES)
 
 # The repo with FLEET.md group: template -- None if the fleet has none
 # declared (a fleet with no template-and-clones shape, or FLEET.md not yet

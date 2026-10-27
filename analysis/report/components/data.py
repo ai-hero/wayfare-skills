@@ -21,6 +21,7 @@ ANALYSIS = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, ANALYSIS)
 sys.path.insert(0, os.path.dirname(HERE))
 from record import SESSION_WINDOW, STAGES, adoption, changeset_facts, commit_facts, gap_range, gap_weeks, rows, week_of  # noqa: E402
+from ingest.fleet import ALLIED, APP, APP_CATEGORIES, APP_NO_FEATURES  # noqa: E402
 
 DATA = os.path.join(os.path.dirname(ANALYSIS), ".analysis", "data")
 REPO_ROOT = os.path.dirname(ANALYSIS)
@@ -38,7 +39,7 @@ FOLLOWUP_CUTOFF = "2026-09-17"  # a PR merged later has not had its 7 days to dr
 NO_DATA = gap_range()
 NO_DATA_WEEKS = set().union(*gap_weeks())
 PRE_DAYS = 28  # an event study needs the component to arrive at least 4 weeks after the repo's first commit
-APPS = ("app", "app, no features yet")
+APPS = APP_CATEGORIES
 
 
 def connect():
@@ -281,7 +282,7 @@ def q_adoption_order_order(con):
     ad = adoption(con)
     sk = skipped(con)
     share, per_pair = pair_order(con)
-    order = sorted(ad, key=lambda r: (ad[r]["category"] != "app", ad[r]["category"], ad[r]["first"]))
+    order = sorted(ad, key=lambda r: (ad[r]["category"] != APP, ad[r]["category"], ad[r]["first"]))
     by_repo = {c: [sum(1 for e in ev if e["repo"] == r and e["cls"] == c) for r in order] for c in ORDER_CATS}
     by_repo["Never taken up"] = [len(sk[r]) for r in order]
     ahead = Counter((e["comp"]) for e in ev if e["cls"] == ORDER_CATS[2])
@@ -1203,7 +1204,7 @@ def q_cost_by_depth_units(con):
     with n, coverage, intervals, strata by repo, work type and category, sensitivity to unattributed spend, and an
     adjusted ratio."""
     from spend.attribution import spend_by_changeset
-    sp = book_sets(con, cats=("app", "app, no features yet", "allied"))
+    sp = book_sets(con, cats=(APP, APP_NO_FEATURES, ALLIED))
     sp = [s for s in sp if s["pr"] is not None]
     wt = {(r["repo"], r["unit_kind"], r["unit_id"], r["set_idx"]): r["work_type"] for r in rows(con, "SELECT * FROM detectors.cs_worktype")}
     fam = {(f["repo"], f["unit_kind"], f["unit_id"], f["set_idx"]): f["family"] for f in spend_by_changeset(con)}
@@ -1224,7 +1225,7 @@ def q_cost_by_depth_units(con):
     split = [{"depth": "No saved plan: a planning skill ran", **_dist([usd.get(s["k"]) for s in none if s["plan"]], sum(1 for s in none if s["plan"]))},
              {"depth": "No saved plan: none seen", **_dist([usd.get(s["k"]) for s in none if not s["plan"]], sum(1 for s in none if not s["plan"]))}]
     apps = [s for s in sp if s["category"] in APPS]
-    strata = {"category": {"Apps": table_for(usd, apps), "Allied repos": table_for(usd, [s for s in sp if s["category"] == "allied"])}}
+    strata = {"category": {"Apps": table_for(usd, apps), "Allied repos": table_for(usd, [s for s in sp if s["category"] == ALLIED])}}
     repos = sorted({s["repo"] for s in sp}, key=lambda r: -sum(1 for s in sp if s["repo"] == r))
     strata["repo"] = {r: table_for(usd, [s for s in sp if s["repo"] == r]) for r in repos if sum(1 for s in sp if s["repo"] == r) >= 20}
     wts = ["feature", "fix", "security", "upkeep"]

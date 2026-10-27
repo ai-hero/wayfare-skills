@@ -18,12 +18,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 sys.path.insert(0, os.path.dirname(HERE))
 from record import changeset_facts, week_of  # noqa: E402
-from ingest.fleet import OUT_OF_SCOPE, REPO_ALIASES, category_of  # noqa: E402
+from ingest.fleet import ALLIED, APP, APP_CATEGORIES, OUT_OF_SCOPE, REPO_ALIASES, category_of  # noqa: E402
 
 WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
 FACTORY_REPOS = ("wayfare-skills", "hero-template")
-APP_CATS = ("app", "app, no features yet")
+APP_CATS = APP_CATEGORIES
 
 
 @lru_cache(maxsize=None)
@@ -38,7 +38,7 @@ def rows(sql, args=()):
 
 def cat(repo):
     """The fleet root's own prompts and files are the factory, not an app."""
-    return "allied" if repo in ("fleet", ".fleet") else category_of(repo)
+    return ALLIED if repo in ("fleet", ".fleet") else category_of(repo)
 
 
 def labels(task):
@@ -110,7 +110,7 @@ def intent_rows():
 
 def q_owner_attention_split_attention():
     ps = prompt_rows()
-    side = lambda r: "Factory (template, plugin, infra, fleet root)" if cat(r["repo"]) == "allied" else "Products"
+    side = lambda r: "Factory (template, plugin, infra, fleet root)" if cat(r["repo"]) == ALLIED else "Products"
     cats = ["Products", "Factory (template, plugin, infra, fleet root)"]
     weekly = per_week([(r["day"], side(r)) for r in ps], None, cats)
     share = [(f / (a + f)) if (a + f) >= 10 else None for a, f in zip(weekly[cats[0]], weekly[cats[1]])]
@@ -121,7 +121,7 @@ def q_owner_attention_split_attention():
     month_share = {m: by_month[cats[1]][m] / max(1, by_month[cats[0]][m] + by_month[cats[1]][m]) for m in MONTHS}
     repo_month = defaultdict(Counter)
     for r in ps:
-        if r["day"][:4] == "2026" and cat(r["repo"]) == "allied":
+        if r["day"][:4] == "2026" and cat(r["repo"]) == ALLIED:
             repo_month[r["repo"]][r["day"][:7]] += 1
     out = {"weekly": weekly, "share": share, "month_share": month_share, "n": len(ps),
            "factory_repo_month": {k: [v.get(m, 0) for m in MONTHS] for k, v in repo_month.items()}}
@@ -539,8 +539,8 @@ def q_care_vs_speed_speed(fast_hours=0.5):
         sel = [o for o in out if week_of(o["day"]) == w]
         share_fast.append(sum(o["fast"] for o in sel) / len(sel) if len(sel) >= 5 else None)
     by_cat = {}
-    for c in ("app", "allied"):
-        sel = [o for o in out if (o["cat"] in APP_CATS if c == "app" else o["cat"] == c)]
+    for c in (APP, ALLIED):
+        sel = [o for o in out if (o["cat"] in APP_CATS if c == APP else o["cat"] == c)]
         by_cat[c] = (rate([o for o in sel if o["fast"]]), rate([o for o in sel if not o["fast"]]),
                      sum(o["fast"] for o in sel) / max(1, len(sel)), len(sel))
     n_fast = sum(o["fast"] for o in out)
@@ -668,7 +668,7 @@ def q_plugin_restructures_blast():
     # Merged PRs, not git commits: one consumer's mirror (saga) stops before the rename, GitHub's record does not.
     consumers = rows("SELECT repo, number, substr(merged_ts, 1, 10) day, title subject, created_ts, merged_ts FROM github.prs "
                      "WHERE repo != 'wayfare-skills' AND merged_ts >= '2026-03-01'")
-    consumers = [c for c in consumers if cat(c["repo"]) in APP_CATS + ("allied",)]
+    consumers = [c for c in consumers if cat(c["repo"]) in APP_CATS + (ALLIED,)]
     hero_first = {r["repo"]: r["d"] for r in rows("SELECT c.repo, MIN(c.day) d FROM git.commit_files f JOIN git.commits c "
                                                    "ON c.repo=f.repo AND c.sha=f.sha WHERE f.path='HERO.md' GROUP BY c.repo")}
     caller_first = {r["repo"]: r["d"] for r in rows("SELECT c.repo, MIN(c.day) d FROM git.commit_files f JOIN git.commits c "
@@ -681,8 +681,8 @@ def q_plugin_restructures_blast():
         fixes = [r for r in ws_rows if d < r["day"] <= end and ws.get(r["sha"], {}).get("incident")]
         terms = _plugin_terms(d, by_day)
         repairs = [c for c in consumers if d < c["day"] <= end and any(t in (c["subject"] or "").lower() for t in terms)]
-        exposed_skills = sorted(r for r, first in hero_first.items() if first <= d and cat(r) in APP_CATS + ("allied",) and r != "wayfare-skills")
-        exposed_caller = sorted(r for r, first in caller_first.items() if first <= d and cat(r) in APP_CATS + ("allied",) and r != "wayfare-skills")
+        exposed_skills = sorted(r for r, first in hero_first.items() if first <= d and cat(r) in APP_CATS + (ALLIED,) and r != "wayfare-skills")
+        exposed_caller = sorted(r for r, first in caller_first.items() if first <= d and cat(r) in APP_CATS + (ALLIED,) and r != "wayfare-skills")
         repo_days = Counter((c["repo"], c["day"]) for c in repairs)
         burst_day = Counter(c["day"] for c in repairs).most_common(1)
         table.append({"day": d, "subject": subj,

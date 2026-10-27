@@ -21,13 +21,14 @@ PLUGIN = os.path.dirname(ANALYSIS)
 sys.path.insert(0, REPORT)
 from deck_lib import TOPICS  # noqa: E402
 from record import STAGES, adoption, changeset_facts, rows, week_of  # noqa: E402
+from ingest.fleet import APP_CATEGORIES  # noqa: E402
 
 DATA = os.path.join(PLUGIN, ".analysis", "data")
 FLEET = os.path.expanduser(os.environ.get("WAYFARE_FLEET_ROOT", "~/workspaces/aihero"))
 WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
 DATA_END = "2026-10-01"
-APPS = ("app", "app, no features yet")
+APPS = APP_CATEGORIES
 
 
 def connect():

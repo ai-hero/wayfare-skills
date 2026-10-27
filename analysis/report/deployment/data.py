@@ -27,7 +27,7 @@ sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 from record import adoption, gap_range, rows, stage_of, week_of  # noqa: E402
 from evolution import MONTHS, WEEKS  # noqa: E402
-from ingest.fleet import OUT_OF_SCOPE, category_of  # noqa: E402
+from ingest.fleet import OUT_OF_SCOPE, OUT_OF_SCOPE_CATEGORY, category_of  # noqa: E402
 
 MIRRORS = os.path.join(os.path.dirname(os.path.dirname(HERE)), "..", ".analysis", "data", "mirrors")
 INFRA = ("infrastructure-root", "infrastructure-environments")
@@ -83,7 +83,7 @@ def median(v):
 
 
 def in_scope(repo):
-    return repo not in OUT_OF_SCOPE and category_of(repo) != "out of scope"
+    return repo not in OUT_OF_SCOPE and category_of(repo) != OUT_OF_SCOPE_CATEGORY
 
 
 def git(repo, *args):

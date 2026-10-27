@@ -14,11 +14,11 @@ from datetime import date
 from functools import lru_cache
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from ingest.fleet import OUT_OF_SCOPE, category_of  # noqa: E402
+from ingest.fleet import ALLIED, APP, APP_NO_FEATURES, OUT_OF_SCOPE, category_of  # noqa: E402
 from ingest.git import CONV_RE  # noqa: E402
 
 STAGES = ["No skills yet", "Skills", "+ work items", "+ goals", "+ messages"]
-CATEGORIES = ["app", "app, no features yet", "allied"]
+CATEGORIES = [APP, APP_NO_FEATURES, ALLIED]
 # A change set whose every file is under analysis/ built the findings book: neither product nor factory work, so every
 # fleet-wide work mix shows it as its own band rather than as the plugin's upkeep.
 BOOK = "Book writing (analysis/)"

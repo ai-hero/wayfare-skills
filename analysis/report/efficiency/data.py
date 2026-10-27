@@ -27,7 +27,7 @@ ANALYSIS = os.path.dirname(REPORT)
 sys.path.insert(0, ANALYSIS)
 sys.path.insert(0, REPORT)
 from record import SESSION_WINDOW, STAGES, adoption, changeset_facts, gap_weeks, in_session_window, rows, week_of  # noqa: E402
-from ingest.fleet import OUT_OF_SCOPE, category_of  # noqa: E402
+from ingest.fleet import APP_CATEGORIES, OUT_OF_SCOPE, OUT_OF_SCOPE_CATEGORY, category_of  # noqa: E402
 
 LATEST_WEEK = 40
 WEEKS = [f"2026-W{w:02d}" for w in range(1, LATEST_WEEK + 1)]
@@ -45,7 +45,7 @@ CLOSED_GAP_MIN = 8 * 60
 LOCAL = timezone(timedelta(hours=-7))
 AWAY_AFTER_MIN = 30
 CEILING = 6
-APPS = ("app", "app, no features yet")
+APPS = APP_CATEGORIES
 RENAMES = {"hero-skills": "wayfare-skills"}
 TERMINAL_ITEM = {"done", "dropped", "rejected", "delivered", "superseded", "wontfix", "cancelled", "abandoned"}
 SHIPPED_ITEM = {"done", "delivered"}
@@ -89,7 +89,7 @@ def share(a, b, min_n=1):
 
 
 def in_scope(repo):
-    return repo and repo not in OUT_OF_SCOPE and category_of(repo) != "out of scope"
+    return repo and repo not in OUT_OF_SCOPE and category_of(repo) != OUT_OF_SCOPE_CATEGORY
 
 
 def session_weeks_with_logs(con):

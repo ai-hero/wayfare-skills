@@ -22,12 +22,12 @@ sys.path.insert(0, os.path.dirname(REPORT))
 sys.path.insert(0, REPORT)
 from cube.db import connect  # noqa: E402
 from record import STUDY_START, adoption, changeset_facts, rows, stage_of, week_of  # noqa: E402
-from ingest.fleet import category_of  # noqa: E402
+from ingest.fleet import APP_CATEGORIES, category_of  # noqa: E402
 
 WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
 MIRRORS = os.path.join(os.path.dirname(os.path.dirname(REPORT)), ".analysis", "data", "mirrors")
-APPS = ("app", "app, no features yet")
+APPS = APP_CATEGORIES
 
 # Security milestones from wayfare-skills' history (drawn in pink where a chart is about them).
 SEC_EVENTS = [

@@ -15,7 +15,7 @@ from collections import defaultdict
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cube.db import connect  # noqa: E402
-from ingest.fleet import BASELINE_CUTOFF, OUT_OF_SCOPE, REPO_ALIASES, category_of  # noqa: E402
+from ingest.fleet import ALLIED, APP, APP_NO_FEATURES, BASELINE_CUTOFF, OUT_OF_SCOPE, REPO_ALIASES, category_of  # noqa: E402
 from record import STAGES, adoption, stage_of  # noqa: E402
 
 START_2026 = "2026-01-01"
@@ -184,7 +184,7 @@ def q_active_repo_dates(con):
                     "before_2026": rows(con, "SELECT COUNT(*) n FROM git.commits WHERE repo=? AND day < ?",
                                         (r["repo"], START_2026))[0]["n"],
                     "category": category_of(r["repo"])})
-    order = {"app": 0, "app, no features yet": 1, "allied": 2}
+    order = {APP: 0, APP_NO_FEATURES: 1, ALLIED: 2}
     out.sort(key=lambda r: (order.get(r["category"], 3), r["first"]))
     return {"repos": out, "months": months, "latest": latest}
 

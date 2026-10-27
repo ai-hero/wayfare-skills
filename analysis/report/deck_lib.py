@@ -100,17 +100,17 @@ def repo_color(name):
     """One colour per repo for the whole book, or None for a name that is not a repo or a category. Apps
     take APP_COLORS; every allied repo (infra, the template, the plugin) is CONTRAST. Chart order must not decide a repo's colour, or the same repo reads as
     two different things on two pages."""
-    from ingest.fleet import ALL_REPOS, EXTRA_REPOS, GROUPS, OUT_OF_SCOPE, category_of
+    from ingest.fleet import ALL_REPOS, ALLIED, EXTRA_REPOS, GROUPS, OUT_OF_SCOPE, category_of
     key = name.removesuffix(" (allied)").strip()
     if key.lower() in CATEGORY_COLORS:
         return CATEGORY_COLORS[key.lower()]
     if key not in ALL_REPOS or key in OUT_OF_SCOPE:
         return None
-    if category_of(key) == "allied":
+    if category_of(key) == ALLIED:
         return CONTRAST
     if key in APP_COLORS:
         return APP_COLORS[key]
-    apps = [r for r in list(GROUPS) + EXTRA_REPOS if r in ALL_REPOS and r not in OUT_OF_SCOPE and category_of(r) != "allied"]
+    apps = [r for r in list(GROUPS) + EXTRA_REPOS if r in ALL_REPOS and r not in OUT_OF_SCOPE and category_of(r) != ALLIED]
     return REPO_COLORS[apps.index(key) % len(REPO_COLORS)]
 
 

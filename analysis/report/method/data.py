@@ -16,7 +16,7 @@ from datetime import date, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from ingest.fleet import REPO_ALIASES  # noqa: E402
+from ingest.fleet import ALLIED, APP, APP_NO_FEATURES, REPO_ALIASES  # noqa: E402
 from record import SESSION_WINDOW, STUDY_START, adoption, changeset_facts, commit_facts, in_session_window, rows, week_of  # noqa: E402
 
 WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
@@ -26,8 +26,8 @@ COMPLETE_LOG_WEEKS = [w for w in WEEKS if w >= "2026-W35"]
 FROM_JULY = "2026-07-01"
 ACTIVE_MIN_SETS = 1
 MEANINGFUL_MIN_SETS = 3
-CATEGORY_ORDER = {"app": 0, "app, no features yet": 1, "allied": 2}
-CATEGORY_TAG = {"allied": " (allied)", "app, no features yet": " (no features yet)"}
+CATEGORY_ORDER = {APP: 0, APP_NO_FEATURES: 1, ALLIED: 2}
+CATEGORY_TAG = {ALLIED: " (allied)", APP_NO_FEATURES: " (no features yet)"}
 
 
 def mean(v):

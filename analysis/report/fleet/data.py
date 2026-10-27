@@ -20,7 +20,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.dirname(HERE), os.path.dirname(os.path.dirname(HERE))]
 from cube.db import connect as _connect  # noqa: E402
 from record import BOOK, adoption, changeset_facts, rows, week_of  # noqa: E402
-from ingest.fleet import OUT_OF_SCOPE, category_of  # noqa: E402
+from ingest.fleet import ALLIED, APP, APP_NO_FEATURES, CATEGORIES, OUT_OF_SCOPE, category_of  # noqa: E402
 
 FLEET = os.path.expanduser(os.environ.get("WAYFARE_FLEET_ROOT", "~/workspaces/aihero"))
 PLUGIN = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
@@ -28,7 +28,7 @@ MIRRORS = os.path.join(PLUGIN, ".analysis", "data", "mirrors")
 LATEST = "2026-10-01"
 WEEKS = [f"2026-W{w:02d}" for w in range(1, 41)]
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
-CATS = ["app", "app, no features yet", "allied", "out of scope"]
+CATS = list(CATEGORIES)
 TEMPLATE = "hero-template"
 CLONES = ["elevate-commons", "aihero-wayfare", "ah-cozy", "aihero-dokyu", "aihero-mehr", "aihero-steadfast"]
 APPS = ["auth", "design-system", "website", "hiro", "saga", "elevate-commons", "aihero-wayfare", "aihero-steadfast",
@@ -213,7 +213,7 @@ def q_fleet_map_accuracy(con):
              "left the factory, row kept", "row, not fleet (group none)", "row, no checkout", "checkout, no row"]
     counts = {s: sum(1 for o in out if o["status"] == s) for s in order}
     # NEW-C07-F: does each row's group agree with what the repo is?
-    expected = {"app": "apps", "app, no features yet": "apps", "allied": None}
+    expected = {APP: "apps", APP_NO_FEATURES: "apps", ALLIED: None}
     misclass = []
     for r in study:
         g = mp.get(r, {}).get("group")
@@ -323,7 +323,7 @@ def q_repo_kind_requirements(con):
             by_cat[cat][i].append(len(have) / len(ARTIFACTS))
             if i == len(MONTHS) - 1:
                 grid[r] = have
-    series = {c: [round(sum(v) / len(v), 3) if v else None for v in by_cat[c]] for c in ["app", "app, no features yet", "allied"]}
+    series = {c: [round(sum(v) / len(v), 3) if v else None for v in by_cat[c]] for c in [APP, APP_NO_FEATURES, ALLIED]}
     missing = {a: [r for r in repos if a not in grid.get(r, [])] for a, _ in ARTIFACTS}
     n_controls = rows(con, "SELECT COUNT(DISTINCT control_id) n FROM knowledge.controls")[0]["n"]
     scopes = Counter(r["repo"] for r in rows(con, "SELECT DISTINCT control_id, repo FROM knowledge.controls"))
@@ -1139,7 +1139,7 @@ def fig_apps_vs_factory(con):
             return BOOK
         if f["repo"] == "wayfare-skills":
             return FACTORY_CATS[3]
-        if f["category"] == "allied":
+        if f["category"] == ALLIED:
             return FACTORY_CATS[2]
         t = wt.get((f["repo"], f["unit_kind"], f["unit_id"], f["set_idx"]))
         return FACTORY_CATS[1] if t and (t[1] in FACTORY_THEMES or t[0] == "factory") else FACTORY_CATS[0]

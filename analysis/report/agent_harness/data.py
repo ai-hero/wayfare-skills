@@ -19,7 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 from record import SESSION_WINDOW, STUDY_START, adoption, changeset_facts, commit_facts, rows, week_of  # noqa: E402
-from ingest.fleet import OUT_OF_SCOPE, category_of  # noqa: E402
+from ingest.fleet import OUT_OF_SCOPE, OUT_OF_SCOPE_CATEGORY, category_of  # noqa: E402
 
 LATEST_WEEK = 40
 WEEKS = [f"2026-W{w:02d}" for w in range(1, LATEST_WEEK + 1)]
@@ -75,7 +75,7 @@ def set_models(con):
         SELECT repo, sha, value FROM git.trailers WHERE lower(key)='co-authored-by' AND value LIKE 'Claude%'""")}
     out = []
     for s in changeset_facts(con):
-        if s["dependabot"] or s["category"] == "out of scope":
+        if s["dependabot"] or s["category"] == OUT_OF_SCOPE_CATEGORY:
             continue
         ms = []
         for sha in s["shas"]:

@@ -579,8 +579,9 @@ def is_compliance(s):
 
 
 def q_compliance_work_share_share():
+    from ingest.fleet import OUT_OF_SCOPE_CATEGORY
     from spend.attribution import spend_by_changeset
-    cs = [s for s in cs_all() if s["category"] != "out of scope"]
+    cs = [s for s in cs_all() if s["category"] != OUT_OF_SCOPE_CATEGORY]
     comp = [s for s in cs if is_compliance(s)]
     tot_w = Counter(s["week"] for s in cs)
     comp_w = Counter(s["week"] for s in comp)
@@ -630,7 +631,8 @@ def cites(text):
 
 
 def q_changes_name_controls_citations():
-    cs = [s for s in cs_all() if s["category"] != "out of scope"]
+    from ingest.fleet import OUT_OF_SCOPE_CATEGORY
+    cs = [s for s in cs_all() if s["category"] != OUT_OF_SCOPE_CATEGORY]
     for s in cs:
         s["cites"] = cites(s["text"] + "\n" + s["pr_text"])
     comp = [s for s in cs if is_compliance(s)]
@@ -677,7 +679,8 @@ def gate_diff(repo, shas, files):
 
 
 def q_gate_loosening_gates():
-    cs = [s for s in cs_all() if s["category"] != "out of scope" and not s["dependabot"]
+    from ingest.fleet import OUT_OF_SCOPE_CATEGORY
+    cs = [s for s in cs_all() if s["category"] != OUT_OF_SCOPE_CATEGORY and not s["dependabot"]
           and any(GATE.search(f) for f in s["files"])]
     items = []
     for s in cs:

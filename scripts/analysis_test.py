@@ -47,6 +47,16 @@ from cube import db
 from detectors.d1_changesets import clean_sets, dependabot_sets
 from questions import runner
 
+# python-pptx and lxml are not installed where the suites run. build() takes its decks as dicts and never
+# opens a .pptx or a views file, so stubs only have to satisfy the imports.
+sys.path.append(os.path.join(ANALYSIS, "report"))
+_stubs = {name: types.ModuleType(name) for name in ("pptx", "pptx.enum", "pptx.enum.shapes", "html_views")}
+_stubs["pptx"].Presentation = None
+_stubs["pptx.enum.shapes"].MSO_SHAPE_TYPE = None
+with mock.patch.dict(sys.modules, _stubs):
+    import book_pages
+    import deck_html as D
+
 
 class Redact(unittest.TestCase):
     SECRETS = [
@@ -306,6 +316,132 @@ class QuestionModules(unittest.TestCase):
                 mods.append(module(fname[:-3], consts.get("RQ_ID"), consts.get("QUESTION"), answer))
         self.assertTrue(mods)
         runner.check_modules(mods)
+
+
+class QKey(unittest.TestCase):
+    def test_ids_in_either_case_round_trip(self):
+        cases = {
+            "Q work-sources": "Q work-sources",
+            "Q WORK-SOURCES · QUESTION": "Q work-sources",
+            "see Q Review-Gap-2 here": "Q review-gap-2",
+            "Q rq-h1-024 · By repo": "Q rq-h1-024",
+        }
+        for text, want in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(D.qkey(text), want)
+                self.assertEqual(D.qkey(D.qkey(text)), want)
+
+    def test_old_and_malformed_ids_are_rejected(self):
+        for text in ("Q 2.01", "Q 12", "Q 2-01", "Q worksources", "Qwork-sources", "", None):
+            with self.subTest(text=text):
+                self.assertIsNone(D.qkey(text))
+
+
+def block(key, *labels):
+    return {"key": key, "question": {"question": "?"}, "statements": [],
+            "views": [{"label": label, "title": f"{key} {label}"} for label in labels or ("ANSWER",)]}
+
+
+def build(text, own=(), questions=None, deck_known=None):
+    warnings = []
+    with mock.patch.object(D, "warn", warnings.append):
+        out, _ = book_pages.build({"n": 4, "questions": list(own)}, text, questions or {}, [], deck_known or {})
+    return out, warnings
+
+
+def flagged(warnings):
+    return [w.split("book number ", 1)[1].split(" is not", 1)[0].strip("'") for w in warnings if "book number" in w]
+
+
+def layout(out):
+    return [(b["kind"], b.get("key"), b.get("number")) if b["kind"] != "p" else ("p", b["text"])
+            for s in out for b in s["blocks"]]
+
+
+class BookNumbers(unittest.TestCase):
+    QUESTIONS = {"Q own-q": {"block": block("Q own-q"), "deck": "a"},
+                 "Q other-q": {"block": block("Q other-q"), "deck": "b"}}
+    KNOWN = {"a": {"77", "1200", "695450"}, "b": {"412"}}
+
+    def check(self, text):
+        _, warnings = build(text, ["own-q"], self.QUESTIONS, self.KNOWN)
+        return flagged(warnings)
+
+    def test_numbers_a_reader_can_check_are_exempt(self):
+        cases = [
+            "the report at https://example.com/runs/4123 says so",
+            "as Q rq-412-split shows",
+            "as Q RQ-412-SPLIT shows",
+            "Chapters 3, 5 and 17 make the case",
+            "Ch 12 and Part 14",
+            "Figures 6.2 to 6.14",
+            "on 27 Oct the run stopped",
+            "on September 30 the run stopped",
+            "in 2026, as in the 1990s",
+            "Opus 4.1 and Sonnet 4 and Claude 3.5 Sonnet",
+            "8090 and 8090.ai",
+            "3 repos and 10 reasons",
+        ]
+        for text in cases:
+            with self.subTest(text=text):
+                self.assertEqual(self.check(text), [])
+
+    def test_numbers_in_the_chapters_data_pass(self):
+        cases = ["77 runs", "$1,200 spent", "about 695,000 tokens", "about 700,000 tokens"]
+        for text in cases:
+            with self.subTest(text=text):
+                self.assertEqual(self.check(text), [])
+
+    def test_findings_not_in_the_data_warn(self):
+        cases = {
+            "$1,300 spent": ["$1,300"],
+            "90% of runs": ["90%"],
+            "412 runs": ["412"],
+            "as Q 2.01 found": ["2.01"],
+            "11 repos": ["11"],
+            "about 690,000 tokens": ["690,000"],
+        }
+        for text, want in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(self.check(text), want)
+
+    def test_a_figure_from_another_deck_vouches_for_its_numbers(self):
+        self.assertEqual(self.check("Q own-q saw 412 runs."), ["412"])
+        self.assertEqual(self.check("[[Q other-q]]\n\nQ own-q saw 412 runs."), [])
+
+
+class BookCards(unittest.TestCase):
+    QUESTIONS = {"Q own-q": {"block": block("Q own-q", "ANSWER", "BY REPO"), "deck": "a"},
+                 "Q never-q": {"block": block("Q never-q"), "deck": "a"}}
+
+    def build(self, text, own=("own-q",)):
+        return build(text, own, self.QUESTIONS, {"a": set()})
+
+    def test_a_card_follows_the_paragraph_that_first_cites_it(self):
+        out, _ = self.build("## One\n\nNothing yet.\n\nFirst Q own-q.\n\nAgain Q own-q.")
+        self.assertEqual(layout(out), [("p", "Nothing yet."), ("p", "First Q own-q."), ("card", "Q own-q", "4.1"),
+                                       ("p", "Again Q own-q.")])
+
+    def test_a_drawn_card_sits_at_its_figure_not_at_an_earlier_citation(self):
+        out, _ = self.build("Cited as Q own-q.\n\n[[Q own-q · By repo | caption]]\n\n[[Q own-q]]")
+        self.assertEqual(layout(out), [("p", "Cited as Q own-q."), ("card", "Q own-q", "4.1"),
+                                       ("figure", "Q own-q", "4.2")])
+        self.assertEqual(out[0]["blocks"][1]["block"]["views"][0]["label"], "BY REPO")
+
+    def test_a_figure_that_fails_does_not_keep_its_card_off_the_page(self):
+        out, warnings = self.build("Cited as Q own-q.\n\n[[Q own-q · Missing]]")
+        self.assertEqual(layout(out), [("p", "Cited as Q own-q."), ("card", "Q own-q", "4.1")])
+        self.assertTrue(any("matches no view" in w for w in warnings))
+        self.assertFalse(any("never cites" in w for w in warnings))
+
+    def test_an_uncited_question_is_left_off_with_a_warning(self):
+        out, warnings = self.build("Only Q own-q.", own=("own-q", "never-q"))
+        self.assertEqual(layout(out), [("p", "Only Q own-q."), ("card", "Q own-q", "4.1")])
+        self.assertIn("ch04: 1 question(s) the text never cites, left off the page: Q never-q", warnings)
+
+    def test_a_question_in_no_deck_warns(self):
+        _, warnings = self.build("Text.", own=("gone-q",))
+        self.assertIn("ch04: Q gone-q is in no deck", warnings)
 
 
 if __name__ == "__main__":

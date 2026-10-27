@@ -16,6 +16,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 from record import BOOK, SESSION_FULL_WEEKS, SESSION_WINDOW, STAGES, adoption, changeset_facts, gap_weeks, rows, week_of  # noqa: E402
+from ingest.fleet import ALLIED, APP, APP_CATEGORIES, APP_NO_FEATURES  # noqa: E402
 from links import _items, set_item_links  # noqa: E402
 from spend.attribution import spend_by_changeset, spend_by_pr, spend_rows  # noqa: E402
 
@@ -26,7 +27,7 @@ SPEND_WEEKS = [w for w in WEEKS if w >= "2026-W32"]
 NA_WEEKS = set().union(*gap_weeks())
 FULL_WEEKS = SESSION_FULL_WEEKS
 MONTHS = [f"2026-{m:02d}" for m in range(1, 10)]
-APPS = ("app", "app, no features yet")
+APPS = APP_CATEGORIES
 HUNG_DAY = "2026-08-26"
 
 CI_EVENTS = [
@@ -57,7 +58,7 @@ def q_weekly_spend(con):
     by_cat, by_repo, tot = defaultdict(lambda: defaultdict(float)), defaultdict(lambda: defaultdict(float)), defaultdict(float)
     for r in rows(con, "SELECT repo, week, cost_usd FROM harness.sessions"):
         c = category(con, r["repo"])
-        name = {"app": "Apps", "app, no features yet": "Apps, no features yet", "allied": "Allied repos"}.get(c, "Fleet folder")
+        name = {APP: "Apps", APP_NO_FEATURES: "Apps, no features yet", ALLIED: "Allied repos"}.get(c, "Fleet folder")
         by_cat[name][r["week"]] += r["cost_usd"] or 0
         by_repo[r["repo"]][r["week"]] += r["cost_usd"] or 0
         tot[r["repo"]] += r["cost_usd"] or 0

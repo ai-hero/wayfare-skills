@@ -207,8 +207,9 @@ repos:
         pass_filenames: false
         # docs/AGENTS-MD.md is the spec check-agents-md.test.sh reads its R5/R6
         # lists from, so an edit there must re-run the suite.
-        # publishing.test.sh covers the editions' code, and analysis.test.sh the
-        # research pipeline's, so an edit to either re-runs the suites.
+        # publishing.test.sh covers the editions' code, and analysis.test.sh and
+        # ingest-fleet.test.sh the research pipeline's, so an edit to either
+        # re-runs the suites.
         # AGENTS.md and assets/fleet/ are the two sides of the VNDR-02 test on
         # this repo's own Fleet section; drift on either side must re-run it.
         files: ^(scripts/.*\.(sh|py)|publishing/.*\.py|analysis/.*\.py|assets/compliance/.*\.yaml|assets/fleet/.*|docs/AGENTS-MD\.md|AGENTS\.md)$

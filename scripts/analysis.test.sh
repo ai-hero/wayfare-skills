@@ -9,7 +9,8 @@
 
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
-# The plugin root decides PLUGIN_REPO_NAME; an inherited one would make the
-# fixture fleet's category cases depend on whoever runs the suite.
+# CLAUDE_PLUGIN_ROOT outranks WAYFARE_ROOT in fleet._plugin_root(); inherited
+# from a Claude Code session, it would point PLUGIN at the installed plugin,
+# not this checkout, and the WAYFARE_ROOT below would be ignored.
 unset CLAUDE_PLUGIN_ROOT
 WAYFARE_ROOT="$(pwd)" python3 -m unittest scripts/analysis_test.py

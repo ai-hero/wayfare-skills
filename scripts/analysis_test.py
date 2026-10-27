@@ -7,14 +7,15 @@ Everything runs against a temp fleet folder and a temp data dir. Nothing here
 calls a detector's build(): .analysis/data is irreplaceable, and build() opens
 it for writing."""
 
+import ast
 import atexit
 import contextlib
 import io
 import json
 import os
-import re
 import shutil
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import types
@@ -67,17 +68,19 @@ class Redact(unittest.TestCase):
 
     def test_other_identifiers_are_replaced(self):
         cases = [
-            ("eyJ" + "x" * 12 + "." + "y" * 12 + "." + "z" * 8, "<jwt>"),
-            ("-----BEGIN RSA " + "PRIVATE KEY-----\nMIIE\n-----END RSA " + "PRIVATE KEY-----", "<private-key>"),
-            ("password: hunter2", "password=<redacted>"),
-            ("API_KEY=abc123", "API_KEY=<redacted>"),
-            ("mail someone@example.com now", "<email>"),
-            ("id 123e4567-e89b-12d3-a456-426614174000", "<uuid>"),
-            ("blob " + "aB3" * 14, "<blob>"),
+            ("eyJ" + "x" * 12 + "." + "y" * 12 + "." + "z" * 8, "<jwt>", "xxxxxxxxxxxx"),
+            ("-----BEGIN RSA " + "PRIVATE KEY-----\nMIIE\n-----END RSA " + "PRIVATE KEY-----", "<private-key>", "MIIE"),
+            ("password: hunter2", "password=<redacted>", "hunter2"),
+            ("API_KEY=abc123", "API_KEY=<redacted>", "abc123"),
+            ("mail someone@example.com now", "<email>", "someone"),
+            ("id 123e4567-e89b-12d3-a456-426614174000", "<uuid>", "426614174000"),
+            ("blob " + "aB3" * 14, "<blob>", "aB3aB3"),
         ]
-        for text, marker in cases:
+        for text, marker, value in cases:
             with self.subTest(marker=marker):
-                self.assertIn(marker, redact(text))
+                out = redact(text)
+                self.assertIn(marker, out)
+                self.assertNotIn(value, out)
 
     def test_shas_and_ordinary_words_are_kept(self):
         kept = [
@@ -115,6 +118,10 @@ class Dependabot(unittest.TestCase):
         self.assertEqual(dependabot_sets("Bump actions/checkout from v3 to v4"),
                          ["major bump: actions/checkout v3 → v4"])
 
+    def test_the_title_form_with_a_directory(self):
+        self.assertEqual(dependabot_sets("Bump lodash from 4.17.20 to 4.17.21 in /web"),
+                         ["minor/patch bumps: lodash"])
+
     def test_a_package_named_twice_counts_once(self):
         text = "Bumps [left-pad](u) from 1.0.0 to 1.0.1.\nUpdates `left-pad` from 1.0.0 to 1.0.1"
         self.assertEqual(dependabot_sets(text), ["minor/patch bumps: left-pad"])
@@ -129,7 +136,8 @@ class CleanSets(unittest.TestCase):
         return sorted({i for _, idx in sets for i in idx}) == list(range(n))
 
     def test_unusable_replies_are_none(self):
-        for raw in (None, {}, "text", [], [{"label": "x", "commits": [0, 9, "a"]}]):
+        for raw in (None, {}, "text", [], [{"label": "x", "commits": [0, 9, "a"]}],
+                    ["a"], [{"commits": None}], [{"label": "x", "commits": "12"}]):
             with self.subTest(raw=raw):
                 self.assertIsNone(clean_sets(raw, 3))
 
@@ -166,7 +174,8 @@ class Connect(unittest.TestCase):
         os.makedirs(os.path.join(self.tmp.name, "cube"))
         with open(os.path.join(self.tmp.name, "cube", "views.sql"), "w") as f:
             f.write("-- needs: git\nCREATE TEMP VIEW v_git AS SELECT * FROM git.commits;\n"
-                    "-- needs: nowhere\nCREATE TEMP VIEW v_nowhere AS SELECT 1;\n")
+                    "-- needs: nowhere\nCREATE TEMP VIEW v_nowhere AS SELECT 1;\n"
+                    "CREATE TEMP VIEW v_free AS SELECT 1;\n")
         for name in db.SHARED:
             self.db(name)
         sqlite3.connect(os.path.join(self.data, "git.sqlite")).execute("CREATE TABLE commits (sha TEXT)")
@@ -223,7 +232,7 @@ class Connect(unittest.TestCase):
     def test_views_apply_only_when_their_sources_attached(self):
         _, _, con = self.connect()
         views = {r[0] for r in con.execute("SELECT name FROM temp.sqlite_master WHERE type='view'")}
-        self.assertEqual(views, {"v_git"})
+        self.assertEqual(views, {"v_git", "v_free"})
 
 
 class Categories(unittest.TestCase):
@@ -246,6 +255,13 @@ class Categories(unittest.TestCase):
             self.assertEqual(fleet.category_of("tmpl"), fleet.OUT_OF_SCOPE_CATEGORY)
             self.assertEqual(fleet.category_of(fleet.PLUGIN_REPO_NAME), fleet.OUT_OF_SCOPE_CATEGORY)
 
+    def test_a_missing_config_override_stops_the_import(self):
+        env = {**os.environ, "WAYFARE_ANALYSIS_CONFIG": os.path.join(FIXTURE, "nope.json")}
+        p = subprocess.run([sys.executable, "-I", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import ingest.fleet",
+                            ANALYSIS], env=env, capture_output=True, text=True)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn("WAYFARE_ANALYSIS_CONFIG", p.stderr)
+
     def test_every_category_is_declared(self):
         self.assertEqual({fleet.category_of(r) for r in fleet.ALL_REPOS + ["unknown"]}, set(fleet.CATEGORIES))
 
@@ -261,27 +277,33 @@ class QuestionModules(unittest.TestCase):
 
     def test_rejected(self):
         cases = {
-            "mismatched id": [module("RQ_h1_001", "RQ-h1-002")],
-            "missing id": [module("RQ_h1_001", None)],
-            "stub and module share an id": [module("RQ_h1_024", "RQ-h1-024"), module("STUB_RQ_h1_024", "RQ-h1-024")],
-            "no question": [module("RQ_h1_001", "RQ-h1-001", question=None)],
-            "no answer": [module("RQ_h1_001", "RQ-h1-001", answer=None)],
+            "mismatched id": ([module("RQ_h1_001", "RQ-h1-002")], "does not match its filename"),
+            "missing id": ([module("RQ_h1_001", None)], "does not match its filename"),
+            "stub and module share an id": (
+                [module("RQ_h1_024", "RQ-h1-024"), module("STUB_RQ_h1_024", "RQ-h1-024")], "both declare"),
+            "no question": ([module("RQ_h1_001", "RQ-h1-001", question=None)], "lacks a QUESTION"),
+            "no answer": ([module("RQ_h1_001", "RQ-h1-001", answer=None)], "lacks a QUESTION"),
         }
-        for name, mods in cases.items():
-            with self.subTest(name), self.assertRaises(ValueError):
+        for name, (mods, reason) in cases.items():
+            with self.subTest(name), self.assertRaisesRegex(ValueError, reason):
                 runner.check_modules(mods)
 
     def test_committed_modules_pass(self):
-        # Read, not imported: a question module may touch the data dir at import.
+        # Parsed, not imported: importing a question module could open the real .analysis/data.
         mods = []
         for fname in sorted(os.listdir(runner.HERE)):
             if fname.endswith(".py") and fname not in ("runner.py", "__init__.py"):
                 with open(os.path.join(runner.HERE, fname)) as f:
-                    src = f.read()
-                rq_id = re.search(r"^RQ_ID\s*=\s*[\"']([^\"']+)", src, re.M)
-                mods.append(module(fname[:-3], rq_id and rq_id.group(1),
-                                   "Q?" if re.search(r"^QUESTION\s*=", src, re.M) else None,
-                                   (lambda con: []) if re.search(r"^def answer\(", src, re.M) else None))
+                    tree = ast.parse(f.read())
+                consts, answer = {}, None
+                for node in tree.body:
+                    if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant):
+                        for t in node.targets:
+                            if isinstance(t, ast.Name):
+                                consts[t.id] = node.value.value
+                    elif isinstance(node, ast.FunctionDef) and node.name == "answer":
+                        answer = lambda con: []
+                mods.append(module(fname[:-3], consts.get("RQ_ID"), consts.get("QUESTION"), answer))
         self.assertTrue(mods)
         runner.check_modules(mods)
 

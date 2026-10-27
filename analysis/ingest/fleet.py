@@ -10,13 +10,12 @@ shared wayfare-skills plugin, not fleet-specific tooling):
   it: the nearest ancestor of the current directory holding FLEET.md with
   no sibling HERO.md and outside any git work tree (a repo that committed
   its own FLEET.md is not a fleet folder). WAYFARE_FLEET_ROOT overrides it,
-  for a script run from outside any repo. WAYFARE_ANALYSIS_CONFIG overrides
-  the config.json path below, for a test fixture.
+  for a script run from outside any repo.
 - Facts FLEET.md/HERO.md don't carry at all -- a baseline before/after
   cutoff date, which repos have no roadmap yet, which app IS the design
   system, role labels finer than a FLEET.md group -- come from
-  .analysis/config.json (gitignored, per-installation), not from this
-  file. See analysis/config.example.json for the shape. A fleet with no
+  .analysis/config.json (gitignored, per-installation; WAYFARE_ANALYSIS_CONFIG
+  names another file, for a test fixture), not from this file. See analysis/config.example.json for the shape. A fleet with no
   config file just gets empty defaults; every question that reads one of
   these should handle that (e.g. BASELINE_CUTOFF is None, not a guess).
 """
@@ -70,6 +69,10 @@ ROOT = _fleet_root()
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".analysis", "data")
 
 _CONFIG_PATH = os.environ.get("WAYFARE_ANALYSIS_CONFIG") or os.path.join(os.path.dirname(OUT), "config.json")
+# A missing default config means empty defaults, but a missing override is a typo: read as empty, it
+# would put every repo in APP with no error.
+if os.environ.get("WAYFARE_ANALYSIS_CONFIG") and not os.path.isfile(_CONFIG_PATH):
+    sys.exit(f"ingest/fleet.py: WAYFARE_ANALYSIS_CONFIG={_CONFIG_PATH} does not exist")
 
 
 def _load_config():
@@ -158,9 +161,9 @@ def role_of(repo):
 
 
 def category_of(repo):
-    """'app' (what the factory builds), 'app, no features yet' (config's no_roadmap_yet),
-    'allied' (what it builds with: the plugin, the template, infrastructure), or
-    'out of scope' (config's out_of_scope_repos)."""
+    """APP (what the factory builds), APP_NO_FEATURES (config's no_roadmap_yet), ALLIED (what it
+    builds with: the plugin, the template, infrastructure), or OUT_OF_SCOPE_CATEGORY (config's
+    out_of_scope_repos), in that reverse order of precedence."""
     if repo in OUT_OF_SCOPE: return OUT_OF_SCOPE_CATEGORY
     if repo == PLUGIN_REPO_NAME or GROUPS.get(repo) in ("template", "infra"): return ALLIED
     if repo in NO_ROADMAP_YET: return APP_NO_FEATURES

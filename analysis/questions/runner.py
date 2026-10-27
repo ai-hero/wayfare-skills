@@ -32,7 +32,8 @@ def bank_row(rq_id):
 
 def check_modules(mods):
     """Raise ValueError unless every module declares a string QUESTION, a callable answer, and an RQ_ID
-    that is its own filename (module_name's spelling, STUB_ prefix optional) and no other module's."""
+    that is its own filename (module_name's spelling, STUB_ prefix optional) and no other module's.
+    A stub left beside its real module would otherwise make `runner.py RQ_ID` run both."""
     errors, seen = [], {}
     for m in mods:
         name, rq_id = m.__name__.rsplit(".", 1)[-1], getattr(m, "RQ_ID", None)

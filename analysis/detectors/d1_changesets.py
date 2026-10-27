@@ -139,7 +139,12 @@ def clean_sets(raw, n):
     """Model groups -> list of (label, [commit idx 0-based]); every commit covered once at least."""
     sets = []
     for s in raw if isinstance(raw, list) else []:
-        idx = sorted({int(x) - 1 for x in s.get("commits", []) if str(x).isdigit() and 1 <= int(x) <= n})
+        # Model output: a group that is not a dict, or whose commits is not a list, is dropped. Iterating
+        # a string "12" would read it as commits 1 and 2.
+        commits = s.get("commits") if isinstance(s, dict) else None
+        if not isinstance(commits, list):
+            continue
+        idx = sorted({int(x) - 1 for x in commits if str(x).isdigit() and 1 <= int(x) <= n})
         if idx:
             sets.append((str(s.get("label", ""))[:200], idx))
     covered = {i for _, idx in sets for i in idx}

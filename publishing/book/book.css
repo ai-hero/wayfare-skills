@@ -92,7 +92,7 @@ body { margin: 0; string-set: book-title attr(data-title); }
 /* ---------- chapters ---------- */
 .chapter { page: chapter; break-before: right; }
 .opener { padding-top: 1.3in; margin-bottom: 0.5in; }
-/* The art sits in the space the opener already leaves above the chapter number. */
+/* The art replaces most of the opener's top padding; it still moves the first page's text down. */
 .opener.with-art { padding-top: 0.25in; }
 .opener-art { display: block; width: 100%; height: auto; max-height: 2.9in; margin: 0 0 0.3in; }
 .chapter-number { font: 400 7.5pt "Geist Mono"; letter-spacing: 0.16em; text-transform: uppercase;

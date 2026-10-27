@@ -16,8 +16,6 @@ __all__ = ["Iso", "factory", "C30", "HAIR", "ICON", "INK", "LINE", "PAGE", "QUIE
 GREEN = "#3F7D5A"
 
 
-# ---------- flat 2D marks ----------
-
 def text(x, y, s, size=11, family="Geist", weight=400, fill=INK, anchor="start", spacing=None, extra=""):
     ls = f' letter-spacing="{spacing:.2f}"' if spacing is not None else ""
     return (f'<text x="{x:.2f}" y="{y:.2f}" font-family="{family}" font-weight="{weight}" font-size="{size:.2f}"'
@@ -100,16 +98,12 @@ def clock(cx, cy, r, hours, accent=True):
     return "".join(out)
 
 
-# ---------- isometric props ----------
-
 def front(g, u, v, z):
     """A transform taking flat units (x right, y down; one unit = one grid unit) onto the front face
     plane v = const, origin at (u, v, z)."""
     x, y = g.p(u, v, z)
     s = g.s
     return f"matrix({C30 * s:.3f},{0.5 * s:.3f},0,{s:.3f},{x:.2f},{y:.2f})"
-
-
 
 
 def top(g, u, v, z):
@@ -173,8 +167,8 @@ def stack(g, u, v, n=4, w=0.9, d=1.1, dz=0.12, accent_top=False):
 
 
 def screen(g, u, v, w=2.0, h=1.3, z=0.0, stand=0.6, content=None, lit=True, accent=False):
-    """A monitor on a stand facing the viewer (front face), with `content(transform)` drawn in flat
-    units: x 0..w, y 0..h."""
+    """A monitor on a stand facing the viewer (front face). `content(w, h)` returns SVG in flat units,
+    x 0..w, y 0..h, already placed on the screen."""
     z0 = z + stand
     if stand:
         g.box(u + w / 2 - 0.12, v - 0.12, 0.24, 0.12, stand, top=PAGE, right=SUNK, front=SUNK)
@@ -237,8 +231,6 @@ def gate(g, u, v, w=1.6, d=0.5, h=2.2, accent=False):
     g.oz -= h
 
 
-
-
 def belt(g, u, v, length, w=0.9, h=0.35, along="u"):
     """A conveyor: a low slab with rollers drawn across its top."""
     if along == "u":
@@ -280,11 +272,6 @@ def board(g, u, v, w, h, cells, z=0.0, colors=None, label=None):
     return pad, cw, ch
 
 
-
-
-
-
-# ---------- the fleet, in the cover's grammar ----------
 # One arm is one agent on one repository; six stations (3 x 2) make a cell; cells sit on the
 # factory floor. Every station uses the cover's machine, so the pedestal, the arm and the assembly
 # box keep the same size and offsets in every drawing.

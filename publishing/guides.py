@@ -11,12 +11,11 @@ for the whole page.
 import functools
 import json
 import os
-import subprocess
 
 import fitz
 
 import paths
-from cover import CHROME, FONTS, static_font
+from cover import FONTS, print_page, static_font
 from guide_art import INK, LINE, PAGE, QUIET, ROSE, ROSE_DARK, mono, rect, text
 
 MANIFEST = os.path.join(paths.EDITIONS, "guides.json")
@@ -87,6 +86,8 @@ def copy_column(p, top=96, x=M, w=COL):
     out, y = block(x, top, p["headline"], w, size, "Manrope", 200, INK, 1.08, -size * 0.02)
     y += 14
     out2, y = block(x, y + 4, p["body"], w, 11.6, "Geist", 300, INK, 1.5)
+    if y > H - 72:
+        raise SystemExit(f"guides: copy for {p['headline']!r} runs into the source line; shorten it")
     src = ""
     if p.get("source"):
         # block() measures glyphs only; the mono's letter-spacing is extra, so wrap narrower.
@@ -94,7 +95,7 @@ def copy_column(p, top=96, x=M, w=COL):
     return out + out2 + src
 
 
-def page_svg(guide, p, n, total, scene):
+def page_svg(guide, p, n, total):
     from guide_scenes import SCENES
     art = SCENES[(guide["key"], n)]
     full = getattr(art, "full", False)
@@ -115,23 +116,35 @@ def print_pdf(svgs, out):
                 f'@page{{size:{W}pt {H}pt;margin:0}}html,body{{margin:0}}'
                 f'svg{{display:block;width:{W}pt;height:{H}pt;page-break-after:always;break-after:page}}'
                 f'</style></head><body>{"".join(svgs)}</body></html>')
-    subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-first-run", "--no-pdf-header-footer",
-                    "--virtual-time-budget=6000", f"--print-to-pdf={out}", f"file://{page}"],
-                   check=True, capture_output=True)
-    doc = fitz.open(out)
-    # A trailing page break leaves one blank page after the last SVG.
-    if len(doc) > len(svgs):
-        doc.delete_pages(list(range(len(svgs), len(doc))))
-        doc.save(out + ".tmp", garbage=3, deflate=True)
+    print_page(page, out, 6000)
+    n = len(svgs)
+    with fitz.open(out) as doc:
+        # A trailing page break leaves one blank page after the last SVG; any other count means a page
+        # split or went missing, and trimming by count would silently drop the real last page.
+        blank = len(doc) == n + 1 and not doc[-1].get_text().strip() and not doc[-1].get_drawings()
+        if len(doc) != n and not blank:
+            raise SystemExit(f"guides: {out} printed {len(doc)} pages for {n} pages of art")
+        if blank:
+            doc.delete_page(n)
+            doc.save(out + ".tmp", garbage=3, deflate=True)
+    if blank:
         os.replace(out + ".tmp", out)
     return page
 
 
 def build(guide, only=None):
+    """`only` builds a proof of some pages under a separate name, never over the full guide."""
+    from guide_scenes import SCENES
     pages = guide["pages"]
-    svgs = [page_svg(guide, p, i + 1, len(pages), None) for i, p in enumerate(pages)
-            if not only or i + 1 in only]
+    # Scenes are keyed by page position, so a page added, dropped or moved in guides.json would pair
+    # every later page with the wrong drawing.
+    drawn = sorted(n for k, n in SCENES if k == guide["key"])
+    if drawn != list(range(1, len(pages) + 1)):
+        raise SystemExit(f"guides: {guide['key']} has {len(pages)} pages but scenes for {drawn}")
+    svgs = [page_svg(guide, p, i + 1, len(pages)) for i, p in enumerate(pages) if not only or i + 1 in only]
     out = os.path.join(paths.DIST, guide["file"])
+    if only:
+        out = out.replace(".pdf", "-proof.pdf")
     html = print_pdf(svgs, out)
     os.remove(html)
     return out

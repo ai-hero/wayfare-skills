@@ -1,9 +1,10 @@
 """Chapter-opener art: one unlabelled factory scene per chapter, drawn with the field guides' kit.
 
-The print book sets it above the chapter number, in the space the opener already leaves empty, so
-it adds no pages; the ebook sets it at the head of the chapter file. The floor is white with a
-hairline edge, not the guides' grey: on a page beside real figures the art has to read lighter than
-they do. Chapter 8 draws its proposals dashed, as the book does everywhere a thing is not built.
+The print book sets it above the chapter number, where it takes most of the opener's top padding
+but still pushes the first page's text down (it added four pages to the book); the ebook sets it at
+the head of the chapter file. Where a scene lays a plain floor it is white with a hairline edge, not
+the guides' grey: beside real figures the art has to read lighter than they do. Chapter 8 draws its
+proposals dashed, as the book does everywhere a thing is not built.
 """
 import math
 import os

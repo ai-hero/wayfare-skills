@@ -1,7 +1,9 @@
 """One drawing per field-guide page, keyed (guide, page). A scene draws in grid units into an `Iso`
-and `fit` scales it into the page's art box, so a scene never hard-codes page coordinates.
-Guide 01 draws the factory as it is meant to work; Guide 02 draws what happened, from the book's
-records, so its numbers come from the copy's `data`, never from here.
+that `canvas` sizes to the page's art box, so a scene never hard-codes page coordinates.
+Guide 01 draws the factory as it is meant to work; Guide 02 draws what happened. Every study figure a
+drawing shows comes from the page's `data["chart"]` in editions/guides.json, which is gitignored with
+the other findings: a number written here would ship the finding and drift from the copy.
+Guide 02's charts are flat, in the book's chart grammar: ink and rose only, the finding in rose.
 """
 import guide_art as A
 from guide_art import HAIR, ICON, INK, LINE, PAGE, QUIET, ROSE, ROSE_DARK, SUNK, WASH, Iso
@@ -41,8 +43,6 @@ def svg(g):
 def wrapped(*args, **kw):
     from guides import block
     return block(*args, **kw)
-
-
 
 
 def tag(g, u, v, z, dx, dy, label, accent=False):
@@ -95,8 +95,6 @@ def control_room(g, u, v, z=3.4, w=4.4, d=3.6, screens=2, content=None):
     g.poly(g.pts((u, v + d, 0.7), (u + w, v + d, 0.7), (u + w, v + d, 0), (u, v + d, 0)), PAGE, ICON)
     g.oz = oz
 
-
-# ---------------- Guide 01 ----------------
 
 @scene("g1", 1, full=True)
 def g1_cover(p, guide):
@@ -256,7 +254,6 @@ def g1_five_flows(p, guide):
 
 @scene("g1", 7)
 def g1_direction(p, guide):
-    import re
     d = p["data"]
     from guides import ART
     x0, y0, x1, y1 = ART
@@ -278,10 +275,10 @@ def g1_direction(p, guide):
     for lab, u, v, h, acc in crates:
         x, y = g.p(u + 0.6, v + 1.0, 0.3)
         flat.append(A.mono(x, y + 12, lab, 6.4, ROSE_DARK if acc else ICON, "middle"))
-    found = d["discovered_items"].split(" discovered")[0]
-    lo, hi = re.findall(r"\d+", d["backlog"])[:2]
-    items = [(7.6, 5.4, 3.6, f"Found by agents mid-task: {found}", True),
-             (14.0, 6.4, 0.9, f"Authorized work · open backlog {lo} → {hi}", True),
+    c = d["chart"]
+    items = [(7.6, 5.4, 3.6, f"Found by agents mid-task: {c['found']:,} of {c['items']:,} work items "
+              f"({c['found_pct']}%)", True),
+             (14.0, 6.4, 0.9, f"Authorized work · open backlog {c['backlog_from']} → {c['backlog_to']}", True),
              (11.2, 1.6, 6.8, "Purpose, priority and risk stay with people", False)]
     return svg(g) + "".join(flat) + key(g, items, y1 - 44)
 
@@ -352,11 +349,13 @@ def g1_context(p, guide):
     from guides import ART
     x0, y0, x1, y1 = ART
     bx, by = x0, y1 - 60
-    bars = [("27 KB", 27, LINE), ("14 KB", 14, ROSE)]
+    c = p["data"]["chart"]
+    before, after = c["startup_kb_before"], c["startup_kb_after"]
+    bars = [(f"{before} KB", before, LINE), (f"{after} KB", after, ROSE)]
     out = [A.mono(bx, by - 8, "Median app start-up text", 6.6, ROSE_DARK)]
     for k, (lab, v, col) in enumerate(bars):
-        out.append(A.rect(bx, by + k * 20, 150 * v / 27, 14, col, "none", 0))
-        out.append(A.text(bx + 150 * v / 27 + 6, by + k * 20 + 10.5, lab, 8.4, "Geist", 500, INK))
+        out.append(A.rect(bx, by + k * 20, 150 * v / before, 14, col, "none", 0))
+        out.append(A.text(bx + 150 * v / before + 6, by + k * 20 + 10.5, lab, 8.4, "Geist", 500, INK))
     return svg(g) + "".join(out) + \
         tag(g, 6.0, 0.0, 4.6, 10, -30, "Load what this task needs, when it needs it", True) + \
         tag(g, 3.0, 2.6, 0.0, -20, 50, "Records that outlive the session")
@@ -593,7 +592,6 @@ def g1_questions(p, guide):
     t, y = block(M, 96, p["headline"], 300, 30, "Manrope", 200, INK, 1.08, -0.6)
     b, y = block(M, y + 16, p["body"], 300, 11.2, "Geist", 300, INK, 1.5)
     out += [t, b]
-    # A floor plan with five inspection points, the card a reader can screenshot.
     px, py, pw, ph = 392, 60, 520, 420
     out.append(A.rect(px, py, pw, ph, PAGE, ICON, 1.2, 4))
     zones = [("Direction", 0.04, 0.06, 0.28, 0.4), ("Build", 0.36, 0.06, 0.28, 0.4),
@@ -655,20 +653,9 @@ def cta(x, y, items):
     return "".join(out)
 
 
-# ---------------- Guide 02 ----------------
-# Charts here are drawn flat, in the book's chart grammar: ink and rose only, the finding in rose,
-# every number from the page's `data` so the copy and the drawing can't disagree.
-
 def art_box():
     from guides import ART
     return ART
-
-
-def num(s):
-    """The first number in a data string, '685 of 1,162 (59%)' -> 685."""
-    import re
-    m = re.search(r"[\d,]+(?:\.\d+)?", str(s))
-    return float(m.group(0).replace(",", "")) if m else 0.0
 
 
 def big(x, y, value, label, size=54, accent=True, anchor="start"):
@@ -793,7 +780,8 @@ def g2_timeline(p, guide):
     ly = y1 - 18
     for j, (lab, fill, stroke, r) in enumerate((("Introduced in the plugin", ROSE, "none", 3.8),
                                                 ("First repository", INK, "none", 2.6),
-                                                ("Half the fleet (8 of 15)", PAGE, INK, 4))):
+                                                (f"Half the fleet ({p['data']['chart']['half_fleet']} of "
+                                                 f"{p['data']['chart']['fleet_size']})", PAGE, INK, 4))):
         lxx = ax0 + j * 130
         out.append(A.circle(lxx, ly - 3, r, fill, stroke, 1.2))
         out.append(A.text(lxx + 8, ly, lab, 8, "Geist", 300, QUIET))
@@ -830,17 +818,18 @@ def g2_fleet(p, guide):
         out.append(A.line(x + w / 2, y + 22, x + w / 2, ay - 16, ROSE, 0.9, "1.5 2"))
         out.append(A.mono(x + w / 2 + 5, (y + 22 + ay - 16) / 2 + 3, lab, 6.2, ROSE_DARK))
     iy = ay + 3 * 28 + 34
-    out.append(A.mono(x0, iy - 8, "Infrastructure · 2", 6.6))
+    out.append(A.mono(x0, iy - 8, f"Infrastructure · {len(by['infrastructure'])}", 6.6))
     for k, r in enumerate(by["infrastructure"]):
         pill(x0 + k * 190, iy, r)
     x, y, w = pills["infrastructure-environments"]
     out.append(A.arrow2([(x + w, y + 11), (x + w + 18, y + 11)], ICON, 0.9, k=4))
-    b, _ = wrapped(x + w + 24, y + 8, "delivery: deploys identity-service, design-system, customer-community-app "
-                   "and marketing-website on merge", x1 - (x + w + 24), 7.6, "Geist", 300, QUIET, 1.35)
+    env = next(r for r in repos if r["name"] == "infrastructure-environments")
+    b, _ = wrapped(x + w + 24, y + 8, "delivery: " + env["what"].removeprefix("the environment definitions; "),
+                   x1 - (x + w + 24), 7.6, "Geist", 300, QUIET, 1.35)
     out.append(b)
     out.append(A.text(x0, y1 - 26, "Dashed pills: stopped or winding down. Every repository also runs the plugin's "
                       "process; design comes from Claude Design.", 7.6, "Geist", 300, QUIET))
-    out.append(big(x1 - 4, y1 - 70, "15", "repositories", 56, True, "end"))
+    out.append(big(x1 - 4, y1 - 70, str(len(repos)), "repositories", 56, True, "end"))
     return "".join(out)
 
 
@@ -869,15 +858,16 @@ def g2_output(p, guide):
 def g2_adoption(p, guide):
     x0, y0, x1, y1 = art_box()
     d = p["data"]["adoption_by_end_sept_of_15"]
+    size = p["data"]["chart"]["fleet_size"]
     out = []
     rh = 56
     for k, (cap, n) in enumerate(d.items()):
         y = y0 + 40 + k * rh
         out.append(A.text(x0, y + 12, cap.split(" (")[0], 10, "Geist", 400, INK))
-        for i in range(15):
-            out.append(A.rect(x0 + 190 + i * 22, y, 18, 18, (ICON if n >= 15 else ROSE) if i < n else PAGE,
+        for i in range(size):
+            out.append(A.rect(x0 + 190 + i * 22, y, 18, 18, (ICON if n >= size else ROSE) if i < n else PAGE,
                               "none" if i < n else HAIR, 0.8, 2))
-        out.append(A.text(x1, y + 14, f"{n} of 15", 14, "Manrope", 300, ROSE if n < 15 else INK, "end"))
+        out.append(A.text(x1, y + 14, f"{n} of {size}", 14, "Manrope", 300, ROSE if n < size else INK, "end"))
     t = p["data"]["component_traffic"]
     y = y0 + 40 + len(d) * rh + 20
     out.append(A.mono(x0, y, "In everyday use: share of " + t["population"].split(" merged")[0], 6.8, ROSE_DARK))
@@ -928,7 +918,8 @@ def g2_yes(p, guide):
             out.append(A.text(x + 18, oy + 14.5, lab, 7.6, "Geist", 500 if j == 0 else 300, INK if sel else QUIET))
         out.append(A.text(x + cw / 2, y + chh - 14, "Accepted" if acc else "Chose otherwise", 8, "Geist", 500,
                           ROSE_DARK if acc else INK, "middle"))
-    out.append(big(x0, y0 + 60, "80%", "of 353 asks with a recommended option", 60))
+    c = p["data"]["chart"]
+    out.append(big(x0, y0 + 60, f"{c['accepted_pct']}%", f"of {c['asks']} asks with a recommended option", 60))
     out.append(A.text(x0, y1 - 30, "Uptake measures reliance, not whether the advice was right.", 9, "Geist", 300,
                       QUIET))
     return "".join(out)
@@ -938,7 +929,7 @@ def g2_yes(p, guide):
 def g2_reviews(p, guide):
     x0, y0, x1, y1 = art_box()
     d = p["data"]
-    n = int(num(d["population"]))
+    n = d["reviewed"] + d["no_review"]
     cols, cell, gap = 56, 6.6, 1.4
     import random
     rnd = random.Random(9)
@@ -970,9 +961,9 @@ def g2_done_not_done(p, guide):
     x0, y0, x1, y1 = art_box()
     d = p["data"]
     out = []
-    j, o = d["judge_sent_back"].split(), d["agent_logged_overclaims"].split()
-    rows = [("The approval check sent back", num(j[0]), num(j[2]), "pull requests it ruled on"),
-            ("Agents logged calling work done when it wasn't", num(o[0]), num(o[2]), "recorded mistakes")]
+    c = d["chart"]
+    rows = [("The approval check sent back", c["sent_back"], c["ruled"], "pull requests it ruled on"),
+            ("Agents logged calling work done when it wasn't", c["overclaims"], c["mistakes"], "recorded mistakes")]
     for k, (lab, a, b, unit) in enumerate(rows):
         y = y0 + 70 + k * 120
         out.append(A.text(x0, y, lab, 11, "Geist", 400, INK))
@@ -983,7 +974,7 @@ def g2_done_not_done(p, guide):
     y = y0 + 330
     out.append(A.circle(x0 + 40, y, 34, PAGE, ICON, 1.0))
     out.append(A.circle(x0 + 86, y, 34, PAGE, ROSE, 1.0))
-    both, of = num(d["overlap"]), num(d["overlap"].split(" of ")[1])
+    both, of = c["overlap"], c["overlap_of"]
     out.append(A.text(x0 + 63, y + 6, f"{both:g}", 18, "Manrope", 300, ROSE_DARK, "middle"))
     out.append(A.text(x0 + 140, y - 4, f"Overlap: of {of:g} overclaims traceable to a merged PR,", 10, "Geist", 400,
                       INK))
@@ -1022,12 +1013,12 @@ def g2_nine_hours(p, guide):
     g.box(4.6, -0.6, 3.6, 1.6, 1.0)
     out.append(svg(g))
     out.append(tag(g, 5.2, 4.3, 0, 10, 30, "Ready plan in the queue", True))
-    share = p["data"]["pr_open_time_shares"]["no session open"]
+    share = p["data"]["chart"]["no_session_pct"]
     bx, by = x0 + 290, y0 + 320
     out.append(A.mono(bx, by, "PR open time with no session running", 6.6, ROSE_DARK))
     out.append(A.rect(bx, by + 8, 260, 16, A.SUNK, "none", 0, 2))
-    out.append(A.rect(bx, by + 8, 260 * num(share) / 100, 16, ROSE, "none", 0, 2))
-    out.append(A.text(bx + 6, by + 19.5, share, 9, "Geist", 500, PAGE))
+    out.append(A.rect(bx, by + 8, 260 * share / 100, 16, ROSE, "none", 0, 2))
+    out.append(A.text(bx + 6, by + 19.5, f"{share}%", 9, "Geist", 500, PAGE))
     out.append(A.text(bx, y1 - 50, f"{d['after_usage_limit']} of {d['count']} pauses followed a usage limit.", 11,
                       "Geist", 400, INK))
     out.append(A.text(bx, y1 - 32, "The others ended when I started the next session.", 11, "Geist", 300, QUIET))
@@ -1037,6 +1028,7 @@ def g2_nine_hours(p, guide):
 @scene("g2", 13)
 def g2_banner(p, guide):
     x0, y0, x1, y1 = art_box()
+    c = p["data"]["chart"]
     w = (x1 - x0 - 40) / 3
     out = []
     heads = ["1 · Two notices overlap", "2 · The design system decides", "3 · The answer doesn't come back"]
@@ -1047,18 +1039,19 @@ def g2_banner(p, guide):
     x = x0
     out.append(A.rect(x + 12, y0 + 70, w - 24, 210, A.SUNK, "none", 0, 3))
     out.append(A.rect(x + 12, y0 + 70, w - 24, 26, WASH, ROSE, 0.9, 2))
-    out.append(A.text(x + 20, y0 + 87, "A new version is available", 7.6, "Geist", 400, ROSE_DARK))
+    out.append(A.text(x + 20, y0 + 87, c["notices"][0], 7.6, "Geist", 400, ROSE_DARK))
     out.append(A.rect(x + 26, y0 + 90, w - 34, 26, PAGE, ICON, 0.9, 2))
-    out.append(A.text(x + 34, y0 + 107, "Maintenance tonight", 7.6, "Geist", 400, INK))
+    out.append(A.text(x + 34, y0 + 107, c["notices"][1], 7.6, "Geist", 400, INK))
     for j in range(4):
         out.append(A.rect(x + 24, y0 + 140 + j * 16, (w - 60) * (0.9 - 0.15 * (j % 3)), 6, HAIR, "none", 0))
     x = x0 + w + 20
     out.append(A.mono(x + 14, y0 + 76, "New order", 6.4))
-    for j, (lab, acc) in enumerate((("Short-lived notices first", True), ("Then by severity", False))):
+    for j, lab in enumerate(c["new_order"]):
+        acc = j == 0
         out.append(A.rect(x + 14, y0 + 84 + j * 38, w - 28, 30, WASH if acc else PAGE, ROSE if acc else HAIR, 0.9, 4))
         out.append(A.text(x + 24, y0 + 103 + j * 38, f"{j + 1}  {lab}", 9, "Geist", 400, INK))
-    out.append(A.text(x + 14, y0 + 180, "My request, accepted and", 9, "Geist", 500, INK))
-    out.append(A.text(x + 14, y0 + 194, "changed in the design system", 9, "Geist", 300, QUIET))
+    out.append(A.text(x + 14, y0 + 180, c["decided"][0], 9, "Geist", 500, INK))
+    out.append(A.text(x + 14, y0 + 194, c["decided"][1], 9, "Geist", 300, QUIET))
     x = x0 + 2 * (w + 20)
     bw = 44
     lx, rx = x + 12, x + w - 12 - bw
@@ -1072,11 +1065,9 @@ def g2_banner(p, guide):
     out.append(A.line(mx - 7, y0 + 160, lx + bw + 4, y0 + 160, ROSE, 1.2, "2 2.5"))
     out.append(A.text(mx, y0 + 153, "fix ready", 7.4, "Geist", 500, ROSE_DARK, "middle"))
     out.append(A.text(mx, y0 + 174, "no reply", 7.4, "Geist", 400, ROSE_DARK, "middle"))
-    out.append(A.text(x + 14, y0 + 226, "Nothing told the website. It", 9, "Geist", 400, INK))
-    out.append(A.text(x + 14, y0 + 240, "kept the old order for the rest", 9, "Geist", 400, INK))
-    out.append(A.text(x + 14, y0 + 254, "of the study.", 9, "Geist", 400, INK))
-    out.append(A.text(x0, y1 - 40, "A request needs a return address, an acknowledgment and a way to wake the "
-                      "waiting repository.", 9, "Geist", 300, QUIET))
+    for j, ln in enumerate(c["outcome"]):
+        out.append(A.text(x + 14, y0 + 226 + j * 14, ln, 9, "Geist", 400, INK))
+    out.append(A.text(x0, y1 - 40, c["lesson"], 9, "Geist", 300, QUIET))
     return "".join(out)
 
 
@@ -1122,21 +1113,21 @@ def g2_tenancy(p, guide):
         out.append(b)
     out.append(A.line(x0 + 120, y0 + 80, x0 + 190, y0 + 80, PAGE, 3))
     out.append(A.line(x0 + 120, y0 + 80, x0 + 190, y0 + 80, ICON, 1.0, "2 3"))
-    adopters = ["agent-context-app", "personal-relationships-app", "personal-ehr-app", "document-processing-app",
-                "feature-roadmap-app"]
+    c = p["data"]["chart"]
+    adopters = c["adopters"]
     ty = y0 + 270
-    out.append(A.mono(x0, ty - 12, "From the template, 20 Sep", 6.6, ROSE_DARK))
+    out.append(A.mono(x0, ty - 12, f"From the template, {c['template_date']}", 6.6, ROSE_DARK))
     out.append(A.rect(x0, ty, 150, 24, WASH, ROSE, 0.9, 12))
     out.append(A.text(x0 + 12, ty + 15.5, "app-template", 8.4, "Geist Mono", 400, INK))
     px = x0 + 200
-    for k, a in enumerate(adopters + ["voice-assistant-app"]):
+    for k, a in enumerate([x["repo"] for x in adopters] + [c["not_adopted"]]):
         y = ty - 36 + k * 30
         miss = k == len(adopters)
         out.append(A.line(x0 + 150, ty + 12, px, y + 12, HAIR if miss else ROSE, 0.9, "2 2" if miss else None))
         out.append(A.rect(px, y, 190, 24, PAGE, ROSE if miss else ICON, 0.9, 12, "2 2" if miss else None))
         out.append(A.text(px + 12, y + 15.5, a, 8.4, "Geist Mono", 400, ROSE_DARK if miss else INK))
-        out.append(A.text(px + 200, y + 15.5, "not adopted, no exception" if miss else f"adopted {'23' if k == 4 else '22'} Sep", 8, "Geist",
-                          500 if miss else 300, ROSE_DARK if miss else QUIET))
+        out.append(A.text(px + 200, y + 15.5, "not adopted, no exception" if miss else f"adopted {adopters[k]['date']}",
+                          8, "Geist", 500 if miss else 300, ROSE_DARK if miss else QUIET))
     return "".join(out)
 
 
@@ -1147,25 +1138,28 @@ def g2_compliance(p, guide):
     still = ["Fixed, then reopened; open at last audit", "Never fixed; open at last audit"]
     parts = [(k, v, ICON if k.startswith("Fixed in the") else LINE) for k, v in part.items() if v and k not in still]
     parts += [(k, part[k], ROSE) for k in still]
-    left = int(num(p["data"]["still_failing_at_last_audit"]))
+    c = p["data"]["chart"]
+    left = c["still_failing"]
     total = sum(part.values())
     out = [big(x0, y0 + 90, str(left), f"of {total} violations still failing at the last audit", 72)]
     out.append(hbar(x0, y0 + 160, x1 - x0, 40, parts, size=7))
     sx = x0 + (x1 - x0) * (total - left) / total
     out.append(A.poly2([(sx, y0 + 152), (sx, y0 + 144), (x1, y0 + 144), (x1, y0 + 152)], ROSE, 1))
-    out.append(A.mono(x1, y0 + 137, f"{left} still failing: 10 reopened + 102 never fixed", 6.6, ROSE_DARK, "end"))
+    out.append(A.mono(x1, y0 + 137, f"{left} still failing: {c['reopened_open']} reopened + {c['never_fixed']} never "
+                      "fixed", 6.6, ROSE_DARK, "end"))
     ty = y0 + 330
-    out.append(A.mono(x0, ty - 14, "Audit days, mid-July to late September", 6.8))
+    out.append(A.mono(x0, ty - 14, f"Audit days, {c['audit_period']}", 6.8))
     out.append(A.line(x0, ty, x0 + 330, ty, HAIR, 1))
-    for k in range(12):
-        x = x0 + 8 + k * 27 + (k % 3) * 2
+    days = c["audit_days"]
+    for k in range(days):
+        x = x0 + 8 + k * (320 / days) + (k % 3) * 2
         out.append(A.rect(x, ty - 7, 4, 14, ICON, "none", 0))
     bx = x1 - 120
     out.append(A.rect(bx, ty - 30, 110, 54, PAGE, ICON, 1.0, 6))
     out.append(A.rect(bx + 14, ty - 12, 36, 18, PAGE, ICON, 1.0, 9))
     out.append(A.circle(bx + 23, ty - 3, 6, ROSE, "none"))
     out.append(A.text(bx + 58, ty, "Manual audit", 8, "Geist", 400, INK))
-    out.append(A.text(bx, ty + 40, "Never run in CI", 8, "Geist", 300, ROSE_DARK))
+    out.append(A.text(bx, ty + 40, c["ci_note"], 8, "Geist", 300, ROSE_DARK))
     return "".join(out)
 
 
@@ -1173,25 +1167,28 @@ def g2_compliance(p, guide):
 def g2_deploys(p, guide):
     x0, y0, x1, y1 = art_box()
     d = p["data"]
-    run = int(num(d["failed_identity_service"].split("(")[1]))
+    c = d["chart"]
+    run = c["identity_run"]
     out = [big(x0, y0 + 90, f"{d['median_merge_to_production_minutes']} min", "median from merge to production", 64,
                False)]
     out.append(A.mono(x0, y0 + 150, f"{d['deployments']} deployments · {d['failed']} failed", 6.8, ROSE_DARK))
-    hot = set(range(150, 150 + run)) | {k * 29 + 7 for k in range(d["failed"] - run)}
+    block = set(range(150, 150 + run))
+    spread = [i for i in range(7, d["deployments"], 29) if i not in block][:d["failed"] - run]
+    hot = block | set(spread)
+    if len(hot) != d["failed"]:
+        raise ValueError(f"g2 page 17: drew {len(hot)} failed deployments for {d['failed']}")
     out.append(waffle(x0, y0 + 162, d["deployments"], 41, 10, hot, ROSE, HAIR, 2.4))
-    out.append(A.text(x0, y0 + 300, f"{d['failed']} failed; {d['failed_identity_service']} in the identity service. "
-                      f"{d['rollbacks']} rollbacks.", 9, "Geist", 400, INK))
+    out.append(A.text(x0, y0 + 300, f"{d['failed']} failed; {c['identity_failed']} ({run} in one three-day run) in "
+                      f"the identity service. {d['rollbacks']} rollbacks.", 9, "Geist", 400, INK))
     my = y0 + 340
     out.append(A.mono(x0, my - 10, "Outages found by health checks", 6.6))
-    for k, m in enumerate(("Jul", "Aug", "Sep")):
+    for k, (m, n) in enumerate(c["outages"].items()):
         mx = x0 + k * 110
         out.append(A.rect(mx, my, 104, 16, A.SUNK, "none", 0, 2))
         out.append(A.mono(mx + 4, my + 30, m, 6.4))
-        if m == "Aug":
-            for j in range(4):
-                out.append(A.rect(mx + 14 + j * 22, my + 2, 6, 12, ROSE, "none", 0))
-    hc = d["health_check"].split(";")[1].strip()
-    out.append(A.text(x0 + 350, my + 12, hc[0].upper() + hc[1:] + ".", 9, "Geist", 400, INK))
+        for j in range(n):
+            out.append(A.rect(mx + 14 + j * 22, my + 2, 6, 12, ROSE, "none", 0))
+    out.append(A.text(x0 + 350, my + 12, c["health_line"], 9, "Geist", 400, INK))
     out.append(A.text(x0, y1 - 26, "Deploy on merge: " + ", ".join(d["deploy_on_merge_apps"]) + ".", 8, "Geist",
                       300, QUIET))
     return "".join(out)
@@ -1211,12 +1208,11 @@ def g2_shared_failure(p, guide):
         out.append(A.rect(tx - 9, ty - 9, 18, 18, WASH, ROSE, 1.0, 3))
     out.append(A.circle(cx, cy, 30, ROSE, "none"))
     out.append(A.text(cx, cy + 4, "approve", 8.6, "Geist", 500, PAGE, "middle"))
-    r = d["rename_21_sep"]
-    steps = [("Rename", "0"), ("All 14 failing", r["first_failures_reach_all_14"]),
-             (r["callers_repointed"].split(" within")[0] + " callers repointed", r["callers_repointed"].split("within ")[-1]),
-             ("Green again", d["recovery"].replace("green within ", "").replace("five hours", "5 h"))]
+    c = d["chart"]
+    steps = [("Rename", "0"), (f"All {d['max_repos_at_once']} failing", f"{c['all_failing_s']} s"),
+             (f"{c['callers_repointed']} callers repointed", c["repointed_after"]), ("Green again", c["green_after"])]
     tx = x0 + 380
-    out.append(A.mono(tx, y0 + 60, "The plugin rename, 21 September", 6.8, ROSE_DARK))
+    out.append(A.mono(tx, y0 + 60, f"The plugin rename, {c['rename_date']}", 6.8, ROSE_DARK))
     for k, (lab, t) in enumerate(steps):
         y = y0 + 90 + k * 46
         out.append(A.circle(tx + 6, y, 4, ROSE if k < 2 else ICON, "none"))
@@ -1242,24 +1238,20 @@ def g2_cost(p, guide):
                                     ("per goal", "per_goal"))):
         out.append(A.text(x0 + k * 90, y0 + 130, med[key], 15, "Manrope", 300, INK))
         out.append(A.mono(x0 + k * 90, y0 + 144, lab, 6.4))
-    sv = d["subscription_vs_list"]
     y = y0 + 190
     out.append(A.mono(x0, y, "Not the same measurement", 6.8, ROSE_DARK))
     out.append(A.rect(x0, y + 10, 4, 18, ICON, "none", 0))
-    sub = sv["subscription"].split("= ")[1].split(" (")[0].replace("/week", " a week")
-    out.append(A.text(x0 + 12, y + 23, f"{sub}, subscription", 9, "Geist", 400, INK))
+    c = d["chart"]
+    out.append(A.text(x0 + 12, y + 23, f"{c['subscription_week']}, subscription", 9, "Geist", 400, INK))
     out.append(A.rect(x0, y + 36, 240, 18, LINE, "none", 0))
-    out.append(A.text(x0 + 248, y + 49, f"{sv['list_price_full_week']} at list price, a full week", 9, "Geist", 400,
-                      INK))
-    ci = d["ci"]
+    out.append(A.text(x0 + 248, y + 49, f"{c['list_week']} at list price, a full week", 9, "Geist", 400, INK))
     y = y0 + 290
     out.append(A.mono(x0, y, "CI wall-clock minutes", 6.8))
     out.append(A.rect(x0, y + 10, x1 - x0, 30, HAIR, "none", 0))
-    share = num(ci["share_of_minutes"]) / 100
+    share = c["hung_share_of_minutes_pct"] / 100
     out.append(A.rect(x0, y + 10, (x1 - x0) * share, 30, ROSE, "none", 0))
-    out.append(A.text(x0 + 8, y + 30, f"{share:.0%} from {ci['hung_runs']} hung runs", 10, "Geist", 500, PAGE))
-    out.append(A.text(x0, y + 60, f"{ci['hung_runs']} runs are {ci['share_of_runs']} runs; "
-                      + ci["share_of_minutes"].split(";")[1].strip() + ".", 8, "Geist", 300, QUIET))
+    out.append(A.text(x0 + 8, y + 30, f"{share:.0%} from {c['hung_runs']} hung runs", 10, "Geist", 500, PAGE))
+    out.append(A.text(x0, y + 60, c["runs_note"], 8, "Geist", 300, QUIET))
     return "".join(out)
 
 

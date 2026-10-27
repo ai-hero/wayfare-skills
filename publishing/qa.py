@@ -1,7 +1,7 @@
 """Render built editions to images for visual review: `./publish qa [book|technical|guide-01|guide-02|slides] [pages]`.
 
 Pages land in `$PUBLISH_OUT/qa/<edition>/`: `p012.png` for page 12, `s012-013.png` for the book's
-facing pages (even on the left, as bound). With no page list, slides render every page; the other
+facing pages (even on the left, as bound). With no page list, slides and the field guides render every page; the other
 editions render the first six pages, the first page of each top-level outline entry, the first three
 pages with an image and one from the middle, the first page with a table, and the last page.
 """

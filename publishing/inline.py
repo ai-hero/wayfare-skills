@@ -12,8 +12,8 @@ EXAMPLE_TITLE = "Inside this factory:"
 
 
 def full_title(meta):
-    """The title as registered for the ISBN, "Architecting a Software Factory, Part I": the running
-    head, the copyright page and store metadata must all match that record."""
+    """The title as registered for the ISBN: the title, then ", " and the part. Every edition that
+    prints the title or sends it as metadata uses this, so all of them match that record."""
     return meta["title"] + (f", {meta['part']}" if meta.get("part") else "")
 
 

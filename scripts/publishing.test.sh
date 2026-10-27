@@ -3,8 +3,10 @@
 # All Rights Reserved.
 
 # Regression table for the Kindle edition's EPUB markup (publishing/kindle.py),
-# the author's-note parser every edition shares (publishing/inline.py), and the
-# print path's URL fetcher and font pin (publishing/book.py).
+# the author's-note parser and title helpers every edition shares
+# (publishing/inline.py), the print path's URL fetcher, font pin and opener art
+# (publishing/book.py, publishing/openers.py), the technical paper's evidence
+# split (publishing/technical.py) and the field guides' scene registry.
 #
 # Usage: bash scripts/publishing.test.sh
 
@@ -30,8 +32,13 @@ sys.path.insert(0, sys.argv[1])
 tmp = sys.argv[2]
 import book
 import kindle
+import openers
 import web
-from inline import note_end, sub_notes
+from inline import full_title, note_end, sub_notes, subtitle_line
+
+# The Kindle opener is printed through Chrome; the cases here test markup, not
+# rasterizing, so they run without a browser.
+openers.write_png = lambda n, folder, width_px=1200: None
 
 failed = 0
 
@@ -257,6 +264,66 @@ try:
 finally:
     book.fetch_manrope = real_fetch
 check("a Manrope file with the wrong digest is fetched again", [book.FONTS["Manrope"]], calls)
+
+meta = {"title": "A", "part": "Part I", "subtitle": "S"}
+check("the full title joins the part with a comma", "A, Part I", full_title(meta))
+check("the full title is the bare title with no part", "A", full_title({"title": "A"}))
+check("the subtitle line leads with the part", "Part I: S", subtitle_line(meta))
+check("the subtitle line is empty with neither", "", subtitle_line({}))
+
+for n in range(1, 9):
+    try:
+        ET.fromstring(openers.svg(n))
+        ok = True
+    except ET.ParseError:
+        ok = False
+    check(f"chapter {n}'s opener art is well-formed SVG", True, ok)
+check("a chapter with no scene gets no opener art", "", openers.svg(9))
+opened = book.chapter({"n": 1, "title": "One", "sections": []}, {}, {})
+check("a chapter opener carries its art", True, 'class="opener with-art"' in opened and 'class="opener-art"' in opened)
+check("a chapter with no scene keeps the plain opener", True,
+      'class="opener"' in book.chapter({"n": 9, "title": "Nine", "sections": []}, {}, {}))
+
+import technical
+entry = {"slugs": ["foo-bar"], "rid": None, "blocks": [], "charts": []}
+doc = {"meta": {"title": "T", "part": "Part I", "author": "A", "affiliation": "F", "email": "a@b.c", "date": "D"},
+       "chapters": [{"n": 1, "slug": "one", "title": "One", "defs": {}, "cite_n": {}, "further": [],
+                     "sections": [{"title": "", "slug": "s", "blocks": []}]}],
+       "references": [{"n": 1, "md": "A source."}],
+       "appendix": {"intro": [{"md": "See Chapter One."}],
+                    "parts": [{"n": 1, "title": "P", "groups": [{"title": "G", "entries": [entry]}]}]}}
+paper = technical.Refs(doc, tmp, evidence=False)
+check("the paper drops an evidence marker and its space", "A claim and Q~foo-bar.",
+      paper.tex("A claim {{ev:foo-bar}} and Q foo-bar."))
+evidenced = technical.Refs(doc, tmp, evidence=True)
+check("the evidence document keeps its evidence links", True,
+      "hyperref[ev:foo-bar]" in evidenced.tex("A claim {{ev:foo-bar}}."))
+os.makedirs(os.path.join(tmp, "appendix"), exist_ok=True)
+with open(os.path.join(tmp, "appendix", "README.md"), "w") as f:
+    f.write("# Evidence\n")
+technical.BUILD = os.path.join(tmp, "technical")
+os.makedirs(technical.BUILD, exist_ok=True)
+with open(os.path.join(technical.BUILD, "paper.aux"), "w") as f:
+    f.write("\\newlabel{sec:one}{{3}{5}{One}{section.3}{}}\n")
+ev, _ = technical.evidence(doc)
+check("the evidence document numbers a chapter as the paper did", True, "See Section~3." in ev)
+check("the evidence document's part is headed by the paper's section", True, "Section 3: P" in ev)
+check("the evidence document's charts are E-numbered", True, "{E\\arabic{figure}}" in ev)
+check("the evidence document's title carries the part", True, "T, Part I: Evidence" in ev)
+check("an evidence document that cites nothing has no bibliography", False, "thebibliography" in ev)
+with open(os.path.join(technical.BUILD, "paper.aux"), "w") as f:
+    f.write("")
+try:
+    technical.evidence(doc)
+    refused_unnumbered = False
+except SystemExit:
+    refused_unnumbered = True
+check("a reference the paper did not number stops the evidence build", True, refused_unnumbered)
+
+import guide_scenes
+for key in ("g1", "g2"):
+    pages = sorted(n for k, n in guide_scenes.SCENES if k == key)
+    check(f"guide {key} has one scene per page, 1 to 20 with no gap", list(range(1, 21)), pages)
 
 sys.exit(1 if failed else 0)
 EOF

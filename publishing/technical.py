@@ -17,7 +17,7 @@ import subprocess
 import tarfile
 
 import paths
-from inline import CITE_MAP, EXAMPLE_TITLE, NOTES, REPOS, XREF_RE, md_latex, md_plain, tex_escape
+from inline import CITE_MAP, EXAMPLE_TITLE, NOTES, REPOS, XREF_RE, full_title, md_latex, md_plain, tex_escape
 
 HERE = os.path.join(paths.HERE, "technical")
 BUILD = os.path.join(paths.BUILD, "technical")
@@ -244,9 +244,6 @@ def figure_tex(b, refs):
     cap = refs.tex(b["caption_md"])
     if b["type"] == "table":
         return table_tex(b, refs, cap)
-    if b["type"] == "card" and b["key"][2:] in refs.evidenced:
-        slug = b["key"][2:]
-        cap += f" \\hyperref[ev:{slug}]{{Evidence notes in Appendix~\\ref*{{app:evidence}}}}."
     tall = (b.get("height") or 0) > 1.05 * (b.get("width") or 1)
     size = "width=0.8\\linewidth" if tall else "width=\\linewidth"
     return ("\\begin{figure}[htbp]\n\\centering\n"
@@ -386,8 +383,8 @@ def appendix_chart(c, build):
 
 def evidence_body(doc, refs, numbers):
     """The editor's curated appendix (analysis/manuscript/appendix), not the full research collection:
-    the author chose to publish only the evidence the chapters use. `numbers` are the paper's section
-    numbers, so a part is headed by the section it supports."""
+    the author chose to publish only the evidence the chapters use. `numbers` maps each of the paper's
+    labels to the number it printed (from `paper.aux`), so a part is headed by the section it supports."""
     app = doc["appendix"]
     out = ["\\raggedright\n"]
     out += [refs.tex(b["md"]) + "\\par\\medskip\n" for b in app["intro"]]
@@ -395,7 +392,10 @@ def evidence_body(doc, refs, numbers):
     for part in app["parts"]:
         if not any(g["entries"] for g in part["groups"]):
             continue
-        head = f"Section {numbers[refs.chapters[part['n']]]}: {part['title']}"
+        sec = numbers.get(refs.chapters[part["n"]])
+        if not sec:
+            raise SystemExit(f"evidence: the paper did not number the section for part {part['n']}")
+        head = f"Section {sec}: {part['title']}"
         out.append(f"\\section*{{{tex_escape(head)}}}\\pdfbookmark[1]{{{tex_escape(head)}}}{{part-{part['n']}}}\n")
         for g in part["groups"]:
             if not g["entries"]:
@@ -432,8 +432,7 @@ def front(doc, title):
 
 
 def book_title(meta):
-    return meta["title"] + (f", {meta['part']}" if meta.get("part") else "") + \
-        (f": {meta['subtitle']}" if meta.get("subtitle") else "")
+    return full_title(meta) + (f": {meta['subtitle']}" if meta.get("subtitle") else "")
 
 
 def bibliography_tex(items):
@@ -469,16 +468,25 @@ LABEL_RE = re.compile(r"\\newlabel\{([^}]+)\}\{\{([^}]*)\}")
 
 def evidence(doc):
     """The appendix as its own document. It names the paper's sections and figures by the numbers
-    the paper printed, read from its `.aux`, since a `\\ref` cannot reach into another PDF."""
+    the paper printed, read from its `.aux`, since a `\\ref` cannot reach into another PDF; so it is
+    built after the paper."""
     with open(os.path.join(BUILD, "paper.aux"), encoding="utf-8") as f:
         numbers = dict(LABEL_RE.findall(f.read()))
     refs = Refs(doc, EVIDENCE_BUILD, evidence=True)
-    tex = front(doc, f"{doc['meta']['title']}: {appendix_title()}")
+    tex = front(doc, f"{full_title(doc['meta'])}: {appendix_title()}")
+    content = evidence_body(doc, refs, numbers)
+    # A label the paper did not number (or numbered blank, under a starred heading) would print "??"
+    # or nothing, and LaTeX only warns; refuse it here instead.
+    own = set(re.findall(r"\\label\{([^}]+)\}", content))
+    missing = sorted({k for k in re.findall(r"\\ref\*?\{([^}]+)\}", content)
+                      if k not in own and not numbers.get(k)})
+    if missing:
+        raise SystemExit(f"evidence: references the paper does not number: {missing}")
+    content = re.sub(r"\\ref\*?\{([^}]+)\}", lambda m: numbers.get(m.group(1), m.group(0)), content)
     # Its charts are E1, E2: a plain number would read as the paper's figure of that number.
-    tex.append("\\renewcommand{\\thefigure}{E\\arabic{figure}}\n" + evidence_body(doc, refs, numbers))
-    body = re.sub(r"\\ref\*?\{([^}]+)\}", lambda m: numbers.get(m.group(1), m.group(0)), "".join(tex))
-    cited = set(re.findall(r"\\citep\{([^}]*)\}", body))
-    if cited:
+    body = "".join(tex) + "\\renewcommand{\\thefigure}{E\\arabic{figure}}\n" + content
+    # Only the appendix text counts: the preamble's \sources macro contains a \citep of its own.
+    if re.search(r"\\cite[pt]?\{", content):
         items, _ = bibliography(doc)
         body += "".join(bibliography_tex(items))
     return body + "\\end{document}\n", refs

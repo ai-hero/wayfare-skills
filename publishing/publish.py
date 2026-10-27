@@ -19,7 +19,7 @@ EDITIONS = {
 }
 # `book` draws the cover itself (the wrap's spine needs the page count); `cover` redraws it alone.
 # `kindle` is not in `all`: the store edition is built only when a KDP upload is being prepared.
-# `slides` is not in `all` either: the field guides replaced the talk deck, which still builds by name.
+# `slides` is not in `all` either: it builds only when named.
 TARGETS = ["source", "book", "technical", "web", "guides"]
 
 

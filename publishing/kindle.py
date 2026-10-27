@@ -69,6 +69,8 @@ class Images:
 
     def __init__(self):
         self.files, self.missing = {}, []
+        # Chapter-opener art carries alt="": the accessibility summary counts only the figures.
+        self.decorative = set()
 
     def add(self, name):
         if not name:
@@ -196,6 +198,8 @@ def card(b, out):
 def chapter(c, images):
     import openers
     art = images.add(openers.write_png(c["n"], os.path.join(paths.BUILD, "openers")))
+    if art:
+        images.decorative.add(art)
     out = [f'<section epub:type="chapter" role="doc-chapter" id="ch-{c["n"]}">'
            + (f'<div class="opener-art"><img src="{art}" alt=""/></div>' if art else "")
            + f'<hr class="opener-rule" aria-hidden="true"/><p class="chapter-number">Chapter {ONES[c["n"]]}</p><h1 id="ch-{c["n"]}-title">{esc(c["title"])}</h1>']
@@ -359,7 +363,7 @@ def opf(meta, ident, docs, images, fonts, first):
             spine.append('<itemref idref="nav"/>')
     sub = f'<meta refines="#book-title" property="title-type">main</meta>'
     summary = (f"Reflowable text with a two-level contents menu, descriptive alternatives supplied for all "
-               f"{len(images.files)} interior images, and programmatic table headers. Dense diagrams and screenshots "
+               f"{len(images.files) - len(images.decorative)} interior figures (chapter-opener art is decorative), and programmatic table headers. Dense diagrams and screenshots "
                "may require magnification. Full textual equivalence of complex images has not been certified. "
                "No WCAG conformance claim is made.")
     access = "".join(f'<meta property="{k}">{v}</meta>' for k, v in ACCESSIBILITY)
@@ -481,7 +485,7 @@ def main():
     tree = contents_tree(doc["chapters"], (doc.get("preface") or {}).get("title"), bool(doc.get("references")))
     first = f"ch-{doc['chapters'][0]['n']}.xhtml"
     xhtml_nav = nav(tree, first)
-    ident = uuid.uuid5(uuid.NAMESPACE_URL, f"aihero.studio/book/{meta['title']}")
+    ident = uuid.uuid5(uuid.NAMESPACE_URL, f"aihero.studio/book/{full_title(meta)}")
     with open(os.path.join(HERE, "kindle.css"), encoding="utf-8") as f:
         css = f.read()
     fonts, faces = embedded_fonts(visible_text("".join(body for *_, body in docs) + xhtml_nav)
@@ -516,7 +520,7 @@ def main():
     for p in problems:
         print(f"kindle: error: {p}")
     mb = os.path.getsize(OUT) / 1e6
-    print(f"kindle: {len(doc['chapters'])} chapters, {len(images.files)} figures, {mb:.1f} MB "
+    print(f"kindle: {len(doc['chapters'])} chapters, {len(images.files) - len(images.decorative)} figures, {mb:.1f} MB "
           f"(delivery fee about ${0.15 * mb:.2f} a sale at 70%) -> {OUT}")
     if problems:
         raise SystemExit(1)

@@ -19,7 +19,7 @@ import zipfile
 
 import paths
 from book import FONTS, GEIST_ITALIC, ONES, esc, fig_id, font_faces, without_appendix
-from inline import EXAMPLE_TITLE, md_plain, sub_notes
+from inline import EXAMPLE_TITLE, full_title, md_plain, sub_notes
 
 HERE = os.path.join(paths.HERE, "kindle")
 OVERRIDES = os.path.join(paths.EDITIONS, "kindle.json")
@@ -69,6 +69,8 @@ class Images:
 
     def __init__(self):
         self.files, self.missing = {}, []
+        # Chapter-opener art carries alt="": the accessibility summary counts only the figures.
+        self.decorative = set()
 
     def add(self, name):
         if not name:
@@ -194,8 +196,13 @@ def card(b, out):
 
 
 def chapter(c, images):
+    import openers
+    art = images.add(openers.write_png(c["n"], os.path.join(paths.BUILD, "openers")))
+    if art:
+        images.decorative.add(art)
     out = [f'<section epub:type="chapter" role="doc-chapter" id="ch-{c["n"]}">'
-           f'<hr class="opener-rule" aria-hidden="true"/><p class="chapter-number">Chapter {ONES[c["n"]]}</p><h1 id="ch-{c["n"]}-title">{esc(c["title"])}</h1>']
+           + (f'<div class="opener-art"><img src="{art}" alt=""/></div>' if art else "")
+           + f'<hr class="opener-rule" aria-hidden="true"/><p class="chapter-number">Chapter {ONES[c["n"]]}</p><h1 id="ch-{c["n"]}-title">{esc(c["title"])}</h1>']
     heading = f"ch-{c['n']}-title"
     # Counted per heading, not per section: an untitled section keeps the heading before it, and
     # restarting its count would repeat that heading's table ids.
@@ -219,7 +226,8 @@ def front_matter(meta):
     return [("title", "Title page", "titlepage",
               f'<section class="title-page"><hr class="opener-rule" aria-hidden="true"/>'
               f'<h1 class="book-title">{esc(meta["title"])}</h1>'
-              f'<p class="subtitle">{esc(meta.get("subtitle"))}</p><p class="author">{esc(meta["author"])}</p>'
+              + (f'<p class="part">{esc(meta["part"])}</p>' if meta.get("part") else "")
+              + f'<p class="subtitle">{esc(meta.get("subtitle"))}</p><p class="author">{esc(meta["author"])}</p>'
               f'<p class="affiliation">{esc(meta.get("affiliation"))}</p></section>'),
              ("copyright", "Copyright", "copyright-page",
               f'<section class="copyright"><p>{esc(meta.get("copyright"))}</p>'
@@ -336,7 +344,7 @@ def ncx(meta, ident, tree):
     return ('<?xml version="1.0" encoding="utf-8"?>\n<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">'
             f'<head><meta name="dtb:uid" content="urn:uuid:{ident}"/><meta name="dtb:depth" content="{depth}"/>'
             '<meta name="dtb:totalPageCount" content="0"/><meta name="dtb:maxPageNumber" content="0"/></head>'
-            f'<docTitle><text>{esc(meta["title"])}</text></docTitle><navMap>{points(tree)}</navMap></ncx>')
+            f'<docTitle><text>{esc(full_title(meta))}</text></docTitle><navMap>{points(tree)}</navMap></ncx>')
 
 
 def opf(meta, ident, docs, images, fonts, first):
@@ -355,7 +363,7 @@ def opf(meta, ident, docs, images, fonts, first):
             spine.append('<itemref idref="nav"/>')
     sub = f'<meta refines="#book-title" property="title-type">main</meta>'
     summary = (f"Reflowable text with a two-level contents menu, descriptive alternatives supplied for all "
-               f"{len(images.files)} interior images, and programmatic table headers. Dense diagrams and screenshots "
+               f"{len(images.files) - len(images.decorative)} interior figures (chapter-opener art is decorative), and programmatic table headers. Dense diagrams and screenshots "
                "may require magnification. Full textual equivalence of complex images has not been certified. "
                "No WCAG conformance claim is made.")
     access = "".join(f'<meta property="{k}">{v}</meta>' for k, v in ACCESSIBILITY)
@@ -366,7 +374,7 @@ def opf(meta, ident, docs, images, fonts, first):
             '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid" xml:lang="en">'
             '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
             f'<dc:identifier id="uid">urn:uuid:{ident}</dc:identifier>'
-            f'<dc:title id="book-title">{esc(meta["title"])}</dc:title>{sub}{subtitle}'
+            f'<dc:title id="book-title">{esc(full_title(meta))}</dc:title>{sub}{subtitle}'
             f'<dc:creator>{esc(meta["author"])}</dc:creator><dc:language>en-US</dc:language>'
             f'<dc:publisher>{esc(meta.get("affiliation"))}</dc:publisher><dc:date>{meta.get("year")}</dc:date>'
             f'<dc:rights>{esc(meta.get("copyright"))}</dc:rights>'
@@ -477,7 +485,7 @@ def main():
     tree = contents_tree(doc["chapters"], (doc.get("preface") or {}).get("title"), bool(doc.get("references")))
     first = f"ch-{doc['chapters'][0]['n']}.xhtml"
     xhtml_nav = nav(tree, first)
-    ident = uuid.uuid5(uuid.NAMESPACE_URL, f"aihero.studio/book/{meta['title']}")
+    ident = uuid.uuid5(uuid.NAMESPACE_URL, f"aihero.studio/book/{full_title(meta)}")
     with open(os.path.join(HERE, "kindle.css"), encoding="utf-8") as f:
         css = f.read()
     fonts, faces = embedded_fonts(visible_text("".join(body for *_, body in docs) + xhtml_nav)
@@ -512,7 +520,7 @@ def main():
     for p in problems:
         print(f"kindle: error: {p}")
     mb = os.path.getsize(OUT) / 1e6
-    print(f"kindle: {len(doc['chapters'])} chapters, {len(images.files)} figures, {mb:.1f} MB "
+    print(f"kindle: {len(doc['chapters'])} chapters, {len(images.files) - len(images.decorative)} figures, {mb:.1f} MB "
           f"(delivery fee about ${0.15 * mb:.2f} a sale at 70%) -> {OUT}")
     if problems:
         raise SystemExit(1)

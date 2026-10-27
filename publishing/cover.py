@@ -418,6 +418,10 @@ def title_block(meta, x, top, width, scale=1.0):
         out.append(f'<text x="{x - 2 * scale:.2f}" y="{y:.2f}" font-family="Manrope" font-weight="200"'
                    f' font-size="{size:.2f}" letter-spacing="{-size * 0.02:.2f}" fill="{INK}">{esc(ln)}</text>')
         y += size * 1.04
+    if meta.get("part"):
+        out.append(f'<text x="{x:.2f}" y="{y + 2 * scale:.2f}" font-family="Geist Mono" font-size="{9 * scale:.2f}"'
+                   f' letter-spacing="{9 * scale * 0.18:.2f}" fill="{ROSE}">{esc(meta["part"].upper())}</text>')
+        y += 10 * scale
     if meta.get("subtitle"):
         out.append(f'<text x="{x:.2f}" y="{y + 10 * scale:.2f}" font-family="Geist" font-weight="300"'
                    f' font-size="{15 * scale:.2f}" fill="{ICON}">{esc(meta["subtitle"])}</text>')
@@ -448,16 +452,26 @@ def front_svg(meta, bleed=BLEED, animated=False, w=TRIM_W, h=TRIM_H, css=""):
             f'{style}{body}</svg>'), art
 
 
-def chrome_pdf(svg, w_pt, h_pt, out):
-    """Print an SVG to a w x h pt PDF through headless Chrome, with the design system's fonts."""
+def print_page(page, out, budget_ms):
+    """Print a local HTML file to PDF with headless Chrome. Chrome's stderr is captured, so a failure
+    re-raises with it: the bare CalledProcessError names only the command line."""
+    try:
+        subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-first-run", "--no-pdf-header-footer",
+                        f"--virtual-time-budget={budget_ms}", f"--print-to-pdf={out}", f"file://{page}"],
+                       check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        raise SystemExit(f"chrome failed printing {page}:\n{e.stderr.decode(errors='replace')}") from e
+
+
+def chrome_pdf(svg, w_pt, h_pt, out, fonts=True):
+    """Print an SVG to a w x h pt PDF through headless Chrome, with the design system's fonts unless
+    `fonts` is false (art with no text, which then needs no font files on the machine)."""
     page = os.path.splitext(out)[0] + ".html"
     with open(page, "w", encoding="utf-8") as f:
-        f.write(f'<!doctype html><html><head><meta charset="utf-8"><style>{font_css()}'
+        f.write(f'<!doctype html><html><head><meta charset="utf-8"><style>{font_css() if fonts else ""}'
                 f'@page{{size:{w_pt}pt {h_pt}pt;margin:0}}html,body{{margin:0}}svg{{display:block;'
                 f'width:{w_pt}pt;height:{h_pt}pt}}</style></head><body>{svg}</body></html>')
-    subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-first-run", "--no-pdf-header-footer",
-                    "--virtual-time-budget=4000", f"--print-to-pdf={out}", f"file://{page}"],
-                   check=True, capture_output=True)
+    print_page(page, out, 4000)
     os.remove(page)
     # Chrome rounds the page up to a whole CSS pixel, so a wrap comes out up to 1/96 in wider than
     # its spine calls for and a print service rejects it; trim the sliver back to the exact size.
@@ -533,9 +547,11 @@ def wrap_svg(meta, pages):
                 f' stroke="{HAIR}" stroke-width="0.6" stroke-dasharray="2 2"/>')
     sx, cy = BLEED + TRIM_W + spine / 2, H / 2
     fs = min(9.0, spine * 0.42)
+    part = (f'<tspan dx="{fs:.2f}" font-family="Geist Mono" font-size="{fs * 0.78:.2f}" letter-spacing="{fs * 0.08:.2f}"'
+            f' fill="{ROSE}">{esc(meta["part"].upper())}</tspan>') if meta.get("part") else ""
     spine_text = (f'<g transform="translate({sx:.2f},{cy:.2f}) rotate(90)">'
                   f'<text x="{-TRIM_H / 2 + 0.6 * PT:.2f}" y="{fs * 0.36:.2f}" font-family="Manrope" font-weight="300"'
-                  f' font-size="{fs:.2f}" fill="{INK}">{esc(meta["title"])}</text>'
+                  f' font-size="{fs:.2f}" fill="{INK}">{esc(meta["title"])}{part}</text>'
                   f'<text x="{TRIM_H / 2 - 0.6 * PT:.2f}" y="{fs * 0.36:.2f}" text-anchor="end" font-family="Geist Mono"'
                   f' font-size="{fs * 0.78:.2f}" letter-spacing="{fs * 0.08:.2f}" fill="{QUIET}">'
                   f'{esc(meta["author"].upper())}</text></g>')

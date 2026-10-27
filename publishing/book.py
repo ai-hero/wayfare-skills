@@ -18,7 +18,7 @@ import urllib.parse
 import urllib.request
 
 import paths
-from inline import EXAMPLE_TITLE, md_plain, note_end, sub_notes
+from inline import EXAMPLE_TITLE, full_title, md_plain, note_end, sub_notes
 
 HERE = os.path.join(paths.HERE, "book")
 
@@ -290,8 +290,10 @@ def chapter(c, defer, shrink, splits=None):
     goes after the sentence where the page breaks, and the paragraph carries on after it."""
     splits = splits or {}
     at = {pkey: (fid, cut) for fid, (pkey, cut) in splits.items()}
+    import openers
+    art = openers.svg(c["n"])
     out = [f'<section class="chapter" id="ch-{c["n"]}">',
-           f'<header class="opener"><p class="chapter-number">Chapter {ONES[c["n"]]}</p>'
+           f'<header class="opener{" with-art" if art else ""}">{art}<p class="chapter-number">Chapter {ONES[c["n"]]}</p>'
            f'<h1>{title_html(c["title"])}</h1></header>']
     first = True
     for si, s in enumerate(c["sections"]):
@@ -381,7 +383,7 @@ EVI_REF = re.compile(r'(\s*\(|; )<a class="evi-ref" href="#([^"]+)">evidence</a>
 
 def without_appendix(doc):
     """The book and the store edition print no appendix; the findings, methods, study limits and
-    case records live in the technical edition. Their "evidence" links go too, or each would point
+    case records live in the evidence document (`technical.evidence`). Their "evidence" links go too, or each would point
     at a page that is not printed."""
     def unlink(m):
         return ")" if m.group(1) == "; " else ""
@@ -470,15 +472,18 @@ def author_foot(meta):
 
 def front(meta, chapters, appendix_title=None, note_title=None, references_present=False):
     title, sub = esc(meta["title"]), esc(meta.get("subtitle"))
+    part = f'<p class="part">{esc(meta["part"])}</p>' if meta.get("part") else ""
     return f"""
 <section class="half-title"><p>{title}</p></section>
 <section class="blank"></section>
 <section class="title-page">
-  <div class="title-block"><p class="book-title">{title}</p><p class="subtitle">{sub}</p></div>
+  <div class="title-block"><p class="book-title">{title}</p>{part}<p class="subtitle">{sub}</p></div>
   <div class="title-foot">{author_foot(meta)}</div>
 </section>
 <section class="copyright">
-  <p>{esc(meta.get("copyright"))}</p>
+  <p>{esc(full_title(meta))}{": " + esc(meta["subtitle"]) if meta.get("subtitle") else ""}</p>
+  <p>{esc(meta.get("copyright"))}</p>{f"""
+  <p>ISBN {esc(meta["isbn"])}</p>""" if meta.get("isbn") else ""}
   <p>{esc(meta.get("edition"))} edition · {esc(meta.get("date"))}</p>
 </section>
 {contents(chapters, appendix_title, references_present, note_title)}
@@ -500,10 +505,10 @@ def render_html(doc, defer=None, shrink=None, only=None, splits=None):
                       (doc.get("preface") or {}).get("title"), bool(doc.get("references")))
                 + "\n".join(chapter(c, defer or {}, shrink or {}, splits) for c in doc["chapters"])
                 + ai_note(doc.get("preface")) + appendix(doc.get("appendix")) + references(doc.get("references")))
-    return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{esc(meta["title"])}</title>'
+    return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{esc(full_title(meta))}</title>'
             f'<meta name="author" content="{esc(meta["author"])}">'
             f'<style>{font_faces()}\n{css}</style></head>'
-            f'<body data-title="{esc(meta["title"])}">{body}</body></html>')
+            f'<body data-title="{esc(full_title(meta))}">{body}</body></html>')
 
 
 TRIES = [0, 1, 2, 3, 4, -1, -2, -3]

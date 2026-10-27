@@ -49,7 +49,7 @@ but its suite only runs where that venv exists (see Testing).
 | `plugin.json`, `.claude-plugin/`, `.agents/` | One portable manifest for Agent Plugin hosts, a separate Claude Code adapter, and marketplace metadata over the same skills. |
 | `.github/workflows/auto-approve.yaml` | The shared reusable workflow ~25 repos execute at `@main`. |
 | `.github/workflows/pr-check.yaml` | This repo's own gate. |
-| `publishing/`, `publish` | Builds the book's editions (print, technical, web, slides, cover, Kindle) and their QA from `analysis/manuscript/` into the gitignored `.analysis/`. |
+| `publishing/`, `publish` | Builds the book's editions (print, technical with its evidence document, web, field guides, slides, cover, Kindle) and their QA from `analysis/manuscript/` into the gitignored `.analysis/`. |
 | `analysis/` | The research pipeline (ingest, cube, detectors, questions, report) that reads the fleet's repos and session data into a gitignored `.analysis/` store. Code commits; data and results never do. |
 
 ## Boundaries

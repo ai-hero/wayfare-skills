@@ -2,10 +2,11 @@
 
     ./publish technical
 
-Chapters become sections, figures and diagrams one numbered figure series, the chapters' Sources
-one deduplicated bibliography, and each curated appendix entry with its question, source and
-validation. Writes a self-contained arXiv source bundle to `build/technical/`, then
-`dist/technical.pdf` and `dist/technical-arxiv.tar.gz`. The abstract and keywords come from
+Chapters become sections, figures and diagrams one numbered figure series, and the chapters' Sources
+one deduplicated bibliography. The paper prints what the book prints, so it has no appendix: the
+curated appendix, each entry with its question, source and validation, is its own document. Writes
+a self-contained arXiv source bundle to `build/technical/`, then `dist/technical.pdf`,
+`dist/technical-arxiv.tar.gz` and `dist/evidence.pdf`. The abstract and keywords come from
 `editions/technical.json` and must be verbatim from the text.
 """
 import json
@@ -16,10 +17,11 @@ import subprocess
 import tarfile
 
 import paths
-from inline import CITE_MAP, EXAMPLE_TITLE, NOTES, REPOS, XREF_RE, md_latex, md_plain, tex_escape
+from inline import CITE_MAP, EXAMPLE_TITLE, NOTES, REPOS, XREF_RE, full_title, md_latex, md_plain, tex_escape
 
 HERE = os.path.join(paths.HERE, "technical")
 BUILD = os.path.join(paths.BUILD, "technical")
+EVIDENCE_BUILD = os.path.join(paths.BUILD, "evidence")
 MANIFEST = os.path.join(paths.EDITIONS, "technical.json")
 STY = "neurips_2025.sty"
 
@@ -53,7 +55,8 @@ def quotes(s):
 class Refs:
     """Labels for everything the prose can point at, and the rewriting of its references."""
 
-    def __init__(self, doc):
+    def __init__(self, doc, build, evidence):
+        self.build = build
         self.chapters = {c["n"]: f"sec:{c['slug']}" for c in doc["chapters"]}
         self.figs, self.cards, self.rids = {}, {}, {}
         for c in doc["chapters"]:
@@ -78,8 +81,10 @@ class Refs:
                     if b["kind"] == "figure" and b["type"] != "missing":
                         self.index[f"fig:{b['key'][2:]}" if b["type"] == "card"
                                    else f"{b['label'].lower()}:{b['id']}"] = b
+        # Empty in the paper, as `book.without_appendix` drops the book's evidence links: each would
+        # point at a page the paper does not print.
         self.evidenced = {sl for p in doc.get("appendix", {}).get("parts", []) for g in p["groups"]
-                          for e in g["entries"] for sl in e["slugs"]}
+                          for e in g["entries"] for sl in e["slugs"]} if evidence else set()
 
     def chapter(self, m):
         nums = re.split(r",\s+|\s+and\s+|\s+to\s+", m.group(2))
@@ -110,6 +115,8 @@ class Refs:
         def xref(m):
             stash.append(m)
             return f"\u27e6{len(stash) - 1}\u27e7"
+        if not self.evidenced:
+            md = re.sub(r"\s*\{\{ev:[^}]*\}\}", "", md)
         s = md_latex(XREF_RE.sub(xref, md), terms)
         s = CHAP_RE.sub(self.chapter, s)
         s = FIG_RE.sub(self.figure, s)
@@ -193,13 +200,13 @@ def bibliography(doc):
 MAX_PX = 1650
 
 
-def place(name):
+def place(name, build):
     """Copy a figure into the bundle, a drawn diagram's paper copy when one is drawn. A chart PNG is flat colour with antialiased text, so a
     256-colour palette at print resolution looks the same and is about a third smaller; vector
     figures are copied as they are."""
     paper = os.path.join(paths.DIAGRAMS_PAPER, name)
     src = paper if os.path.exists(paper) else os.path.join(paths.ASSETS, name)
-    dst = os.path.join(BUILD, "figures", name)
+    dst = os.path.join(build, "figures", name)
     if name.endswith(".svg"):
         # XeTeX can't size an SVG and halts; print it through the cover's Chrome path, which sets the
         # design system's fonts.
@@ -208,7 +215,7 @@ def place(name):
             svg = f.read()
         w, h = (float(re.search(rf'<svg[^>]*\b{a}="([\d.]+)', svg).group(1)) for a in ("width", "height"))
         name = name[:-4] + ".pdf"
-        chrome_pdf(svg, w * 0.75, h * 0.75, os.path.join(BUILD, "figures", name))
+        chrome_pdf(svg, w * 0.75, h * 0.75, os.path.join(build, "figures", name))
         return name
     if not name.endswith(".png"):
         shutil.copyfile(src, dst)
@@ -226,9 +233,9 @@ def place(name):
     return name
 
 
-def asset(b):
+def asset(b, build):
     f = b["files"]
-    return f"figures/{place(f.get('pdf') or f.get('png') or f.get('svg'))}"
+    return f"figures/{place(f.get('pdf') or f.get('png') or f.get('svg'), build)}"
 
 
 def figure_tex(b, refs):
@@ -237,13 +244,10 @@ def figure_tex(b, refs):
     cap = refs.tex(b["caption_md"])
     if b["type"] == "table":
         return table_tex(b, refs, cap)
-    if b["type"] == "card" and b["key"][2:] in refs.evidenced:
-        slug = b["key"][2:]
-        cap += f" \\hyperref[ev:{slug}]{{Evidence notes in Appendix~\\ref*{{app:evidence}}}}."
     tall = (b.get("height") or 0) > 1.05 * (b.get("width") or 1)
     size = "width=0.8\\linewidth" if tall else "width=\\linewidth"
     return ("\\begin{figure}[htbp]\n\\centering\n"
-            f"\\includegraphics[{size},height=0.5\\textheight,keepaspectratio]{{{asset(b)}}}\n"
+            f"\\includegraphics[{size},height=0.5\\textheight,keepaspectratio]{{{asset(b, refs.build)}}}\n"
             f"\\caption{{{cap}}}\\label{{{b['_label']}}}\n\\end{{figure}}\n")
 
 
@@ -369,29 +373,34 @@ def appendix_block(b, refs):
     return block_tex(b, refs)
 
 
-def appendix_chart(c):
-    name = place(c["files"].get("pdf") or c["files"].get("png") or c["files"].get("svg"))
+def appendix_chart(c, build):
+    name = place(c["files"].get("pdf") or c["files"].get("png") or c["files"].get("svg"), build)
     return ("\\begin{center}\n"
             f"\\includegraphics[width=0.8\\linewidth,height=0.36\\textheight,keepaspectratio]{{figures/{name}}}\n"
             f"\\captionof{{figure}}{{Chart for \\texttt{{{tex_escape(c['slug'])}}}.}}\\label{{fig:appendix-{c['slug']}}}\n"
             "\\end{center}\n")
 
 
-def evidence_appendix(doc, refs):
+def evidence_body(doc, refs, numbers):
     """The editor's curated appendix (analysis/manuscript/appendix), not the full research collection:
-    the author chose to publish only the evidence the chapters use."""
+    the author chose to publish only the evidence the chapters use. `numbers` maps each of the paper's
+    labels to the number it printed (from `paper.aux`), so a part is headed by the section it supports."""
     app = doc["appendix"]
-    out = [f"\\section{{{tex_escape(appendix_title())}}}\\label{{app:evidence}}\n", "\\raggedright\n"]
+    out = ["\\raggedright\n"]
     out += [refs.tex(b["md"]) + "\\par\\medskip\n" for b in app["intro"]]
     labelled = set()
     for part in app["parts"]:
         if not any(g["entries"] for g in part["groups"]):
             continue
-        out.append(f"\\subsection{{Section~\\ref{{{refs.chapters[part['n']]}}}: {tex_escape(part['title'])}}}\n")
+        sec = numbers.get(refs.chapters[part["n"]])
+        if not sec:
+            raise SystemExit(f"evidence: the paper did not number the section for part {part['n']}")
+        head = f"Section {sec}: {part['title']}"
+        out.append(f"\\section*{{{tex_escape(head)}}}\\pdfbookmark[1]{{{tex_escape(head)}}}{{part-{part['n']}}}\n")
         for g in part["groups"]:
             if not g["entries"]:
                 continue
-            out.append(f"\\subsubsection*{{{refs.tex(g['title'])}}}\n")
+            out.append(f"\\subsection*{{{refs.tex(g['title'])}}}\n")
             for e in g["entries"]:
                 slugs = ", ".join(f"\\texttt{{{tex_escape(sl)}}}" for sl in e["slugs"])
                 lab = refs.rids.get(e["rid"]) if e["rid"] else None
@@ -406,23 +415,36 @@ def evidence_appendix(doc, refs):
                     if shown:
                         out.append(f"\\noindent\\textit{{Chart:}} see Figure~\\ref{{{shown}}}.\\par\\smallskip\n")
                     else:
-                        out.append(appendix_chart(c))
+                        out.append(appendix_chart(c, refs.build))
     return "".join(out)
 
 
-def paper(doc, manifest):
-    refs = Refs(doc)
+def front(doc, title):
     meta = doc["meta"]
-    abs_text, keywords = abstract(doc, manifest)
-    items, per_chapter = bibliography(doc)
     with open(os.path.join(HERE, "preamble.tex"), encoding="utf-8") as f:
         tex = [f.read(), f"\\newcommand{{\\exampletitle}}{{{tex_escape(EXAMPLE_TITLE.upper())}}}\n"]
-    tex.append(f"\\title{{{tex_escape(meta['title'])}"
-               + (f": {tex_escape(meta['subtitle'])}" if meta.get("subtitle") else "") + "}\n")
+    tex.append(f"\\title{{{tex_escape(title)}}}\n")
     tex.append(f"\\author{{{tex_escape(meta['author'])}\\\\{tex_escape(meta['affiliation'])}\\\\"
                f"\\href{{mailto:{meta['email']}}}{{\\texttt{{{tex_escape(meta['email'])}}}}}}}\n")
     when = f"{meta['edition']} edition · {meta['date']}" if meta.get("edition") else meta["date"]
     tex.append(f"\\date{{{tex_escape(when)}}}\n\\begin{{document}}\n\\maketitle\n")
+    return tex
+
+
+def book_title(meta):
+    return full_title(meta) + (f": {meta['subtitle']}" if meta.get("subtitle") else "")
+
+
+def bibliography_tex(items):
+    return (["\n\\clearpage\n\\begin{thebibliography}{99}\\small\\raggedright\n"]
+            + [f"\\bibitem{{{k}}} {source_tex(md)}\n" for k, md in items] + ["\\end{thebibliography}\n"])
+
+
+def paper(doc, manifest):
+    refs = Refs(doc, BUILD, evidence=False)
+    abs_text, keywords = abstract(doc, manifest)
+    items, per_chapter = bibliography(doc)
+    tex = front(doc, book_title(doc["meta"]))
     tex.append(f"\\begin{{abstract}}\n\\noindent {abs_text}\n\\par\\medskip\\noindent\\textbf{{Keywords:}} "
                f"{'; '.join(tex_escape(k) for k in keywords)}.\n\\end{{abstract}}\n")
     for c in doc["chapters"]:
@@ -436,21 +458,49 @@ def paper(doc, manifest):
     if doc.get("preface"):
         tex.append(f"\n\\section*{{{tex_escape(terms(doc['preface']['title']))}}}\n")
         tex += [refs.tex(b["md"]) + "\n\n" for b in doc["preface"]["blocks"]]
-    tex.append("\n\\clearpage\n\\appendix\n" + evidence_appendix(doc, refs))
-    tex.append("\n\\clearpage\n\\begin{thebibliography}{99}\\small\\raggedright\n")
-    tex += [f"\\bibitem{{{k}}} {source_tex(md)}\n" for k, md in items]
-    tex.append("\\end{thebibliography}\n\\end{document}\n")
+    tex += bibliography_tex(items)
+    tex.append("\\end{document}\n")
     return "".join(tex), refs
 
 
-def compile_pdf():
-    log = os.path.join(BUILD, "tectonic.log")
+LABEL_RE = re.compile(r"\\newlabel\{([^}]+)\}\{\{([^}]*)\}")
+
+
+def evidence(doc):
+    """The appendix as its own document. It names the paper's sections and figures by the numbers
+    the paper printed, read from its `.aux`, since a `\\ref` cannot reach into another PDF; so it is
+    built after the paper."""
+    with open(os.path.join(BUILD, "paper.aux"), encoding="utf-8") as f:
+        numbers = dict(LABEL_RE.findall(f.read()))
+    refs = Refs(doc, EVIDENCE_BUILD, evidence=True)
+    tex = front(doc, f"{full_title(doc['meta'])}: {appendix_title()}")
+    content = evidence_body(doc, refs, numbers)
+    # A label the paper did not number (or numbered blank, under a starred heading) would print "??"
+    # or nothing, and LaTeX only warns; refuse it here instead.
+    own = set(re.findall(r"\\label\{([^}]+)\}", content))
+    missing = sorted({k for k in re.findall(r"\\ref\*?\{([^}]+)\}", content)
+                      if k not in own and not numbers.get(k)})
+    if missing:
+        raise SystemExit(f"evidence: references the paper does not number: {missing}")
+    content = re.sub(r"\\ref\*?\{([^}]+)\}", lambda m: numbers.get(m.group(1), m.group(0)), content)
+    # Its charts are E1, E2: a plain number would read as the paper's figure of that number.
+    body = "".join(tex) + "\\renewcommand{\\thefigure}{E\\arabic{figure}}\n" + content
+    # Only the appendix text counts: the preamble's \sources macro contains a \citep of its own.
+    if re.search(r"\\cite[pt]?\{", content):
+        items, _ = bibliography(doc)
+        body += "".join(bibliography_tex(items))
+    return body + "\\end{document}\n", refs
+
+
+def compile_pdf(build):
+    log = os.path.join(build, "tectonic.log")
     with open(log, "w") as f:
-        r = subprocess.run(["tectonic", "--keep-logs", "--keep-intermediates", "paper.tex"], cwd=BUILD,
+        r = subprocess.run(["tectonic", "--keep-logs", "--keep-intermediates", "paper.tex"], cwd=build,
                            stdout=f, stderr=subprocess.STDOUT)
+    name = os.path.basename(build)
     if r.returncode:
-        raise SystemExit(f"technical: tectonic failed, see {log}")
-    with open(os.path.join(BUILD, "paper.log"), encoding="utf-8", errors="replace") as f:
+        raise SystemExit(f"{name}: tectonic failed, see {log}")
+    with open(os.path.join(build, "paper.log"), encoding="utf-8", errors="replace") as f:
         text = f.read()
     overfull = re.findall(r"Overfull \\hbox \((\d+\.\d+)pt", text)
     bad = [float(x) for x in overfull if float(x) > 2]
@@ -459,7 +509,7 @@ def compile_pdf():
     for msg, items in (("overfull boxes > 2pt", bad), ("undefined references", undefined),
                        ("missing glyphs", missing)):
         if items:
-            print(f"warn: technical: {len(items)} {msg}: {items[:8]}")
+            print(f"warn: {name}: {len(items)} {msg}: {items[:8]}")
 
 
 def bundle():
@@ -473,25 +523,35 @@ def bundle():
     return tar
 
 
+def build(doc, make, out, *args):
+    """Write `make`'s LaTeX into `build/<name>/`, compile it, and save the PDF to `dist/<out>`."""
+    tex, refs = make(doc, *args)
+    path = refs.build
+    with open(os.path.join(path, "paper.tex"), "w", encoding="utf-8") as f:
+        f.write(tex)
+    if refs.unmapped:
+        print(f"warn: {os.path.basename(path)}: references with no figure: {sorted(refs.unmapped)}")
+    compile_pdf(path)
+    import fitz
+    pdf = fitz.open(os.path.join(path, "paper.pdf"))
+    dst = os.path.join(paths.DIST, out)
+    pdf.save(dst, garbage=4, deflate=True, deflate_fonts=True, clean=True)
+    return dst
+
+
 def main():
     with open(paths.SOURCE, encoding="utf-8") as f:
         doc = json.load(f)
     with open(MANIFEST, encoding="utf-8") as f:
         manifest = json.load(f)
-    shutil.rmtree(BUILD, ignore_errors=True)
-    os.makedirs(os.path.join(BUILD, "figures"))
-    shutil.copyfile(os.path.join(HERE, STY), os.path.join(BUILD, STY))
+    for path in (BUILD, EVIDENCE_BUILD):
+        shutil.rmtree(path, ignore_errors=True)
+        os.makedirs(os.path.join(path, "figures"))
+        shutil.copyfile(os.path.join(HERE, STY), os.path.join(path, STY))
     os.makedirs(paths.DIST, exist_ok=True)
-    tex, refs = paper(doc, manifest)
-    with open(os.path.join(BUILD, "paper.tex"), "w", encoding="utf-8") as f:
-        f.write(tex)
-    if refs.unmapped:
-        print(f"warn: technical: references with no figure: {sorted(refs.unmapped)}")
-    compile_pdf()
-    import fitz
-    pdf = fitz.open(os.path.join(BUILD, "paper.pdf"))
-    pdf.save(os.path.join(paths.DIST, "technical.pdf"), garbage=4, deflate=True, deflate_fonts=True, clean=True)
-    print(f"technical: {os.path.join(paths.DIST, 'technical.pdf')} and {bundle()}")
+    pdf = build(doc, paper, "technical.pdf", manifest)
+    print(f"technical: {pdf} and {bundle()}")
+    print(f"technical: {build(doc, evidence, 'evidence.pdf')}")
 
 
 if __name__ == "__main__":

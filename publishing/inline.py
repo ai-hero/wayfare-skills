@@ -10,6 +10,17 @@ import paths
 
 EXAMPLE_TITLE = "Inside this factory:"
 
+
+def full_title(meta):
+    """The title as registered for the ISBN: the title, then ", " and the part. Every edition that
+    prints the title or sends it as metadata uses this, so all of them match that record."""
+    return meta["title"] + (f", {meta['part']}" if meta.get("part") else "")
+
+
+def subtitle_line(meta):
+    """The part and the subtitle as one line, for an edition with a single subtitle slot."""
+    return ": ".join(x for x in (meta.get("part"), meta.get("subtitle")) if x)
+
 MD = MarkdownIt("commonmark")
 
 # `[^key]` is a source marker, `{{fig:slug}}` a figure marker. Both are resolved per edition; the

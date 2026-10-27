@@ -15,7 +15,7 @@ from collections import defaultdict
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
-from record import SESSION_FULL_WEEKS, SESSION_WINDOW, STAGES, adoption, changeset_facts, gap_weeks, rows, week_of  # noqa: E402
+from record import BOOK, SESSION_FULL_WEEKS, SESSION_WINDOW, STAGES, adoption, changeset_facts, gap_weeks, rows, week_of  # noqa: E402
 from links import _items, set_item_links  # noqa: E402
 from spend.attribution import spend_by_changeset, spend_by_pr, spend_rows  # noqa: E402
 
@@ -377,7 +377,7 @@ def q_review_cost_worktype(con):
     missing = 0
     for f in cs:
         k = tuple(str(f[c]) if c == "unit_id" else f[c] for c in key)
-        t = wt.get(k) or ("upkeep" if f["dependabot"] else None)
+        t = BOOK if f["book"] else (wt.get(k) or ("upkeep" if f["dependabot"] else None))
         if t is None:
             missing += 1
             t = "unlabelled"

@@ -19,6 +19,10 @@ from ingest.git import CONV_RE  # noqa: E402
 
 STAGES = ["No skills yet", "Skills", "+ work items", "+ goals", "+ messages"]
 CATEGORIES = ["app", "app, no features yet", "allied"]
+# A change set whose every file is under analysis/ built the findings book: neither product nor factory work, so every
+# fleet-wide work mix shows it as its own band rather than as the plugin's upkeep.
+BOOK = "Book writing (analysis/)"
+BOOK_PREFIX = "analysis/"
 
 # The one session-log window every question measured on the session logs uses: complete from 25 Aug and
 # frozen through 1 Oct. Before it the logs hold one session on 9 Aug, none 10-19 Aug, and 20-24 Aug only in
@@ -312,10 +316,32 @@ def offmain_prs(con):
         WHERE u.unit_kind = 'pr' AND u.main_sha IS NULL""")}
 
 
+def book_commits(con):
+    """(repo, sha) -> whether every path the commit touched, in the PR's own commits and on main, is under
+    BOOK_PREFIX. A commit with no recorded paths is absent."""
+    out = {}
+
+    def see(k, path):
+        out[k] = out.get(k, True) and path.startswith(BOOK_PREFIX)
+    for r in con.execute("SELECT repo, sha, files_json FROM pr_commits.pr_commits"):
+        for f in json.loads(r["files_json"] or "[]"):
+            see((r["repo"], r["sha"]), f if isinstance(f, str) else f.get("path") or "")
+    for r in con.execute("SELECT repo, sha, path FROM git.commit_files"):
+        see((r["repo"], r["sha"]), r["path"])
+    return out
+
+
+def _built_book(book, repo, shas):
+    """No known paths is not evidence of book work, so a change set needs at least one commit with paths."""
+    known = [book[(repo, sha)] for sha in shas if (repo, sha) in book]
+    return bool(known) and all(known)
+
+
 @lru_cache(maxsize=None)
 def changeset_facts(con):
     """Change sets, dated by the day their PR (or pushed commit) landed on main."""
     ad = adoption(con)
+    book = book_commits(con)
     via, landed = merged_via(con), merge_day(con)
     # A change set grouped from a squash (its PR's own commits weren't recovered) lists the squash
     # sha, which commit_facts omits; its lines come from main.
@@ -353,6 +379,8 @@ def changeset_facts(con):
             "lines": round(sum(churn.get((s["repo"], sha), 0) / member[(s["repo"], sha)] for sha in shas)),
             "category": ad[s["repo"]]["category"], "stage": stage_of(con, s["repo"], day),
             "dependabot": u["method"] == "dependabot",
+            # A Dependabot bump is dependency upkeep wherever it lands, analysis/ included.
+            "book": u["method"] != "dependabot" and _built_book(book, s["repo"], shas),
         })
     return out
 

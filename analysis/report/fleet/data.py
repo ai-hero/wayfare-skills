@@ -19,7 +19,7 @@ from functools import lru_cache
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path[:0] = [HERE, os.path.dirname(HERE), os.path.dirname(os.path.dirname(HERE))]
 from cube.db import connect as _connect  # noqa: E402
-from record import adoption, changeset_facts, rows, week_of  # noqa: E402
+from record import BOOK, adoption, changeset_facts, rows, week_of  # noqa: E402
 from ingest.fleet import OUT_OF_SCOPE, category_of  # noqa: E402
 
 FLEET = os.path.expanduser(os.environ.get("WAYFARE_FLEET_ROOT", "~/workspaces/aihero"))
@@ -1122,17 +1122,21 @@ def fig_repos_in_motion(con):
 # ------------------------------------------------------------------ Figure 6.2: product work, factory work and shared-benefit work
 
 FACTORY_THEMES = {"skills", "harness", "compliance", "work_items", "cross_repo", "spend", "fleet_apps", "human_loop", "connectors"}
+# Book work is last so the indices the factory readings use stay put; it is in neither reading.
 FACTORY_CATS = ["Product work in an app", "Factory work inside an app repo", "Template and infrastructure repos",
-                "The plugin (wayfare-skills)"]
+                "The plugin (wayfare-skills)", BOOK]
+FACTORY_READING = FACTORY_CATS[1:4]
 
 
 def fig_apps_vs_factory(con):
-    """Monthly change sets in four classes; the factory share under the strict reading (the plugin) and the broad
-    one (plus shared-benefit work)."""
+    """Monthly change sets in five classes; the factory share under the strict reading (the plugin) and the broad
+    one (plus shared-benefit work). Book work is its own class and in neither reading."""
     wt = {(r["repo"], r["unit_kind"], r["unit_id"], r["set_idx"]): (r["work_type"], r["theme"])
           for r in rows(con, "SELECT * FROM detectors.cs_worktype")}
 
     def cls(f):
+        if f["book"]:
+            return BOOK
         if f["repo"] == "wayfare-skills":
             return FACTORY_CATS[3]
         if f["category"] == "allied":
@@ -1147,7 +1151,7 @@ def fig_apps_vs_factory(con):
     counts = {c: [by[m][c] for m in MONTHS] for c in FACTORY_CATS}
     shares = {c: [round(by[m][c] / n, 3) if n else None for m, n in zip(MONTHS, n_month)] for c in FACTORY_CATS}
     strict = [round(by[m][FACTORY_CATS[3]] / n, 3) if n else None for m, n in zip(MONTHS, n_month)]
-    broad = [round(sum(by[m][c] for c in FACTORY_CATS[1:]) / n, 3) if n else None for m, n in zip(MONTHS, n_month)]
+    broad = [round(sum(by[m][c] for c in FACTORY_READING) / n, 3) if n else None for m, n in zip(MONTHS, n_month)]
     since = [f for f in facts if f["month"] >= "2026-07"]
     tot = Counter(f["cls"] for f in since)
     n = len(since)
@@ -1155,5 +1159,5 @@ def fig_apps_vs_factory(con):
             "strict": strict, "broad": broad, "n_since_jul": n,
             "since_jul": {c: round(tot[c] / n, 3) for c in FACTORY_CATS},
             "strict_since_jul": round(tot[FACTORY_CATS[3]] / n, 3),
-            "broad_since_jul": round(sum(tot[c] for c in FACTORY_CATS[1:]) / n, 3),
+            "broad_since_jul": round(sum(tot[c] for c in FACTORY_READING) / n, 3),
             "all": {c: sum(counts[c]) for c in FACTORY_CATS}, "n_all": len(facts)}

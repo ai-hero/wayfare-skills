@@ -33,7 +33,7 @@ from pptx.enum.dml import MSO_LINE_DASH_STYLE
 from pptx.oxml.ns import qn
 from pptx.util import Inches, Pt
 
-from record import gap_days, gap_weeks, is_session_source, session_coverage
+from record import BOOK, gap_days, gap_weeks, is_session_source, session_coverage
 
 TEMPLATE = os.environ.get("DECK_TEMPLATE", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))), ".analysis", "A.I. Hero.potx"))
@@ -60,6 +60,9 @@ CONTRAST = INK  # the second family beside the apps' rose: allied repos, infrast
 # A customer fleet is charted under an anonymous label, never its repo name, so it is coloured as a category.
 CUSTOMER = MUTED
 CODEX = INK_QUIET  # work done with OpenAI Codex rather than Claude Code, against Claude's rose
+# Not a dark ink: book work sits beside the allied repos (INK), fix (GREY_DARK) and security (INK_QUIET), and the
+# dark ink stops are too close to tell apart there. A palette that also holds pal-400 gives it up (series_colors).
+BOOK_COLOR = PINK_DARK
 CATEGORY_COLORS = {"example customer": CUSTOMER, "customer fleet": CUSTOMER, "codex": CODEX, "app": PINK, "apps": PINK, "app, no features yet": PINK, "apps, no features yet": PINK,
                    "allied": CONTRAST, "allied repos": CONTRAST, "infra": CONTRAST, "infra change sets": CONTRAST, "infrastructure feature": CONTRAST,
                    "app repos": PINK, "open prs, apps": PINK, "infrastructure repos": CONTRAST, "open prs, allied repos": CONTRAST,
@@ -84,7 +87,7 @@ PLAN_COLORS = {"goal": PINK, "inside a goal": PINK, "pushed to main": GREY_LIGHT
                "no approval recorded": GREY_LIGHT}
 WORK_COLORS = {"feature": PINK, "customer-facing feature": PINK, "platform feature": PINK_LIGHT, "fix": GREY_DARK,
                "upkeep": GREY, "upkeep (chore, deps, ci, docs, tests, refactor)": GREY, "security": INK_QUIET,
-               "unlabelled": GREY_LIGHT, "no work-type label": GREY_LIGHT}
+               "unlabelled": GREY_LIGHT, "no work-type label": GREY_LIGHT, BOOK.lower(): BOOK_COLOR}
 STATE_COLORS = {"agent working": PINK, "usage limit": GREY_DARK, "rate-limited": GREY_DARK, "stopped by a limit": GREY_DARK,
                 "stopped by a usage limit": GREY_DARK, "ci running": INK_QUIET, "idle": GREY, "no session open": GREY_LIGHT,
                 **dict.fromkeys(("waiting on the owner", "waiting on the owner: ask tool", "owner wait: ask tool",

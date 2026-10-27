@@ -118,9 +118,10 @@ def parse_consistency(text):
                 cells = cols[2:2 + len(repos)]
             else:
                 cells = cols[1:1 + len(repos)]
+            # A failing cell carries its age after the mark ("❌ 31d overdue").
             rows.append({"check": m.group(1), "control": control, "severity": sev, "broken_in": was,
-                         "cells": {r: MARKS.get(c, c) for r, c in zip(repos, cells)}})
-    h = re.search(r"\*\*(\d+) \(check × repo\) results (fixed|failing)\.(?: (\d+) still failing\.)?\*\* (\d+) checks under (\d+) controls", text)
+                         "cells": {r: MARKS.get(c.split(" ", 1)[0], c) for r, c in zip(repos, cells)}})
+    h = re.search(r"\*\*(\d+) \(check × repo\) results (fixed|failing)(?:, \d+ past their deadline)?\.(?: (\d+) still failing\.)?\*\* (\d+) checks under (\d+) controls", text)
     header = None
     if h:
         fixed = int(h.group(1)) if h.group(2) == "fixed" else None

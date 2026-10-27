@@ -1563,6 +1563,24 @@ class Consistency(unittest.TestCase):
                                 "X-3": {"a": "2026-10-27"}},
                          "PASS and a cell gone from the table clear; MANUAL keeps; a new FAIL is today")
 
+    def test_analysis_parser_reads_an_aged_cell_as_a_failure(self):
+        """analysis/report/compliance/register.py reads every committed table.
+        A cell it does not recognise is neither pass nor fail, so the report
+        would show a late failure as a fleet that got greener."""
+        spec = importlib.util.spec_from_file_location(
+            "compliance_register", HERE.parent / "analysis" / "report" / "compliance" / "register.py")
+        reg = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(reg)
+        with tempfile.TemporaryDirectory() as d:
+            root = self._fleet(pathlib.Path(d).resolve())
+            self._seen(root, 31)
+            p = self._run(root, "--stdout")
+            self.assertEqual(p.returncode, 0, p.stderr)
+        parsed = reg.parse_consistency(p.stdout)
+        row = [r for r in parsed["rows"] if r["check"] == "CI-02"][0]
+        self.assertEqual(row["cells"]["a"], "fail")
+        self.assertEqual(parsed["header"][1], 1, "the summary line must still parse")
+
     def test_unreadable_first_seen_stops_before_writing(self):
         with tempfile.TemporaryDirectory() as d:
             root = self._fleet(pathlib.Path(d).resolve())

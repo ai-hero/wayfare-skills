@@ -325,7 +325,7 @@ def book_commits(con):
         out[k] = out.get(k, True) and path.startswith(BOOK_PREFIX)
     for r in con.execute("SELECT repo, sha, files_json FROM pr_commits.pr_commits"):
         for f in json.loads(r["files_json"] or "[]"):
-            see((r["repo"], r["sha"]), f if isinstance(f, str) else f.get("path", ""))
+            see((r["repo"], r["sha"]), f if isinstance(f, str) else f.get("path") or "")
     for r in con.execute("SELECT repo, sha, path FROM git.commit_files"):
         see((r["repo"], r["sha"]), r["path"])
     return out

@@ -60,9 +60,9 @@ CONTRAST = INK  # the second family beside the apps' rose: allied repos, infrast
 # A customer fleet is charted under an anonymous label, never its repo name, so it is coloured as a category.
 CUSTOMER = MUTED
 CODEX = INK_QUIET  # work done with OpenAI Codex rather than Claude Code, against Claude's rose
-# Book writing is neither the apps' rose nor the factory, and sits beside fix (GREY_DARK), security (INK_QUIET) and
-# upkeep (GREY) in the work mixes; the darkest ink stop is the one free in every one of them.
-BOOK_COLOR = INK_STRONG
+# Not a dark ink: book work sits beside the allied repos (INK), fix (GREY_DARK) and security (INK_QUIET), and the
+# dark ink stops are too close to tell apart there. A palette that also holds pal-400 gives it up (series_colors).
+BOOK_COLOR = PINK_DARK
 CATEGORY_COLORS = {"example customer": CUSTOMER, "customer fleet": CUSTOMER, "codex": CODEX, "app": PINK, "apps": PINK, "app, no features yet": PINK, "apps, no features yet": PINK,
                    "allied": CONTRAST, "allied repos": CONTRAST, "infra": CONTRAST, "infra change sets": CONTRAST, "infrastructure feature": CONTRAST,
                    "app repos": PINK, "open prs, apps": PINK, "infrastructure repos": CONTRAST, "open prs, allied repos": CONTRAST,

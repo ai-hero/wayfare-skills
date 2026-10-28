@@ -23,10 +23,17 @@ Every column comes from data that already exists:
     exemplar. Everything about WHO is computed this run.
 
 So the table cannot drift from the register: regenerate it and it re-derives.
+
+The one thing a run cannot derive is how long a cell has been failing, so that
+alone is kept, in FIRST_SEEN.json beside CONSISTENCY.md (see first_seen). A
+failing cell's age is checked against its check's severity deadline, which is
+register content (CONTROLS.yaml `deadlines:`).
 """
 
 import argparse
+import datetime
 import importlib.util
+import json
 import pathlib
 import sys
 
@@ -79,6 +86,42 @@ def condense(text, limit=200):
     return cut + "…"
 
 
+def first_seen(path, cells, today):
+    """(started, {check: {repo: iso date}}) from `cells`, {(check, repo):
+    status} for this run. A FAIL keeps its date from `path`, or is seen
+    `today`. Only a PASS, or a cell gone from the table, clears a date: a
+    cell reading MANUAL or n/a this run (an unreviewed register turns overlay
+    checks MANUAL) has not been seen fixed, and clearing it would restart a
+    late failure's clock at zero. `started` is when the file began, so an age
+    that reaches back to it may be older still.
+
+    A file that does not parse stops the run rather than starting over:
+    starting over would reset every age to zero, and the table would show a
+    fleet with nothing past its deadline."""
+    started, seen = today.isoformat(), {}
+    if path.is_file():
+        try:
+            doc = json.loads(path.read_text())
+            started, seen = doc["started"], doc["seen"]
+            datetime.date.fromisoformat(started)
+            for repos in seen.values():
+                for d in repos.values():
+                    datetime.date.fromisoformat(d)
+        except (ValueError, KeyError, TypeError, AttributeError) as e:
+            sys.exit(f"{path}: unreadable first-seen state ({type(e).__name__}: {e}). "
+                     "Restore it from the register's history; deleting it resets every age to today")
+    out = {}
+    for (cid, repo), st in sorted(cells.items()):
+        d = (seen.get(cid) or {}).get(repo)
+        if st == "FAIL":
+            d = d or today.isoformat()
+        elif st == "PASS":
+            d = None
+        if d:
+            out.setdefault(cid, {})[repo] = d
+    return started, out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stdout", action="store_true")
@@ -100,6 +143,7 @@ def main():
         sys.exit(f"register checkout missing: {audit.REGISTER} — clone it before regenerating its table")
     OUT = audit.REGISTER / "CONSISTENCY.md"
     controls, checks = audit.load_register()
+    deadlines = audit.load_deadlines()
     _src, reviewed, register_note = audit.register_source()
     repos = audit.family_repos()
     with audit.reference_assets() as assets_note:
@@ -114,7 +158,28 @@ def main():
     if errors:
         sys.exit(f"{len(errors)} checker errors (printed above) — not writing a table built on them")
     rows = [(c, [st for st, _d in cells]) for c, cells in matrix]
+    today = datetime.date.today()
+    STATE = audit.REGISTER / "FIRST_SEEN.json"
+    started, seen = first_seen(
+        STATE, {(c["id"], r): x for c, cells in rows for r, x in zip(repos, cells)}, today)
+
+    def deadline(c):
+        return deadlines[audit.sev_of(c, controls)]
+
+    age = {(c["id"], r): (today - datetime.date.fromisoformat(seen[c["id"]][r])).days
+           for c, cells in rows for r, x in zip(repos, cells) if x == audit.FAIL}
+    by_id = {c["id"]: c for c, _cells in rows}
+    late = sorted((k for k, days in age.items() if days > deadline(by_id[k[0]])),
+                  key=lambda k: (deadline(by_id[k[0]]) - age[k], k))
+    overdue = set(late)
     MARK = audit.MARK
+
+    def cell(c, x, repo):
+        if x != audit.FAIL:
+            return MARK[x]
+        k = (c["id"], repo)
+        return f"{MARK[x]} {age[k]}d" + (" overdue" if k in overdue else "")
+
     # Two repos rendering to one header would read as one repo; use full
     # names for the whole table rather than let a column lie.
     if len({short(r) for r in repos}) != len(repos):
@@ -139,22 +204,35 @@ def main():
     L.append("| | Meaning |")
     L.append("| --- | --- |")
     L.append("| ✅ | complies today |")
-    L.append("| ❌ | still drifting |")
+    L.append("| ❌ 12d | still drifting, first seen failing 12 days ago |")
+    L.append("| ❌ 40d overdue | past its severity's deadline: "
+             + ", ".join(f"{s} {deadlines[s]} days" for s in audit.SEVERITIES) + " |")
     L.append("| – | doesn't apply (no Go, no UI, no image — or `applies_to` names a group this repo is not in) |")
     L.append("| ? | no automated checker, or the register is unreviewed — needs a human, not a guess |")
     L.append("")
     L.append("The repo columns are computed live, this run. No check names a")
-    L.append("repo, so nothing here is remembered from a previous sweep — a")
-    L.append("cell is what the checker found just now.")
+    L.append("repo, so no mark is remembered from a previous sweep — a cell is")
+    L.append("what the checker found just now. Only a failure's age is kept:")
+    L.append("FIRST_SEEN.json, beside this file, records the first regeneration")
+    L.append(f"that saw each cell fail. It started on {started}, so an age that")
+    L.append("reaches back to that day may be older.")
     L.append("")
     if not reviewed:
         L.append(f"**Register unreviewed:** {register_note.split('UNREVIEWED: ', 1)[-1]}.")
         L.append("")
 
-    total = sum(1 for _c, cells in rows for x in cells if x == "FAIL")
-    L.append(f"**{total} (check × repo) results failing.** "
+    total = len(age)
+    L.append(f"**{total} (check × repo) results failing, {len(late)} past their deadline.** "
              f"{len(checks)} checks under {len(controls)} controls.")
     L.append("")
+    if late:
+        L.append("## Past deadline")
+        L.append("")
+        for cid, r in late:
+            c = by_id[cid]
+            L.append(f"- **{cid}** in {r}: failing {age[cid, r]} days, "
+                     f"{audit.sev_of(c, controls)} deadline {deadline(c)} days")
+        L.append("")
 
     last = None
     for c, cells in rows:
@@ -179,8 +257,8 @@ def main():
         how = condense(c.get("rule"), 180)
 
         L.append(
-            f"| **{c['id']}** {c['title']} *({c['scope']})* | "
-            + " | ".join(MARK[x] for x in cells)
+            f"| **{c['id']}** {c['title']} *({c['scope']}, {audit.sev_of(c, controls)})* | "
+            + " | ".join(cell(c, x, r) for x, r in zip(cells, repos))
             + f" | {how} |"
         )
 
@@ -217,7 +295,8 @@ def main():
         print(out)
     else:
         OUT.write_text(out)
-        print(f"wrote {OUT}  ({len(checks)} checks, {total} failing)")
+        STATE.write_text(json.dumps({"started": started, "seen": seen}, indent=2, sort_keys=True) + "\n")
+        print(f"wrote {OUT} and {STATE.name}  ({len(checks)} checks, {total} failing, {len(late)} past deadline)")
     return 0
 
 

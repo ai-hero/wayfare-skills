@@ -25,7 +25,9 @@ audit would report a fleet that got greener because its overlay was missing.
 Outside a fleet only the baseline applies and the family is the current repo.
 Results are never stored: a stored result is a copy, and copies drift.
 `scripts/consistency.py` writes the fleet's human table into the register
-checkout, never here.
+checkout, never here. Beside it goes the one piece of history no run can derive:
+`FIRST_SEEN.json`, the date each open failure was first seen. The table measures
+each failure's age from it against the severity `deadlines:` in `CONTROLS.yaml`.
 
 The audit reads this register, and the engine that checks it, at the plugin
 checkout's origin/main rather than the branch it sits on, so both come from one

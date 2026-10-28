@@ -348,8 +348,9 @@ def parse_consistency_md(text):
                 header = None
                 continue
             check_id = m.group(1)
+            # A failing cell carries its age after the mark ("❌ 31d overdue").
             for repo_col, val in zip(header[1:-1], cells[1:-1]):
-                results.append((check_id, repo_col, val))
+                results.append((check_id, repo_col, val.split(" ", 1)[0]))
         elif header and not line.startswith("|"):
             header = None
     return results

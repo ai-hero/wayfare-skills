@@ -10,8 +10,18 @@
 #   high   — security, or a gate that silently does not run
 #   medium — a real bug that has not bitten yet
 #   low    — cosmetic
+#
+# DEADLINES: days a failure may stay open, counted from the first
+# consistency.py run that saw it (FIRST_SEEN.json in the register checkout).
+# One per severity, no more: there is no `critical`, so a deadline for it would
+# apply to nothing. A reviewed overlay may override a value.
 
 version: 1
+
+deadlines:
+  high: 14
+  medium: 30
+  low: 90
 
 controls:
 

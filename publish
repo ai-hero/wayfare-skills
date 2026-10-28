@@ -1,5 +1,5 @@
 #!/bin/sh
-# ./publish all | source | book | technical | web | guides | slides | cover | kindle | qa
+# ./publish all | source | book | technical | web | guides | worksheet | slides | cover | kindle | qa
 set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PY=${PUBLISH_PYTHON:-"$ROOT/.analysis/publish-env/bin/python3"}

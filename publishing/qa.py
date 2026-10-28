@@ -1,7 +1,7 @@
-"""Render built editions to images for visual review: `./publish qa [book|technical|guide-01|guide-02|slides] [pages]`.
+"""Render built editions to images for visual review: `./publish qa [book|technical|guide-01|guide-02|worksheet|slides] [pages]`.
 
 Pages land in `$PUBLISH_OUT/qa/<edition>/`: `p012.png` for page 12, `s012-013.png` for the book's
-facing pages (even on the left, as bound). With no page list, slides and the field guides render every page; the other
+facing pages (even on the left, as bound). With no page list, slides, the field guides and the worksheet render every page; the other
 editions render the first six pages, the first page of each top-level outline entry, the first three
 pages with an image and one from the middle, the first page with a table, and the last page.
 """
@@ -19,7 +19,8 @@ def pdf_for(edition):
     # `book.pdf` opens with the cover, which would put odd folios on the left of every spread.
     return os.path.join(paths.DIST, {"slides": "slides.pdf", "book": "book-interior.pdf",
                                      "guide-01": "guide-01-inside-a-software-factory.pdf",
-                                     "guide-02": "guide-02-what-surprised-me.pdf"}.get(edition, f"{edition}.pdf"))
+                                     "guide-02": "guide-02-what-surprised-me.pdf",
+                                     "worksheet": "software-factory-readiness-worksheet.pdf"}.get(edition, f"{edition}.pdf"))
 
 
 def sample(doc):
@@ -43,7 +44,7 @@ def render(edition, wanted=None, spreads=None):
     doc = fitz.open(path)
     out = os.path.join(paths.QA, edition)
     os.makedirs(out, exist_ok=True)
-    pages = [p for p in wanted if p < len(doc)] if wanted else (range(len(doc)) if edition in ("slides", "guide-01", "guide-02") else sample(doc))
+    pages = [p for p in wanted if p < len(doc)] if wanted else (range(len(doc)) if edition in ("slides", "guide-01", "guide-02", "worksheet") else sample(doc))
     files = []
     for i in pages:
         f = os.path.join(out, f"p{i + 1:03d}.png")

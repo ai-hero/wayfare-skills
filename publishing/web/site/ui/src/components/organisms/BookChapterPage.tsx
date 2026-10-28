@@ -143,23 +143,29 @@ export function BookChapterPage({ chapter }: { chapter: Chapter }) {
 
 function Masthead({ chapter }: { chapter: Chapter }) {
   return (
-    <ArticleMasthead
-      eyebrow={
-        <>
-          <a
-            href="/book"
-            className="inline-flex items-center gap-2 rounded-sm font-mono text-2xs tracking-eyebrow text-muted-foreground uppercase transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <ArrowLeft aria-hidden className="size-3.5" />
-            {chapter.book.title}
-          </a>
-          <Eyebrow>Chapter {spelled(chapter.n)}</Eyebrow>
-        </>
-      }
-      title={chapter.title}
-      byline={<span className="text-sm text-foreground">{chapter.book.author}</span>}
-      meta={`${chapter.minutes} min read`}
-    />
+    <>
+      {chapter.opener && (
+        // The art is drawn on white, so the plate stays white in dark mode.
+        <img src={chapter.opener} alt="" aria-hidden className="mb-8 h-auto w-full max-w-md rounded-lg bg-ink-white p-3" />
+      )}
+      <ArticleMasthead
+        eyebrow={
+          <>
+            <a
+              href="/book"
+              className="inline-flex items-center gap-2 rounded-sm font-mono text-2xs tracking-eyebrow text-muted-foreground uppercase transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <ArrowLeft aria-hidden className="size-3.5" />
+              {chapter.book.title}
+            </a>
+            <Eyebrow>Chapter {spelled(chapter.n)}</Eyebrow>
+          </>
+        }
+        title={chapter.title}
+        byline={<span className="text-sm text-foreground">{chapter.book.author}</span>}
+        meta={`${chapter.minutes} min read`}
+      />
+    </>
   );
 }
 

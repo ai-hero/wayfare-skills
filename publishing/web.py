@@ -300,9 +300,11 @@ class Assets:
         shutil.rmtree(self.dir, ignore_errors=True)
         os.makedirs(self.dir)
 
-    def add(self, name):
-        with open(os.path.join(paths.ASSETS, name), "rb") as f:
-            data = f.read()
+    def add(self, name, data=None):
+        """`data` writes an asset drawn in code, named as if it were the source file `name`."""
+        if data is None:
+            with open(os.path.join(paths.ASSETS, name), "rb") as f:
+                data = f.read()
         # The site's end-of-file hook rewrites a text file without a final newline; adding it
         # here keeps a rebuild byte-identical to what was committed.
         if name.endswith(".svg") and not data.endswith(b"\n"):
@@ -373,7 +375,10 @@ def chapter(c, assets, posts, references, evidence=None):
     text = " ".join(b.get("html", "") + " ".join(b.get("items", [])) for s in sections for b in s["blocks"])
     for s, src in zip(sections, (s["blocks"] for s in c["sections"])):
         s["blocks"] = examples(src, s["blocks"])
+    import openers
+    art = openers.standalone(c["n"])
     return {"n": c["n"], "slug": c["slug"], "title": c["title"], "sections": sections,
+            "opener": assets.add(f"opener-chapter-{c['n']}.svg", art.encode()) if art else None,
             "free": c["n"] in posts, "url": f"/blog/{BLOG_SECTION}/{posts[c['n']]['slug']}" if c["n"] in posts else None,
             "notes": [{"n": n, "html": clean(t)} for n, t in enumerate(list(NOTES), 1)],
             # The chapter's share of the book's one reference list, under the book's numbers, so a [n]

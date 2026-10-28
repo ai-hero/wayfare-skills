@@ -14,13 +14,14 @@ EDITIONS = {
     "web": lambda: importlib.import_module("web"),
     "slides": lambda: importlib.import_module("slides"),
     "guides": lambda: importlib.import_module("guides"),
+    "worksheet": lambda: importlib.import_module("worksheet"),
     "cover": lambda: importlib.import_module("cover"),
     "kindle": lambda: importlib.import_module("kindle"),
 }
 # `book` draws the cover itself (the wrap's spine needs the page count); `cover` redraws it alone.
 # `kindle` is not in `all`: the store edition is built only when a KDP upload is being prepared.
 # `slides` is not in `all` either: it builds only when named.
-TARGETS = ["source", "book", "technical", "web", "guides"]
+TARGETS = ["source", "book", "technical", "web", "guides", "worksheet"]
 
 
 def run(name):

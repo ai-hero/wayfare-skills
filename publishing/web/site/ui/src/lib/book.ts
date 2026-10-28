@@ -63,6 +63,7 @@ type ChapterHead = {
   prev: ChapterLink | null;
   next: ChapterLink | null;
   book: BookMeta;
+  opener: string | null;
 };
 
 // `n` is the source's number in the book's one reference list, the [n] the text links to.

@@ -85,6 +85,7 @@ BASELINE = HERE / "assets" / "compliance"               # generic register, publ
 # name (None outside a fleet), and each family repo's directory.
 ROOT = None
 REGISTER = None
+REGISTER_REPO = None
 TEMPLATE = None
 REPO_DIR = {}
 _OVERLAY_LOADED = set()
@@ -214,7 +215,7 @@ def configure(root=None, load_overlay=True):
     The import-time call passes load_overlay=False: it runs in whatever engine
     was invoked, before run_at_origin() decides which engine runs, so loading
     the register's checkers.py there executes fleet code under a stale engine."""
-    global ROOT, FAMILY, REGISTER, TEMPLATE
+    global ROOT, FAMILY, REGISTER, REGISTER_REPO, TEMPLATE
     if root:
         root = pathlib.Path(root).resolve()
         if not (root / "FLEET.md").is_file():
@@ -227,12 +228,14 @@ def configure(root=None, load_overlay=True):
         rc, top = sh(pathlib.Path.cwd(), "git rev-parse --show-toplevel")
         repo = pathlib.Path(top.strip()) if rc == 0 and top.strip() else pathlib.Path.cwd()
         ROOT, FAMILY, REGISTER, TEMPLATE = repo.parent, (repo.name,), None, None
+        REGISTER_REPO = None
         REPO_DIR[repo.name] = repo
         return
     fields, repos = read_fleet(root)
     ROOT = root
     reg = fields.get("register") or ".fleet/"
     REGISTER = (root / reg.rstrip("/")).resolve()
+    REGISTER_REPO = (fields.get("register-repo") or "").strip().lower() or None
     # The register is the fleet's own state and sits inside the fleet: an
     # escaping value would make consistency.py write outside it.
     if root not in REGISTER.parents:
@@ -328,12 +331,27 @@ def register_source():
     return _REGISTER_READ[REGISTER]
 
 
+def _repo_slug(url):
+    """OWNER/NAME from a remote URL, any of https, ssh or a local path."""
+    tail = url.strip().rstrip("/").removesuffix(".git").replace(":", "/")
+    return "/".join(tail.split("/")[-2:]).lower()
+
+
 def _resolve_register(reg):
     if not (reg / ".git").exists():
         return reg, False, (f"working tree {reg}  UNREVIEWED: no .git, so nothing is reviewed; "
                             "checkers.py not loaded, overlay checks read MANUAL")
     problems, ref = [], None
-    if sh(reg, "git remote get-url origin")[0] == 0:
+    rc, url = sh(reg, "git remote get-url origin")
+    if rc == 0:
+        # Reviewed means reviewed on the remote FLEET.md names. Without the
+        # name, a register cloned from a fork, or repointed at one, reads as
+        # reviewed, and its checkers.py runs.
+        got = _repo_slug(url)
+        if REGISTER_REPO is None:
+            problems.append(f"FLEET.md names no register-repo, so origin {got} is unverified")
+        elif got != REGISTER_REPO:
+            problems.append(f"origin is {got} but FLEET.md register-repo names {REGISTER_REPO}")
         # The explicit refspec updates the ref whatever remote.origin.fetch says,
         # and a failed fetch is unreviewed: the ref is a local file anyone can
         # rewrite, and only a fetch puts the remote's main back in it.

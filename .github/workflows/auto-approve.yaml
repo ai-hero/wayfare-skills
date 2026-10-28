@@ -780,10 +780,12 @@ jobs:
             } > threads.md
           fi
           if [ -z "$THREADS_ERROR" ]; then
+            # Outdated threads count. Outdated only means the anchored line
+            # changed, so filtering them let a whitespace push to that line
+            # clear a reviewer's unresolved request from this gate.
             UNRESOLVED=$(jq -r '
               [.data.repository.pullRequest.reviewThreads.nodes[]
                 | select(.isResolved == false)
-                | select(.isOutdated == false)
               ] | length
             ' threads.json)
 
@@ -805,8 +807,7 @@ jobs:
                 def oneline: gsub("[\r\n]"; " ");
                 [.data.repository.pullRequest.reviewThreads.nodes[]
                   | select(.isResolved == false)
-                  | select(.isOutdated == false)
-                  | ((.comments.nodes[0].path // "?") | oneline) + " — @" +
+                  | ((.comments.nodes[0].path // "?") | oneline) + (if .isOutdated then " (outdated)" else "" end) + " — @" +
                     ((.comments.nodes[0].author.login // "?") | oneline) + ": " +
                     ((.comments.nodes[0].body // "") | oneline | .[0:120])
                 ] | .[] | "- " + .

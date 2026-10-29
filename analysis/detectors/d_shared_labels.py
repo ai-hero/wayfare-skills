@@ -106,24 +106,44 @@ def normalise(d, table):
     def upd(what, sql, args=()):
         changed[what] = changed.get(what, 0) + d.execute(sql, args).rowcount
 
-    if table == "cs_worktype":
-        upd("work_type", "UPDATE cs_worktype SET work_type='feature' WHERE work_type IN ('feat', 'features')")
-        upd("work_type", f"UPDATE cs_worktype SET work_type='chore' WHERE work_type NOT IN ({','.join('?' * len(WORK_TYPES))})",
-            WORK_TYPES)
-        for bad, good in THEME_FIX.items():
-            upd("theme", "UPDATE cs_worktype SET theme=? WHERE theme=?", (good, bad))
-        upd("theme", f"UPDATE cs_worktype SET theme='product' WHERE theme NOT IN ({','.join('?' * len(THEMES))})", THEMES)
-        # Dependabot bumps are supply-chain upkeep whatever the model guessed from the package name.
-        upd("dependabot override", """UPDATE cs_worktype SET work_type='dependency', theme='security'
-                     WHERE (work_type IS NOT 'dependency' OR theme IS NOT 'security')
-                       AND EXISTS (SELECT 1 FROM cs_units u WHERE u.repo=cs_worktype.repo AND u.unit_kind=cs_worktype.unit_kind
-                                   AND u.unit_id=cs_worktype.unit_id AND u.method='dependabot')""")
     if table == "prompt_intent":
         upd("intent", f"UPDATE prompt_intent SET intent='other' WHERE intent NOT IN ({','.join('?' * len(INTENTS))})", INTENTS)
         upd("target", "UPDATE prompt_intent SET target='none' WHERE target NOT IN ('app', 'factory', 'infra', 'none')")
         upd("correction_kind", "UPDATE prompt_intent SET correction_kind='none' "
                                "WHERE correction_kind NOT IN ('error', 'taste', 'scope', 'none')")
     print(f"{table}: normalise changed " + ", ".join(f"{n} {what}" for what, n in changed.items()), file=sys.stderr)
+
+
+def normalise_worktype(work_type, theme, dependabot):
+    """Coerce a cached cs_worktype label onto WORK_TYPES and THEMES -> (work_type, theme, what changed)."""
+    changed = []
+    w = "feature" if work_type in ("feat", "features") else work_type
+    w = w if w in WORK_TYPES else "chore"
+    if w != work_type:
+        changed.append("work_type")
+    t = THEME_FIX.get(theme, theme)
+    t = t if t in THEMES else "product"
+    if t != theme:
+        changed.append("theme")
+    # Dependabot bumps are supply-chain upkeep whatever the model guessed from the package name.
+    if dependabot and (w, t) != ("dependency", "security"):
+        w, t = "dependency", "security"
+        changed.append("dependabot override")
+    return w, t, changed
+
+
+def _in(values):
+    return ", ".join(f"'{v}'" for v in values)
+
+
+# The CHECKs hold at INSERT, so a label is normalised before it is written, not by an UPDATE after.
+CS_WORKTYPE_SCHEMA = f"""
+    DROP TABLE IF EXISTS cs_worktype;
+    CREATE TABLE cs_worktype ({D1.UNIT_COLS}, set_idx INTEGER NOT NULL CHECK (set_idx >= 0),
+                              work_type TEXT NOT NULL CHECK (work_type IN ({_in(WORK_TYPES)})),
+                              theme TEXT NOT NULL CHECK (theme IN ({_in(THEMES)})),
+                              raw_work_type TEXT, raw_theme TEXT, PRIMARY KEY (repo, unit_kind, unit_id, set_idx));
+"""
 
 
 def prompts(con, d):
@@ -165,17 +185,20 @@ def changesets(con, d):
         items.append((h(text), text))
     cost = run_batches(d, "cs_worktype_cache", items, CS_HEADER, 60, ["work_type", "theme"])
     tags = {r[0]: r[1:] for r in d.execute("SELECT * FROM cs_worktype_cache")}
-    d.execute("DROP TABLE IF EXISTS cs_worktype")
-    d.execute("CREATE TABLE cs_worktype (repo TEXT, unit_kind TEXT, unit_id TEXT, set_idx INTEGER, work_type TEXT, theme TEXT, "
-              "raw_work_type TEXT, raw_theme TEXT)")
-    unlabelled = 0
+    dependabot = {tuple(r) for r in d.execute("SELECT repo, unit_kind, unit_id FROM cs_units WHERE method='dependabot'")}
+    d.executescript(CS_WORKTYPE_SCHEMA)
+    unlabelled, changed = 0, {}
     for r, (k, _) in zip(rows, items):
         if k in tags:
+            raw_w, raw_t = tags[k]
+            w, t, what = normalise_worktype(raw_w, raw_t, (r["repo"], r["unit_kind"], r["unit_id"]) in dependabot)
+            for x in what:
+                changed[x] = changed.get(x, 0) + 1
             d.execute("INSERT INTO cs_worktype VALUES (?,?,?,?,?,?,?,?)",
-                      (r["repo"], r["unit_kind"], r["unit_id"], r["set_idx"], *tags[k], *tags[k]))
+                      (r["repo"], r["unit_kind"], r["unit_id"], r["set_idx"], w, t, raw_w, raw_t))
         else:
             unlabelled += 1
-    normalise(d, "cs_worktype")
+    print("cs_worktype: normalise changed " + ", ".join(f"{n} {what}" for what, n in changed.items()), file=sys.stderr)
     d.commit()
     if unlabelled:
         print(f"  ! cs_worktype: {unlabelled} change sets have no label and no row", file=sys.stderr)

@@ -15,9 +15,9 @@ def answer(con):
         "SELECT repo, COUNT(*) AS n FROM git.commits GROUP BY repo"
     ).fetchall()}
     sets_by_repo = {r["repo"]: r["n"] for r in con.execute(
-        "SELECT bc.repo AS repo, SUM(cs.n_sets) AS n "
+        "SELECT bc.repo AS repo, SUM(u.n_sets) AS n "
         "FROM detectors.changesets_by_commit bc "
-        "JOIN detectors.changesets cs ON cs.content_hash = bc.content_hash "
+        "JOIN detectors.cs_units u USING (repo, unit_kind, unit_id) "
         "GROUP BY bc.repo"
     ).fetchall()}
     out = []

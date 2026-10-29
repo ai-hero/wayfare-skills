@@ -10,28 +10,23 @@ QUESTION = "Before the factory, how large and how focused were PRs, in change se
 
 SQL = """
 SELECT p.repo, p.number, p.additions, p.deletions, p.changed_files,
-       lk.content_hash
+       COALESCE(u.n_sets, 1) AS n_sets
 FROM github.prs p
 JOIN git.commits c ON c.repo = p.repo AND c.pr_number = p.number
 JOIN detectors.changesets_by_commit lk ON lk.repo = c.repo AND lk.sha = c.sha
+LEFT JOIN detectors.cs_units u ON u.repo = lk.repo AND u.unit_kind = lk.unit_kind AND u.unit_id = lk.unit_id
 WHERE p.day < ?
 """
 
 
 def answer(con):
     rows = con.execute(SQL, (BASELINE_CUTOFF,)).fetchall()
-    hashes = {r["content_hash"] for r in rows}
-    n_sets_by_hash = dict(con.execute(
-        f"SELECT content_hash, n_sets FROM detectors.changesets WHERE content_hash IN "
-        f"({','.join('?' * len(hashes))})", tuple(hashes)
-    ).fetchall()) if hashes else {}
-
     pr_sets = {}
     pr_size = {}
     for r in rows:
         key = (r["repo"], r["number"])
         pr_sets.setdefault(key, 0)
-        pr_sets[key] += n_sets_by_hash.get(r["content_hash"], 1)
+        pr_sets[key] += r["n_sets"]
         pr_size[key] = (r["additions"] or 0) + (r["deletions"] or 0)
 
     if not pr_sets:

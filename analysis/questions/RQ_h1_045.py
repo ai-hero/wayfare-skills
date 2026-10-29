@@ -10,20 +10,15 @@ QUESTION = "How did churn per commit and per change set compare before and after
 
 SQL = """
 SELECT c.repo, CASE WHEN c.day < ? THEN 'before' ELSE 'after' END AS era,
-       c.insertions, c.deletions, lk.content_hash
+       c.insertions, c.deletions, COALESCE(u.n_sets, 1) AS n_sets
 FROM git.commits c
 JOIN detectors.changesets_by_commit lk ON lk.repo = c.repo AND lk.sha = c.sha
+LEFT JOIN detectors.cs_units u ON u.repo = lk.repo AND u.unit_kind = lk.unit_kind AND u.unit_id = lk.unit_id
 """
 
 
 def answer(con):
     rows = con.execute(SQL, (BASELINE_CUTOFF,)).fetchall()
-    hashes = {r["content_hash"] for r in rows}
-    n_sets = dict(con.execute(
-        f"SELECT content_hash, n_sets FROM detectors.changesets WHERE content_hash IN "
-        f"({','.join('?' * len(hashes))})", tuple(hashes)
-    ).fetchall()) if hashes else {}
-
     agg = {}
     for r in rows:
         key = (r["repo"], r["era"])
@@ -31,7 +26,7 @@ def answer(con):
         churn = (r["insertions"] or 0) + (r["deletions"] or 0)
         a["commits"] += 1
         a["churn"] += churn
-        a["sets"] += n_sets.get(r["content_hash"], 1)
+        a["sets"] += r["n_sets"]
 
     out = []
     for (repo, era), a in sorted(agg.items()):

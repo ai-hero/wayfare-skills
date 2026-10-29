@@ -7,8 +7,8 @@ QUESTION = "What share of commits carry more than one change set?"
 
 def answer(con):
     rows = con.execute(
-        "SELECT c.n_sets FROM detectors.changesets_by_commit lk "
-        "JOIN detectors.changesets c ON c.content_hash = lk.content_hash"
+        "SELECT u.n_sets FROM detectors.changesets_by_commit lk "
+        "JOIN detectors.cs_units u USING (repo, unit_kind, unit_id)"
     ).fetchall()
     total = len(rows)
     multi = sum(1 for (n,) in rows if n > 1)

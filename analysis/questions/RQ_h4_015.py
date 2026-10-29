@@ -14,15 +14,14 @@ WHERE p.merged_ts IS NOT NULL
 
 def answer(con):
     rows = con.execute(SQL).fetchall()
-    link = {(r["repo"], r["sha"]): r["content_hash"]
-            for r in con.execute("SELECT repo, sha, content_hash FROM detectors.changesets_by_commit").fetchall()}
-    n_sets_by_hash = dict(con.execute("SELECT content_hash, n_sets FROM detectors.changesets").fetchall())
+    sets_by_commit = {(r["repo"], r["sha"]): r["n_sets"] for r in con.execute(
+        "SELECT lk.repo, lk.sha, u.n_sets FROM detectors.changesets_by_commit lk "
+        "JOIN detectors.cs_units u USING (repo, unit_kind, unit_id)").fetchall()}
 
     pr_sets, pr_size, pr_month = {}, {}, {}
     for r in rows:
         pr_key = (r["repo"], r["number"])
-        h = link.get((r["repo"], r["sha"]))
-        pr_sets[pr_key] = pr_sets.get(pr_key, 0) + n_sets_by_hash.get(h, 1)
+        pr_sets[pr_key] = pr_sets.get(pr_key, 0) + sets_by_commit.get((r["repo"], r["sha"]), 1)
         pr_size[pr_key] = (r["additions"] or 0) + (r["deletions"] or 0)
         pr_month[pr_key] = r["month"]
 

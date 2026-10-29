@@ -19,6 +19,9 @@ Tables:
   cs_sets    one row per change set: its label and the commit shas in it
   changesets / changesets_by_commit   the older per-main-commit shape the
              question modules read; n_sets there is now the unit's count.
+             changesets.content_hash is the packed unit key ("repo#pr12"), not a
+             hash: join changesets_by_commit to cs_units, cs_sets and cs_worktype
+             on (repo, unit_kind, unit_id), never by parsing it.
 The earlier message-only labels are kept as changesets_msg_v1 for comparison.
 
 Cached by sha256(PROMPT_VERSION + unit text) in cs_cache: a re-run labels only
@@ -241,6 +244,28 @@ def offmain_units(con, units, pr_commits):
     return out
 
 
+UNIT_KINDS = ("pr", "pr-squash", "push")
+_KINDS_SQL = ", ".join(f"'{k}'" for k in UNIT_KINDS)
+UNIT_COLS = f"""repo TEXT NOT NULL CHECK (repo <> ''),
+    unit_kind TEXT NOT NULL CHECK (unit_kind IN ({_KINDS_SQL})),
+    unit_id TEXT NOT NULL CHECK (unit_id <> '')"""
+# Two main commits naming one PR "(#N)" load as the same PR unit twice. cs_units' INSERT OR REPLACE absorbs
+# that, but cs_sets' plain INSERT would write the unit's sets twice; the primary key makes it fail the build.
+# changesets_by_commit.sha stays nullable: an off-main unit (offmain_units) has no main commit.
+SCHEMA = f"""
+    DROP TABLE IF EXISTS cs_units; DROP TABLE IF EXISTS cs_sets;
+    DROP TABLE IF EXISTS changesets; DROP TABLE IF EXISTS changesets_by_commit;
+    CREATE TABLE cs_units ({UNIT_COLS}, main_sha TEXT,
+                           n_commits INTEGER, n_sets INTEGER, method TEXT, PRIMARY KEY (repo, unit_kind, unit_id));
+    CREATE TABLE cs_sets ({UNIT_COLS}, set_idx INTEGER NOT NULL CHECK (set_idx >= 0), label TEXT, shas_json TEXT,
+                          PRIMARY KEY (repo, unit_kind, unit_id, set_idx));
+    CREATE TABLE changesets (content_hash TEXT PRIMARY KEY, n_sets INTEGER, labels_json TEXT, method TEXT);
+    CREATE TABLE changesets_by_commit (repo TEXT NOT NULL, sha TEXT, content_hash TEXT,
+                                       unit_kind TEXT NOT NULL CHECK (unit_kind IN ({_KINDS_SQL})),
+                                       unit_id TEXT NOT NULL CHECK (unit_id <> ''), PRIMARY KEY (repo, sha));
+"""
+
+
 def build(limit=None, dry_run=False):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from cube.db import connect
@@ -298,15 +323,7 @@ def build(limit=None, dry_run=False):
                 print(f"  round {round_} batch {n}/{len(batches)}: {len(b)} units, ${cost:.3f} (total ${total:.2f})",
                       file=sys.stderr)
 
-    d.executescript("""
-        DROP TABLE IF EXISTS cs_units; DROP TABLE IF EXISTS cs_sets;
-        DROP TABLE IF EXISTS changesets; DROP TABLE IF EXISTS changesets_by_commit;
-        CREATE TABLE cs_units (repo TEXT, unit_kind TEXT, unit_id TEXT, main_sha TEXT,
-                               n_commits INTEGER, n_sets INTEGER, method TEXT, PRIMARY KEY (repo, unit_kind, unit_id));
-        CREATE TABLE cs_sets (repo TEXT, unit_kind TEXT, unit_id TEXT, set_idx INTEGER, label TEXT, shas_json TEXT);
-        CREATE TABLE changesets (content_hash TEXT PRIMARY KEY, n_sets INTEGER, labels_json TEXT, method TEXT);
-        CREATE TABLE changesets_by_commit (repo TEXT, sha TEXT, content_hash TEXT, PRIMARY KEY (repo, sha));
-    """)
+    d.executescript(SCHEMA)
     for key, repo, kind, uid, main_sha, header, commits, rule in units:
         if rule == "dependabot":
             sets, method = [(label, [0]) for label in commits[0]["dependabot_sets"]], rule
@@ -322,7 +339,7 @@ def build(limit=None, dry_run=False):
                       (repo, kind, uid, i, label, json.dumps([commits[j]["sha"] for j in idx])))
         d.execute("INSERT OR REPLACE INTO changesets VALUES (?,?,?,?)",
                   (key, len(sets), json.dumps([l for l, _ in sets]), method))
-        d.execute("INSERT OR REPLACE INTO changesets_by_commit VALUES (?,?,?)", (repo, main_sha, key))
+        d.execute("INSERT OR REPLACE INTO changesets_by_commit VALUES (?,?,?,?,?)", (repo, main_sha, key, kind, uid))
     d.commit()
     print(f"detectors.sqlite: {len(units)} units, "
           f"{d.execute('SELECT SUM(n_sets) FROM cs_units').fetchone()[0]} change sets, ${total:.2f} spent")

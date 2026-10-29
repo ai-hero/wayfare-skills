@@ -12,7 +12,7 @@ Each questions/RQ_<id>.py module declares:
 A question file never opens its own sqlite connection or re-reads a repo --
 everything it needs is a query over the cube's attached sources and views.
 """
-import csv, importlib, os, pkgutil, sys
+import csv, importlib, os, pkgutil, re, sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from bank.generate_human_stubs import module_name
@@ -20,6 +20,9 @@ from cube.db import connect
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BANK = os.path.join(os.path.dirname(HERE), "bank", "questions.csv")
+QUESTIONS_MD = os.path.join(os.path.dirname(HERE), "QUESTIONS.md")
+SLUG_LINE = re.compile(r"^- \*\*Q (\S+)\*\*")
+SLUG = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)+")
 
 
 def bank_row(rq_id):
@@ -49,7 +52,28 @@ def check_modules(mods):
         raise ValueError("questions/: " + "; ".join(errors))
 
 
+def check_slugs(lines):
+    """Raise ValueError unless every `- **Q slug**` line declares a lower-case, hyphenated slug no other line
+    declares. The hyphen is what makes a slug citable: deck_html.Q_RE needs one, so a book's `Q hollow`
+    would never resolve to its question."""
+    errors, seen = [], set()
+    for n, line in enumerate(lines, 1):
+        m = SLUG_LINE.match(line)
+        if not m:
+            continue
+        slug = m.group(1)
+        if not SLUG.fullmatch(slug):
+            errors.append(f"line {n}: Q {slug} is not lower-case words joined by hyphens")
+        elif slug in seen:
+            errors.append(f"line {n}: Q {slug} is declared twice")
+        seen.add(slug)
+    if errors:
+        raise ValueError("QUESTIONS.md: " + "; ".join(errors))
+
+
 def discover():
+    with open(QUESTIONS_MD, encoding="utf-8") as f:
+        check_slugs(f)
     mods = [importlib.import_module(f"questions.{name}")
             for _, name, _ in pkgutil.iter_modules([HERE]) if name not in ("runner", "__init__")]
     check_modules(mods)

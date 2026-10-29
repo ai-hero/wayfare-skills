@@ -15,8 +15,8 @@ def answer(con):
     for repo, sha in con.execute("SELECT repo, sha FROM git.commits").fetchall():
         sets_by_repo.setdefault(repo, 0)
     for r in con.execute(
-        "SELECT lk.repo, cs.n_sets FROM detectors.changesets_by_commit lk "
-        "JOIN detectors.changesets cs ON cs.content_hash = lk.content_hash"
+        "SELECT lk.repo, u.n_sets FROM detectors.changesets_by_commit lk "
+        "JOIN detectors.cs_units u USING (repo, unit_kind, unit_id)"
     ).fetchall():
         sets_by_repo[r["repo"]] = sets_by_repo.get(r["repo"], 0) + r["n_sets"]
 

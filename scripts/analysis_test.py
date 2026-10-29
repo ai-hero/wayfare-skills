@@ -44,7 +44,10 @@ os.environ["WAYFARE_ANALYSIS_CONFIG"] = CONFIG
 from ingest import fleet
 from ingest.redact import redact
 from cube import db
+from detectors import d1_changesets as D1
 from detectors.d1_changesets import clean_sets, dependabot_sets
+sys.path.insert(0, os.path.join(ANALYSIS, "detectors"))
+import d_shared_labels as L
 from questions import runner
 
 # python-pptx and lxml are not installed where the suites run. build() takes its decks as dicts and never
@@ -316,6 +319,106 @@ class QuestionModules(unittest.TestCase):
                 mods.append(module(fname[:-3], consts.get("RQ_ID"), consts.get("QUESTION"), answer))
         self.assertTrue(mods)
         runner.check_modules(mods)
+
+
+class ChangeSetSchema(unittest.TestCase):
+    def setUp(self):
+        self.con = sqlite3.connect(":memory:")
+        self.con.executescript(D1.SCHEMA)
+        self.con.executescript(L.CS_WORKTYPE_SCHEMA)
+        self.addCleanup(self.con.close)
+
+    def insert(self, table, *row):
+        self.con.execute(f"INSERT INTO {table} VALUES ({','.join('?' * len(row))})", row)
+
+    def test_primary_keys_reject_a_duplicate_set(self):
+        rows = {"cs_sets": ("app1", "pr", "12", 0, "label", "[]"),
+                "cs_worktype": ("app1", "pr", "12", 0, "fix", "product", "fix", "product")}
+        for table, row in rows.items():
+            with self.subTest(table):
+                self.insert(table, *row)
+                with self.assertRaisesRegex(sqlite3.IntegrityError, "UNIQUE"):
+                    self.insert(table, *row)
+
+    def test_checks_reject_a_bad_row(self):
+        good = ("app1", "pr", "12", 0)
+        bad = {"unit kind": ("app1", "merge", "12", 0), "empty repo": ("", "pr", "12", 0),
+               "empty unit id": ("app1", "pr", "", 0), "negative set": ("app1", "pr", "12", -1),
+               "no set": ("app1", "pr", "12", None), "no repo": (None, "pr", "12", 0)}
+        for name, key in bad.items():
+            for table, rest in (("cs_sets", ("label", "[]")), ("cs_worktype", ("fix", "product", "", ""))):
+                with self.subTest(name, table=table), self.assertRaises(sqlite3.IntegrityError):
+                    self.insert(table, *key, *rest)
+        for name, rest in {"work type": ("feat", "product"), "theme": ("fix", "factory")}.items():
+            with self.subTest(name), self.assertRaisesRegex(sqlite3.IntegrityError, "CHECK"):
+                self.insert("cs_worktype", *good, *rest, "", "")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "CHECK"):
+            self.insert("changesets_by_commit", "app1", "abc", "app1#pr12", "merge", "12")
+
+    def test_every_unit_kind_and_label_the_code_writes_is_accepted(self):
+        for i, kind in enumerate(D1.UNIT_KINDS):
+            self.insert("cs_sets", "app1", kind, "1", i, "label", "[]")
+        for i, (w, t) in enumerate(zip(L.WORK_TYPES * 2, L.THEMES)):
+            self.insert("cs_worktype", "app1", "pr", "1", i, w, t, w, t)
+
+    def test_normalised_labels_satisfy_the_checks(self):
+        cases = {
+            ("feat", "factory", False): ("feature", "skills", ["work_type", "theme"]),
+            ("nonsense", "nonsense", False): ("chore", "product", ["work_type", "theme"]),
+            ("", "", False): ("chore", "product", ["work_type", "theme"]),
+            ("fix", "harness", False): ("fix", "harness", []),
+            ("fix", "harness", True): ("dependency", "security", ["dependabot override"]),
+            ("dependency", "security", True): ("dependency", "security", []),
+        }
+        for i, (args, want) in enumerate(cases.items()):
+            with self.subTest(args=args):
+                got = L.normalise_worktype(*args)
+                self.assertEqual(got, want)
+                self.insert("cs_worktype", "app1", "pr", "1", i, got[0], got[1], args[0], args[1])
+
+    def test_commits_join_their_unit_on_typed_columns(self):
+        self.insert("cs_units", "app1", "pr", "12", "aaa", 2, 2, "haiku")
+        self.insert("cs_units", "app1", "push", "bbb", "bbb", 1, 1, "single-line")
+        self.insert("cs_units", "app1", "pr", "13", None, 1, 1, "single-line")
+        for i in range(2):
+            self.insert("cs_sets", "app1", "pr", "12", i, f"set {i}", "[]")
+            self.insert("cs_worktype", "app1", "pr", "12", i, "fix", "product", "fix", "product")
+        self.insert("changesets_by_commit", "app1", "aaa", "app1#pr12", "pr", "12")
+        self.insert("changesets_by_commit", "app1", "bbb", "app1#pushbbb", "push", "bbb")
+        self.insert("changesets_by_commit", "app1", None, "app1#pr13", "pr", "13")
+        got = self.con.execute("""SELECT lk.sha, u.n_sets, COUNT(w.set_idx) FROM changesets_by_commit lk
+                                  JOIN cs_units u USING (repo, unit_kind, unit_id)
+                                  LEFT JOIN cs_worktype w USING (repo, unit_kind, unit_id)
+                                  GROUP BY lk.repo, lk.unit_kind, lk.unit_id ORDER BY lk.unit_id""").fetchall()
+        self.assertEqual(got, [("aaa", 2, 2), (None, 1, 0), ("bbb", 1, 0)])
+
+
+class QuestionSlugs(unittest.TestCase):
+    def lines(self, *slugs):
+        return ["# Research questions", ""] + [f"- **Q {s}** A question?" for s in slugs]
+
+    def test_committed_slugs_pass(self):
+        with open(runner.QUESTIONS_MD, encoding="utf-8") as f:
+            lines = f.readlines()
+        self.assertGreater(sum(1 for line in lines if runner.SLUG_LINE.match(line)), 0)
+        runner.check_slugs(lines)
+
+    def test_rejected(self):
+        cases = {"no hyphen": (["hollow"], "not lower-case words"),
+                 "upper case": (["Hollow-Checks"], "not lower-case words"),
+                 "trailing hyphen": (["hollow-"], "not lower-case words"),
+                 "underscore": (["hollow_checks"], "not lower-case words"),
+                 "declared twice": (["check-gaps", "check-gaps"], "declared twice")}
+        for name, (slugs, reason) in cases.items():
+            with self.subTest(name), self.assertRaisesRegex(ValueError, reason):
+                runner.check_slugs(self.lines(*slugs))
+
+    def test_a_valid_slug_is_one_the_book_can_cite(self):
+        for slug in ("work-sources", "review-gap-2", "rq-h1-024"):
+            with self.subTest(slug=slug):
+                runner.check_slugs(self.lines(slug))
+                self.assertEqual(D.qkey(f"Q {slug}"), f"Q {slug}")
+        self.assertIsNone(D.qkey("Q hollow"))
 
 
 class QKey(unittest.TestCase):

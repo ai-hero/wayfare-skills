@@ -14,8 +14,8 @@ def answer(con):
     items = con.execute("SELECT COUNT(*) FROM plans.plan_items WHERE type != 'goal'").fetchone()[0]
     goals = con.execute("SELECT COUNT(*) FROM plans.goals").fetchone()[0]
     sets = con.execute(
-        "SELECT SUM(cs.n_sets) FROM detectors.changesets_by_commit lk "
-        "JOIN detectors.changesets cs ON cs.content_hash = lk.content_hash"
+        "SELECT SUM(u.n_sets) FROM detectors.changesets_by_commit lk "
+        "JOIN detectors.cs_units u USING (repo, unit_kind, unit_id)"
     ).fetchone()[0] or 0
     return [
         {"unit": "change_set", "count": sets, "spend_per_unit": round(total_spend / sets, 2) if sets else None},

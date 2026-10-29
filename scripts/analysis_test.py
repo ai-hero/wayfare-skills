@@ -328,8 +328,15 @@ class ChangeSetSchema(unittest.TestCase):
         self.con.executescript(L.CS_WORKTYPE_SCHEMA)
         self.addCleanup(self.con.close)
 
+    INSERTS = {
+        "cs_units": "INSERT INTO cs_units VALUES (?,?,?,?,?,?,?)",
+        "cs_sets": "INSERT INTO cs_sets VALUES (?,?,?,?,?,?)",
+        "cs_worktype": "INSERT INTO cs_worktype VALUES (?,?,?,?,?,?,?,?)",
+        "changesets_by_commit": "INSERT INTO changesets_by_commit VALUES (?,?,?,?,?)",
+    }
+
     def insert(self, table, *row):
-        self.con.execute(f"INSERT INTO {table} VALUES ({','.join('?' * len(row))})", row)
+        self.con.execute(self.INSERTS[table], row)
 
     def test_primary_keys_reject_a_duplicate_set(self):
         rows = {"cs_sets": ("app1", "pr", "12", 0, "label", "[]"),

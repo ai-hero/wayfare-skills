@@ -284,6 +284,31 @@ check("a chapter opener carries its art", True, 'class="opener with-art"' in ope
 check("a chapter with no scene keeps the plain opener", True,
       'class="opener"' in book.chapter({"n": 9, "title": "Nine", "sections": []}, {}, {}))
 
+import fitz
+table_pages = []
+original_svg = fitz.Page.get_svg_image
+original_faces = book.font_faces
+
+
+def capture_table_page(page, *args, **kwargs):
+    table_pages.append(page.get_text())
+    return original_svg(page, *args, **kwargs)
+
+
+fitz.Page.get_svg_image = capture_table_page
+book.font_faces = lambda: ""
+try:
+    long_table = {**table(["Name", "Description"], *[[str(i), "A table row."] for i in range(80)]),
+                  "label": "Table", "number": "9.1"}
+    book.table_svg(long_table, "<figcaption>A long table.</figcaption>")
+finally:
+    fitz.Page.get_svg_image = original_svg
+    book.font_faces = original_faces
+check("a long table spans multiple pages", True, len(table_pages) > 1)
+check("every table page repeats its number", True, all("TABLE 9.1" in page for page in table_pages))
+check("table continuations identify their page and total", True,
+      all(f"Page {i} of {len(table_pages)}" in page for i, page in enumerate(table_pages, 1)))
+
 import technical
 entry = {"slugs": ["foo-bar"], "rid": None, "blocks": [], "charts": []}
 doc = {"meta": {"title": "T", "part": "Part I", "author": "A", "affiliation": "F", "email": "a@b.c", "date": "D"},

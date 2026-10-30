@@ -162,7 +162,11 @@ def table_svg(b, cap):
     with open(os.path.join(HERE, "table.css"), encoding="utf-8") as f:
         css = f.read()
     page = (f'<!doctype html><html lang="en"><head><style>{font_faces()}\n'
-            f'@page {{ size: {TABLE_W}in {TABLE_H}in; margin: 0; }}\n{css}</style></head><body>'
+            f'@page {{ size: {TABLE_W}in {TABLE_H}in; margin: 18pt 0 0; '
+            f'@top-left {{ content: "{b["label"]} {b["number"]}"; color: #BA1B45; '
+            'font: 400 6.6pt "Geist Mono"; letter-spacing: 0.1em; text-transform: uppercase; } '
+            '@top-right { content: "Page " counter(page) " of " counter(pages); color: #383D49; '
+            'font: 400 6.6pt "Geist Mono"; } }\n' + css + '</style></head><body>'
             f'<table><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table>{cap}</body></html>')
     pdf = fitz.open(stream=HTML(string=page).write_pdf(), filetype="pdf")
     out = os.path.join(paths.BUILD, "book")

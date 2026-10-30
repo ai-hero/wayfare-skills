@@ -1,8 +1,9 @@
 /* The print book's design (book/book.css) carried to a reflowable page. Sizes are in em so the
    reader's text size still scales everything. Body text gets no colour and nothing gets a background:
    Kindle and Apple Books invert the page in dark mode, and a fixed light fill or dark text would stay
-   put and become a bright box or unreadable text. Text accents inherit the reader's foreground. No custom
-   properties: KFX drops a rule that uses var(). */
+   put and become a bright box or unreadable text. Text accents inherit the reader's foreground: no single rose
+   clears 4.5:1 on both the white and the inverted page at label sizes. Rules and hairlines keep fixed colours,
+   because a line only has to be visible, not read. No custom properties: KFX drops a rule that uses var(). */
 body { margin: 0; font-family: "Geist", sans-serif; font-weight: 400; line-height: 1.55; text-align: left;
   hyphens: auto; -webkit-hyphens: auto; adobe-hyphenate: auto;
   /* Geist has no U+2010, the default hyphen, which would fall back to the reader's face mid-word. */

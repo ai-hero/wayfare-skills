@@ -66,7 +66,10 @@ class Refs:
                         continue
                     lab = f"{'tab' if b['type'] == 'table' else 'fig'}:{b['label'].lower()}-{b['number']}"
                     b["_label"] = lab
-                    self.figs[f"{b['label']} {b['number']}"] = lab
+                    # A diagram's printed number can equal another diagram's authored id, and prose
+                    # names ids, so a diagram is found by its id alone.
+                    if b["type"] != "diagram":
+                        self.figs[f"{b['label']} {b['number']}"] = lab
                     if b.get("id"):
                         self.figs[f"{b['label']} {b['id']}"] = lab
                     if b["type"] == "card":

@@ -74,7 +74,7 @@ def copy_drawn(meta, assets):
             dst = f"{meta['name']}.{ext}"
             shutil.copyfile(src, os.path.join(assets, dst))
             files[ext] = dst
-    return artwork.prepare(files, assets)
+    return artwork.prepare(files, assets, warn=warn)
 
 
 def table_rows(meta):
@@ -100,10 +100,11 @@ def card_files(view, name, assets):
         dst = f"{name}.{ext}"
         with open(os.path.join(assets, dst), "wb") as f:
             f.write(base64.b64decode(data))
-        return artwork.prepare({ext: dst}, assets)
+        # The deck's own SVG stays vector in print and on the web, which prefer a PNG when one exists.
+        return artwork.prepare({ext: dst}, assets, raster=False, warn=warn)
     if view.get("charts"):
         import charts
-        return artwork.prepare(charts.draw(view["charts"], os.path.join(assets, name)), assets)
+        return artwork.prepare(charts.draw(view["charts"], os.path.join(assets, name)), assets, warn=warn)
     return {}
 
 
@@ -323,10 +324,16 @@ def resolve_markers(chapters, appendix):
         for s in c["sections"]:
             for b in s["blocks"]:
                 for h in holders(b):
+                    for m in PLAIN_DIAGRAM.finditer(XREF_RE.sub("", h["md"])):
+                        warn(f"chapter {n}: plain {m.group(0)!r} names an authored id, not the printed number; "
+                             f"write {{{{diagram:{m.group(1)}}}}}")
                     h["html"] = md_html(CITE_RUN.sub(run, XREF_RE.sub(lambda m: xref_html(m, idx, evidence, n),
                                                                       h["md"])))
         del c["order"]
     return references
+
+
+PLAIN_DIAGRAM = re.compile(r"\bDiagram\s+(\d+\.\d+)\b")
 
 
 def unescape_pipes(cells):

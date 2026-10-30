@@ -2,6 +2,8 @@
    of 10.2 pt Geist, the most a sans body holds before the eye loses the next line. The outer margin is wider than the inner
    because figures break out into it. Margins mirror on left and right pages. */
 :root {
+  /* --ink-500 and --rose are one step darker than the design-system tokens of the same name: the
+     system values fall below 4.5:1 in print. Do not resync them. */
   --ink-900: #11141C; --ink-800: #1E222D; --ink-700: #383D49; --ink-600: #5A6070;
   --ink-500: #5A6070; --ink-300: #C5C9D1; --ink-200: #E2E4E8; --ink-100: #F2F3F5;
   --rose: #BA1B45; --rose-dark: #A5153E;

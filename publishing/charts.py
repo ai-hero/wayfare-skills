@@ -150,7 +150,9 @@ def draw(charts, base):
     crop = F.finalize(fig, base.rsplit("/", 1)[-1])
     files = {}
     for ext in ("svg", "pdf", "png"):
-        fig.savefig(f"{base}.{ext}", dpi=300, bbox_inches=crop)
+        # Text stays <text> in the SVG: as glyph outlines, artwork.py cannot find a label to back.
+        with F.plt.rc_context({"svg.fonttype": "none"}):
+            fig.savefig(f"{base}.{ext}", dpi=300, bbox_inches=crop)
         files[ext] = f"{base.rsplit('/', 1)[-1]}.{ext}"
     F.plt.close(fig)
     return files

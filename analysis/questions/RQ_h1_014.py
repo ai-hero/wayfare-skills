@@ -2,24 +2,21 @@
 commits, does each repo's output rank the same way? D1-backed comparison
 of three units.
 """
+from cube.db import commit_sets
+
 RQ_ID = "RQ-h1-014"
 QUESTION = "Measured in change sets rather than lines or commits, does each repo's output rank the same way?"
 
 SQL = """
-SELECT c.repo, COUNT(*) AS commits, SUM(c.insertions + c.deletions) AS lines,
-       SUM(COALESCE(u.n_sets, 1)) AS change_sets
+SELECT c.repo, COUNT(*) AS commits, SUM(c.insertions + c.deletions) AS lines
 FROM git.commits c
-LEFT JOIN detectors.changesets_by_commit lk ON lk.repo = c.repo AND lk.sha = c.sha
-LEFT JOIN detectors.cs_units u ON u.repo = lk.repo AND u.unit_kind = lk.unit_kind AND u.unit_id = lk.unit_id
 GROUP BY c.repo
 """
 
 
 def answer(con):
     rows = con.execute("SELECT repo, sha FROM git.commits").fetchall()
-    sets_by_commit = {(r["repo"], r["sha"]): r["n_sets"] for r in con.execute(
-        "SELECT lk.repo, lk.sha, u.n_sets FROM detectors.changesets_by_commit lk "
-        "JOIN detectors.cs_units u USING (repo, unit_kind, unit_id)").fetchall()}
+    sets_by_commit = commit_sets(con)
 
     by_repo = {}
     for repo, sha in rows:

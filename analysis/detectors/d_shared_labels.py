@@ -115,7 +115,7 @@ def normalise(d, table):
 
 
 def normalise_worktype(work_type, theme, dependabot):
-    """Coerce a cached cs_worktype label onto WORK_TYPES and THEMES -> (work_type, theme, what changed)."""
+    """A Dependabot bump is dependency/security, whatever the model guessed from the package name."""
     changed = []
     w = "feature" if work_type in ("feat", "features") else work_type
     w = w if w in WORK_TYPES else "chore"
@@ -125,24 +125,20 @@ def normalise_worktype(work_type, theme, dependabot):
     t = t if t in THEMES else "product"
     if t != theme:
         changed.append("theme")
-    # Dependabot bumps are supply-chain upkeep whatever the model guessed from the package name.
     if dependabot and (w, t) != ("dependency", "security"):
         w, t = "dependency", "security"
         changed.append("dependabot override")
     return w, t, changed
 
 
-def _in(values):
-    return ", ".join(f"'{v}'" for v in values)
-
-
 # The CHECKs hold at INSERT, so a label is normalised before it is written, not by an UPDATE after.
 CS_WORKTYPE_SCHEMA = f"""
     DROP TABLE IF EXISTS cs_worktype;
     CREATE TABLE cs_worktype ({D1.UNIT_COLS}, set_idx INTEGER NOT NULL CHECK (set_idx >= 0),
-                              work_type TEXT NOT NULL CHECK (work_type IN ({_in(WORK_TYPES)})),
-                              theme TEXT NOT NULL CHECK (theme IN ({_in(THEMES)})),
-                              raw_work_type TEXT, raw_theme TEXT, PRIMARY KEY (repo, unit_kind, unit_id, set_idx));
+                              work_type TEXT NOT NULL CHECK (work_type IN ({D1._in(WORK_TYPES)})),
+                              theme TEXT NOT NULL CHECK (theme IN ({D1._in(THEMES)})),
+                              raw_work_type TEXT, raw_theme TEXT, PRIMARY KEY (repo, unit_kind, unit_id, set_idx),
+                              {D1.UNIT_ID_CHECK});
 """
 
 

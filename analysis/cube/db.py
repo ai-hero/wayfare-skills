@@ -21,8 +21,12 @@ REPORT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))
 SHARED = ("detectors", "git", "github", "harness", "knowledge", "plans", "pr_commits")
 
 
-def connect(*topics):
-    """topics: label caches to attach as well, e.g. connect("skills", "mistakes")."""
+REBUILD_CHANGESETS = "rerun analysis/detectors/d1_changesets.py, then analysis/detectors/d_shared_labels.py changesets"
+
+
+def connect(*topics, check_changesets=True):
+    """topics: label caches to attach as well, e.g. connect("skills", "mistakes").
+    check_changesets=False is for d1_changesets itself, which rebuilds the tables the check reads."""
     con = sqlite3.connect(":memory:")
     con.row_factory = sqlite3.Row
     for p in sorted(glob.glob(os.path.join(DATA, "*.sqlite"))):
@@ -40,6 +44,11 @@ def connect(*topics):
         con.execute("ATTACH DATABASE ? AS " + stem, (p,))
     views = os.path.join(HERE, "cube", "views.sql")
     attached = {r[1] for r in con.execute("PRAGMA database_list")}
+    if check_changesets and "detectors" in attached:
+        cols = {r[1] for r in con.execute("PRAGMA detectors.table_info(changesets_by_commit)")}
+        if cols and "unit_kind" not in cols:
+            raise SystemExit("cube: detectors.changesets_by_commit has no unit_kind/unit_id columns yet; "
+                             + REBUILD_CHANGESETS)
     # Warn, never raise: some topics ask for a database they never write, or read it before labelling creates it.
     for name in topics:
         if name not in attached:
@@ -58,6 +67,24 @@ def connect(*topics):
                     _warn(f"skipped view {view.group(1) if view else '?'}: missing {', '.join(sorted(needs - attached))}")
                 block, needs = [], set()
     return con
+
+
+def commit_sets(con):
+    """{(repo, sha): n_sets} for every commit changesets_by_commit links to a unit. A link to a unit cs_units
+    lacks raises: callers count an unlinked commit as one set, and a half-written rebuild must not look like that."""
+    out, broken = {}, []
+    for repo, sha, kind, uid, n_sets in con.execute(
+            "SELECT lk.repo, lk.sha, lk.unit_kind, lk.unit_id, u.n_sets FROM detectors.changesets_by_commit lk "
+            "LEFT JOIN detectors.cs_units u USING (repo, unit_kind, unit_id)"):
+        if n_sets is None:
+            broken.append(f"{repo} {kind} {uid}")
+        else:
+            out[(repo, sha)] = n_sets
+    if broken:
+        raise ValueError(f"changesets_by_commit links {len(broken)} commits to units missing from cs_units "
+                         f"({', '.join(broken[:3])}); " + REBUILD_CHANGESETS)
+    return out
+
 
 if __name__ == "__main__":
     con = connect()

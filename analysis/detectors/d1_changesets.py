@@ -245,31 +245,90 @@ def offmain_units(con, units, pr_commits):
 
 
 UNIT_KINDS = ("pr", "pr-squash", "push")
-_KINDS_SQL = ", ".join(f"'{k}'" for k in UNIT_KINDS)
+METHODS = ("dependabot", "single-line", "haiku", "unlabelled: one per commit")
+_in = lambda values: ", ".join(f"'{v}'" for v in values)
 UNIT_COLS = f"""repo TEXT NOT NULL CHECK (repo <> ''),
-    unit_kind TEXT NOT NULL CHECK (unit_kind IN ({_KINDS_SQL})),
+    unit_kind TEXT NOT NULL CHECK (unit_kind IN ({_in(UNIT_KINDS)})),
     unit_id TEXT NOT NULL CHECK (unit_id <> '')"""
-# Two main commits naming one PR "(#N)" load as the same PR unit twice. cs_units' INSERT OR REPLACE absorbs
-# that, but cs_sets' plain INSERT would write the unit's sets twice; the primary key makes it fail the build.
-# changesets_by_commit.sha stays nullable: an off-main unit (offmain_units) has no main commit.
+# A table constraint, so it goes after the last column. pr and pr-squash ids are PR numbers; consumers key PRs
+# by that number across both kinds, so "012" and "12" would be two PRs to SQL and one to them.
+UNIT_ID_CHECK = """CHECK (unit_kind = 'push' OR (unit_id GLOB '[1-9]*' AND unit_id NOT GLOB '*[^0-9]*'))"""
+# changesets_by_commit.sha stays nullable: an off-main unit (offmain_units) has no main commit, and SQLite lets
+# NULLs repeat in a non-INTEGER primary key. NOT NULL or WITHOUT ROWID would reject those rows.
 SCHEMA = f"""
     DROP TABLE IF EXISTS cs_units; DROP TABLE IF EXISTS cs_sets;
     DROP TABLE IF EXISTS changesets; DROP TABLE IF EXISTS changesets_by_commit;
     CREATE TABLE cs_units ({UNIT_COLS}, main_sha TEXT,
-                           n_commits INTEGER, n_sets INTEGER, method TEXT, PRIMARY KEY (repo, unit_kind, unit_id));
+                           n_commits INTEGER NOT NULL CHECK (n_commits >= 1),
+                           n_sets INTEGER NOT NULL CHECK (n_sets >= 1),
+                           method TEXT NOT NULL CHECK (method IN ({_in(METHODS)})),
+                           PRIMARY KEY (repo, unit_kind, unit_id), {UNIT_ID_CHECK});
+    CREATE UNIQUE INDEX cs_units_one_pr ON cs_units (repo, unit_id) WHERE unit_kind IN ('pr', 'pr-squash');
     CREATE TABLE cs_sets ({UNIT_COLS}, set_idx INTEGER NOT NULL CHECK (set_idx >= 0), label TEXT, shas_json TEXT,
-                          PRIMARY KEY (repo, unit_kind, unit_id, set_idx));
+                          PRIMARY KEY (repo, unit_kind, unit_id, set_idx), {UNIT_ID_CHECK});
     CREATE TABLE changesets (content_hash TEXT PRIMARY KEY, n_sets INTEGER, labels_json TEXT, method TEXT);
     CREATE TABLE changesets_by_commit (repo TEXT NOT NULL, sha TEXT, content_hash TEXT,
-                                       unit_kind TEXT NOT NULL CHECK (unit_kind IN ({_KINDS_SQL})),
-                                       unit_id TEXT NOT NULL CHECK (unit_id <> ''), PRIMARY KEY (repo, sha));
+                                       unit_kind TEXT NOT NULL CHECK (unit_kind IN ({_in(UNIT_KINDS)})),
+                                       unit_id TEXT NOT NULL CHECK (unit_id <> ''), PRIMARY KEY (repo, sha),
+                                       {UNIT_ID_CHECK});
 """
+
+
+def check_unique(units):
+    """Raise ValueError naming every unit load_units produced twice, with the main commits it came from.
+    Two main commits naming one PR "(#N)" load as the same PR unit twice."""
+    seen, dups = {}, {}
+    for key, repo, kind, uid, main_sha, *_ in units:
+        if (repo, kind, uid) in seen:
+            dups.setdefault((repo, kind, uid), [seen[(repo, kind, uid)]]).append(main_sha)
+        seen[(repo, kind, uid)] = main_sha
+    if dups:
+        raise ValueError("units loaded twice, nothing written: " + "; ".join(
+            f"{repo} {kind} {uid} from main commits {', '.join(str(s) for s in shas)}"
+            for (repo, kind, uid), shas in dups.items()))
+
+
+def write_units(d, units, cache):
+    """Replace cs_units, cs_sets, changesets and changesets_by_commit in one transaction."""
+    check_unique(units)
+    d.commit()
+    # executescript() commits before it runs, and Python's sqlite3 does not open a transaction before DDL, so
+    # the DROPs would land on their own and a failed insert would leave the tables empty. BEGIN is explicit.
+    level, d.isolation_level = d.isolation_level, None
+    try:
+        d.execute("BEGIN")
+        for stmt in SCHEMA.split(";"):
+            if stmt.strip():
+                d.execute(stmt)
+        for key, repo, kind, uid, main_sha, header, commits, rule in units:
+            if rule == "dependabot":
+                sets, method = [(label, [0]) for label in commits[0]["dependabot_sets"]], rule
+            elif rule:
+                sets, method = [(commits[0]["subject"], list(range(len(commits))))], rule
+            else:
+                h = sha256(PROMPT_VERSION + unit_text(key, header, commits))
+                sets, method = cache.get(h, ([(c["subject"], [i]) for i, c in enumerate(commits)],
+                                             "unlabelled: one per commit"))
+            d.execute("INSERT INTO cs_units VALUES (?,?,?,?,?,?,?)",
+                      (repo, kind, uid, main_sha, len(commits), len(sets), method))
+            for i, (label, idx) in enumerate(sets):
+                d.execute("INSERT INTO cs_sets VALUES (?,?,?,?,?,?)",
+                          (repo, kind, uid, i, label, json.dumps([commits[j]["sha"] for j in idx])))
+            d.execute("INSERT OR REPLACE INTO changesets VALUES (?,?,?,?)",
+                      (key, len(sets), json.dumps([l for l, _ in sets]), method))
+            d.execute("INSERT INTO changesets_by_commit VALUES (?,?,?,?,?)", (repo, main_sha, key, kind, uid))
+        d.execute("COMMIT")
+    except BaseException:
+        d.execute("ROLLBACK")
+        raise
+    finally:
+        d.isolation_level = level
 
 
 def build(limit=None, dry_run=False):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from cube.db import connect
-    con = connect()
+    con = connect(check_changesets=False)
     d = sqlite3.connect(DB_PATH)
     names = {r[0] for r in d.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     if "changesets" in names and "changesets_msg_v1" not in names:
@@ -323,24 +382,7 @@ def build(limit=None, dry_run=False):
                 print(f"  round {round_} batch {n}/{len(batches)}: {len(b)} units, ${cost:.3f} (total ${total:.2f})",
                       file=sys.stderr)
 
-    d.executescript(SCHEMA)
-    for key, repo, kind, uid, main_sha, header, commits, rule in units:
-        if rule == "dependabot":
-            sets, method = [(label, [0]) for label in commits[0]["dependabot_sets"]], rule
-        elif rule:
-            sets, method = [(commits[0]["subject"], list(range(len(commits))))], rule
-        else:
-            h = sha256(PROMPT_VERSION + unit_text(key, header, commits))
-            sets, method = cache.get(h, ([(c["subject"], [i]) for i, c in enumerate(commits)], "unlabelled: one per commit"))
-        d.execute("INSERT OR REPLACE INTO cs_units VALUES (?,?,?,?,?,?,?)",
-                  (repo, kind, uid, main_sha, len(commits), len(sets), method))
-        for i, (label, idx) in enumerate(sets):
-            d.execute("INSERT INTO cs_sets VALUES (?,?,?,?,?,?)",
-                      (repo, kind, uid, i, label, json.dumps([commits[j]["sha"] for j in idx])))
-        d.execute("INSERT OR REPLACE INTO changesets VALUES (?,?,?,?)",
-                  (key, len(sets), json.dumps([l for l, _ in sets]), method))
-        d.execute("INSERT OR REPLACE INTO changesets_by_commit VALUES (?,?,?,?,?)", (repo, main_sha, key, kind, uid))
-    d.commit()
+    write_units(d, units, cache)
     print(f"detectors.sqlite: {len(units)} units, "
           f"{d.execute('SELECT SUM(n_sets) FROM cs_units').fetchone()[0]} change sets, ${total:.2f} spent")
 

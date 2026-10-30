@@ -21,8 +21,8 @@ from cube.db import connect
 HERE = os.path.dirname(os.path.abspath(__file__))
 BANK = os.path.join(os.path.dirname(HERE), "bank", "questions.csv")
 QUESTIONS_MD = os.path.join(os.path.dirname(HERE), "QUESTIONS.md")
-SLUG_LINE = re.compile(r"^- \*\*Q (\S+)\*\*")
 SLUG = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)+")
+QUESTION_LINE = re.compile(r"- \*\*Q (" + SLUG.pattern + r")\*\* \S.*")
 
 
 def bank_row(rq_id):
@@ -53,20 +53,22 @@ def check_modules(mods):
 
 
 def check_slugs(lines):
-    """Raise ValueError unless every `- **Q slug**` line declares a lower-case, hyphenated slug no other line
-    declares. The hyphen is what makes a slug citable: deck_html.Q_RE needs one, so a book's `Q hollow`
-    would never resolve to its question."""
+    """Raise ValueError unless every line holding `**Q ` is `- **Q slug** question`, its slug lower-case words
+    joined by hyphens that no other line declares. The hyphen is what makes a slug citable: deck_html.Q_RE needs
+    one, so a book's `Q gaps` would never resolve to its question. Lines are found loosely and checked strictly,
+    so a malformed declaration fails instead of going unseen."""
     errors, seen = [], set()
     for n, line in enumerate(lines, 1):
-        m = SLUG_LINE.match(line)
-        if not m:
+        if "**Q " not in line:
             continue
-        slug = m.group(1)
-        if not SLUG.fullmatch(slug):
-            errors.append(f"line {n}: Q {slug} is not lower-case words joined by hyphens")
-        elif slug in seen:
-            errors.append(f"line {n}: Q {slug} is declared twice")
-        seen.add(slug)
+        m = QUESTION_LINE.fullmatch(line.rstrip("\n"))
+        if not m:
+            errors.append(f"line {n}: {line.strip()[:60]!r} is not `- **Q slug** question` "
+                          "with a slug of lower-case words joined by hyphens")
+        elif m.group(1) in seen:
+            errors.append(f"line {n}: Q {m.group(1)} is declared twice")
+        else:
+            seen.add(m.group(1))
     if errors:
         raise ValueError("QUESTIONS.md: " + "; ".join(errors))
 

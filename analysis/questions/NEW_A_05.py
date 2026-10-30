@@ -3,6 +3,7 @@ PRs, in change sets per PR? D1-backed, split by fleet.BASELINE_CUTOFF.
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from cube.db import commit_sets
 from ingest.fleet import BASELINE_CUTOFF
 
 RQ_ID = "NEW-A-05"
@@ -10,23 +11,23 @@ QUESTION = "Before the factory, how large and how focused were PRs, in change se
 
 SQL = """
 SELECT p.repo, p.number, p.additions, p.deletions, p.changed_files,
-       COALESCE(u.n_sets, 1) AS n_sets
+       c.sha
 FROM github.prs p
 JOIN git.commits c ON c.repo = p.repo AND c.pr_number = p.number
 JOIN detectors.changesets_by_commit lk ON lk.repo = c.repo AND lk.sha = c.sha
-LEFT JOIN detectors.cs_units u ON u.repo = lk.repo AND u.unit_kind = lk.unit_kind AND u.unit_id = lk.unit_id
 WHERE p.day < ?
 """
 
 
 def answer(con):
     rows = con.execute(SQL, (BASELINE_CUTOFF,)).fetchall()
+    sets = commit_sets(con)
     pr_sets = {}
     pr_size = {}
     for r in rows:
         key = (r["repo"], r["number"])
         pr_sets.setdefault(key, 0)
-        pr_sets[key] += r["n_sets"]
+        pr_sets[key] += sets[(r["repo"], r["sha"])]
         pr_size[key] = (r["additions"] or 0) + (r["deletions"] or 0)
 
     if not pr_sets:

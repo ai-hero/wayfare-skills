@@ -1,6 +1,8 @@
 """Q13.xx / RQ-h4-015 -- How do the size and shape of shipped changes
 (change sets per PR, PR size) trend over the study? D1-backed monthly trend.
 """
+from cube.db import commit_sets
+
 RQ_ID = "RQ-h4-015"
 QUESTION = "How do the size and shape of shipped changes trend over the study?"
 
@@ -14,9 +16,7 @@ WHERE p.merged_ts IS NOT NULL
 
 def answer(con):
     rows = con.execute(SQL).fetchall()
-    sets_by_commit = {(r["repo"], r["sha"]): r["n_sets"] for r in con.execute(
-        "SELECT lk.repo, lk.sha, u.n_sets FROM detectors.changesets_by_commit lk "
-        "JOIN detectors.cs_units u USING (repo, unit_kind, unit_id)").fetchall()}
+    sets_by_commit = commit_sets(con)
 
     pr_sets, pr_size, pr_month = {}, {}, {}
     for r in rows:

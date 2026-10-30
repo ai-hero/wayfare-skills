@@ -2,17 +2,18 @@
 units vs one consolidated unit? D1+D8-backed: PRs bucketed by change-set
 count (from D1, via their commits) against review count and CI run count.
 """
+from cube.db import commit_sets
+
 RQ_ID = "RQ-h6-040"
 QUESTION = "What is the review and CI cost of shipping many small units versus one consolidated unit?"
 
 SQL = """
 SELECT p.repo, p.number, p.review_count,
        (SELECT COUNT(*) FROM github.ci_runs cr WHERE cr.repo = p.repo AND cr.head_branch = p.head_ref) AS ci_runs,
-       COALESCE(u.n_sets, 1) AS n_sets
+       c.sha
 FROM github.prs p
 JOIN git.commits c ON c.repo = p.repo AND c.pr_number = p.number
 JOIN detectors.changesets_by_commit lk ON lk.repo = c.repo AND lk.sha = c.sha
-LEFT JOIN detectors.cs_units u ON u.repo = lk.repo AND u.unit_kind = lk.unit_kind AND u.unit_id = lk.unit_id
 """
 
 
@@ -26,11 +27,12 @@ def _bucket(n):
 
 def answer(con):
     rows = con.execute(SQL).fetchall()
+    sets = commit_sets(con)
     pr_sets, pr_meta = {}, {}
     for r in rows:
         key = (r["repo"], r["number"])
         pr_sets.setdefault(key, 0)
-        pr_sets[key] += r["n_sets"]
+        pr_sets[key] += sets[(r["repo"], r["sha"])]
         pr_meta[key] = (r["review_count"] or 0, r["ci_runs"] or 0)
 
     buckets = {}

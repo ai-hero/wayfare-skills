@@ -3,8 +3,8 @@ history, where do totals disagree, and does the chosen fleet-wide
 number hide that disagreement? sql half: compare the two passes this
 repo actually has over the same events -- raw git commits vs D1's
 Haiku-reclustered change sets -- per repo. The second pass is SUM(n_sets):
-changesets holds one row per commit text, so counting its rows just
-recounts commits and reads 1.00 everywhere.
+cs_units holds one row per unit, so counting its rows recounts units,
+not change sets.
 """
 RQ_ID = "RQ-h7-030"
 QUESTION = "When two independent passes count the same history, where do totals disagree, and does the chosen number hide that?"

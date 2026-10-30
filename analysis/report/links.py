@@ -14,7 +14,7 @@ from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cube.db import connect  # noqa: E402
+from cube.db import commit_sets, connect  # noqa: E402
 from ingest.fleet import ALLIED, APP, APP_NO_FEATURES, BASELINE_CUTOFF, OUT_OF_SCOPE, REPO_ALIASES, category_of  # noqa: E402
 from record import STAGES, adoption, stage_of  # noqa: E402
 
@@ -40,9 +40,7 @@ def rows(con, sql, args=()):
 
 
 def sets_by_sha(con):
-    return {(r["repo"], r["sha"]): r["n_sets"] for r in rows(con, """
-        SELECT lk.repo, lk.sha, u.n_sets FROM detectors.changesets_by_commit lk
-        JOIN detectors.cs_units u USING (repo, unit_kind, unit_id)""")}
+    return commit_sets(con)
 
 
 # When wayfare shipped each piece of the factory, from wayfare-skills' own

@@ -3,6 +3,7 @@ before and after the factory in the same repo? D1-backed.
 """
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from cube.db import commit_sets
 from ingest.fleet import BASELINE_CUTOFF
 
 RQ_ID = "RQ-h1-045"
@@ -10,15 +11,15 @@ QUESTION = "How did churn per commit and per change set compare before and after
 
 SQL = """
 SELECT c.repo, CASE WHEN c.day < ? THEN 'before' ELSE 'after' END AS era,
-       c.insertions, c.deletions, COALESCE(u.n_sets, 1) AS n_sets
+       c.insertions, c.deletions, c.sha
 FROM git.commits c
 JOIN detectors.changesets_by_commit lk ON lk.repo = c.repo AND lk.sha = c.sha
-LEFT JOIN detectors.cs_units u ON u.repo = lk.repo AND u.unit_kind = lk.unit_kind AND u.unit_id = lk.unit_id
 """
 
 
 def answer(con):
     rows = con.execute(SQL, (BASELINE_CUTOFF,)).fetchall()
+    sets = commit_sets(con)
     agg = {}
     for r in rows:
         key = (r["repo"], r["era"])
@@ -26,7 +27,7 @@ def answer(con):
         churn = (r["insertions"] or 0) + (r["deletions"] or 0)
         a["commits"] += 1
         a["churn"] += churn
-        a["sets"] += r["n_sets"]
+        a["sets"] += sets[(r["repo"], r["sha"])]
 
     out = []
     for (repo, era), a in sorted(agg.items()):

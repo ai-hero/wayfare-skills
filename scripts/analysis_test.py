@@ -486,24 +486,27 @@ class WriteUnits(unittest.TestCase):
 
 
 STUBS = {
-    "git": ["CREATE TABLE commits (repo, sha, day, week, month, pr_number, plan_item_ref, is_bot, is_merge, subject, "
+    "git": ["ATTACH DATABASE ':memory:' AS git",
+            "CREATE TABLE commits (repo, sha, day, week, month, pr_number, plan_item_ref, is_bot, is_merge, subject, "
             "insertions, deletions)",
             "INSERT INTO commits VALUES ('app1', 'm8', '2026-08-03', '2026-W32', '2026-08', 8, NULL, 0, 0, 'feat', 3, 1)",
             "INSERT INTO commits VALUES ('app1', 'x1', '2026-08-04', '2026-W32', '2026-08', NULL, NULL, 0, 0, 'x', 1, 1)"],
-    "github": ["CREATE TABLE prs (repo, number, month, day, additions, deletions, changed_files, merged_ts, review_count, "
+    "github": ["ATTACH DATABASE ':memory:' AS github",
+               "CREATE TABLE prs (repo, number, month, day, additions, deletions, changed_files, merged_ts, review_count, "
                "head_ref)",
                "INSERT INTO prs VALUES ('app1', 8, '2026-08', '2026-08-03', 3, 1, 2, '2026-08-03T00:00:00Z', 1, 'goal-1')",
                "CREATE TABLE ci_runs (repo, head_branch)"],
-    "plans": ["CREATE TABLE plan_items (repo, item_id, type, goal_id, day, raw_frontmatter_json)",
+    "plans": ["ATTACH DATABASE ':memory:' AS plans",
+              "CREATE TABLE plan_items (repo, item_id, type, goal_id, day, raw_frontmatter_json)",
               "CREATE TABLE goals (repo, goal_id, members)",
               "INSERT INTO goals VALUES ('app1', '1', '[\"1\", \"2\"]')"],
-    "harness": ["CREATE TABLE sessions (day, pr_links)"],
-    "pr_commits": ["CREATE TABLE pr_commits (repo, pr_number, sha, subject)"],
-    "detectors": ["CREATE TABLE session_spend (repo, cost_usd)", "INSERT INTO session_spend VALUES ('app1', 2.0)",
+    "harness": ["ATTACH DATABASE ':memory:' AS harness", "CREATE TABLE sessions (day, pr_links)"],
+    "pr_commits": ["ATTACH DATABASE ':memory:' AS pr_commits",
+                   "CREATE TABLE pr_commits (repo, pr_number, sha, subject)"],
+    "detectors": ["ATTACH DATABASE ':memory:' AS detectors",
+                  "CREATE TABLE session_spend (repo, cost_usd)", "INSERT INTO session_spend VALUES ('app1', 2.0)",
                   "CREATE TABLE duplicate_fixes (cluster_id, repo)"],
 }
-CHANGE_SET_QUESTIONS = ("RQ_h4_015", "RQ_h6_040", "RQ_h1_033", "NEW_A_02", "RQ_h2_004", "RQ_h2_020", "NEW_A_03",
-                        "RQ_h2_010", "RQ_h7_030", "NEW_A_05", "RQ_h1_045", "RQ_h1_014")
 
 
 class ChangeSetQueries(unittest.TestCase):
@@ -514,7 +517,6 @@ class ChangeSetQueries(unittest.TestCase):
         self.con.row_factory = sqlite3.Row
         self.addCleanup(self.con.close)
         for name, stmts in STUBS.items():
-            self.con.execute(f"ATTACH DATABASE ':memory:' AS {name}")
             for stmt in stmts:
                 self.con.execute(stmt.replace("CREATE TABLE ", f"CREATE TABLE {name}.").replace(
                     "INSERT INTO ", f"INSERT INTO {name}."))
@@ -528,10 +530,12 @@ class ChangeSetQueries(unittest.TestCase):
         self.con.execute("INSERT INTO detectors.changesets_by_commit VALUES ('app1', 'm8', 'app1#pr8', 'pr', '8')")
 
     def test_the_questions_run(self):
-        import importlib
-        for name in CHANGE_SET_QUESTIONS:
-            with self.subTest(name):
-                importlib.import_module(f"questions.{name}").answer(self.con)
+        from questions import (NEW_A_02, NEW_A_03, NEW_A_05, RQ_h1_014, RQ_h1_033, RQ_h1_045, RQ_h2_004, RQ_h2_010,
+                               RQ_h2_020, RQ_h4_015, RQ_h6_040, RQ_h7_030)
+        for mod in (RQ_h4_015, RQ_h6_040, RQ_h1_033, NEW_A_02, RQ_h2_004, RQ_h2_020, NEW_A_03, RQ_h2_010, RQ_h7_030,
+                    NEW_A_05, RQ_h1_045, RQ_h1_014):
+            with self.subTest(mod.__name__):
+                mod.answer(self.con)
         with mock.patch.dict(sys.modules, _stubs), mock.patch.object(fleet, "BASELINE_CUTOFF", "2026-05-01"):
             import links
         self.assertEqual(links.sets_by_sha(self.con), {("app1", "m8"): 3})
@@ -571,9 +575,9 @@ class WorktypeWrite(unittest.TestCase):
         con.row_factory = sqlite3.Row
         self.addCleanup(con.close)
         con.execute("ATTACH DATABASE ? AS detectors", (path,))
-        for name, table in (("pr_commits", "pr_commits"), ("git", "commits")):
-            con.execute(f"ATTACH DATABASE ':memory:' AS {name}")
-            con.execute(f"CREATE TABLE {name}.{table} (repo, sha, subject)")
+        for stmt in ("ATTACH DATABASE ':memory:' AS pr_commits", "CREATE TABLE pr_commits.pr_commits (repo, sha, subject)",
+                     "ATTACH DATABASE ':memory:' AS git", "CREATE TABLE git.commits (repo, sha, subject)"):
+            con.execute(stmt)
         err = io.StringIO()
         with mock.patch.object(L.D1, "call_haiku", side_effect=AssertionError("no model calls")), \
                 contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):

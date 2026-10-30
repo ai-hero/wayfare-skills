@@ -17,6 +17,7 @@ import shutil
 import sys
 
 import paths
+import artwork
 from inline import NOTE_RE, XREF_RE, md_html, md_plain, plain_repos
 
 sys.path.insert(0, paths.REPORT)
@@ -73,7 +74,7 @@ def copy_drawn(meta, assets):
             dst = f"{meta['name']}.{ext}"
             shutil.copyfile(src, os.path.join(assets, dst))
             files[ext] = dst
-    return files
+    return artwork.prepare(files, assets, warn=warn)
 
 
 def table_rows(meta):
@@ -99,10 +100,11 @@ def card_files(view, name, assets):
         dst = f"{name}.{ext}"
         with open(os.path.join(assets, dst), "wb") as f:
             f.write(base64.b64decode(data))
-        return {ext: dst}
+        # The deck's own SVG stays vector in print and on the web, which prefer a PNG when one exists.
+        return artwork.prepare({ext: dst}, assets, raster=False, warn=warn)
     if view.get("charts"):
         import charts
-        return charts.draw(view["charts"], os.path.join(assets, name))
+        return artwork.prepare(charts.draw(view["charts"], os.path.join(assets, name)), assets, warn=warn)
     return {}
 
 
@@ -322,10 +324,16 @@ def resolve_markers(chapters, appendix):
         for s in c["sections"]:
             for b in s["blocks"]:
                 for h in holders(b):
+                    for m in PLAIN_DIAGRAM.finditer(XREF_RE.sub("", h["md"])):
+                        warn(f"chapter {n}: plain {m.group(0)!r} names an authored id, not the printed number; "
+                             f"write {{{{diagram:{m.group(1)}}}}}")
                     h["html"] = md_html(CITE_RUN.sub(run, XREF_RE.sub(lambda m: xref_html(m, idx, evidence, n),
                                                                       h["md"])))
         del c["order"]
     return references
+
+
+PLAIN_DIAGRAM = re.compile(r"\bDiagram\s+(\d+\.\d+)\b")
 
 
 def unescape_pipes(cells):
@@ -428,7 +436,9 @@ def figure(b, n, cards, drawn, results, assets, counters):
             warn(f"chapter {n}: authored Figure {meta['id']} falls at position {number} among the chapter's figures")
         out.update(type="drawn", label="Figure", number=number, id=meta["id"])
     else:
-        out.update(type="diagram", label="Diagram", number=meta["id"], id=meta["id"])
+        # References use the authored id; using it as the printed number puts inserted diagrams out of order.
+        counters["diagram"] = counters.get("diagram", 0) + 1
+        out.update(type="diagram", label="Diagram", number=f"{n}.{counters['diagram']}", id=meta["id"])
     out["files"] = copy_drawn(meta, assets)
     if not out["files"]:
         warn(f"chapter {n}: {ref} has a sidecar but no svg, pdf or png in {paths.DIAGRAMS}")

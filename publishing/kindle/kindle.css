@@ -1,8 +1,9 @@
 /* The print book's design (book/book.css) carried to a reflowable page. Sizes are in em so the
    reader's text size still scales everything. Body text gets no colour and nothing gets a background:
    Kindle and Apple Books invert the page in dark mode, and a fixed light fill or dark text would stay
-   put and become a bright box or unreadable text. Accents use one rose that reads on both. No custom
-   properties: KFX drops a rule that uses var(). */
+   put and become a bright box or unreadable text. Text accents inherit the reader's foreground: no single rose
+   clears 4.5:1 on both the white and the inverted page at label sizes. Rules and hairlines keep fixed colours,
+   because a line only has to be visible, not read. No custom properties: KFX drops a rule that uses var(). */
 body { margin: 0; font-family: "Geist", sans-serif; font-weight: 400; line-height: 1.55; text-align: left;
   hyphens: auto; -webkit-hyphens: auto; adobe-hyphenate: auto;
   /* Geist has no U+2010, the default hyphen, which would fall back to the reader's face mid-word. */
@@ -18,13 +19,13 @@ code { font-family: "Geist Mono", monospace; font-size: 0.88em; hyphens: none; -
 .opener-art img { width: 100%; max-height: 40vh; object-fit: contain; }
 hr.opener-rule { width: 3em; height: 0; margin: 3em 0 1.1em; border: 0; border-top: 0.2em solid #D63358; }
 .chapter-number { font-family: "Geist Mono", monospace; font-size: 0.72em; letter-spacing: 0.16em;
-  text-transform: uppercase; color: #D63358; margin: 0 0 0.9em; text-indent: 0; }
+  text-transform: uppercase; color: inherit; margin: 0 0 0.9em; text-indent: 0; }
 h1 { font-family: "Manrope", sans-serif; font-weight: 300; font-size: 2.1em; line-height: 1.12;
   letter-spacing: -0.015em; margin: 0 0 1.4em; hyphens: manual; -webkit-hyphens: manual; }
 h2 { font-family: "Geist", sans-serif; font-weight: 300; font-size: 1.3em; line-height: 1.25;
   margin: 1.9em 0 0.6em; page-break-after: avoid; hyphens: manual; -webkit-hyphens: manual; }
 h3 { font-family: "Geist Mono", monospace; font-weight: 400; font-size: 0.72em; line-height: 1.4;
-  letter-spacing: 0.1em; text-transform: uppercase; color: #D63358; margin: 1.8em 0 0.5em; page-break-after: avoid; }
+  letter-spacing: 0.1em; text-transform: uppercase; color: inherit; margin: 1.8em 0 0.5em; page-break-after: avoid; }
 
 /* ---------- lists and quotes ---------- */
 ul, ol { margin: 0.7em 0 0.9em; padding-left: 2.6em; }
@@ -41,8 +42,8 @@ figure { page-break-inside: avoid; -webkit-column-break-inside: avoid; break-ins
 .panel-title { page-break-after: avoid; -webkit-column-break-after: avoid; break-after: avoid; }
 .panel-title, .example-title { font-family: "Geist Mono", monospace; font-size: 0.66em; line-height: 1.3;
   letter-spacing: 0.1em; text-transform: uppercase; text-indent: 0; margin: 0 0 0.9em; }
-.panel-title { color: #7B8290; }
-.example-title { color: #D63358; }
+.panel-title { color: inherit; }
+.example-title { color: inherit; }
 figure img { display: block; width: auto; max-width: 100%; height: auto; max-height: 62vh; margin: 0 auto; }
 figcaption { font-size: 0.82em; line-height: 1.45; font-weight: 300; margin-top: 0.8em; padding-top: 0.6em;
   border-top: 1px solid #E2E4E8; hyphens: manual; -webkit-hyphens: manual; }
@@ -56,7 +57,7 @@ th { text-align: left; font-weight: 400; border-bottom: 1px solid #7B8290; paddi
 td, tbody th { border-bottom: 1px solid #E2E4E8; padding: 0.35em 0.4em; vertical-align: top; }
 th[scope="row"] { font-weight: 300; }
 tr.group th { font-family: "Geist Mono", monospace; font-size: 0.85em; letter-spacing: 0.08em; text-transform: uppercase;
-  font-weight: 400; color: #D63358; padding-top: 0.9em; border-bottom: 1px solid #C5C9D1; }
+  font-weight: 400; color: inherit; padding-top: 0.9em; border-bottom: 1px solid #C5C9D1; }
 figure table { margin: 0; }
 /* Overrides `figure { page-break-inside: avoid }`: a long table that may not break is pushed whole
    to the next screen or clipped. Rows still stay whole. */
@@ -66,7 +67,7 @@ tr { page-break-inside: avoid; break-inside: avoid; }
 th, td { word-wrap: break-word; overflow-wrap: anywhere; }
 
 /* ---------- citations, notes and repository names ---------- */
-a.cite, a.noteref { color: #D63358; }
+a.cite, a.noteref { color: inherit; text-decoration: underline; }
 .noteref sup { font-size: 0.7em; line-height: 0; }
 .footnote p { font-size: 0.82em; font-weight: 300; text-indent: 0; margin-top: 0.6em; }
 p.further-sources { text-indent: 0; margin-top: 2em; padding-top: 0.8em; border-top: 1px solid #C5C9D1; font-size: 0.82em; font-weight: 300; }
@@ -78,7 +79,7 @@ p.further-sources { text-indent: 0; margin-top: 2em; padding-top: 0.8em; border-
 .book-title { font-family: "Manrope", sans-serif; font-weight: 300; font-size: 2.5em; line-height: 1.06;
   letter-spacing: -0.02em; margin: 0 0 0.6em; }
 .part { font-family: "Geist Mono", monospace; font-size: 0.75em; letter-spacing: 0.18em; text-transform: uppercase;
-  color: #D63358; margin: 0 0 0.4em; }
+  color: inherit; margin: 0 0 0.4em; }
 .subtitle { font-weight: 300; font-size: 1.15em; line-height: 1.4; margin-bottom: 3.5em; }
 .author { font-size: 1.05em; margin-bottom: 0.2em; }
 .affiliation { font-family: "Geist Mono", monospace; font-size: 0.7em; letter-spacing: 0.12em; text-transform: uppercase; }
@@ -93,6 +94,6 @@ nav ol ol { margin: 0.3em 0 0 1.2em; }
 nav ol ol li { border-bottom: 0; padding: 0.2em 0; font-size: 0.88em; }
 
 .reference-list p { font-size: 0.82em; line-height: 1.45; font-weight: 300; text-indent: 0; margin: 0 0 0.5em; }
-.ref-n { font-family: "Geist Mono", monospace; font-size: 0.9em; color: #D63358; margin-right: 0.4em; }
+.ref-n { font-family: "Geist Mono", monospace; font-size: 0.9em; color: inherit; margin-right: 0.4em; }
 
 body, a, code, .reference-list { word-wrap: break-word; overflow-wrap: anywhere; }

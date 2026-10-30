@@ -198,6 +198,29 @@ check("a protocol-relative or script href loses its href", {h: "<a>x</a>" for h 
 import source
 check("an escaped pipe keeps a table cell whole", ["a | b", "c"], source.unescape_pipes(["a \\", " b", "c"]))
 
+original_diagrams = paths.DIAGRAMS
+paths.DIAGRAMS = os.path.join(tmp, "diagrams")
+os.makedirs(paths.DIAGRAMS, exist_ok=True)
+drawn = {}
+for ident, name in (("1.2", "first"), ("1.1", "second")):
+    with open(os.path.join(paths.DIAGRAMS, name + ".svg"), "w") as f:
+        f.write('<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>')
+    drawn["diagram " + ident] = {"kind": "diagram", "id": ident, "name": name}
+counters = {"figure": 0, "table": 0}
+diagrams = [source.figure({"ref": "Diagram " + ident, "caption": "A diagram."},
+                          1, {}, drawn, {}, paths.ASSETS, counters) for ident in ("1.2", "1.1")]
+check("diagram numbers follow reading order while authored ids stay stable",
+      [("1.2", "1.1"), ("1.1", "1.2")], [(b["id"], b["number"]) for b in diagrams])
+check("diagram numbering leaves figure and table sequences alone", (0, 0),
+      (counters["figure"], counters["table"]))
+idx = source.figure_index([{"sections": [{"blocks": diagrams}]}])
+for ident, number in (("1.2", "1.1"), ("1.1", "1.2")):
+    marker = source.XREF_RE.fullmatch("{{diagram:" + ident + "}}")
+    check(f"authored diagram {ident} links to its printed number {number}",
+          f'(<a class="xref" href="#fig-diagram-{number.replace(".", "-")}">Diagram {number}</a>)',
+          source.xref_html(marker, idx, {}, 1))
+paths.DIAGRAMS = original_diagrams
+
 
 def fake_urlopen(body):
     class R:
@@ -283,6 +306,31 @@ opened = book.chapter({"n": 1, "title": "One", "sections": []}, {}, {})
 check("a chapter opener carries its art", True, 'class="opener with-art"' in opened and 'class="opener-art"' in opened)
 check("a chapter with no scene keeps the plain opener", True,
       'class="opener"' in book.chapter({"n": 9, "title": "Nine", "sections": []}, {}, {}))
+
+import fitz
+table_pages = []
+original_svg = fitz.Page.get_svg_image
+original_faces = book.font_faces
+
+
+def capture_table_page(page, *args, **kwargs):
+    table_pages.append(page.get_text())
+    return original_svg(page, *args, **kwargs)
+
+
+fitz.Page.get_svg_image = capture_table_page
+book.font_faces = lambda: ""
+try:
+    long_table = {**table(["Name", "Description"], *[[str(i), "A table row."] for i in range(80)]),
+                  "label": "Table", "number": "9.1"}
+    book.table_svg(long_table, "<figcaption>A long table.</figcaption>")
+finally:
+    fitz.Page.get_svg_image = original_svg
+    book.font_faces = original_faces
+check("a long table spans multiple pages", True, len(table_pages) > 1)
+check("every table page repeats its number", True, all("TABLE 9.1" in page for page in table_pages))
+check("table continuations identify their page and total", True,
+      all(f"Page {i} of {len(table_pages)}" in page for i, page in enumerate(table_pages, 1)))
 
 import technical
 entry = {"slugs": ["foo-bar"], "rid": None, "blocks": [], "charts": []}

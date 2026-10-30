@@ -17,6 +17,7 @@ import shutil
 import sys
 
 import paths
+import artwork
 from inline import NOTE_RE, XREF_RE, md_html, md_plain, plain_repos
 
 sys.path.insert(0, paths.REPORT)
@@ -73,7 +74,7 @@ def copy_drawn(meta, assets):
             dst = f"{meta['name']}.{ext}"
             shutil.copyfile(src, os.path.join(assets, dst))
             files[ext] = dst
-    return files
+    return artwork.prepare(files, assets)
 
 
 def table_rows(meta):
@@ -99,10 +100,10 @@ def card_files(view, name, assets):
         dst = f"{name}.{ext}"
         with open(os.path.join(assets, dst), "wb") as f:
             f.write(base64.b64decode(data))
-        return {ext: dst}
+        return artwork.prepare({ext: dst}, assets)
     if view.get("charts"):
         import charts
-        return charts.draw(view["charts"], os.path.join(assets, name))
+        return artwork.prepare(charts.draw(view["charts"], os.path.join(assets, name)), assets)
     return {}
 
 

@@ -2,30 +2,27 @@
 commits, does each repo's output rank the same way? D1-backed comparison
 of three units.
 """
+from cube.db import commit_sets
+
 RQ_ID = "RQ-h1-014"
 QUESTION = "Measured in change sets rather than lines or commits, does each repo's output rank the same way?"
 
 SQL = """
-SELECT c.repo, COUNT(*) AS commits, SUM(c.insertions + c.deletions) AS lines,
-       lk.content_hash
+SELECT c.repo, COUNT(*) AS commits, SUM(c.insertions + c.deletions) AS lines
 FROM git.commits c
-LEFT JOIN detectors.changesets_by_commit lk ON lk.repo = c.repo AND lk.sha = c.sha
 GROUP BY c.repo
 """
 
 
 def answer(con):
     rows = con.execute("SELECT repo, sha FROM git.commits").fetchall()
-    n_sets_by_hash = dict(con.execute("SELECT content_hash, n_sets FROM detectors.changesets").fetchall())
-    links = con.execute("SELECT repo, sha, content_hash FROM detectors.changesets_by_commit").fetchall()
-    link_map = {(r["repo"], r["sha"]): r["content_hash"] for r in links}
+    sets_by_commit = commit_sets(con)
 
     by_repo = {}
     for repo, sha in rows:
-        h = link_map.get((repo, sha))
         by_repo.setdefault(repo, {"commits": 0, "sets": 0})
         by_repo[repo]["commits"] += 1
-        by_repo[repo]["sets"] += n_sets_by_hash.get(h, 1) if h else 1
+        by_repo[repo]["sets"] += sets_by_commit.get((repo, sha), 1)
 
     lines_by_repo = {r["repo"]: r["lines"] or 0 for r in con.execute(
         "SELECT repo, SUM(insertions + deletions) AS lines FROM git.commits GROUP BY repo"

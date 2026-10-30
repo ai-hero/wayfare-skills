@@ -14,7 +14,7 @@ from collections import defaultdict
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from cube.db import connect  # noqa: E402
+from cube.db import commit_sets, connect  # noqa: E402
 from ingest.fleet import ALLIED, APP, APP_NO_FEATURES, BASELINE_CUTOFF, OUT_OF_SCOPE, REPO_ALIASES, category_of  # noqa: E402
 from record import STAGES, adoption, stage_of  # noqa: E402
 
@@ -40,9 +40,7 @@ def rows(con, sql, args=()):
 
 
 def sets_by_sha(con):
-    return {(r["repo"], r["sha"]): r["n_sets"] for r in rows(con, """
-        SELECT lk.repo, lk.sha, c.n_sets FROM detectors.changesets_by_commit lk
-        JOIN detectors.changesets c ON c.content_hash = lk.content_hash""")}
+    return commit_sets(con)
 
 
 # When wayfare shipped each piece of the factory, from wayfare-skills' own
@@ -129,10 +127,10 @@ def q_change_set_work_item_links(con):
     goals = {(r["repo"], r["goal_id"]): len(json.loads(r["members"] or "[]"))
              for r in rows(con, "SELECT repo, goal_id, members FROM plans.goals")}
     pairs = []
-    for r in rows(con, """SELECT p.repo, p.head_ref, SUM(cs.n_sets) n FROM github.prs p
+    for r in rows(con, """SELECT p.repo, p.head_ref, SUM(u.n_sets) n FROM github.prs p
                           JOIN git.commits c ON c.repo=p.repo AND c.pr_number=p.number
                           JOIN detectors.changesets_by_commit bc ON bc.repo=c.repo AND bc.sha=c.sha
-                          JOIN detectors.changesets cs ON cs.content_hash=bc.content_hash
+                          JOIN detectors.cs_units u ON u.repo=bc.repo AND u.unit_kind=bc.unit_kind AND u.unit_id=bc.unit_id
                           WHERE p.head_ref LIKE '%goal-%' AND p.merged_ts IS NOT NULL GROUP BY p.repo, p.number"""):
         m = re.search(r"goal-(\d+)", r["head_ref"])
         if m and goals.get((r["repo"], m.group(1))):

@@ -1,13 +1,13 @@
 """Q2.17 / NEW-A-02 -- How many change sets does a typical commit, PR, work
-item and goal contain? D1-backed (detectors.changesets via changesets_by_commit).
+item and goal contain? D1-backed (detectors.cs_units via changesets_by_commit).
 """
 RQ_ID = "NEW-A-02"
 QUESTION = "How many change sets does a typical commit, PR, work item and goal contain?"
 
 SQL = """
-SELECT lk.repo, lk.sha, c.n_sets
+SELECT lk.repo, lk.sha, u.n_sets
 FROM detectors.changesets_by_commit lk
-JOIN detectors.changesets c ON c.content_hash = lk.content_hash
+JOIN detectors.cs_units u USING (repo, unit_kind, unit_id)
 """
 
 

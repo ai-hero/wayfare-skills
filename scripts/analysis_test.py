@@ -44,7 +44,10 @@ os.environ["WAYFARE_ANALYSIS_CONFIG"] = CONFIG
 from ingest import fleet
 from ingest.redact import redact
 from cube import db
+from detectors import d1_changesets as D1
 from detectors.d1_changesets import clean_sets, dependabot_sets
+sys.path.insert(0, os.path.join(ANALYSIS, "detectors"))
+import d_shared_labels as L
 from questions import runner
 
 # python-pptx and lxml are not installed where the suites run. build() takes its decks as dicts and never
@@ -239,6 +242,14 @@ class Connect(unittest.TestCase):
         _, err, _ = self.connect("mistakes")
         self.assertIn("label cache mistakes.sqlite not found", err)
 
+    def test_stale_change_set_tables_stop_the_cube(self):
+        sqlite3.connect(os.path.join(self.data, "detectors.sqlite")).execute(
+            "CREATE TABLE changesets_by_commit (repo TEXT, sha TEXT, content_hash TEXT)")
+        with self.assertRaisesRegex(SystemExit, "d1_changesets.py, then .*d_shared_labels.py changesets"):
+            self.connect()
+        with contextlib.redirect_stderr(io.StringIO()):
+            db.connect(check_changesets=False)
+
     def test_views_apply_only_when_their_sources_attached(self):
         _, _, con = self.connect()
         views = {r[0] for r in con.execute("SELECT name FROM temp.sqlite_master WHERE type='view'")}
@@ -316,6 +327,303 @@ class QuestionModules(unittest.TestCase):
                 mods.append(module(fname[:-3], consts.get("RQ_ID"), consts.get("QUESTION"), answer))
         self.assertTrue(mods)
         runner.check_modules(mods)
+
+
+class ChangeSetSchema(unittest.TestCase):
+    def setUp(self):
+        self.con = sqlite3.connect(":memory:")
+        self.con.executescript(D1.SCHEMA)
+        self.con.executescript(L.CS_WORKTYPE_SCHEMA)
+        self.addCleanup(self.con.close)
+
+    INSERTS = {
+        "cs_units": "INSERT INTO cs_units VALUES (?,?,?,?,?,?,?)",
+        "cs_sets": "INSERT INTO cs_sets VALUES (?,?,?,?,?,?)",
+        "cs_worktype": "INSERT INTO cs_worktype VALUES (?,?,?,?,?,?,?,?)",
+        "changesets_by_commit": "INSERT INTO changesets_by_commit VALUES (?,?,?,?,?)",
+    }
+
+    def insert(self, table, *row):
+        self.con.execute(self.INSERTS[table], row)
+
+    def test_primary_keys_reject_a_duplicate_set(self):
+        rows = {"cs_sets": ("app1", "pr", "12", 0, "label", "[]"),
+                "cs_worktype": ("app1", "pr", "12", 0, "fix", "product", "fix", "product")}
+        for table, row in rows.items():
+            with self.subTest(table):
+                self.insert(table, *row)
+                with self.assertRaisesRegex(sqlite3.IntegrityError, "UNIQUE"):
+                    self.insert(table, *row)
+
+    def test_checks_reject_a_bad_row(self):
+        good = ("app1", "pr", "12", 0)
+        bad = {"unit kind": ("app1", "merge", "12", 0), "empty repo": ("", "pr", "12", 0),
+               "empty unit id": ("app1", "pr", "", 0), "negative set": ("app1", "pr", "12", -1),
+               "no set": ("app1", "pr", "12", None), "no repo": (None, "pr", "12", 0)}
+        for name, key in bad.items():
+            for table, rest in (("cs_sets", ("label", "[]")), ("cs_worktype", ("fix", "product", "", ""))):
+                with self.subTest(name, table=table), self.assertRaises(sqlite3.IntegrityError):
+                    self.insert(table, *key, *rest)
+        for name, rest in {"work type": ("feat", "product"), "theme": ("fix", "factory")}.items():
+            with self.subTest(name), self.assertRaisesRegex(sqlite3.IntegrityError, "CHECK"):
+                self.insert("cs_worktype", *good, *rest, "", "")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "CHECK"):
+            self.insert("changesets_by_commit", "app1", "abc", "app1#pr12", "merge", "12")
+
+    def test_every_unit_kind_and_label_the_code_writes_is_accepted(self):
+        for i, kind in enumerate(D1.UNIT_KINDS):
+            self.insert("cs_sets", "app1", kind, "1", i, "label", "[]")
+        for i, (w, t) in enumerate(zip(L.WORK_TYPES * 2, L.THEMES)):
+            self.insert("cs_worktype", "app1", "pr", "1", i, w, t, w, t)
+
+    def test_normalised_labels_satisfy_the_checks(self):
+        cases = {
+            ("feat", "factory", False): ("feature", "skills", ["work_type", "theme"]),
+            ("nonsense", "nonsense", False): ("chore", "product", ["work_type", "theme"]),
+            ("", "", False): ("chore", "product", ["work_type", "theme"]),
+            ("fix", "harness", False): ("fix", "harness", []),
+            ("fix", "harness", True): ("dependency", "security", ["dependabot override"]),
+            ("dependency", "security", True): ("dependency", "security", []),
+        }
+        for i, (args, want) in enumerate(cases.items()):
+            with self.subTest(args=args):
+                got = L.normalise_worktype(*args)
+                self.assertEqual(got, want)
+                self.insert("cs_worktype", "app1", "pr", "1", i, got[0], got[1], args[0], args[1])
+
+    def test_commits_join_their_unit_on_typed_columns(self):
+        self.insert("cs_units", "app1", "pr", "12", "aaa", 2, 2, "haiku")
+        self.insert("cs_units", "app1", "push", "bbb", "bbb", 1, 1, "single-line")
+        self.insert("cs_units", "app1", "pr", "13", None, 1, 1, "single-line")
+        for i in range(2):
+            self.insert("cs_sets", "app1", "pr", "12", i, f"set {i}", "[]")
+            self.insert("cs_worktype", "app1", "pr", "12", i, "fix", "product", "fix", "product")
+        self.insert("changesets_by_commit", "app1", "aaa", "app1#pr12", "pr", "12")
+        self.insert("changesets_by_commit", "app1", "bbb", "app1#pushbbb", "push", "bbb")
+        self.insert("changesets_by_commit", "app1", None, "app1#pr13", "pr", "13")
+        got = self.con.execute("""SELECT lk.sha, u.n_sets, COUNT(w.set_idx) FROM changesets_by_commit lk
+                                  JOIN cs_units u USING (repo, unit_kind, unit_id)
+                                  LEFT JOIN cs_worktype w USING (repo, unit_kind, unit_id)
+                                  GROUP BY lk.repo, lk.unit_kind, lk.unit_id ORDER BY lk.unit_id""").fetchall()
+        self.assertEqual(got, [("aaa", 2, 2), (None, 1, 0), ("bbb", 1, 0)])
+
+    def test_unit_checks_reject_a_bad_unit(self):
+        bad = {"method": ("app1", "pr", "12", "a", 1, 1, "guess"),
+               "no sets": ("app1", "pr", "12", "a", 1, 0, "haiku"),
+               "no commits": ("app1", "pr", "12", "a", 0, 1, "haiku"),
+               "leading zero": ("app1", "pr", "012", "a", 1, 1, "haiku"),
+               "not a number": ("app1", "pr-squash", "abc", "a", 1, 1, "haiku")}
+        for name, row in bad.items():
+            with self.subTest(name), self.assertRaisesRegex(sqlite3.IntegrityError, "CHECK"):
+                self.insert("cs_units", *row)
+        self.insert("cs_units", "app1", "push", "abc", "abc", 1, 1, "unlabelled: one per commit")
+
+    def test_one_pr_cannot_be_both_pr_and_pr_squash(self):
+        self.insert("cs_units", "app1", "pr", "12", "a", 1, 1, "haiku")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "UNIQUE"):
+            self.insert("cs_units", "app1", "pr-squash", "12", "b", 1, 1, "single-line")
+        self.insert("cs_units", "app2", "pr-squash", "12", "b", 1, 1, "single-line")
+
+
+def commit(sha, subject, body=""):
+    return {"sha": sha, "subject": subject, "body": body, "files_json": "[]"}
+
+
+class WriteUnits(unittest.TestCase):
+    """build()'s write loop against the real SCHEMA, one unit of each kind of source."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.d = sqlite3.connect(os.path.join(tmp.name, "detectors.sqlite"))
+        self.addCleanup(self.d.close)
+        bump = {**commit("s5", "bump a"), "dependabot_sets": ["minor/patch bumps: a", "major bump: b 1 → 2"]}
+        cached = ("app1#pr8", "app1", "pr", "8", "m8", 'PR #8 "cache"', [commit("p8a", "feat"), commit("p8b", "test")])
+        self.units = [
+            ("app1#pr-squash5", "app1", "pr-squash", "5", "s5", "commit on main for PR #5", [bump], "dependabot"),
+            ("app1#pr7", "app1", "pr", "7", "m7", 'PR #7 "typo"', [commit("p7", "fix typo")], "single-line"),
+            (*cached, None),
+            ("app1#pushabc", "app1", "push", "abc", "abc", "commit on main", [commit("abc", "two things", "a / b")], None),
+            ("app1#pr9", "app1", "pr", "9", None, 'PR #9 "off main"', [commit("p9", "gone")], "single-line"),
+            ("app1#pr10", "app1", "pr", "10", None, 'PR #10 "off main"', [commit("p10", "gone too")], "single-line"),
+        ]
+        h = D1.sha256(D1.PROMPT_VERSION + D1.unit_text(cached[0], cached[5], cached[6]))
+        self.cache = {h: ([("feature", [0, 1])], "haiku")}
+
+    def table(self, sql):
+        return self.d.execute(sql).fetchall()
+
+    def test_each_kind_of_unit_is_written(self):
+        D1.write_units(self.d, self.units, self.cache)
+        self.assertEqual(self.table("SELECT unit_kind, unit_id, main_sha, n_commits, n_sets, method FROM cs_units "
+                                    "ORDER BY unit_kind, unit_id"), [
+            ("pr", "10", None, 1, 1, "single-line"), ("pr", "7", "m7", 1, 1, "single-line"),
+            ("pr", "8", "m8", 2, 1, "haiku"), ("pr", "9", None, 1, 1, "single-line"),
+            ("pr-squash", "5", "s5", 1, 2, "dependabot"), ("push", "abc", "abc", 1, 1, "unlabelled: one per commit")])
+        self.assertEqual(self.table("SELECT unit_id, set_idx, label, shas_json FROM cs_sets WHERE unit_id IN ('5', '8') "
+                                    "ORDER BY unit_id, set_idx"), [
+            ("5", 0, "minor/patch bumps: a", '["s5"]'), ("5", 1, "major bump: b 1 → 2", '["s5"]'),
+            ("8", 0, "feature", '["p8a", "p8b"]')])
+        self.assertEqual(self.table("SELECT unit_id FROM changesets_by_commit WHERE sha IS NULL ORDER BY unit_id"),
+                         [("10",), ("9",)])
+
+    def test_a_duplicate_unit_is_named_and_nothing_is_written(self):
+        D1.write_units(self.d, self.units, self.cache)
+        before = self.table("SELECT * FROM cs_sets ORDER BY 1, 2, 3, 4")
+        again = ("app1#pr7", "app1", "pr", "7", "m7b", 'PR #7 "typo"', [commit("p7", "fix typo")], "single-line")
+        with self.assertRaisesRegex(ValueError, "app1 pr 7 from main commits m7, m7b"):
+            D1.write_units(self.d, self.units[:2] + [again], self.cache)
+        self.assertEqual(self.table("SELECT * FROM cs_sets ORDER BY 1, 2, 3, 4"), before)
+
+    def test_a_failed_write_keeps_the_last_good_tables(self):
+        D1.write_units(self.d, self.units, self.cache)
+        before = {t: self.table(f"SELECT * FROM {t} ORDER BY 1, 2, 3") for t in ("cs_units", "changesets_by_commit")}
+        bad = ("app1#pr07", "app1", "pr", "07", "m07", 'PR #07 "zero"', [commit("p07", "zero")], "single-line")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "CHECK"):
+            D1.write_units(self.d, self.units[:1] + [bad], self.cache)
+        for t, rows in before.items():
+            self.assertEqual(self.table(f"SELECT * FROM {t} ORDER BY 1, 2, 3"), rows)
+
+
+STUBS = {
+    "git": ["ATTACH DATABASE ':memory:' AS git",
+            "CREATE TABLE commits (repo, sha, day, week, month, pr_number, plan_item_ref, is_bot, is_merge, subject, "
+            "insertions, deletions)",
+            "INSERT INTO commits VALUES ('app1', 'm8', '2026-08-03', '2026-W32', '2026-08', 8, NULL, 0, 0, 'feat', 3, 1)",
+            "INSERT INTO commits VALUES ('app1', 'x1', '2026-08-04', '2026-W32', '2026-08', NULL, NULL, 0, 0, 'x', 1, 1)"],
+    "github": ["ATTACH DATABASE ':memory:' AS github",
+               "CREATE TABLE prs (repo, number, month, day, additions, deletions, changed_files, merged_ts, review_count, "
+               "head_ref)",
+               "INSERT INTO prs VALUES ('app1', 8, '2026-08', '2026-08-03', 3, 1, 2, '2026-08-03T00:00:00Z', 1, 'goal-1')",
+               "CREATE TABLE ci_runs (repo, head_branch)"],
+    "plans": ["ATTACH DATABASE ':memory:' AS plans",
+              "CREATE TABLE plan_items (repo, item_id, type, goal_id, day, raw_frontmatter_json)",
+              "CREATE TABLE goals (repo, goal_id, members)",
+              "INSERT INTO goals VALUES ('app1', '1', '[\"1\", \"2\"]')"],
+    "harness": ["ATTACH DATABASE ':memory:' AS harness", "CREATE TABLE sessions (day, pr_links)"],
+    "pr_commits": ["ATTACH DATABASE ':memory:' AS pr_commits",
+                   "CREATE TABLE pr_commits (repo, pr_number, sha, subject)"],
+    "detectors": ["ATTACH DATABASE ':memory:' AS detectors",
+                  "CREATE TABLE session_spend (repo, cost_usd)", "INSERT INTO session_spend VALUES ('app1', 2.0)",
+                  "CREATE TABLE duplicate_fixes (cluster_id, repo)"],
+}
+
+
+class ChangeSetQueries(unittest.TestCase):
+    """Every query that joins the change-set tables runs against the real SCHEMA, so a column typo fails here."""
+
+    def setUp(self):
+        self.con = sqlite3.connect(":memory:")
+        self.con.row_factory = sqlite3.Row
+        self.addCleanup(self.con.close)
+        for name, stmts in STUBS.items():
+            for stmt in stmts:
+                self.con.execute(stmt.replace("CREATE TABLE ", f"CREATE TABLE {name}.").replace(
+                    "INSERT INTO ", f"INSERT INTO {name}."))
+        for stmt in D1.SCHEMA.split(";"):
+            if stmt.strip():
+                self.con.execute(stmt.replace("TABLE IF EXISTS ", "TABLE IF EXISTS detectors.")
+                                 .replace("CREATE TABLE ", "CREATE TABLE detectors.")
+                                 .replace("CREATE UNIQUE INDEX ", "CREATE UNIQUE INDEX detectors."))
+        self.con.execute("INSERT INTO detectors.cs_units VALUES ('app1', 'pr', '8', 'm8', 2, 3, 'haiku')")
+        self.con.execute("INSERT INTO detectors.changesets VALUES ('app1#pr8', 3, '[]', 'haiku')")
+        self.con.execute("INSERT INTO detectors.changesets_by_commit VALUES ('app1', 'm8', 'app1#pr8', 'pr', '8')")
+
+    def test_the_questions_run(self):
+        from questions import (NEW_A_02, NEW_A_03, NEW_A_05, RQ_h1_014, RQ_h1_033, RQ_h1_045, RQ_h2_004, RQ_h2_010,
+                               RQ_h2_020, RQ_h4_015, RQ_h6_040, RQ_h7_030)
+        for mod in (RQ_h4_015, RQ_h6_040, RQ_h1_033, NEW_A_02, RQ_h2_004, RQ_h2_020, NEW_A_03, RQ_h2_010, RQ_h7_030,
+                    NEW_A_05, RQ_h1_045, RQ_h1_014):
+            with self.subTest(mod.__name__):
+                mod.answer(self.con)
+        with mock.patch.dict(sys.modules, _stubs), mock.patch.object(fleet, "BASELINE_CUTOFF", "2026-05-01"):
+            import links
+        self.assertEqual(links.sets_by_sha(self.con), {("app1", "m8"): 3})
+        got = links.q_change_set_work_item_links(self.con)
+        self.assertEqual((got["goal_merges"], got["d1_sets_in_goal_merges"]), (1, 3))
+
+    def test_a_link_to_a_missing_unit_raises(self):
+        self.con.execute("INSERT INTO detectors.changesets_by_commit VALUES ('app1', 'x1', 'app1#pr99', 'pr', '99')")
+        with self.assertRaisesRegex(ValueError, "app1 pr 99.*d1_changesets.py"):
+            db.commit_sets(self.con)
+        for name in ("RQ_h1_045", "RQ_h1_014", "RQ_h4_015"):
+            with self.subTest(name), self.assertRaisesRegex(ValueError, "missing from cs_units"):
+                __import__(f"questions.{name}", fromlist=["answer"]).answer(self.con)
+
+    def test_an_unlinked_commit_counts_as_one_set(self):
+        from questions import RQ_h1_014
+        [row] = RQ_h1_014.answer(self.con)
+        self.assertEqual((row["commits"], row["change_sets"]), (2, 4))
+
+
+class WorktypeWrite(unittest.TestCase):
+    def test_a_dependabot_set_is_written_as_dependency_security(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        path = os.path.join(tmp.name, "detectors.sqlite")
+        d = sqlite3.connect(path)
+        self.addCleanup(d.close)
+        bump = {**commit("s5", "bump a"), "dependabot_sets": ["minor/patch bumps: a"]}
+        D1.write_units(d, [("app1#pr-squash5", "app1", "pr-squash", "5", "s5", "h", [bump], "dependabot"),
+                           ("app1#pr7", "app1", "pr", "7", "m7", "h", [commit("p7", "fix typo")], "single-line")], {})
+        d.execute("CREATE TABLE cs_worktype_cache (h TEXT PRIMARY KEY, work_type TEXT, theme TEXT)")
+        for label in ("minor/patch bumps: a", "fix typo"):
+            d.execute("INSERT INTO cs_worktype_cache VALUES (?, 'feature', 'product')",
+                      (L.h(f"repo app1: {label} | commits: "),))
+        d.commit()
+        con = sqlite3.connect(":memory:")
+        con.row_factory = sqlite3.Row
+        self.addCleanup(con.close)
+        con.execute("ATTACH DATABASE ? AS detectors", (path,))
+        for stmt in ("ATTACH DATABASE ':memory:' AS pr_commits", "CREATE TABLE pr_commits.pr_commits (repo, sha, subject)",
+                     "ATTACH DATABASE ':memory:' AS git", "CREATE TABLE git.commits (repo, sha, subject)"):
+            con.execute(stmt)
+        err = io.StringIO()
+        with mock.patch.object(L.D1, "call_haiku", side_effect=AssertionError("no model calls")), \
+                contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+            L.changesets(con, d)
+        self.assertEqual(d.execute("SELECT unit_id, work_type, theme, raw_work_type, raw_theme FROM cs_worktype "
+                                   "ORDER BY unit_id").fetchall(),
+                         [("5", "dependency", "security", "feature", "product"),
+                          ("7", "feature", "product", "feature", "product")])
+
+
+class QuestionSlugs(unittest.TestCase):
+    def lines(self, *slugs):
+        return ["# Research questions", ""] + [f"- **Q {s}** A question?" for s in slugs]
+
+    def test_committed_slugs_pass(self):
+        with open(runner.QUESTIONS_MD, encoding="utf-8") as f:
+            lines = f.readlines()
+        self.assertGreater(sum(1 for line in lines if runner.QUESTION_LINE.fullmatch(line.rstrip("\n"))), 0)
+        runner.check_slugs(lines)
+
+    def test_rejected(self):
+        shape = "is not `- \\*\\*Q slug\\*\\* question`"
+        cases = {"no hyphen": (["gaps"], shape),
+                 "upper case": (["Check-Gaps"], shape),
+                 "trailing hyphen": (["gaps-"], shape),
+                 "underscore": (["check_gaps"], shape),
+                 "space": (["check gaps"], shape),
+                 "declared twice": (["check-gaps", "check-gaps"], "declared twice")}
+        for name, (slugs, reason) in cases.items():
+            with self.subTest(name), self.assertRaisesRegex(ValueError, reason):
+                runner.check_slugs(self.lines(*slugs))
+        for name, line in {"indented": "  - **Q check-gaps** A question?",
+                           "star bullet": "* **Q check-gaps** A question?",
+                           "no question": "- **Q check-gaps**"}.items():
+            with self.subTest(name), self.assertRaisesRegex(ValueError, shape):
+                runner.check_slugs(["# Research questions", line])
+
+    def test_a_valid_slug_is_one_the_book_can_cite(self):
+        for slug in ("work-sources", "review-gap-2", "rq-h1-024"):
+            with self.subTest(slug=slug):
+                runner.check_slugs(self.lines(slug))
+                self.assertEqual(D.qkey(f"Q {slug}"), f"Q {slug}")
+        self.assertIsNone(D.qkey("Q gaps"))
+
+    def test_the_book_cites_the_same_slug_shape(self):
+        self.assertIn(runner.SLUG.pattern, D.Q_RE.pattern)
 
 
 class QKey(unittest.TestCase):

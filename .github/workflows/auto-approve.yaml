@@ -798,7 +798,7 @@ jobs:
           # maintainer a review had happened.
           PR_AUTHOR=$(jq -r '.user.login' pr.json)
 
-          # FIXES_RE matches a HEADING, never bare words: docs/HUMANIZING.md
+          # FIXES_RE matches a HEADING, never bare words: the write-like-me pass
           # rewrites heading case and forbids em dashes before posting, so
           # matching the old heading text would miss a real fixes comment,
           # while the bare word "improvements" appears in ordinary

@@ -257,9 +257,9 @@ Suggestions.
 
 ### Step 3: Post Review Comment
 
-Render the template with real findings, humanize it against
-[docs/HUMANIZING.md](../../docs/HUMANIZING.md), keeping headings and counts,
-then post:
+Render the template with real findings, humanize it with
+[write-like-me](../write-like-me/SKILL.md)'s Inline mode, keeping headings and
+counts, then post:
 
 ```bash
 BODY=$(cat <<'EOF'
@@ -376,10 +376,10 @@ post.
 **Keep the `<!-- ai-hero:self-review-fixes -->` marker and the heading**, the
 same way Step 3's comment keeps its own. The prior-review gate counts this
 marker to tell this comment apart from the findings one; the heading it used to
-be recognised by is rewritten by the humanizer (`docs/HUMANIZING.md` forbids em
-dashes and rewrites heading case), so the marker is the only part of this
-comment that survives the pass intact. Lose it and a finished review reads as
-half-finished, fleet-wide.
+be recognised by is rewritten by the humanizer (write-like-me forbids em dashes
+and rewrites heading case), so the marker is the only part of this comment that
+survives the pass intact. Lose it and a finished review reads as half-finished,
+fleet-wide.
 
 ```bash
 BODY=$(cat <<'EOF'
@@ -450,7 +450,7 @@ Substitute `DRAFTED_FULL_BODY_HERE` with actual Markdown before running. The
 drafted body must end with `_Generated using wayfare._`. `--kind pr-edit` skips
 the prose rules on the body, because the body it edits was often written by a
 person or before those rules existed; the title, footer and placeholders are
-still checked, and the lines you add still follow HUMANIZING.md.
+still checked, and the lines you add still follow write-like-me's Inline mode.
 
 ### Step 9: Ask to Mark Ready
 
@@ -553,7 +553,7 @@ simultaneously, and aggregate findings.
 ### Step 3: Post Inline Comments
 
 Start each comment with its severity as a word, never an emoji
-([docs/HUMANIZING.md](../../docs/HUMANIZING.md) bans them in posted text):
+([write-like-me](../write-like-me/SKILL.md) bans them in posted text):
 
 | Category | Prefix |
 | -- | -- |

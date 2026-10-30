@@ -103,14 +103,14 @@ check_contains "clean fixture: ALL CHECKS PASSED" "$OUT" "ALL CHECKS PASSED"
 # ---------- Agent Skills portability contract -----------------------------
 
 d=$(fixture missing-compatibility)
-sed '/^compatibility:/d' "$d/skills/wayfare-humanize-prose/SKILL.md" > "$d/skills/wayfare-humanize-prose/SKILL.md.tmp"
-mv "$d/skills/wayfare-humanize-prose/SKILL.md.tmp" "$d/skills/wayfare-humanize-prose/SKILL.md"
+sed '/^compatibility:/d' "$d/skills/write-like-me/SKILL.md" > "$d/skills/write-like-me/SKILL.md.tmp"
+mv "$d/skills/write-like-me/SKILL.md.tmp" "$d/skills/write-like-me/SKILL.md"
 run_validate "$d"
 check "missing compatibility: rc" "1" "$RC"
 check_contains "missing compatibility: reported" "$OUT" "missing the Agent Skills compatibility field"
 
 d=$(fixture client-tool-syntax)
-printf '\nUse the Read tool for the target file.\n' >> "$d/skills/wayfare-humanize-prose/SKILL.md"
+printf '\nUse the Read tool for the target file.\n' >> "$d/skills/write-like-me/SKILL.md"
 run_validate "$d"
 check "client tool syntax: rc" "1" "$RC"
 check_contains "client tool syntax: reported" "$OUT" "hard-codes client tool syntax"

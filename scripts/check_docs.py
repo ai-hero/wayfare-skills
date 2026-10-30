@@ -16,7 +16,7 @@ Each check is a rule the docs used to state and an LLM used to enforce:
     placeholder  no `<lowercase>` placeholders in skills (UPPER_CASE instead)
     todo         no TODO/FIXME/XXX left in skill prose
     prose        no em or en dashes, ` -- `, curly quotes, emoji, or the
-                 banned phrases (docs/HUMANIZING.md, docs/AGENTS-MD.md R6)
+                 banned phrases (skills/write-like-me, docs/AGENTS-MD.md R6)
     chain        a pipeline chain quoted anywhere matches docs/PIPELINES.md,
                  and a "N stages" beside it matches its length
     count        number words that claim a count match the count
@@ -249,7 +249,7 @@ def check_prose(rel, text):
     for n, line in prose_lines(text):
         for pat, what in PROSE_CHARS:
             if pat.search(line):
-                error(rel, n, "prose", f"{what} (docs/HUMANIZING.md)")
+                error(rel, n, "prose", f"{what} (skills/write-like-me)")
         m = BANNED.search(line)
         if m:
             error(rel, n, "prose", f"banned phrase {m.group(0)!r} (docs/AGENTS-MD.md R6)")

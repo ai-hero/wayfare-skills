@@ -345,12 +345,12 @@ git push origin $(git branch --show-current)
 
 ### Step 9: Reply to and Resolve Comments
 
-Draft every reply first, humanize them in one pass against
-[docs/HUMANIZING.md](../../docs/HUMANIZING.md), then for each addressed comment
-lint its reply, post it, and resolve the thread. Paraphrase what the reviewer
-said rather than quoting it: a verbatim quote carries their em dashes and emoji
-into your text, and the lint rejects them. A reply carries no footer, so it is
-linted as `--kind inline`.
+Draft every reply first, humanize them in one pass with
+[wayfare:write-like-me](../write-like-me/SKILL.md)'s Inline mode, then for each
+addressed comment lint its reply, post it, and resolve the thread. Paraphrase
+what the reviewer said rather than quoting it: a verbatim quote carries their em
+dashes and emoji into your text, and the lint rejects them. A reply carries no
+footer, so it is linted as `--kind inline`.
 
 ```bash
 REPLY=$(cat <<'EOF'
@@ -512,8 +512,8 @@ running. The drafted body must end with `_Generated using wayfare._`.
 `--kind pr-edit` skips the prose rules on the body, because the body it edits
 was often written by a person or before those rules existed; the title, footer
 and placeholders are still checked, and the lines you add still follow
-HUMANIZING.md. Never run the snippet with the placeholder still in place, or it
-will overwrite the PR description with the literal string
+wayfare:write-like-me's Inline mode. Never run the snippet with the placeholder
+still in place, or it will overwrite the PR description with the literal string
 `DRAFTED_FULL_BODY_HERE`.
 
 Rules:

@@ -543,7 +543,7 @@ procedures:
 | Command | What it does |
 | -- | -- |
 | `wayfare:wayfare-recomponentize-ui` | Refactor a project's UI into atomic components, sourcing primitives from a design-system registry and codemodding off-token styling |
-| `wayfare:wayfare-humanize-prose` | Strip AI-writing patterns from prose ([docs/HUMANIZING.md](./docs/HUMANIZING.md), from Wikipedia's "Signs of AI writing"). The pipeline steps that emit prose read the doc directly; this skill runs it on any text you hand it |
+| `wayfare:write-like-me` | Write or rewrite prose so it reads like Rahul wrote it, with the AI-writing patterns removed ([skills/write-like-me](./skills/write-like-me/SKILL.md), vendored from the claude.ai plugin skill). The pipeline steps that emit prose run its Inline mode |
 | `wayfare:wayfare-audit-plugin` | Audit the wayfare plugin itself for quality and consistency |
 
 ## Updating vendored assets in a downstream repo

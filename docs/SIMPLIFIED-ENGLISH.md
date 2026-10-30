@@ -65,9 +65,9 @@ sentence length. Exclude frontmatter and code from prose measurements. Its
 synonym and passive-voice findings require judgment. Passing that linter does
 not prove equivalent behavior or dictionary compliance.
 
-Use this guide for executable instructions. Continue to use `docs/HUMANIZING.md`
-for prose intended for people. Do not force a person's quoted text or a fixed
-output template into this style.
+Use this guide for executable instructions. Continue to use
+`wayfare:write-like-me` for prose intended for people. Do not force a person's
+quoted text or a fixed output template into this style.
 
 ## Evidence and limits
 

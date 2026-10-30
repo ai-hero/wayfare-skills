@@ -798,9 +798,10 @@ jobs:
           # maintainer a review had happened.
           PR_AUTHOR=$(jq -r '.user.login' pr.json)
 
-          # FIXES_RE matches a HEADING, never bare words: docs/HUMANIZING.md
-          # rewrites heading case and forbids em dashes before posting, so
-          # matching the old heading text would miss a real fixes comment,
+          # FIXES_RE matches a HEADING, never bare words: a prose pass can
+          # reword the heading before posting (older vendored humanizers
+          # rewrote its case), so matching the old heading text would miss a
+          # real fixes comment,
           # while the bare word "improvements" appears in ordinary
           # suggestion prose and would wrongly satisfy this half from a
           # findings comment alone. Anchored to `(^|\n)#+`, not unanchored,

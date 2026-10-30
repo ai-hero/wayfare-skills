@@ -1066,7 +1066,7 @@ check "prior-review: one comment cannot be both halves" "0" \
 check "prior-review: a stranger cannot open the gate" "0" \
   "$(self_review_of "$(cmts "$(cmt drive-by "$FINDINGS_BODY")" "$(cmt drive-by "$FIXES_BODY")")")"
 
-# The humanizer rewrites headings, so a complete review must still pass with
+# The humanizer can reword headings, so a complete review must still pass with
 # the heading gone. This is the failure mode of matching prose.
 check "prior-review: passes with the heading rewritten" "1" \
   "$(self_review_of "$(cmts "$(cmt author "$FINDINGS_BODY")" "$(cmt author "$FIXES_REHEADED")")")"

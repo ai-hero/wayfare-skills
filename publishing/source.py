@@ -429,7 +429,9 @@ def figure(b, n, cards, drawn, results, assets, counters):
             warn(f"chapter {n}: authored Figure {meta['id']} falls at position {number} among the chapter's figures")
         out.update(type="drawn", label="Figure", number=number, id=meta["id"])
     else:
-        out.update(type="diagram", label="Diagram", number=meta["id"], id=meta["id"])
+        # References use the authored id; using it as the printed number puts inserted diagrams out of order.
+        counters["diagram"] = counters.get("diagram", 0) + 1
+        out.update(type="diagram", label="Diagram", number=f"{n}.{counters['diagram']}", id=meta["id"])
     out["files"] = copy_drawn(meta, assets)
     if not out["files"]:
         warn(f"chapter {n}: {ref} has a sidecar but no svg, pdf or png in {paths.DIAGRAMS}")

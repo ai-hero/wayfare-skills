@@ -198,6 +198,29 @@ check("a protocol-relative or script href loses its href", {h: "<a>x</a>" for h 
 import source
 check("an escaped pipe keeps a table cell whole", ["a | b", "c"], source.unescape_pipes(["a \\", " b", "c"]))
 
+original_diagrams = paths.DIAGRAMS
+paths.DIAGRAMS = os.path.join(tmp, "diagrams")
+os.makedirs(paths.DIAGRAMS, exist_ok=True)
+drawn = {}
+for ident, name in (("1.2", "first"), ("1.1", "second")):
+    with open(os.path.join(paths.DIAGRAMS, name + ".svg"), "w") as f:
+        f.write('<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>')
+    drawn["diagram " + ident] = {"kind": "diagram", "id": ident, "name": name}
+counters = {"figure": 0, "table": 0}
+diagrams = [source.figure({"ref": "Diagram " + ident, "caption": "A diagram."},
+                          1, {}, drawn, {}, paths.ASSETS, counters) for ident in ("1.2", "1.1")]
+check("diagram numbers follow reading order while authored ids stay stable",
+      [("1.2", "1.1"), ("1.1", "1.2")], [(b["id"], b["number"]) for b in diagrams])
+check("diagram numbering leaves figure and table sequences alone", (0, 0),
+      (counters["figure"], counters["table"]))
+idx = source.figure_index([{"sections": [{"blocks": diagrams}]}])
+for ident, number in (("1.2", "1.1"), ("1.1", "1.2")):
+    marker = source.XREF_RE.fullmatch("{{diagram:" + ident + "}}")
+    check(f"authored diagram {ident} links to its printed number {number}",
+          f'(<a class="xref" href="#fig-diagram-{number.replace(".", "-")}">Diagram {number}</a>)',
+          source.xref_html(marker, idx, {}, 1))
+paths.DIAGRAMS = original_diagrams
+
 
 def fake_urlopen(body):
     class R:

@@ -1797,7 +1797,7 @@ JSON
 check "fixes count: a suggestion saying improvements is not a fixes comment" "0" "$(PATH="$TMP/ghbin:$PATH" hero_self_review_fixes_count 7)"
 check "fixes count: that comment is still findings"                          "1" "$(PATH="$TMP/ghbin:$PATH" hero_self_review_count 7)"
 
-# The marker is what survives the humanizer; the heading is not.
+# The marker survives the humanizer; the heading may not.
 cat > "$TMP/ghbin/comments.json" <<'JSON'
 [{"body":"## Self-Review\n<!-- ai-hero:self-review -->\nfindings","user":{"login":"me"}},
  {"body":"## Self-review: what I changed\n<!-- ai-hero:self-review -->\n<!-- ai-hero:self-review-fixes -->","user":{"login":"me"}}]

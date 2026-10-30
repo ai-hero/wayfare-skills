@@ -31,13 +31,11 @@ narrative around them gets simplified.
 
 ## Examples make one point
 
-This was his explicit instruction on 18 October 2026, and he approved Chapter
-Four as the model. An example in the book is there to make one point. Keep the
-concrete situation, the behavior or decision that matters, and the lesson. Use a
-number when it helps make that point. Leave out pull request numbers, UTC times,
-commit hashes, and the intermediate steps that only prove something happened.
-Supporting detail stays available in the figures and evidence; it does not go in
-the narrative.
+An example in the book is there to make one point. Keep the concrete situation,
+the behavior or decision that matters, and the lesson. Use a number when it
+helps make that point. Leave out pull request numbers, UTC times, commit hashes,
+and the intermediate steps that only prove something happened. Supporting detail
+stays available in the figures and evidence; it does not go in the narrative.
 
 Before: "At 14:32 UTC the agent opened PR #412, which failed the conformance
 check on the second run after the first run passed; the reviewer flagged this in
@@ -86,7 +84,6 @@ list.
 ## When editing existing chapters
 
 Follow the "before changing a sentence he wrote" rules in `voice.md` strictly.
-The book went through a sentence-by-sentence voice restoration in October 2026
-and he has approved large parts of it. Treat approved text as settled. Apply
-changes to new framing and transitions; do not rewrite working passages for
-consistency. Flag unusual-but-clear sentences instead of changing them.
+Treat text he has already approved as settled. Apply changes to new framing and
+transitions; do not rewrite working passages for consistency. Flag
+unusual-but-clear sentences instead of changing them.

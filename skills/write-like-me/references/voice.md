@@ -3,8 +3,7 @@
 Built from his Medium posts (UX Collective, Towards Data Science, the AI Hero
 publication; "Let's talk about teaching machines", Jan 2022, and "Deploying ML
 Models Using Containers in Three Ways", Feb 2022, both written before ChatGPT
-existed, so every habit here is his), from the voice review of his software
-factory book in October 2026, and from his direct feedback on edits.
+existed, so every habit here is his), and from his own edits to drafts.
 
 ## Who he writes for
 
@@ -17,9 +16,8 @@ unstuck and to hand them something they can use.
 
 He writes as a technical expert and practitioner explaining to a peer what he
 did. He compiles his learnings. He says "treat this as an informed opinion". He
-does not write as an academic submitting a paper, and he gets annoyed when edits
-push him there. His exact words: "it's the wording I hate, it feels forced
-academic. Not authentically me."
+does not write as an academic submitting a paper, and edits that push him there
+read as forced and not like him.
 
 ## What his sentences are like
 
@@ -99,19 +97,18 @@ client email. The section below says where it comes from.
 
 ## Where the humor comes from
 
-Rahul asked, after reading three clean but humorless drafts, "No light-hearted
-niceties, jokes, etc.?" Removing AI patterns from a draft reliably leaves it
-solemn, and solemn is as un-Rahul as "vibrant tapestry". So treat a light moment
-as part of the job, not as garnish.
+Removing AI patterns from a draft reliably leaves it solemn, and solemn is as
+un-Rahul as "vibrant tapestry". So treat a light moment as part of the job, not
+as garnish.
 
 The humor is never a joke imported from outside. It comes from one of four
 places that are already in the material:
 
 1. **The situation is a bit absurd and he says so.** An agent that reports
-   "tests pass" when the tests did not pass. A docs export with 3,000 scanned
-   PDFs nobody mentioned. Three weeks of human review that changed nothing in 44
-   out of 47 cases. Name the absurdity plainly, with a dry verdict: "The agent
-   was very confident. The tests were not consulted."
+   "tests pass" when the tests did not pass. A docs export full of scanned PDFs
+   nobody mentioned. Weeks of human review that changed almost nothing. Name the
+   absurdity plainly, with a dry verdict: "The agent was very confident. The
+   tests were not consulted."
 2. **He admits something.** "Should have done it on day one" is a confession,
    and he delivers confessions with a shrug, not a sigh. "In my defense, how
    many factories does one need to build?" "It took two hours. I had spent three
@@ -130,7 +127,7 @@ offers nothing, a warm, plain sentence that sounds like a person is enough; do
 not force it.
 
 In business writing the same four sources apply, dialed to one wry line per
-email at most, usually from source 1 or 2 ("The export had about 3,000 scanned
+email at most, usually from source 1 or 2 ("The export had a pile of scanned
 PDFs in it that nobody, including us, knew about."). Proposals and executive
 summaries stay straight; a light touch there is a plain, human sentence rather
 than a joke.
@@ -201,9 +198,9 @@ Distinctive sentence rhythm. Unusual but intentional turns of phrase.
 
 ## Titles and headings
 
-He reviewed 41 title changes across his book and the pattern is consistent: read
-the content first, then make the title say what the section is about in words
-the reader already uses. Specifically:
+His preference for titles is consistent: read the content first, then make the
+title say what the section is about in words the reader already uses.
+Specifically:
 
 - A concept name alone is fine when the section defines that concept ("Work
   Items"). Do not force every heading into a question or an activity.

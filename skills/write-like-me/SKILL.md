@@ -12,7 +12,8 @@ Add none. Use regular words.
 
 Read `references/voice.md` and `references/ai-tells.md` on every run, then the
 one file in `references/formats/` that matches what is being written. They are
-short.
+short. Called with `inline`? Go straight to Inline mode at the end; it overrides
+the rest of this file.
 
 ## What Rahul sounds like
 
@@ -153,8 +154,9 @@ him decide.
 words): what you removed, which format you used, and either "Nothing added or
 removed" or the list of blanks you left. No intermediate drafts.
 
-**A file.** Rewrite the prose in place. Leave code blocks, front matter, tables,
-link targets and quoted material alone. Same short note.
+**A file.** Show the diff and ask before writing, then rewrite the prose in
+place. Leave code blocks, front matter, tables, link targets and quoted material
+alone. Same short note.
 
 **Several formats at once** ("give me this as a blog post and a LinkedIn post").
 One section per format, same facts throughout, then one or two sentences on what
@@ -191,26 +193,32 @@ jargon.
 
 ## Inline mode
 
-`wayfare-push-pr`, `wayfare-review-pr`, `wayfare-respond-pr` and wayfare's
-review step call this skill with the first argument `inline` and a body or a
-diff scope, for every piece of text a person reads: code comments and
-docstrings, docs, error and log messages, the commit body, the PR body, review
-comments and thread replies.
+Pipeline steps that post prose call this skill as `wayfare:write-like-me` with
+the first argument `inline` and a body or a diff scope. It covers every piece of
+text a person reads: code comments and docstrings, docs, error and log messages,
+the commit body, the PR body, review comments and thread replies. The claude.ai
+copy of this skill has no Inline mode, so the qualified name matters.
 
 That text is posted by an agent into repos across the fleet, not published by
-Rahul, so the rules narrow:
+Rahul, so this section overrides everything above it:
 
-- Use `references/ai-tells.md` and the regular-words rule. Skip
-  `references/voice.md`, the format files, and the "light, not solemn" rule: no
-  asides or jokes in a review comment.
-- No em or en dashes, curly quotes or emoji, in any format.
-  `scripts/check_docs.py` and `scripts/pr_text_lint.py` reject them, and a
-  rejected post stalls the step.
+- Run only steps 1, 3 and 6 of How to do the work. Read `references/ai-tells.md`
+  and apply the regular-words rule. Skip `references/voice.md`, the format
+  files, and every instruction about humor or a light moment: no asides or jokes
+  in a review comment.
+- PR and issue numbers, commit SHAs, `file:line` references, timestamps and
+  command output are facts to keep, not log detail to trim.
+- Never leave a blank like `[NUMBER]`. A gap stays as the caller wrote it; a
+  bracketed line also fails `scripts/pr_text_lint.py`'s placeholder check.
+- No em or en dashes, curly quotes or emoji, not even one. `pr_text_lint.py`
+  rejects them in posted text, and a rejected post stalls the step. Code
+  comments and docs are not linted in most repos, so nothing else catches them.
 - Keep every heading, count, `<!-- ai-hero:... -->` marker and the
   `_Generated using wayfare._` footer exactly. The prior-review gate and
   auto-approve find comments by them.
-- Edit only the lines the caller named. For a diff, that is the lines it
-  touches; never reflow prose it left alone.
+- Edit only the lines the caller drafted. For a diff, that is the lines it
+  touches. For a body, text a person wrote or the caller quoted stays as it is.
+  Never merge, split or reflow paragraphs the caller left alone.
 - A code comment that survives must still pass the repo's comment rule
   (`.claude/rules/comments.md` where present). This pass never adds a comment or
   pads one out.

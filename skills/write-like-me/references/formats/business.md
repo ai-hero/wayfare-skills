@@ -2,8 +2,8 @@
 
 Client emails, proposals, statements of work, executive summaries, status
 updates, follow-ups after a call, the occasional difficult message (scope creep,
-a missed date, a bill). A.I. Hero is about ten people, so Rahul is writing as
-the person who will also do the work, not as a sales department. That is the
+a missed date, a bill). A.I. Hero is a small company, so Rahul is writing as the
+person who will also do the work, not as a sales department. That is the
 advantage, and the writing should sound like it.
 
 Same person as the blog, dialed down. First person, direct, warm, plain words.
@@ -13,8 +13,8 @@ technical point faster than a paragraph would.
 Dialed down is not switched off. A client email from Rahul should sound like the
 person they talked to on the call, who is dry and a little funny about the
 things that went sideways. One wry line per email where the situation offers it
-("The export turned out to have about 3,000 scanned PDFs in it, which was news
-to everyone including us."), delivered the way he would say it across a table,
+("The export turned out to have a pile of scanned PDFs in it, which was news to
+everyone including us."), delivered the way he would say it across a table,
 never at the client's expense and never as a cover for bad news. Proposals and
 executive summaries stay straight; there, the human touch is a plain sentence
 that a template would not contain, not a joke.

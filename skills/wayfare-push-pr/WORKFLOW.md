@@ -856,11 +856,12 @@ before continuing:
 - [ ] No over-engineering
 - [ ] Could this be simpler?
 
-Then the **humanizer pass**: [write-like-me](../write-like-me/SKILL.md)'s Inline
-mode over the prose this diff adds or rewrites: code comments, docstrings,
-README/docs/CHANGELOG text, error and log messages a person reads. The same pass
-covers every prose this skill emits: the commit body (3f) and the PR body (A3),
-drafted first, humanized once.
+Then the **humanizer pass**:
+[wayfare:write-like-me](../write-like-me/SKILL.md)'s Inline mode over the prose
+this diff adds or rewrites: code comments, docstrings, README/docs/CHANGELOG
+text, error and log messages a person reads. The same pass covers every prose
+this skill emits: the commit body (3f) and the PR body (A3), drafted first,
+humanized once.
 
 #### 3d: Ruthless Code Review
 

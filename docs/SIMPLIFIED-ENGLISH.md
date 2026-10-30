@@ -66,7 +66,7 @@ synonym and passive-voice findings require judgment. Passing that linter does
 not prove equivalent behavior or dictionary compliance.
 
 Use this guide for executable instructions. Continue to use
-`skills/write-like-me` for prose intended for people. Do not force a person's
+`wayfare:write-like-me` for prose intended for people. Do not force a person's
 quoted text or a fixed output template into this style.
 
 ## Evidence and limits

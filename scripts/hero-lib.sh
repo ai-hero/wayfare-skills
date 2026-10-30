@@ -905,7 +905,7 @@ hero_exclude_add() {
 HERO_SELF_REVIEW_MARKER='ai-hero:self-review'
 # The improvements comment's own marker. A word match on "improvements" was
 # satisfied by the findings comment's own suggestions, which made the two
-# halves one comment; the heading is rewritten by the humanizer. Only a
+# halves one comment; the heading is prose that a rewrite pass can reword. Only a
 # hidden marker is both exact and invisible to that pass.
 # A heading, not the words.
 # A review OF this gate quotes the strings the gate matches on, so an unanchored pattern read this PR's own findings comment as the fixes comment and collapsed findings to zero.
@@ -932,7 +932,7 @@ hero_self_review_count() { # PR_NUMBER
 # prior-review gate requires BOTH halves; a local check that asks only for
 # the findings comment passes here and is then rejected there, which spends a
 # workflow run to learn what this function can say for free. Matched on the
-# word, not the heading, because the body is humanized before it is posted.
+# hidden marker first, because the body is humanized before it is posted.
 hero_self_review_fixes_count() { # PR_NUMBER
   local me
   me=$(gh api user --jq .login) || return 1

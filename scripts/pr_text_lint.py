@@ -23,7 +23,7 @@ rather than left for the model to notice.
                  NEW_TITLE_UNDER_70_CHARS, {file:line}, a `[slot]` line, ...)
     prose        every kind but pr-edit: no em or en dashes, ` -- `, curly
                  quotes, emoji, or banned phrases outside code
-                 (skills/write-like-me)
+                 (skills/write-like-me, docs/AGENTS-MD.md R6)
 
 pr-edit skips the prose rules on the body because an edited body keeps text
 someone else wrote, and a person's em dash must not block the edit.

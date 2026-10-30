@@ -183,12 +183,12 @@ for that reason and closes the bots' PRs after its own merge.
      here (harden's reachability questions);
    - CI on the head.
 
-   Humanize it with [write-like-me](../skills/write-like-me/SKILL.md)'s Inline
-   mode, then post **one** review: `gh pr review N --approve --body …` when the
-   class is patch/minor, or a major whose call sites are clean, CI is green, and
-   step 2 was green; otherwise `--request-changes` naming what fails (the local
-   test failure included), and STOP. The fix is a person's change, not this
-   procedure's. Either state satisfies the "prior review" gate that
+   Humanize it with [wayfare:write-like-me](../skills/write-like-me/SKILL.md)'s
+   Inline mode, then post **one** review: `gh pr review N --approve --body …`
+   when the class is patch/minor, or a major whose call sites are clean, CI is
+   green, and step 2 was green; otherwise `--request-changes` naming what fails
+   (the local test failure included), and STOP. The fix is a person's change,
+   not this procedure's. Either state satisfies the "prior review" gate that
    wayfare-ship-pr and `auto-approve.yaml` both check (a non-author review that
    is not `PENDING`); a `--comment` review would too, but says nothing.
 

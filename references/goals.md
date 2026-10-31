@@ -144,17 +144,21 @@ its member set is: change it and `wayfare-start-goal` re-asks.
    needing only the authorization below. Every member must already be planned
    (`ready` or further along): an unplanned one is a STOP with
    `Next step: wayfare-sync-plan`, because planning is `sync`'s postflight, and
-   the loop never stops to plan halfway through. The one unplanned item that is
-   not a STOP is an **admission** a previous turn of this same goal wrote, whose
-   `discovered_from` is a member and whose entry the goal's `## Log` names,
-   under `absorb: yes`: that goal plans it in its own turn (*Admitting
-   discovered work*). Under `absorb: no` it is the ordinary STOP, and the goal
-   resumes after `sync` plans it. An `accepted` item this goal's gate
-   **adopted** (*Adopting ungrouped work*) is the same exception, on the same
-   terms. A goal whose `depends_on` goals are not all `done` is a STOP naming
-   them; a `depends_on` entry that is not a goal is a store defect, same STOP. A
-   missing or malformed `## Permissions` (see *Permissions*), or a `budget` or
-   `budget_max` that is not a positive integer, is a STOP with
+   the loop never stops to plan halfway through. A goal that carries `## Plan`
+   is ready-marked once, on its plan, and that one mark sets every member
+   `ready` (`docs/PLAN.md`, *Goal-only sections*), so its members reach this
+   check together and `hero_ready_items` reads them exactly as it reads any
+   other task; a member still `planning` under it is the same STOP. The one
+   unplanned item that is not a STOP is an **admission** a previous turn of this
+   same goal wrote, whose `discovered_from` is a member and whose entry the
+   goal's `## Log` names, under `absorb: yes`: that goal plans it in its own
+   turn (*Admitting discovered work*). Under `absorb: no` it is the ordinary
+   STOP, and the goal resumes after `sync` plans it. An `accepted` item this
+   goal's gate **adopted** (*Adopting ungrouped work*) is the same exception, on
+   the same terms. A goal whose `depends_on` goals are not all `done` is a STOP
+   naming them; a `depends_on` entry that is not a goal is a store defect, same
+   STOP. A missing or malformed `## Permissions` (see *Permissions*), or a
+   `budget` or `budget_max` that is not a positive integer, is a STOP with
    `Next step: wayfare-sync-plan`, because the gate reads the item aloud and
    cannot read what is not there.
 
@@ -201,7 +205,9 @@ its member set is: change it and `wayfare-start-goal` re-asks.
      Ships as:    one branch, one PR. Tasks are built one after another,
                   one commit per task, each checked by its own tests. After
                   the last one the whole branch is simplified and fully
-                  tested once. Nothing is pushed until the branch passes
+                  tested once (with ## Plan, also after each member its
+                  #### Checkpoints names). Nothing is pushed until the
+                  branch passes
      Stops on:    the goal item's ## Stop conditions
 
    Type the goal id to authorize these permissions and run the goal now,
@@ -282,6 +288,13 @@ branch run is attributed afterwards by bisecting those commits (step 5). So per
 task: implement, the task's own tests, commit. Per goal: simplify, full suite,
 DoD, review, ship.
 
+**A goal that carries `## Plan` also runs the full suite at its suite
+checkpoints** (step 4), the members its `#### Checkpoints` names. On a large
+goal a branch that is green only at the end finds its integration breaks last,
+with the whole branch to bisect. A checkpoint finds them near the members that
+caused them, and its bisect searches only the members since the last green one.
+A goal with no `## Plan` runs no suite checkpoints, as before.
+
 **The turn delegates every build and every fix, one subagent at a time, on a
 cheaper model.** The parent decides what to build next, reads the reports, and
 judges whether the goal is done; it does not write the code. Sequential is not a
@@ -346,9 +359,12 @@ between turns:
      `gh pr view N --json comments,reviews` filtered to authors that are not the
      PR author and not a bot; anything since the PR opened stops the run;
    - premise: re-read the next task's `source` paths at the current head and
-     check its `## Approach` and `## Subtasks` still hold, because they were
-     written before the previous task landed. Refresh `anchors.source`. Any hit
-     → report it and end the turn. Do not start work past a stop.
+     check its plan and `## Subtasks` still hold, because they were written
+     before the previous task landed. Its plan is its `### Task N` slice
+     (`hero_goal_slice GOAL_FILE N`), read against the goal's `## Ledger`, which
+     says what the earlier members actually built; on a goal with no `## Plan`
+     it is the task's own `## Approach`. Refresh `anchors.source`. Any hit →
+     report it and end the turn. Do not start work past a stop.
 
 4. **Make sure the goal branch exists, then build one task at a time.** The
    branch name lives in the goal's `branch:` frontmatter field, written by the
@@ -408,6 +424,8 @@ between turns:
    `budget_max` at the checkpoint is for more of the planned work, not for
    a task that turned out to be a different size.
 
+   GOAL_PLAN
+
    Invoke wayfare:wayfare-build-task with task N's **store id** as the argument,
    through the active client's skill mechanism, with the exact line
    `commit only: goal G branch GOAL_BRANCH` and no permissions line. It
@@ -420,7 +438,9 @@ between turns:
    observation, or `not checked` — the files you touched outside `source`
    and why, any change you judged out of scope and skipped, and the id and
    title of every item its Step 2a wrote, each with the one goal-G DoD line
-   it serves or `serves no DoD line`.
+   it serves or `serves no DoD line`, and every contract it produced or
+   consumed, by its `#### Contracts` name, with whether what it built
+   matches that entry, or `no contract`.
 
    Report every mistake too, stated plainly and specifically — the
    `mistake` lines in `## Log` already hold them: every approach you took
@@ -429,6 +449,39 @@ between turns:
    behavior. A wrong turn you recovered from still counts. On a
    stop, report the reason and the step it stopped at.
    ```
+
+   **`GOAL_PLAN` is the goal's plan for this task, inline, on a goal that
+   carries `## Plan`.** Replace it with this, in this order:
+
+   ```
+   The plan for task N, from goal G. Build from it: it is task N's
+   approach, and the task file has none. Requirements and Design are
+   shared by every member; the slice is task N's alone; the Ledger is
+   what the earlier members actually built. Build to the Contracts as
+   written. If the slice or the tree does not match a named contract,
+   return `stop: awaiting-human` naming it, and never reshape the
+   contract to fit.
+
+   <output of hero_goal_plan_shared GOAL_FILE>
+
+   ### Task N
+
+   <output of hero_goal_slice GOAL_FILE N>
+
+   ## Ledger
+
+   <the goal's ## Ledger so far, or `none yet`>
+   ```
+
+   Never another member's slice, and never the whole `## Plan`: a neighbour's
+   slice is a second plan the build would follow without anyone approving it for
+   this task, and the brief grows with every member. A member whose slice
+   `hero_goal_slice` cannot print (rc 1, none or blank; rc 2, two of them) is a
+   hollow plan: `stop: awaiting-human` naming it, never a launch without one.
+   When the Ledger is too large for a brief, compact it first (`docs/PLAN.md`,
+   *Goal-only sections*). On a goal with no `## Plan`, drop `GOAL_PLAN` and the
+   report's contract field: the build reads the task's own `## Approach`, as
+   before.
 
    **The `source` list is where the build starts, not a fence.** Held strictly
    inside it, a build produces the half-change (the route added, its caller left
@@ -452,8 +505,9 @@ between turns:
    **Re-check the premise for each task, not just the first.** Step 3 checks the
    next task's `source` paths at the current head; under a sequential turn every
    later task faces a tree the previous one changed, which is the condition that
-   invalidates a plan. Run that same check at the top of this loop for each task
-   and refresh its `anchors.source`.
+   invalidates a plan. Run that same check at the top of this loop for each
+   task, reading its slice and the Ledger as it stands after the previous task's
+   reconcile, and refresh its `anchors.source`.
 
    **One at a time, and wait for each.** Every subagent works in this one
    checkout on this one branch, so two at once would collide in the working
@@ -463,11 +517,12 @@ between turns:
    every agent, then one writer commits once* in `docs/PIPELINES.md`).
 
    **Why a subagent at all, and why a cheaper one.** The plan is already written
-   and ready-marked, so the build is execution against a settled `## Approach`
-   and `## Subtasks` rather than a judgment call. A smaller model does that
-   faster and cheaper, and the narrow scope is what keeps it honest: one task,
-   its own `source` paths, one commit. The parent keeps what needs the larger
-   model, which is deciding what to build next, reading the reports, and judging
+   and ready-marked, so the build is execution against a settled plan (its slice
+   of the goal's `## Plan`, or its own `## Approach` on a goal without one) and
+   `## Subtasks` rather than a judgment call. A smaller model does that faster
+   and cheaper, and the narrow scope is what keeps it honest: one task, its own
+   `source` paths, one commit. The parent keeps what needs the larger model,
+   which is deciding what to build next, reading the reports, and judging
    whether the goal is done. The parent also keeps the authorization: no
    permissions line reaches a build agent (step 2 above).
 
@@ -535,6 +590,46 @@ between turns:
    launching into it. `done` is the goal's to write, on every member task at
    once, at step 7 when the PR merges: a task is not done while the default
    branch lacks it.
+
+   **Write the task's `## Ledger` entry, then reconcile the later slices.** On a
+   goal that carries `## Plan`, once the task's `committed` status reads back,
+   the parent appends one line to the goal's `## Ledger` in the shape
+   `docs/PLAN.md` gives: the date, the SHA, `task N:`, what was actually built,
+   any contract that changed shape, any deviation from the slice, and the run's
+   `mistake` lines, compressed. It is append-only and the parent is its only
+   writer; the build reads it and never writes it. Then compare the branch to
+   the plan for every member not yet built, and hold each change to one rule:
+
+   - **The approach text of a later slice** may change: rewrite the slice so it
+     fits what was built, regenerate that member's unticked `## Subtasks` lines
+     from it (a ticked line is never reworded), and append a dated `note` to the
+     goal's `## Log` naming the slice and what changed.
+   - **A member's `## Definition of Done`, its `source` or `target`, an entry in
+     `#### Contracts`, or `#### Ordering and compatibility`** are what the
+     ready-mark approved. A reconcile that would change one writes nothing to it
+     and ends the turn `stop: awaiting-human`, naming the member, the field, and
+     the change it needs.
+
+   The Ledger entry is written before the reconcile so that a reconcile that
+   stops still leaves the record of what was built. A goal with no `## Plan`
+   writes no Ledger and reconciles nothing, as before.
+
+   **Run the full suite at each suite checkpoint.** On a goal that carries
+   `## Plan`, after the reconcile of a member that `#### Checkpoints` names, run
+   `wayfare:wayfare-push-pr test branch BASE` over the branch so far, the same
+   run step 5 makes. When the section names no members, the checkpoints are
+   every contract boundary (a member that produces a contract a later member
+   consumes) and at least every 4 members since the last one. Green → append a
+   dated `note` to the goal's `## Log` opening with the fixed prefix
+   `checkpoint green at SHA (after task N)`, which is how a later turn, starting
+   cold, finds the last green one. Red → attribute and fix it exactly as step 5
+   does (dirty tree committed first, the failure narrowed, one fix agent per
+   group, two attempts, budget spent), except that the bisect's good end is the
+   last green checkpoint's SHA rather than `origin/$BASE`: the members before it
+   already passed together, so only the ones since can have broken it. With no
+   green checkpoint yet, the good end is `origin/$BASE`. No member launches past
+   a red checkpoint. Print the goal table after it. A checkpoint on the last
+   member is step 5's run, not a second one before it.
 
    **Print the goal table after each task's commit, before launching the next.**
    A turn builds a whole goal, so without it the run goes quiet for a dozen
@@ -610,7 +705,10 @@ between turns:
 
 5. **When the last task is committed, simplify once and test the whole branch
    once.** Not after each task: the per-task runs checked only what each task
-   changed, and this is the run that checks them together.
+   changed, and this is the run that checks them together. A goal that carries
+   `## Plan` has also run this suite at each suite checkpoint (step 4), which is
+   the only place it runs before here; this run still happens, after the
+   simplify pass, over the whole branch.
 
    First **simplify**, once, over the branch's whole diff, **delegated like
    every other edit**. The parent does not write code at this step either. One
@@ -677,7 +775,8 @@ between turns:
      (`git checkout --detach origin/$BASE`, then back to `GOAL_BRANCH`). A
      failure there is not this goal's: `stop: failure` naming it, no fix agent.
      Otherwise `git bisect start GOAL_BRANCH origin/$BASE`, `git bisect run` the
-     command, `git bisect reset`.
+     command, `git bisect reset`. On a goal with a green suite checkpoint, the
+     good end is the last one's SHA instead of `origin/$BASE`.
 
    The first bad commit is the one the fix is attributed to, and its row carries
    the fix commit. A first bad commit that is the simplify commit is fixed there
@@ -1019,14 +1118,23 @@ mid-build, so it arrives `accepted` with no `## Approach`, no `## Subtasks`, and
 no ready-mark, and a turn launches only `ready` items. With `absorb: yes`, the
 turn plans it now: `wayfare:wayfare-grill-idea ID` with the
 `launched by wayfare` line, narrowed to the DoD line it serves, then `ready`,
-then it builds on a later turn like any covered item. That flip is the
-ready-mark, which is otherwise the user's alone. `absorb` is what a person
-granted at the gate in place of it, and it reaches nothing outside an admission.
-With `absorb: no`, the item still joins the goal, at `accepted`; the turn ends
-`stop: awaiting-human` naming it and the planning it needs. Either way the goal
-keeps the work: `wayfare-sync-plan` plans it, the user marks it ready, and
-`wayfare-start-goal` resumes **this** goal. No new goal is minted for it in
-either branch, which is the whole point.
+then it builds on a later turn like any covered item. On a goal that carries
+`## Plan`, that planning writes the item's plan onto the goal, not the item: a
+new `### Task ID` slice in `## Plan`, placed by its `rank`, and any new contract
+it introduces under `#### Contracts`, then its `## Subtasks` generated from the
+slice and its own `## Definition of Done`, with no `## Approach` on the item.
+Tell wayfare-grill-idea so in the launch, and append a dated `note` to the
+goal's `## Log` naming the slice. It is held to *One turn*'s reconcile rule
+(step 4): it adds a slice and may add a contract, and a change to an existing
+contract, to the ordering, or to another member's DoD or `source`/`target` is
+`stop: awaiting-human` naming it. The flip to `ready` is the ready-mark, which
+is otherwise the user's alone. `absorb` is what a person granted at the gate in
+place of it, and it reaches nothing outside an admission. With `absorb: no`, the
+item still joins the goal, at `accepted`; the turn ends `stop: awaiting-human`
+naming it and the planning it needs. Either way the goal keeps the work:
+`wayfare-sync-plan` plans it, the user marks it ready, and `wayfare-start-goal`
+resumes **this** goal. No new goal is minted for it in either branch, which is
+the whole point.
 
 **Adjudicate from the store, not from the reports.** A subagent that STOPs
 reports a stop reason, and an item its Step 2a already wrote may never appear in

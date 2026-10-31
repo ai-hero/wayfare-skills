@@ -19,6 +19,7 @@ DATA = {
     "#a5153e": ("#A5153E", "+"),
     "#383d49": ("#383D49", "\\"),
     "#c6c9d0": ("#6C7380", "."),
+    "#a3a8b3": ("#636A78", "="),
     "#7b8290": ("#5A6070", "|"),
     "#edeef1": ("#858B96", "o"),
 }
@@ -29,10 +30,10 @@ NEUTRAL = {"#0b0d14", "#ffffff", "#f4f5f8", "#fef1f4", "#1a1e29"}
 LABEL_INK = {"#0b0d14": "#FFFFFF", "#383d49": "#FFFFFF", "#1a1e29": "#FFFFFF", "#ffffff": "#0B0D14"}
 MOTIFS = {"/": "M-1,1 L1,-1 M0,6 L6,0 M5,7 L7,5",
           "\\": "M-1,5 L1,7 M0,0 L6,6 M5,-1 L7,1",
-          "-": "M0,3 H6", "|": "M3,0 V6", "+": "M0,3 H6 M3,0 V6",
+          "-": "M0,3 H6", "=": "M0,1.5 H6 M0,4.5 H6", "|": "M3,0 V6", "+": "M0,3 H6 M3,0 V6",
           "x": "M0,0 L6,6 M0,6 L6,0"}
 # Bump when the mapping changes. An SVG carrying an older value cannot be safely mapped again.
-MARKER, VERSION = "data-book-artwork", "2"
+MARKER, VERSION = "data-book-artwork", "3"
 
 _motifs = [m for _, m in DATA.values() if m]
 if len(set(_motifs)) != len(_motifs) or not set(_motifs) <= {*MOTIFS, ".", "o"}:

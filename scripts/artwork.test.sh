@@ -42,6 +42,8 @@ assert artwork.properties(by_id['retry'])['fill'] == '#BA1B45'
 assert artwork.properties(by_id['grid'])['stroke'] == '#858B96'
 assert artwork.properties(by_id['axis'])['stroke'] == '#5A6070'
 assert artwork.recolor(out) == out
+gray = artwork.recolor(svg.replace('style="fill: #f1839a"/>\n<path id="legend"', 'style="fill: #a3a8b3"/>\n<path id="legend"'))
+assert artwork.properties(ids(gray)['bar'])['fill'] == 'url(#book-fill-a3a8b3)'
 assert ET.fromstring(out).get(artwork.MARKER) == artwork.VERSION
 try:
     artwork.recolor(out.replace(f'{artwork.MARKER}="{artwork.VERSION}"', f'{artwork.MARKER}="1"'))

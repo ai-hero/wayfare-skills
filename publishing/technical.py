@@ -458,10 +458,11 @@ def paper(doc, manifest):
             tex += blocks_tex(s["blocks"], refs)
         if per_chapter[c["n"]]:
             tex.append(f"\\sources{{{','.join(per_chapter[c['n']])}}}\n")
-    if doc.get("preface"):
-        tex.append(f"\n\\section*{{{tex_escape(terms(doc['preface']['title']))}}}\n")
-        tex += [refs.tex(b["md"]) + "\n\n" for b in doc["preface"]["blocks"]]
     tex += bibliography_tex(items)
+    # The book opens with this as its Preface; a paper has none, so it closes as an appendix.
+    if doc.get("preface"):
+        tex.append("\n\\appendix\n\\section{Author's Note}\n")
+        tex += [refs.tex(b["md"]) + "\n\n" for b in doc["preface"]["blocks"]]
     tex.append("\\end{document}\n")
     return "".join(tex), refs
 

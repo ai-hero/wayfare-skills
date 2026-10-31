@@ -938,10 +938,12 @@ def fleet_fixture(root, fleet_md, overlay=None, checkers=None):
     return root
 
 
-def review_register(root, remote=True):
+def review_register(root, remote=True, name="fx/register"):
     """Commit the fixture's `.fleet/` and, with `remote`, push it to a bare
-    `origin`: the reviewed state. With `remote=False` it stays unreviewed: the
-    overlay's own checks read MANUAL and checkers.py is not loaded."""
+    `origin` at `name` and record `register-repo: name` in FLEET.md: the
+    reviewed state. With `remote=False` it stays unreviewed: the overlay's own
+    checks read MANUAL and checkers.py is not loaded. `name=None` pushes to
+    fx/register but writes no register-repo key."""
     reg = root / ".fleet"
     git(reg, "init", "-q", "-b", "main")
     git(reg, "config", "user.email", "t@example.com")
@@ -949,7 +951,10 @@ def review_register(root, remote=True):
     git(reg, "add", "-A")
     git(reg, "commit", "-q", "--allow-empty", "-m", "register")
     if remote:
-        bare = root / "register-origin.git"
+        bare = root / "fx" / "register.git"
+        if name:
+            fleet = root / "FLEET.md"
+            fleet.write_text(fleet.read_text().replace("## Fleet\n", f"## Fleet\n- register-repo: {name}\n", 1))
         # -b main: with no init.defaultBranch (CI's runner) the bare HEAD names
         # master, and a clone of it checks out nothing.
         git(root, "init", "-q", "--bare", "-b", "main", str(bare))
@@ -1702,7 +1707,7 @@ class ReviewedRegister(unittest.TestCase):
         self.assertEqual(rows["ZZ-9"], [audit.MARK[audit.PASS]] * 2)
         self.assertEqual(rows["CI-02"][1], audit.MARK[audit.NA], "the overlay's applies_to holds")
         other = self.root / "other"
-        git(self.root, "clone", "-q", str(self.root / "register-origin.git"), str(other))
+        git(self.root, "clone", "-q", str(self.root / "fx" / "register.git"), str(other))
         write(other, "CHECKS.yaml", (self.reg / "CHECKS.yaml").read_text().replace("[apps]", "[infra]"))
         git(other, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-qam", "infra")
         git(other, "push", "-q", "origin", "main")
@@ -1778,6 +1783,26 @@ class ReviewedRegister(unittest.TestCase):
         self.assertTrue(self.ran.exists())
         self.assertEqual(rows["ZZ-9"], [audit.MARK[audit.PASS]] * 2)
 
+    def test_origin_must_be_the_register_repo_fleet_md_names(self):
+        review_register(self.root, name="fx/someone-else")
+        header, rows = self.audit()
+        self.assertIn("origin is fx/register but FLEET.md register-repo names fx/someone-else", header)
+        self.assertFalse(self.ran.exists(), "a register on the wrong remote ran its checkers.py")
+        self.assert_unreviewed(rows)
+
+    def test_no_register_repo_key_is_unreviewed(self):
+        review_register(self.root, name=None)
+        header, rows = self.audit()
+        self.assertIn("FLEET.md names no register-repo, so origin fx/register is unverified", header)
+        self.assertFalse(self.ran.exists())
+        self.assert_unreviewed(rows)
+
+    def test_repo_slug_reads_every_remote_spelling(self):
+        for url in ("https://github.com/ai-hero/fleet-register.git", "https://github.com/ai-hero/fleet-register/",
+                    "git@github.com:ai-hero/fleet-register.git", "ssh://git@github.com/AI-Hero/fleet-register",
+                    "/srv/git/ai-hero/fleet-register.git"):
+            self.assertEqual(audit._repo_slug(url), "ai-hero/fleet-register", url)
+
     def test_no_remote_reads_head_unreviewed(self):
         review_register(self.root, remote=False)
         header, rows = self.audit()
@@ -1810,6 +1835,8 @@ class ReviewedRegister(unittest.TestCase):
         saved = audit.REGISTER
         audit.REGISTER = self.reg
         self.addCleanup(setattr, audit, "REGISTER", saved)
+        self.addCleanup(setattr, audit, "REGISTER_REPO", audit.REGISTER_REPO)
+        audit.REGISTER_REPO = "fx/register"
         self.addCleanup(audit._REGISTER_READ.clear)
         with mock.patch.dict(audit.GROUP_REPOS, clear=True), contextlib.redirect_stderr(io.StringIO()):
             ctrl, _checks = audit.load_register()

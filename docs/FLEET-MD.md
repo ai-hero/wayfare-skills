@@ -39,6 +39,7 @@ Three things it is for:
 - port-range: 33000-33099
 - template-port: 33099   # the template's parking slot; a clone still on it is a bug
 - register: .fleet/      # the compliance register overlay + generated CONSISTENCY.md; a private checkout
+- register-repo: acme-inc/fleet-register   # the register checkout's origin, OWNER/NAME
 
 ## Groups
 
@@ -72,19 +73,22 @@ Rules:
    to; `template-port` is recorded for the operator. `register` names the
    checkout holding the fleet's compliance overlay (default `.fleet/`); a mapped
    register that is not cloned stops the engine rather than running
-   baseline-only. The register is reviewed the way code is: it has a private
-   `origin` remote whose `main` takes changes only through a reviewed PR, and
-   the engine reads `CONTROLS.yaml`, `CHECKS.yaml` and `checkers.py` from
-   `origin/main`, fetched that run, not from the working tree. The engine trusts
-   that remote's branch protection; it does not check it. A register with no
-   remote, or whose `origin/main` does not resolve, is read at its HEAD, and
-   only a register with no `.git` is read from its working tree. Anything short
-   of a clean, pushed, freshly fetched `origin/main` is unreviewed: an
-   uncommitted or unpushed change to those three files, a failed fetch, no
-   remote, or no `.git` at all. Then the report header's `register:` line names
-   which, the overlay's changes to baseline controls and checks are dropped, its
-   own checks read MANUAL, the register's `checkers.py` is not loaded, and
-   `--fail-on` exits 3.
+   baseline-only. `register-repo` names that checkout's `origin` as
+   `OWNER/NAME`; it is how a fresh fleet folder knows what to clone, and the
+   engine compares it to the checkout's `origin` URL. The register is reviewed
+   the way code is: it has a private `origin` remote whose `main` takes changes
+   only through a reviewed PR, and the engine reads `CONTROLS.yaml`,
+   `CHECKS.yaml` and `checkers.py` from `origin/main`, fetched that run, not
+   from the working tree. The engine trusts that remote's branch protection; it
+   does not check it. A register with no remote, or whose `origin/main` does not
+   resolve, is read at its HEAD, and only a register with no `.git` is read from
+   its working tree. Anything short of a clean, pushed, freshly fetched
+   `origin/main` is unreviewed: an uncommitted or unpushed change to those three
+   files, a failed fetch, no remote, no `.git` at all, no `register-repo` key,
+   or an `origin` that is not the repo `register-repo` names. Then the report
+   header's `register:` line names which, the overlay's changes to baseline
+   controls and checks are dropped, its own checks read MANUAL, the register's
+   `checkers.py` is not loaded, and `--fail-on` exits 3.
 2. **`## Groups`**, names are yours, one line each saying what membership means.
    `none` is reserved and always means not-fleet.
 3. **`## Repos`**, one `### NAME` block per checkout. `NAME` is the folder name,

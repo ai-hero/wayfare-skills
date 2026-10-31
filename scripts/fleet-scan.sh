@@ -30,6 +30,10 @@
 #   NO_AGENTS          a fleet repo without AGENTS.md or CLAUDE.md
 #   NOT_FLEET_AWARE    a fleet repo whose instructions file has no `## Fleet`
 #                      section (assets/fleet/agents-md-fleet-section.md)
+#   NO_INBOX           a fleet repo without .plans/inbox/, so a message or
+#                      reply sent to it cannot be delivered
+#   PLANS_NOT_EXCLUDED a repo, fleet or not, whose .plans/ git does not
+#                      ignore, so the store can be committed
 #
 #   A checkout with no row is NOT reported. FLEET.md defines the fleet; a
 #   folder cloned beside it does not join by being there. Use --list to see
@@ -51,7 +55,7 @@ HERO_LIB="$(cd "$(dirname "$0")" && pwd)/hero-lib.sh"
 # The end line tracks the header block above. Add a line up there and this
 # range silently truncates `--help` mid-sentence — no error, and the Exit
 # codes section is what falls off first.
-usage() { sed -n '5,43p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '5,47p' "$0" | sed 's/^# \{0,1\}//'; }
 
 MODE=list
 ROOT=""
@@ -127,7 +131,14 @@ review() {
       ports="$ports$rport $name$NL"
     fi
     case "$actual" in -|'?'|"$rport") ;; *) ports="$ports$actual $name$NL" ;; esac
+    # Only rc 1 means "not ignored". 128 is a .git that git cannot read, and
+    # reporting it would send someone to fix an exclude file that is fine.
+    if [ -d "$repo_path/.plans" ]; then
+      git -C "$repo_path" check-ignore -q .plans/ 2>/dev/null
+      [ $? -ne 1 ] || printf 'PLANS_NOT_EXCLUDED\t%s\t%s\n' "$name" "$repo_path/.plans"
+    fi
     [ "$group" != none ] || continue
+    [ -d "$repo_path/.plans/inbox" ] || printf 'NO_INBOX\t%s\t%s\n' "$name" "$repo_path/.plans/inbox"
     [ -f "$repo_path/HERO.md" ] || printf 'NO_HERO\t%s\t%s\n' "$name" "$repo_path"
     if [ -f "$repo_path/AGENTS.md" ] || [ -f "$repo_path/CLAUDE.md" ]; then
       # CLAUDE.md is normally a symlink to AGENTS.md; read whichever resolves.

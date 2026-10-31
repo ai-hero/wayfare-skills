@@ -92,6 +92,8 @@ them.
    | `NO_HERO` | offer `wayfare:wayfare-init-repo` in that repo (a subagent, per the standard's fan-out) |
    | `NO_AGENTS` | same, via `wayfare-init-repo`'s Step 1 |
    | `NOT_FLEET_AWARE` | *Make the repos fleet-aware*, below |
+   | `NO_INBOX` | a reply sent to that repo cannot be delivered. Offer a wayfare skill that opens the store, such as `wayfare-sync-plan`, in that repo (a subagent); its Step 0 creates the inbox after the exclude entry. Never create the inbox from here: the sender-side refusal in [MESSAGES.md](../../docs/MESSAGES.md) exists because a store written from outside can be committed |
+   | `PLANS_NOT_EXCLUDED` | the repo's `.plans/` can be committed. Same route as `NO_INBOX`, whose Step 0 writes `.plans/` to `.git/info/exclude`. In a `none` repo the store is stray: ask whether to remove it, in that repo. Never edit its exclude file from here |
 
 2. Checkouts with no row: `"$SCAN" "$FLEET_ROOT" --list`, minus the paths
    FLEET.md names. `--review` does not report these, deliberately: **FLEET.md

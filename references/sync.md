@@ -641,10 +641,13 @@ rather than reporting clean, the same rule the Upstream lane above follows):
   belongs in the code, and a `channel: architecture` signal when the design's
   structural assumption is the thing that is wrong. The two are not
   interchangeable: one is work, the other is a question for someone else.
-- **premise defects**: an item whose `## Approach` or `## Subtasks` rest on a
-  claim the code contradicts. Report the claim, the file that disproves it, and
-  route the item back to planning; a plan built on a wrong premise ships the
-  wrong thing at full confidence.
+- **premise defects**: an item whose plan or `## Subtasks` rest on a claim the
+  code contradicts. Its plan is its `### Task N` slice
+  (`hero_goal_slice GOAL_FILE N`) with the goal's `### Design` when its goal
+  carries `## Plan`, and its own `## Approach` otherwise. Report the claim, the
+  file that disproves it, and route the item back to planning (a member of a
+  goal with `## Plan` is re-planned on the goal, by Roadmap mode); a plan built
+  on a wrong premise ships the wrong thing at full confidence.
 
 **Feedback lane: the three return channels:**
 
@@ -851,12 +854,35 @@ So the pass runs across the roadmap:
    exception and is the only thing that distinguishes this from a standalone
    planning session, since the invocation is otherwise byte-identical to a user
    typing it. Roadmap mode owns the shape of the pass: the cross-cutting
-   decisions settled once and recorded where they can be found again, the
-   slicing and order confirmed across the set, then each task's `## Approach`,
-   `## Subtasks`, and `## Definition of Done` from that shared context, with one
-   ready-mark per task at its Step 5. Wayfare does not restate that procedure;
-   it is defined once, there. Tasks that do not need planning (per *Lifecycle*)
-   get a one-line approach and skip the grill; say which ones and why.
+   decisions settled once, the slicing and order confirmed across the set, and
+   **the goal formed in the same pass.** A set that is, or becomes, a goal's
+   members gets the goal proposed by Roadmap mode under step 4's grouping rules,
+   with its `## Plan` written onto it (`### Requirements`, `### Design` with its
+   Contracts, Ordering and compatibility and Checkpoints, one `### Task N` slice
+   per member), each member's `## Subtasks` generated from its slice and its own
+   `## Definition of Done`, and one ready-mark on the goal's plan that marks
+   every member ready. A task left outside any goal gets its own `## Approach`,
+   `## Subtasks` and `## Definition of Done` and its own ready-mark. Wayfare
+   does not restate that procedure; it is defined once, there. Tasks that do not
+   need planning (per *Lifecycle*) get a one-line approach (or slice) and skip
+   the grill; say which ones and why.
+
+   **A goal cut over tasks that already carry `## Approach` is re-planned, not
+   relabelled.** Tasks planned before goals carried a plan, or planned alone and
+   grouped afterwards, reach a goal with their "how" on the member. The cut runs
+   Roadmap mode over the set: lift each `## Approach` into the member's
+   `### Task N` slice, settle `### Design` and `#### Contracts` across them,
+   drop the standalone-only steps (branch fresh off main, push, open a PR,
+   merge), remove the member's `## Approach`, and regenerate its `## Subtasks`
+   from the slice. **A ticked subtask line is kept ticked and never reworded**;
+   only unticked lines are regenerated. A ticked line is the resume state of
+   work already on a branch, and rewording it makes the resume, close-out and
+   carve-out read a checklist that no longer matches what was built. The lifted
+   plan settles decisions nobody approved yet, so a member that was `ready`
+   returns to `planning` as its slice is written, and the goal's one ready-mark
+   flips it back. An `active` goal mid-flight is never migrated by force: it is
+   frozen (step 4), and its members keep building from their own `## Approach`
+   until the goal is next re-planned.
 
    **Security items are planned differently, and both ways skip the grill.** A
    harden item arrives `planning` with its recipe already written, because the
@@ -876,10 +902,21 @@ So the pass runs across the roadmap:
    there.** A goal is the unit `wayfare-start-goal` authorizes and runs, and
    every member must already be `ready` (*Starting a goal*, step 1), so the end
    of this pass is the one moment in the workflow where a goal can be formed
-   *from* the set instead of reassembled by hand afterwards. Roadmap mode has
-   just settled the cross-cutting decisions and the dependency order across
-   these tasks. A goal written later has to re-derive that grouping from the
-   items alone, without the reasoning that produced it.
+   *from* the set instead of reassembled by hand afterwards. That is why Roadmap
+   mode forms the goals for the set it planned, in its own pass (step 2), while
+   the cross-cutting decisions and the dependency order are in hand, and why
+   their plan lives on the goal. A goal written later has to re-derive that
+   grouping from the items alone, without the reasoning that produced it. This
+   stage applies the same rules to everything else: the leftovers no
+   Roadmap-mode goal covers (a task planned before this round, a declined
+   proposal, a security item), and the re-cut below. A leftover that carries
+   `## Approach` is cut into its goal by re-planning it as step 2 says, never by
+   setting `parent` alone; a task that joins an `accepted` goal carrying
+   `## Plan` likewise gets its slice through Roadmap mode, and the goal's
+   ready-mark is asked again for the changed plan. A security goal (below) is
+   the exception and carries no `## Plan`: its items skip the grill, their plan
+   is the audit's recipe or the bot's PR, and their turns run their own
+   pipeline.
 
    **This stage always runs, and it ends with no planned item outside a goal.**
    `wayfare-start-goal` walks goals and never items, so a `ready` task no goal
@@ -993,7 +1030,9 @@ So the pass runs across the roadmap:
    cannot say what it is asking for. The `## Definition of Done` spans the
    group. Concatenating the tasks' own DoDs is not that: it asserts only what
    each task already asserts alone. Exclude any task whose `parent` is another
-   goal: one `parent`, so a task is in one goal or none.
+   goal: one `parent`, so a task is in one goal or none. A goal Roadmap mode
+   forms in step 2 is written to this same format with these same values, plus
+   its `## Plan`, whose `### Requirements` this DoD is the checkable form of.
 
    **The sync writes the item and stops there. It never authorizes.** The
    approval that grants a goal's `## Permissions` is typed by a person at

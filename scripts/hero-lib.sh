@@ -1260,6 +1260,127 @@ hero_goal_members() { # GOAL_ID [STORE]
   )
 }
 
+# One scanner for a goal's `## Plan` (docs/PLAN.md, *Goal-only sections*), so
+# the slice reader and the shared-parts reader cannot disagree on where a part
+# ends. MODE `slice` prints the body of `### Task ID`; MODE `shared` prints
+# `### Requirements` and `### Design` with their headings and `####` parts.
+#
+# A part ends at the next H1 to H3, never at an H4: `#### Contracts` belongs to
+# Design, and a slice may carry its own `####` notes. Headings inside a code
+# fence are text, or a slice quoting a `## Log` example would end early and the
+# next slice's body would never be reached. Only headings under `## Plan`
+# count: a `### Task 2` quoted in `## Ledger` or `## Log` is not a slice.
+#
+# `### Task 2` matches id 2 and `### Task 002`, never `### Task 12`: the id is
+# compared whole, after the same normalization as hero_norm_id. A heading with
+# text after the id is not a slice; the format fixes the heading so the parent
+# extracts it without judgment.
+#
+# Exit: 0 printed, 1 nothing found or the part is blank, 3 the ID has two
+# slices (the callers turn that into rc 2 with a message).
+_hero_goal_plan_scan() { # MODE GOAL_FILE [ID]
+  awk -v mode="$1" -v want="${3:-}" '
+    function norm(s) { return (s ~ /^[0-9]+$/) ? s + 0 : tolower(s) }
+    NR == 1 && /^---[[:space:]]*$/ { fm = 1; next }
+    fm { if (/^---[[:space:]]*$/) fm = 0; next }
+    /^[[:space:]]*(```|~~~)/ { fence = !fence; if (on) buf[++n] = $0; next }
+    !fence && match($0, /^#+[ \t]/) && RLENGTH <= 4 {
+      lvl = RLENGTH - 1
+      h = $0; sub(/[ \t]+$/, "", h)
+      on = 0
+      if (lvl <= 2) { inplan = (h == "## Plan"); next }
+      if (!inplan) next
+      if (mode == "slice" && h ~ /^### Task[ \t]+[^ \t]+$/) {
+        t = h; sub(/^### Task[ \t]+/, "", t)
+        if (norm(t) == want) { hits++; on = (hits == 1) }
+        next
+      }
+      if (mode == "shared" && (h == "### Requirements" || h == "### Design")) {
+        on = 1; buf[++n] = h
+      }
+      next
+    }
+    on { buf[++n] = $0; if (mode == "shared" && $0 ~ /[^[:space:]]/ && $0 !~ /^#/) body = 1 }
+    END {
+      if (hits > 1) exit 3
+      first = 0; last = 0
+      for (i = 1; i <= n; i++) if (buf[i] ~ /[^[:space:]]/) { if (!first) first = i; last = i }
+      if (!first || (mode == "shared" && !body)) exit 1
+      for (i = first; i <= last; i++) print buf[i]
+    }
+  ' "$2"
+}
+
+# The body of one member's `### Task ID` slice in a goal's `## Plan`, and
+# nothing from another slice or the shared parts. A goal turn hands this to the
+# member's build as its approach, so a leaked neighbour's text is a second plan
+# the build follows without anyone having approved it for this member.
+#
+# rc 0 printed, 1 no such slice or a blank one, 2 bad arguments or the ID has
+# two slices. Two slices is refused rather than answered with the first: which
+# one the planner meant is not something a reader can know.
+hero_goal_slice() { # GOAL_FILE ID
+  local rc
+  [ -n "${2:-}" ] || { echo "hero_goal_slice: empty ID" >&2; return 2; }
+  [ -r "${1:-}" ] || return 1
+  _hero_goal_plan_scan slice "$1" "$(hero_norm_id "$2")"
+  rc=$?
+  [ "$rc" -eq 3 ] && { echo "hero_goal_slice: $1 has more than one '### Task $2' slice" >&2; return 2; }
+  return "$rc"
+}
+
+# The parts of a goal's `## Plan` every member's build gets: `### Requirements`
+# and `### Design` (with `#### Contracts`, `#### Ordering and compatibility`,
+# `#### Checkpoints`), headings included, and no `### Task` slice.
+#
+# rc 0 printed, 1 the goal has no `## Plan` or neither part has any text.
+hero_goal_plan_shared() { # GOAL_FILE
+  [ -r "${1:-}" ] || return 1
+  _hero_goal_plan_scan shared "$1"
+}
+
+# Does this `## ` section of an item hold at least one checklist line? Resume,
+# close-out and carve-out all count checklist lines, so a section of prose with
+# none is as hollow as an absent one.
+_hero_item_has_checklist() { # FILE SECTION
+  awk -v sec="## $2" '
+    NR == 1 && /^---[[:space:]]*$/ { fm = 1; next }
+    fm { if (/^---[[:space:]]*$/) fm = 0; next }
+    /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+    fence { next }
+    /^## / { h = $0; sub(/[ \t]+$/, "", h); in_s = (h == sec); next }
+    in_s && /^[ \t]*([-*]|[0-9]+\.)[ \t]+\[[ xX]\]/ { found = 1; exit }
+    END { exit !found }
+  ' "$1"
+}
+
+# Is a goal member planned: its slice in the goal's `## Plan`, its own
+# `## Definition of Done` and its own `## Subtasks` all non-empty? Each
+# missing part is named on stderr, so a hollow-plan stop can say which.
+#
+# The member's `parent` must name GOAL_FILE's `id`. Store ids are unique, but a
+# goal file passed by mistake can still carry a stray `### Task N`, and that
+# would pass this check against a plan nobody approved for the member.
+#
+# rc 0 planned, 1 a part is missing, 2 unreadable files, no `id`, or a
+# `parent` that is not this goal.
+hero_member_planned() { # ITEM_FILE GOAL_FILE
+  local id parent gid missing=""
+  [ -r "${1:-}" ] && [ -r "${2:-}" ] || { echo "hero_member_planned: cannot read item or goal file" >&2; return 2; }
+  id=$(hero_norm_id "$(hero_item_field "$1" id)")
+  parent=$(hero_norm_id "$(hero_item_field "$1" parent)")
+  gid=$(hero_norm_id "$(hero_item_field "$2" id)")
+  [ -n "$id" ] || { echo "hero_member_planned: $1 has no id" >&2; return 2; }
+  [ -n "$parent" ] && [ "$parent" = "$gid" ] || {
+    echo "hero_member_planned: $1 has parent '${parent}', not goal '${gid}'" >&2; return 2; }
+  hero_goal_slice "$2" "$id" >/dev/null 2>&1 || missing="$missing slice"
+  _hero_item_has_checklist "$1" "Definition of Done" || missing="$missing definition-of-done"
+  _hero_item_has_checklist "$1" "Subtasks" || missing="$missing subtasks"
+  [ -z "$missing" ] && return 0
+  echo "hero_member_planned: item $id is missing:$missing" >&2
+  return 1
+}
+
 # Messages in a store's mailbox (docs/MESSAGES.md) by state. With no second
 # argument, UNREAD: inbox/*.md whose `status:` is `new`, absent (the default
 # for a missing line, as for items), or any word outside the enum. An

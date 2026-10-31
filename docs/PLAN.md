@@ -414,11 +414,14 @@ compared at cannot be re-verified and gets re-derived from scratch.
 
 ## Approach
 
-How it gets built. Empty until planned.
+How it gets built. Empty until planned. Absent on a member of a goal that
+carries `## Plan`: its "how" is its `### Task N` slice there (Goal-only
+sections, below).
 
 ## Subtasks
 
-Ordered checklist, written at plan time, checked off during the build.
+Ordered checklist, written at plan time, checked off during the build. On a
+member of a goal that carries `## Plan`, generated from its slice.
 
 - [ ] 1. Schema: the data-model change
 - [ ] 2. Routes exposing it
@@ -551,7 +554,9 @@ exactly what the in-session grant exists to prevent.
 
 ### Goal-only sections
 
-A `goal` carries two more sections, and both are read every turn.
+A `goal` carries two sections read every turn, `## Permissions` and
+`## Stop conditions`, and two that hold its build: `## Plan`, the one spec its
+members are built from, and `## Ledger`, what each member actually built.
 
 ```markdown
 ## Permissions
@@ -584,6 +589,104 @@ A goal also carries `budget` (commits expected; an expectation, not a gate),
 raise when the rest ships in the same PR, up to a ceiling of twice the value at
 the gate, and stops otherwise), `commits` (SHA and the task id it served,
 appended as each is made) and `branch`.
+
+#### `## Plan`: one spec for every member
+
+A goal merges as one branch and one PR, so its members are planned together and
+the plan lives on the goal. Plans written onto each member separately settle a
+shared question each their own way, and nothing records the contracts between
+them: the signature, schema or format one member produces and a later one
+consumes.
+
+```markdown
+## Plan
+
+### Requirements
+
+What the merged change must do end to end, including the checks that existing
+services keep working. The goal's `## Definition of Done` is the checkable
+form of this, not a copy of it.
+
+### Design
+
+Cross-cutting decisions: where state lives, how errors surface, what owns what.
+
+#### Contracts
+
+Each interface one member produces and another consumes: name,
+signature/schema/format, producer id, consumer ids.
+
+#### Ordering and compatibility
+
+Why the members go in this order. For a breaking change, the expand/contract
+sequence (add the new, migrate callers, remove the old) that leaves existing
+callers working at every intermediate commit.
+
+#### Checkpoints
+
+The members after which the full suite runs: at every contract boundary and at
+least every 4 members, unless the goal sets its own spacing.
+
+### Task 12
+
+The approach for member 12 only. Depth scales with its size: a one-file member
+may be two lines, a multi-file member gets a full approach.
+
+### Task 13
+
+...
+```
+
+The headings are fixed, because a goal turn extracts them mechanically:
+
+- **One `### Task N` slice per member, keyed by its store id.** The heading is
+  exactly `### Task N`, with nothing after the id; `### Task 12 sign in` is not
+  a slice. A slice ends at the next heading of level 3 or above, so a slice may
+  carry its own `####` notes. `hero_goal_slice GOAL_FILE ID` prints one slice
+  and nothing from another, and refuses an id with two slices.
+- **`### Requirements` and `### Design` are the shared parts** every member's
+  build receives; `hero_goal_plan_shared GOAL_FILE` prints them, `####`
+  subsections included, with no slice.
+- **Slices are written goal-aware.** The goal owns the branch and the PR, so a
+  slice carries no "branch fresh off main" and no push or PR step.
+
+A member (an item with `parent` set) of a goal that carries `## Plan` has no
+`## Approach`. It keeps `## Definition of Done`, `source` and `target`, and
+`## Subtasks`, which is generated from its slice: Subtasks is the build's resume
+state, close-out gate and carve-out unit, read per item, so it stays on the
+member while the "how" moves to the goal.
+`hero_member_planned ITEM_FILE GOAL_FILE` succeeds only when the member's slice,
+its DoD and its Subtasks each hold something, and DoD and Subtasks count only
+checklist lines.
+
+The ready-mark is on the goal's plan. One approval covers `## Plan` and every
+member's DoD, since they were planned together, and it marks every member ready.
+Per-member ready-marks over text that lives in the goal would approve a file
+another pass can edit.
+
+Two cases keep their current behaviour. A task with no `parent` (Feature mode)
+still carries its own `## Approach`, `## Subtasks` and `## Definition of Done`.
+A goal with no `## Plan` whose members still carry `## Approach` runs as before,
+from the members' own Approach, until the goal is next re-planned; an in-flight
+goal is never migrated by force.
+
+#### `## Ledger`: what each member built
+
+```markdown
+## Ledger
+
+- 2026-10-31 a1b2c3d task 12: built the slice as planned; the session token contract now also returns `expires_at`
+- 2026-10-31 e4f5a6b task 13: deviated from the slice: kept the cookie reader beside the token reader for one commit; mistake: wired the callback before the token existed
+```
+
+Append-only, and written only by the parent (the goal turn), once after each
+member commits: the commit SHA, what was actually built, any contract that
+changed shape, deviations from the slice, and the member's `mistake` lines,
+compressed. A later member's build reads decisions and outcomes here rather than
+re-deriving them from the branch. It is not `## Log`, which records turns, and
+not `commits:`, which is the SHA list. When the Ledger grows too large for a
+build's brief, the parent compacts earlier entries to one line per member and
+keeps every contract change verbatim.
 
 ### Membership is one edge, in one direction
 

@@ -54,6 +54,11 @@ roadmap, and wayfare owns only the contract it fills:
   whose every line is about one layer describes a layer, not a slice.
   `anchors.target` is refreshed to the head planned against. In self-review mode
   there is no target head to refresh it to, so it stays absent.
+- **A member of a goal that carries `## Plan` has no `## Approach`.** Its "how"
+  is the goal's `### Task N` slice for its id, and its `## Subtasks` is
+  generated from that slice; its `## Definition of Done` stays on the member
+  (`docs/PLAN.md`, *Goal-only sections*). A goal with no `## Plan` keeps its
+  members' `## Approach` as above.
 - The task is the unit of work, with no separate work-items. Subtasks are
   checklist lines, and wayfare-build-task works through them in order (PR
   granularity is wayfare-build-task's call, per its Step 2).

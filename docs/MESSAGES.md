@@ -77,6 +77,15 @@ REPO/.plans/inbox/m-7f3a9c.md
 inbox rides that same exclusion, and a fresh clone that never wrote that entry
 would let an inbound message get committed like any other file.
 
+**The repo's own setup creates the inbox, never a sender.** `hero_work_store`
+makes `.plans/inbox/` right after it writes the `.plans/` exclude entry, and
+never where that entry could not be written. The shared Step 0 in
+`references/loading.md` runs it, as do wayfare-build-task's and
+wayfare-grill-idea's, and `wayfare-init-repo` creates or migrates the store
+through it, so a repo any of them has run in can receive a message. A sender
+creating the directory instead would do it in a checkout whose exclude entry it
+has not checked, which is why `hero_msg_deposit` refuses to.
+
 **Hash-named, never numbered.** `.plans/` item ids are a sequential integer
 namespace. A sender allocating an id inside the recipient's namespace races with
 the recipient allocating its own, and `hero_ready_items` reports the result as a
@@ -211,10 +220,12 @@ re-derives them.
 1. **Confirm the destination.** `to:` must be a `FLEET.md` row
    (`hero_fleet_repos`), or this repo itself, and the target's `.plans/inbox/`
    must already exist. That directory, not merely a `.plans/`, is what
-   `hero_msg_deposit` requires and refuses to create. If either fails, **do not
-   deposit**, write a local item naming the sibling and why the message could
-   not be sent, say so in the run report, and carry on. A message you cannot
-   address is a finding, not a retry loop.
+   `hero_msg_deposit` requires and refuses to create; the target's own setup
+   makes it (*The mailbox*). If either fails, **do not deposit**, write a local
+   item naming the sibling, why the message could not be sent, and the full
+   message text, say so in the run report, and carry on. There is no outbox: a
+   held message lives in that local item, and is sent from it once the target
+   has an inbox. A message you cannot address is a finding, not a retry loop.
 2. **Probe for a duplicate.** `hero_msg_find TARGET_STORE FROM ABOUT`, the key
    is `(from, about)`, and a live match means reuse it, do not send a second.
    `ABOUT` may not be empty: an absent `about:` reads as the empty string on
@@ -433,6 +444,7 @@ other people merge underneath every PR.
 | Where | Change |
 | -- | -- |
 | `hero_msg_id` / `hero_is_msg_id` / `hero_msg_find` / `hero_msg_deposit` | DONE: the send half, and the format checks that had no enforcement point before it |
+| `hero_work_store` (`scripts/hero-lib.sh`) | DONE: creates `.plans/inbox/` after the `.plans/` exclude entry is written, so the receiving repo's own setup makes its mailbox. Senders still never create one, and keep no outbox: a message that cannot be delivered is held in a local item |
 | `hero_item_type` (`scripts/hero-lib.sh`) | DONE: a promoted message is an ordinary item (`type: task`, `shape: defect`), and the inbox itself is outside the item namespace |
 | `hero_ready_items` status table | DONE: a non-empty `awaiting` prints a `suspended` row with the awaiting annotation, never READY, never in `done_ids` |
 | The `enum=` strings in `hero_ready_items` | DONE: no enum names `suspended`; the flag is `awaiting` |

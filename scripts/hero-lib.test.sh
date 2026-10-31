@@ -1589,6 +1589,14 @@ check "store: legacy dir gone after move"  "yes" "$([ ! -e "$R1/my-work" ] && ec
 grep -qxF ".plans/" "$R1/.git/info/exclude"
 check "store: .plans excluded in the TARGET repo" "0" "$?"
 check "store: second call is idempotent"   "$R1/.plans" "$(hero_work_store "$R1" 2>/dev/null)"
+check "store: creates the inbox"           "yes" "$([ -d "$R1/.plans/inbox" ] && echo yes)"
+# The inbox exists only where .plans/ is excluded. An exclude file that cannot
+# be appended to (a directory here) must leave no mailbox behind, or inbound
+# messages land in a checkout that commits them.
+RX="$TMP/noexclude"; git init -q "$RX"; rm -f "$RX/.git/info/exclude"; mkdir -p "$RX/.git/info/exclude"
+hero_work_store "$RX" >/dev/null 2>&1
+check "store: unwritable exclude refused"  "1" "$?"
+check "store: no inbox without the exclude entry" "no" "$([ -e "$RX/.plans/inbox" ] && echo yes || echo no)"
 
 # Symlink refusal, only when a migration would actually happen. A stale
 # legacy symlink next to a healthy .plans/ must not brick the store.
@@ -1596,6 +1604,7 @@ R2="$TMP/mig2"; git init -q "$R2"; ln -s /etc "$R2/my-work"
 hero_work_store "$R2" >/dev/null 2>&1
 check "store: symlinked legacy refused when migrating" "1" "$?"
 check "store: no .plans created on refusal" "yes" "$([ ! -e "$R2/.plans" ] && echo yes)"
+check "store: no inbox created on refusal" "no" "$([ -e "$R2/.plans/inbox" ] && echo yes || echo no)"
 mkdir "$R2/.plans"
 S2="$(hero_work_store "$R2" 2>/dev/null)"
 check "store: healthy .plans survives a legacy symlink" "$R2/.plans" "$S2"
@@ -1718,6 +1727,7 @@ grep -qxF ".plans/" "$R4/.git/info/exclude"
 check "store: excludes written to the target repo" "0" "$?"
 hero_work_store "$NOREPO" >/dev/null 2>&1
 check "store: non-repo root still refused" "1" "$?"
+check "store: no inbox in a non-repo root" "no" "$([ -e "$NOREPO/.plans/inbox" ] && echo yes || echo no)"
 
 # ---------- branch-name gate -----------------------------------------------
 #
@@ -2004,6 +2014,11 @@ check "deposit: refuses a missing inbox"      "no"  "$(hero_msg_deposit "$TMP/w/
 # `|| true` is load-bearing: this file runs with `pipefail`, so the deposit's
 # own non-zero status is the pipeline's status whatever grep finds.
 check "deposit: names the missing mailbox"    "yes" "$({ hero_msg_deposit "$TMP/w/.plans" m-cc1111 "$TMP/nomailbox.md" 2>&1 >/dev/null || true; } | grep -q 'has no mailbox' && echo yes || echo no)"
+# hero_work_store makes the inbox now, so pin the refusal on a store it made
+# whose inbox was then removed: the deposit must still not recreate it.
+RI="$TMP/lostinbox"; git init -q "$RI"; SI="$(hero_work_store "$RI" 2>/dev/null)"; rmdir "$SI/inbox"
+check "deposit: refuses a store's lost inbox" "no" "$(hero_msg_deposit "$SI" m-cc1111 "$TMP/nomailbox.md" >/dev/null 2>&1 && echo yes || echo no)"
+check "deposit: does not recreate the inbox"  "no" "$([ -e "$SI/inbox" ] && echo yes || echo no)"
 check "deposit: rejects a non-message id"     "no"  "$(hero_msg_deposit "$W3" 42 "$TMP/draft.md" >/dev/null 2>&1 && echo yes || echo no)"
 # The id becomes a path. This is the one that turns a confused sender into an
 # arbitrary write in someone else's checkout.

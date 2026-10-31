@@ -1472,20 +1472,21 @@ from an unreadable one, so it declines to guess.
 
 Three cases, decided by what is already on disk:
 
-1. **No `.plans/` at all** → create the store and write `PLAN.md`: `schema: 1`,
-   the repo slug, the default branch, today's date, `next_id: 1`, the
-   `source.root` and `source.head` this run resolved, and a `target:` block only
-   when the `design` connection's `at` is a project id rather than `none`. Fill
-   `## Scope` from the investigation: one paragraph on what this repo is and
-   what the plan over it is for. Every planning round reads it as the frame its
-   proposals have to fit, so "TODO" there is a round planning against nothing.
+1. **No `.plans/` at all** → create the store with `hero_work_store` and write
+   `PLAN.md`: `schema: 1`, the repo slug, the default branch, today's date,
+   `next_id: 1`, the `source.root` and `source.head` this run resolved, and a
+   `target:` block only when the `design` connection's `at` is a project id
+   rather than `none`. Fill `## Scope` from the investigation: one paragraph on
+   what this repo is and what the plan over it is for. Every planning round
+   reads it as the frame its proposals have to fit, so "TODO" there is a round
+   planning against nothing.
 
 2. **A `.plans/` holding items but no `PLAN.md` with `schema:`** → an unmigrated
    store from the nine-kind schema. Run the migrator and say so:
 
    ```bash
    WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-   bash "$WAYFARE_ROOT/scripts/migrate-plan.sh" "$(hero_store_path)"
+   bash "$WAYFARE_ROOT/scripts/migrate-plan.sh" "$(hero_work_store)"
    ```
 
    Report its warnings rather than swallowing them; an unrecognized `kind`
@@ -1499,7 +1500,10 @@ Three cases, decided by what is already on disk:
 **Never write `PLAN.md` into a directory that is not a git repo.**
 `hero_work_store` refuses to create a store it cannot add to
 `.git/info/exclude`, because a store that is not ignored is one that gets
-committed, and `.plans/` is private by design.
+committed, and `.plans/` is private by design. Once the exclude entry is written
+it also creates `.plans/inbox/`, the mailbox sibling repos deposit into
+([MESSAGES.md](../docs/MESSAGES.md)). A sender is never allowed to create it, so
+a store made any other way is one no reply can reach.
 
 ## Examples
 

@@ -1033,6 +1033,14 @@ hero_work_store() {
     return 1
   }
   ( cd "$root" && hero_exclude_add .plans/ ) || return 1
+  # The mailbox is made here, by the repo's own setup, because senders may not
+  # make one (hero_msg_deposit refuses). Only after the exclude entry is
+  # written: an inbox in a checkout that does not ignore .plans/ gets every
+  # inbound message committed.
+  mkdir -p "$store/inbox" || {
+    echo "hero_work_store: cannot create '$store/inbox'" >&2
+    return 1
+  }
   printf '%s' "$store"
 }
 

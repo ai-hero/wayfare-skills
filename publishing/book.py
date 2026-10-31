@@ -417,10 +417,9 @@ def appendix_name(a):
 
 
 def contents(chapters, appendix_title, references_present=False, note_title=None):
-    rows = [f'<li><a href="#ch-{c["n"]}"><span class="toc-num">{ONES[c["n"]]}</span>{esc(c["title"])}</a></li>'
-            for c in chapters]
-    if note_title:
-        rows.append(f'<li class="toc-appendix"><a href="#ai-note"><span class="toc-num"></span>{esc(note_title)}</a></li>')
+    rows = [f'<li class="toc-appendix"><a href="#preface"><span class="toc-num"></span>{esc(note_title)}</a></li>'] if note_title else []
+    rows += [f'<li><a href="#ch-{c["n"]}"><span class="toc-num">{ONES[c["n"]]}</span>{esc(c["title"])}</a></li>'
+             for c in chapters]
     if appendix_title:
         rows.append(f'<li class="toc-appendix"><a href="#appendix"><span class="toc-num">Appendix</span>{esc(appendix_title)}</a></li>')
     if references_present:
@@ -428,12 +427,12 @@ def contents(chapters, appendix_title, references_present=False, note_title=None
     return f'<section class="contents"><p class="contents-title">Contents</p><ol>{"".join(rows)}</ol></section>'
 
 
-def ai_note(note):
-    """The note on the use of AI tools closes the book, after the last chapter, as it does in the paper."""
+def preface(note):
+    """The preface opens the book, after the contents. It once closed it, when it held only the AI note."""
     if not note:
         return ""
     body = "".join(f"<p>{b['html']}</p>" for b in note["blocks"])
-    return (f'<section class="ai-note" id="ai-note"><header class="opener"><h1>{esc(note["title"])}</h1></header>'
+    return (f'<section class="preface" id="preface"><header class="opener"><h1>{esc(note["title"])}</h1></header>'
             f'{body}</section>')
 
 
@@ -507,8 +506,9 @@ def render_html(doc, defer=None, shrink=None, only=None, splits=None):
     else:
         body = (front(meta, doc["chapters"], appendix_name(doc.get("appendix")),
                       (doc.get("preface") or {}).get("title"), bool(doc.get("references")))
+                + preface(doc.get("preface"))
                 + "\n".join(chapter(c, defer or {}, shrink or {}, splits) for c in doc["chapters"])
-                + ai_note(doc.get("preface")) + appendix(doc.get("appendix")) + references(doc.get("references")))
+                + appendix(doc.get("appendix")) + references(doc.get("references")))
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{esc(full_title(meta))}</title>'
             f'<meta name="author" content="{esc(meta["author"])}">'
             f'<style>{font_faces()}\n{css}</style></head>'

@@ -11,7 +11,7 @@ QUESTION = "How reproducible are the study's model-assigned labels if a second c
 
 def answer(con):
     n_cached = con.execute("SELECT COUNT(*) AS n FROM detectors.prompt_kind").fetchone()["n"]
-    n_changesets = con.execute("SELECT COUNT(*) AS n FROM detectors.changesets").fetchone()["n"]
+    n_changesets = con.execute("SELECT COUNT(*) AS n FROM detectors.cs_units").fetchone()["n"]
     return [{"haiku_labeled_prompts": n_cached, "haiku_labeled_changesets": n_changesets,
              "answerable_by_code": False,
              "reason": "labels are cached by content hash so a re-run and agreement score is "

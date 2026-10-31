@@ -13,7 +13,8 @@ def answer(con):
     avg_spend_per_set = con.execute(
         "SELECT SUM(s.cost_usd) * 1.0 / SUM(u.n_sets) FROM detectors.session_spend s "
         "JOIN detectors.changesets_by_commit lk ON lk.repo = s.repo "
-        "JOIN detectors.cs_units u ON u.repo = lk.repo AND u.unit_kind = lk.unit_kind AND u.unit_id = lk.unit_id"
+        "JOIN detectors.cs_units u ON u.repo = lk.repo AND u.unit_kind = lk.unit_kind AND u.unit_id = lk.unit_id "
+        "WHERE lk.sha IS NOT NULL"
     ).fetchone()[0]
     if not repeats.get("median_repos_repeating_independently") or not avg_spend_per_set:
         return [repeats]

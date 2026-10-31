@@ -13,12 +13,15 @@ def answer(con):
     prs = con.execute("SELECT COUNT(*) FROM github.prs WHERE merged_ts IS NOT NULL").fetchone()[0]
     items = con.execute("SELECT COUNT(*) FROM plans.plan_items WHERE type != 'goal'").fetchone()[0]
     goals = con.execute("SELECT COUNT(*) FROM plans.goals").fetchone()[0]
-    sets = con.execute(
-        "SELECT SUM(u.n_sets) FROM detectors.changesets_by_commit lk "
+    sets, offmain = con.execute(
+        "SELECT SUM(CASE WHEN lk.sha IS NOT NULL THEN u.n_sets END), SUM(CASE WHEN lk.sha IS NULL THEN u.n_sets END) "
+        "FROM detectors.changesets_by_commit lk "
         "JOIN detectors.cs_units u USING (repo, unit_kind, unit_id)"
-    ).fetchone()[0] or 0
+    ).fetchone()
+    sets = sets or 0
     return [
-        {"unit": "change_set", "count": sets, "spend_per_unit": round(total_spend / sets, 2) if sets else None},
+        {"unit": "change_set", "count": sets, "spend_per_unit": round(total_spend / sets, 2) if sets else None,
+         "offmain_change_sets_excluded": offmain or 0},
         {"unit": "commit", "count": commits, "spend_per_unit": round(total_spend / commits, 2) if commits else None},
         {"unit": "merged_pr", "count": prs, "spend_per_unit": round(total_spend / prs, 2) if prs else None},
         {"unit": "item", "count": items, "spend_per_unit": round(total_spend / items, 2) if items else None},

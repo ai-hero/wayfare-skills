@@ -8,6 +8,7 @@ SQL = """
 SELECT lk.repo, lk.sha, u.n_sets
 FROM detectors.changesets_by_commit lk
 JOIN detectors.cs_units u USING (repo, unit_kind, unit_id)
+WHERE lk.sha IS NOT NULL
 """
 
 

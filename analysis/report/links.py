@@ -190,12 +190,14 @@ def q_active_repo_dates(con):
 def q_counting_units_compared_two_passes(con):
     """Three counts of the same history per repo: commits on main, original commits, change sets."""
     main = {r["repo"]: r["n"] for r in rows(con, f"SELECT repo, COUNT(*) n FROM git.commits WHERE is_merge=0 AND {IN_SCOPE} GROUP BY repo")}
-    orig = defaultdict(int)
-    for r in rows(con, "SELECT repo, SUM(n_commits) n FROM detectors.cs_units GROUP BY repo"):
-        orig[r["repo"]] = r["n"]
-    sets = {r["repo"]: r["n"] for r in rows(con, "SELECT repo, SUM(n_sets) n FROM detectors.cs_units GROUP BY repo")}
-    out = [{"repo": r, "main": main[r], "original": orig[r], "sets": sets.get(r, 0),
-            "ratio": round(sets.get(r, 0) / main[r], 2)} for r in main]
+    orig, sets, offmain = defaultdict(int), defaultdict(int), defaultdict(int)
+    for r in rows(con, "SELECT repo, SUM(CASE WHEN main_sha IS NOT NULL THEN n_commits ELSE 0 END) n, "
+                       "SUM(CASE WHEN main_sha IS NOT NULL THEN n_sets ELSE 0 END) s, "
+                       "SUM(CASE WHEN main_sha IS NULL THEN n_sets ELSE 0 END) off "
+                       "FROM detectors.cs_units GROUP BY repo"):
+        orig[r["repo"]], sets[r["repo"]], offmain[r["repo"]] = r["n"], r["s"], r["off"]
+    out = [{"repo": r, "main": main[r], "original": orig[r], "sets": sets[r], "offmain_sets_excluded": offmain[r],
+            "ratio": round(sets[r] / main[r], 2)} for r in main]
     return sorted(out, key=lambda x: -x["main"])
 
 

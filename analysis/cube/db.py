@@ -70,15 +70,16 @@ def connect(*topics, check_changesets=True):
 
 
 def commit_sets(con):
-    """{(repo, sha): n_sets} for every commit changesets_by_commit links to a unit. A link to a unit cs_units
-    lacks raises: callers count an unlinked commit as one set, and a half-written rebuild must not look like that."""
+    """{(repo, sha): n_sets} for every main commit changesets_by_commit links to a unit; an off-main unit has no
+    commit (sha NULL) and is left out. A link to a unit cs_units lacks raises, off-main or not: callers count an
+    unlinked commit as one set, and a half-written rebuild must not look like that."""
     out, broken = {}, []
     for repo, sha, kind, uid, n_sets in con.execute(
             "SELECT lk.repo, lk.sha, lk.unit_kind, lk.unit_id, u.n_sets FROM detectors.changesets_by_commit lk "
             "LEFT JOIN detectors.cs_units u USING (repo, unit_kind, unit_id)"):
         if n_sets is None:
             broken.append(f"{repo} {kind} {uid}")
-        else:
+        elif sha is not None:
             out[(repo, sha)] = n_sets
     if broken:
         raise ValueError(f"changesets_by_commit links {len(broken)} commits to units missing from cs_units "

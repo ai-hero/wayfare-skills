@@ -17,7 +17,7 @@ def answer(con):
     availability = working_minutes / total_minutes if total_minutes else None
 
     total_sets = con.execute(
-        "SELECT SUM(n_sets) FROM detectors.changesets"
+        "SELECT SUM(n_sets) FROM detectors.cs_units"
     ).fetchone()[0] or 0
     performance = total_sets / (working_minutes / 60) if working_minutes else None
 

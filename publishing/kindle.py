@@ -236,7 +236,7 @@ def front_matter(meta):
 
 
 def preface(note):
-    """The preface opens the book, before Chapter One. It once closed it, when it held only the AI note."""
+    """The preface opens the book, before Chapter One."""
     body = "".join(f"<p>{b['html']}</p>" for b in note["blocks"])
     return ("preface", note["title"], "frontmatter",
             f'<section epub:type="preface" role="doc-preface" id="preface">'
@@ -481,7 +481,7 @@ def main():
     docs = [(name, title, kind, footnotes(name, body)) for name, title, kind, body in docs]
     docs, broken, unlinked = link(docs)
     tree = contents_tree(doc["chapters"], (doc.get("preface") or {}).get("title"), bool(doc.get("references")))
-    first = f"ch-{doc['chapters'][0]['n']}.xhtml"
+    first = "preface.xhtml" if doc.get("preface") else f"ch-{doc['chapters'][0]['n']}.xhtml"
     xhtml_nav = nav(tree, first)
     ident = uuid.uuid5(uuid.NAMESPACE_URL, f"aihero.studio/book/{full_title(meta)}")
     with open(os.path.join(HERE, "kindle.css"), encoding="utf-8") as f:

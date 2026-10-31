@@ -428,7 +428,7 @@ def contents(chapters, appendix_title, references_present=False, note_title=None
 
 
 def preface(note):
-    """The preface opens the book, after the contents. It once closed it, when it held only the AI note."""
+    """The preface opens the book, after the contents."""
     if not note:
         return ""
     body = "".join(f"<p>{b['html']}</p>" for b in note["blocks"])

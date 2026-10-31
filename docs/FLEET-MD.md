@@ -150,6 +150,24 @@ without it as `NOT_FLEET_AWARE`. The section is the only thing `sync` writes
 into a repo, and it is written to the working tree for the user to ship; `sync`
 never commits.
 
+## Repos that can receive a message
+
+A message or reply to a sibling is a file in its `.plans/inbox/`, and the sender
+refuses to create a missing inbox ([MESSAGES.md](./MESSAGES.md)): `.plans/`
+stays out of git only through the recipient's own `.git/info/exclude`, so an
+inbox written from outside could be committed. A fleet repo without an inbox
+silently strands every reply addressed to it. `review` reports both halves:
+
+| Code | Meaning | Fix |
+| -- | -- | -- |
+| `NO_INBOX` | a repo whose group is not `none` has no `.plans/inbox/` | run a wayfare skill that opens the store, such as `wayfare-sync-plan`, in that repo; its Step 0 (`hero_work_store`) writes the exclude entry, then creates the store and the inbox |
+| `PLANS_NOT_EXCLUDED` | a repo, `none` included, has a `.plans/` that `git check-ignore` says is not ignored | the same, in that repo; Step 0 writes `.plans/` to its `.git/info/exclude`. In a `none` repo the store is stray, so ask whether to remove it instead |
+
+A `none` repo is exempt from `NO_INBOX`: the fleet does not message it, and a
+send to it is meant to fail. Never create an inbox from the fleet root. The
+repo's own setup writes the exclude entry first and the inbox second, and that
+order is what keeps the store out of its commits.
+
 ## At the fleet root
 
 Every per-repo skill's Step 0 tests for the fleet root and prints `FLEET_ROOT`

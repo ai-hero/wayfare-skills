@@ -54,6 +54,17 @@ Exit 1 means there is something to fix. Say which of
 `wayfare:wayfare-sync-fleet` or a repo-side skill fixes it. Write nothing: not
 `FLEET.md`, not a repo.
 
+Two findings are about the repo, not the map, and no fleet-root write fixes
+them:
+
+| Finding | Fix |
+| -- | -- |
+| `NO_INBOX` | a fleet repo with no `.plans/inbox/`, so a reply sent to it is stranded. Run a wayfare skill that opens the store, such as `wayfare:wayfare-sync-plan`, in that repo; its Step 0 creates the inbox after the exclude entry. A `none` repo is never reported: a send to it is meant to fail |
+| `PLANS_NOT_EXCLUDED` | a repo whose `.plans/` git does not ignore, so the store can be committed. The same route; Step 0 writes the exclude entry. In a `none` repo the store is stray, so ask whether to remove it in that repo |
+
+Never create the inbox or edit the exclude file from the fleet root.
+[docs/FLEET-MD.md](../../docs/FLEET-MD.md) says why.
+
 ## Anti-patterns
 
 - **Fixing what you found.** A drift report that also edits is a `sync` with no

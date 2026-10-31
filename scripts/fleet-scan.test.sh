@@ -30,7 +30,7 @@ trap 'rm -rf "$TMP"' EXIT
 F="$(cd "$TMP" && pwd -P)/fleet"
 
 mkrepo() { # name [compose-file [content]]
-  mkdir -p "$F/$1/.git"
+  mkdir -p "$F/$1/.git" "$F/$1/.plans/inbox"
   [ -n "${2:-}" ] && printf '%s\n' "$3" > "$F/$1/$2"
   return 0
 }
@@ -263,6 +263,85 @@ cat > "$F/FLEET.md" <<'EOM'
 EOM
 OUT=$("$SCAN" "$F" --review); RC=$?
 check "review: clean fleet exits 0 with no output" "0|" "$RC|$OUT"
+
+# ---------- --review: inbox and exclude ------------------------------------
+
+# Real checkouts: `git check-ignore` needs one. A `.plans/` in the user's
+# global excludes would hide PLANS_NOT_EXCLUDED here, so read no user config.
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null XDG_CONFIG_HOME="$TMP/xdg"
+G="$(cd "$TMP" && pwd -P)/inboxfleet"
+mkgit() { # name group-is-fleet(0|1) [plans: inbox|bare|none] [excluded: 0|1]
+  git init -q "$G/$1" 2>/dev/null
+  [ "$2" = 1 ] && { touch "$G/$1/HERO.md"; printf '## Fleet\n' > "$G/$1/AGENTS.md"; }
+  case "$3" in
+    inbox) mkdir -p "$G/$1/.plans/inbox" ;;
+    bare) mkdir -p "$G/$1/.plans" ;;
+  esac
+  [ "$4" = 1 ] && printf '.plans/\n' >> "$G/$1/.git/info/exclude"
+  return 0
+}
+mkgit ready      1 inbox 1
+mkgit noinbox    1 bare  1
+mkgit noplans    1 none  1
+mkgit leaky      1 inbox 0
+mkgit parked     0 bare  1
+mkgit parkedleak 0 bare  0
+mkdir -p "$G/fakegit/.git" "$G/fakegit/.plans"
+touch "$G/fakegit/HERO.md"; printf '## Fleet\n' > "$G/fakegit/AGENTS.md"
+cat > "$G/FLEET.md" <<'EOM'
+## Repos
+
+### ready
+
+- group: apps
+
+### noinbox
+
+- group: apps
+
+### noplans
+
+- group: apps
+
+### leaky
+
+- group: apps
+
+### parked
+
+- group: none
+
+### parkedleak
+
+- group: none
+
+### fakegit
+
+- group: apps
+
+### gone
+
+- group: apps
+EOM
+OUT=$("$SCAN" "$G" --review); RC=$?
+check "review: inbox findings exit 1" "1" "$RC"
+check "review: NO_INBOX and PLANS_NOT_EXCLUDED, sorted" \
+"$(printf 'MISSING\tgone\t%s/gone\nNO_INBOX\tfakegit\t%s/fakegit/.plans/inbox\nNO_INBOX\tnoinbox\t%s/noinbox/.plans/inbox\nNO_INBOX\tnoplans\t%s/noplans/.plans/inbox\nPLANS_NOT_EXCLUDED\tleaky\t%s/leaky/.plans\nPLANS_NOT_EXCLUDED\tparkedleak\t%s/parkedleak/.plans' "$G" "$G" "$G" "$G" "$G" "$G" | sort)" \
+"$OUT"
+# Sending to a `none` repo is meant to fail, so its missing inbox is correct.
+check "review: group none is exempt from NO_INBOX" \
+  "0" "$(printf '%s\n' "$OUT" | grep -c '^NO_INBOX	parked')"
+check "review: a missing checkout is MISSING only, never NO_INBOX" \
+  "1" "$(printf '%s\n' "$OUT" | grep -c 'gone')"
+check "review: a .git that git cannot read is not PLANS_NOT_EXCLUDED" \
+  "0" "$(printf '%s\n' "$OUT" | grep -c '^PLANS_NOT_EXCLUDED	fakegit')"
+
+mkdir -p "$G/noinbox/.plans/inbox" "$G/noplans/.plans/inbox" "$G/fakegit/.plans/inbox"
+printf '.plans/\n' >> "$G/leaky/.git/info/exclude"
+printf '.plans/\n' >> "$G/parkedleak/.git/info/exclude"
+sed -i.bak '/^### gone$/,$d' "$G/FLEET.md" && rm "$G/FLEET.md.bak"
+OUT=$("$SCAN" "$G" --review); RC=$?
+check "review: every inbox present and .plans/ excluded exits 0" "0|" "$RC|$OUT"
 
 echo "fleet-scan: $PASS passed${FAIL:+, $FAIL FAILED}" | sed 's/, 0 FAILED//'
 [ "$FAIL" -eq 0 ]

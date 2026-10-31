@@ -235,11 +235,11 @@ def front_matter(meta):
               f'<p>All rights reserved. Corrections are welcome at {esc(meta.get("email"))}.</p></section>')]
 
 
-def ai_note(note):
-    """The note on the use of AI tools closes the book, after the last chapter, as it does in the paper."""
+def preface(note):
+    """The preface opens the book, before Chapter One."""
     body = "".join(f"<p>{b['html']}</p>" for b in note["blocks"])
-    return ("ai-note", note["title"], "backmatter",
-            f'<section epub:type="afterword" role="doc-afterword" id="ai-note">'
+    return ("preface", note["title"], "frontmatter",
+            f'<section epub:type="preface" role="doc-preface" id="preface">'
             f'<hr class="opener-rule" aria-hidden="true"/><h1>{esc(note["title"])}</h1>{body}</section>')
 
 
@@ -304,13 +304,11 @@ def link(docs):
 def contents_tree(chapters, note_title, has_refs):
     """The contents as (href, label, children), labels escaped: the nav document and the NCX are
     both drawn from it, so the two menus cannot disagree."""
-    tree = []
+    tree = [("preface.xhtml", esc(note_title), [])] if note_title else []
     for c in chapters:
         subs = [(f'ch-{c["n"]}.xhtml#ch-{c["n"]}-{s["slug"]}', esc(md_plain(s["title"])), [])
                 for s in c["sections"] if s["title"]]
         tree.append((f'ch-{c["n"]}.xhtml', f'{ONES[c["n"]]}. {esc(c["title"])}', subs))
-    if note_title:
-        tree.append(("ai-note.xhtml", esc(note_title), []))
     if has_refs:
         tree.append(("references.xhtml", "References", []))
     return tree
@@ -472,9 +470,9 @@ def main():
         print(f"kindle: note: meta.json still says: {meta['confirm']}")
     images = Images()
     docs = front_matter(meta)
-    docs += [(f"ch-{c['n']}", c["title"], "bodymatter", chapter(c, images)) for c in doc["chapters"]]
     if doc.get("preface"):
-        docs.append(ai_note(doc["preface"]))
+        docs.append(preface(doc["preface"]))
+    docs += [(f"ch-{c['n']}", c["title"], "bodymatter", chapter(c, images)) for c in doc["chapters"]]
     if doc.get("references"):
         refs = "".join(f'<p id="ref-{r["n"]}"><span class="ref-n">[{r["n"]}]</span>{link_urls(r["html"])}</p>' for r in doc["references"])
         docs.append(("references", "References", "backmatter",
@@ -483,7 +481,7 @@ def main():
     docs = [(name, title, kind, footnotes(name, body)) for name, title, kind, body in docs]
     docs, broken, unlinked = link(docs)
     tree = contents_tree(doc["chapters"], (doc.get("preface") or {}).get("title"), bool(doc.get("references")))
-    first = f"ch-{doc['chapters'][0]['n']}.xhtml"
+    first = "preface.xhtml" if doc.get("preface") else f"ch-{doc['chapters'][0]['n']}.xhtml"
     xhtml_nav = nav(tree, first)
     ident = uuid.uuid5(uuid.NAMESPACE_URL, f"aihero.studio/book/{full_title(meta)}")
     with open(os.path.join(HERE, "kindle.css"), encoding="utf-8") as f:

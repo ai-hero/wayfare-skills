@@ -2039,6 +2039,164 @@ if command -v zsh >/dev/null 2>&1; then
 fi
 
 
+# ---------- goal plan: slices and shared parts ------------------------------
+# A goal turn hands a member's build the shared parts plus that member's slice
+# and nothing else. A slice that leaks a neighbour's text is a second plan the
+# build follows unapproved, and it leaks silently: the output still reads as a
+# plausible approach.
+GP="$TMP/goalplan"; mkdir -p "$GP"
+cat > "$GP/goal.md" <<'EOF'
+---
+id: 40
+type: goal
+title: one living spec
+status: ready
+---
+
+## Context
+
+### Task 2
+
+Not a slice: outside `## Plan`.
+
+## Plan
+
+### Requirements
+
+Existing callers keep working.
+
+### Design
+
+State lives in the goal file.
+
+#### Contracts
+
+- `hero_goal_slice GOAL_FILE ID`, producer 2, consumer 12
+
+#### Ordering and compatibility
+
+Expand, migrate, contract.
+
+#### Checkpoints
+
+After 2 and after 12.
+
+### Task 2
+
+Approach for two.
+
+```markdown
+## Log
+### Task 12
+```
+
+#### A note inside two
+
+Still two.
+
+### Task 12
+
+Approach for twelve.
+
+### Task 7
+
+Approach for seven, the last slice.
+
+## Ledger
+
+- 2026-10-31 abc1234 task 7: ### Task 7 built as planned
+
+## Log
+
+- 2026-10-31 (rahul) note: ### Task 2 quoted in the log
+EOF
+
+S2="$(hero_goal_slice "$GP/goal.md" 2)"
+check "slice: adjacent slice body, own H4 and fenced headings kept" "Approach for two.
+
+\`\`\`markdown
+## Log
+### Task 12
+\`\`\`
+
+#### A note inside two
+
+Still two." "$S2"
+check "slice: 2 never carries 12"                 "no"  "$(printf '%s' "$S2" | grep -q 'twelve' && echo yes || echo no)"
+check "slice: 12 is not matched by 2"             "Approach for twelve." "$(hero_goal_slice "$GP/goal.md" 12)"
+check "slice: last slice stops at ## Ledger"      "Approach for seven, the last slice." "$(hero_goal_slice "$GP/goal.md" 7)"
+check "slice: zero-padded id matches"             "Approach for twelve." "$(hero_goal_slice "$GP/goal.md" 012)"
+check "slice: none from the shared parts"         "no"  "$(hero_goal_slice "$GP/goal.md" 2 | grep -q 'Expand, migrate' && echo yes || echo no)"
+check "slice: missing slice is rc 1, no output"   "1:" "$(o=$(hero_goal_slice "$GP/goal.md" 1); echo "$?:$o")"
+check "slice: a heading outside ## Plan is not a slice" "no" "$(hero_goal_slice "$GP/goal.md" 2 | grep -q 'outside' && echo yes || echo no)"
+check "slice: empty ID refused"                   "2" "$(hero_goal_slice "$GP/goal.md" "" 2>/dev/null; echo $?)"
+check "slice: unreadable goal is rc 1"            "1" "$(hero_goal_slice "$GP/nope.md" 2 2>/dev/null; echo $?)"
+
+printf '%s\n' '---' 'id: 41' '---' '' '## Plan' '' '### Task 3' '' '### Task 4' '' 'four' > "$GP/blank.md"
+check "slice: a blank slice is rc 1, and does not borrow the next" "1:" "$(o=$(hero_goal_slice "$GP/blank.md" 3); echo "$?:$o")"
+printf '%s\n' '## Plan' '### Task 5 sign in' 'x' > "$GP/titled.md"
+check "slice: a heading with text after the id is not a slice" "1" "$(hero_goal_slice "$GP/titled.md" 5 >/dev/null; echo $?)"
+printf '%s\n' '## Plan' '### Task 6' 'first' '### Task 6' 'second' > "$GP/dup.md"
+check "slice: two slices for one id are refused, rc 2" "2:" "$(o=$(hero_goal_slice "$GP/dup.md" 6 2>/dev/null); echo "$?:$o")"
+
+SH="$(hero_goal_plan_shared "$GP/goal.md")"
+check "shared: requirements and design with H4 parts" "### Requirements
+
+Existing callers keep working.
+
+### Design
+
+State lives in the goal file.
+
+#### Contracts
+
+- \`hero_goal_slice GOAL_FILE ID\`, producer 2, consumer 12
+
+#### Ordering and compatibility
+
+Expand, migrate, contract.
+
+#### Checkpoints
+
+After 2 and after 12." "$SH"
+check "shared: no task slice text"                "no" "$(printf '%s' "$SH" | grep -q 'Approach for' && echo yes || echo no)"
+printf '%s\n' '## Context' 'x' > "$GP/noplan.md"
+check "shared: a goal with no ## Plan is rc 1"    "1" "$(hero_goal_plan_shared "$GP/noplan.md" >/dev/null; echo $?)"
+printf '%s\n' '## Plan' '### Requirements' '### Design' '#### Contracts' '### Task 1' 'x' > "$GP/hollow.md"
+check "shared: headings with no text are rc 1"    "1" "$(hero_goal_plan_shared "$GP/hollow.md" >/dev/null; echo $?)"
+if command -v zsh >/dev/null 2>&1; then
+  check "slice: same answer under zsh" "Approach for twelve." "$(zsh -c ". '$LIB'; hero_goal_slice '$GP/goal.md' 12" 2>/dev/null)"
+fi
+
+# A member is planned when its slice, its DoD and its Subtasks are all there.
+# Each missing part must fail it: a hollow member that passes is built from
+# nothing, and close-out has no DoD to gate on.
+mkmember() { # file id parent subtasks(yes|no|prose) dod(yes|no)
+  {
+    printf -- '---\nid: %s\ntype: task\nparent: %s\nstatus: planning\n---\n\n## Context\n\nx\n\n## Subtasks\n\n' "$2" "$3"
+    case "$4" in yes) printf -- '- [ ] 1. do it\n\n' ;; prose) printf 'generated later\n\n' ;; esac
+    printf '## Definition of Done\n\n'
+    [ "$5" = yes ] && printf -- '- [ ] it works end to end\n\n'
+    printf '## Log\n\n- [ ] not a DoD line\n'
+  } > "$GP/$1"
+}
+mkmember m12.md    12 40 yes   yes
+mkmember m9.md      9 40 yes   yes
+mkmember msub.md   12 40 no    yes
+mkmember mprose.md 12 40 prose yes
+mkmember mdod.md   12 40 yes   no
+mkmember mother.md 12 41 yes   yes
+check "planned: slice, DoD and Subtasks present"  "0" "$(hero_member_planned "$GP/m12.md" "$GP/goal.md" 2>/dev/null; echo $?)"
+check "planned: no slice in the goal fails"       "1" "$(hero_member_planned "$GP/m9.md" "$GP/goal.md" 2>/dev/null; echo $?)"
+check "planned: missing slice is named"           "yes" "$(e=$(hero_member_planned "$GP/m9.md" "$GP/goal.md" 2>&1 >/dev/null); printf '%s' "$e" | grep -q 'missing: slice$' && echo yes || echo no)"
+check "planned: empty Subtasks fails"             "1" "$(hero_member_planned "$GP/msub.md" "$GP/goal.md" 2>/dev/null; echo $?)"
+check "planned: prose-only Subtasks fails"        "1" "$(hero_member_planned "$GP/mprose.md" "$GP/goal.md" 2>/dev/null; echo $?)"
+check "planned: empty DoD fails, a Log checkbox does not count" "1" "$(hero_member_planned "$GP/mdod.md" "$GP/goal.md" 2>/dev/null; echo $?)"
+check "planned: missing DoD is named"             "yes" "$(e=$(hero_member_planned "$GP/mdod.md" "$GP/goal.md" 2>&1 >/dev/null); printf '%s' "$e" | grep -q 'missing: definition-of-done$' && echo yes || echo no)"
+check "planned: parent of another goal is rc 2"   "2" "$(hero_member_planned "$GP/mother.md" "$GP/goal.md" 2>/dev/null; echo $?)"
+check "planned: unreadable goal is rc 2"          "2" "$(hero_member_planned "$GP/m12.md" "$GP/nope.md" 2>/dev/null; echo $?)"
+
+
 # ---------- admission path scope -------------------------------------------
 # Criterion 3 of a goal turn's admission test. Mechanical because the other
 # criteria are judgments made beside untrusted content; this one has to hold
@@ -2173,7 +2331,7 @@ fi
 # floor with a hundred cases of slack protects nothing, which is how this
 # suite came to run 365 against a floor of 210. Raise it with every block you
 # add, and read the CI number rather than the local one when you do.
-MIN_CASES=449
+MIN_CASES=475
 if [ "$PASS" -lt "$MIN_CASES" ]; then
   echo "hero-lib: only $PASS cases ran, expected >= $MIN_CASES — a block stopped executing" >&2
   exit 1

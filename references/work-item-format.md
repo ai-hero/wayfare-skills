@@ -64,6 +64,18 @@ item without them is a legacy item, readable but not what any skill writes
 today. `## Log` belongs to the build rather than to planning. Emit it empty on a
 task, and a build creates it on any item whose format has none.
 
+A member of a goal (an item with `parent` set) whose goal carries `## Plan` has
+no `## Approach`. Its "how" is the goal's `### Task N` slice for its id, beside
+the goal's shared `### Requirements` and `### Design` (with `#### Contracts`,
+`#### Ordering and compatibility` and `#### Checkpoints`), and its `## Subtasks`
+is generated from that slice. It still carries its own `## Definition of Done`,
+`source` and `target`. The goal also carries `## Ledger`, append-only and
+written only by the parent after each member commits, distinct from `## Log` and
+`commits:`. `docs/PLAN.md` (*Goal-only sections*) defines both, and the single
+ready-mark on the goal's plan that marks every member ready. A task with no
+`parent` keeps `## Approach`, and a goal with no `## Plan` whose members still
+carry `## Approach` runs as before.
+
 Keep the body proportional to the risk: a two-way-door chore might have a
 one-line Approach and empty Non-goals; a one-way-door schema change earns every
 section. The frontmatter fields are always present, with two exceptions:

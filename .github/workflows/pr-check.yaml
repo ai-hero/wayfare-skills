@@ -31,8 +31,9 @@ jobs:
 
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
 
+      # Dependabot does not read `run:` lines, so these pins move only by hand.
       - name: Install tooling
-        run: python3 -m pip install --quiet pyyaml pre-commit
+        run: python3 -m pip install --quiet pyyaml==6.0.3 pre-commit==4.2.0
 
       # Each gate is one recipe, not a restatement of its commands (CI-09):
       # a gate defined both in the Justfile and here drifts, and the copy that

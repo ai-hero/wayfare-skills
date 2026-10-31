@@ -23,7 +23,7 @@ repos:
   # General safety checks
   # ===========================================================================
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
       - id: check-added-large-files
         args: [--maxkb=500]
@@ -47,19 +47,24 @@ repos:
   # Secret detection
   # ===========================================================================
   - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.5.0
+    rev: 01886c8a910c64595c47f186ca1ffc0b77fa5458  # frozen: v1.5.0
     hooks:
       - id: detect-secrets
         # A committed baseline is what makes this hook actionable: without it
         # every pre-existing match re-reports on every run, and the noise
         # trains people to skip the hook. With it, only NEW findings surface.
+        # The frozen `rev:` SHAs below read as hex secrets. Their exclusion is a
+        # line pattern in the baseline's filters_used, not an --exclude-lines
+        # arg (a baseline's filters override the CLI's, so the arg does
+        # nothing) and not baselined hashes (Dependabot bumps the SHAs, and a
+        # hash allowlist would fail every one of its PRs).
         args: [--baseline, .secrets.baseline, --exclude-files, '.*\.lock$']
 
   # ===========================================================================
   # Markdown linting
   # ===========================================================================
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.48.0
+    rev: e72a3ca1632f0b11a07d171449fe447a7ff6795e  # frozen: v0.48.0
     hooks:
       - id: markdownlint
         args: [--fix]
@@ -73,7 +78,7 @@ repos:
   # every table cell, which would make each one-cell edit a whole-table diff.
   # 0.7.22, not 1.0: mdformat-tables has no release that installs beside 1.0.
   - repo: https://github.com/hukkin/mdformat
-    rev: 0.7.22
+    rev: 83dc2ce5ca115d3390b9b5561d2898366faf0742  # frozen: 0.7.22
     hooks:
       - id: mdformat
         args: [--wrap, "80", --number, --compact-tables]
@@ -91,7 +96,7 @@ repos:
   # Typo detection
   # ===========================================================================
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.2
+    rev: 2ccb47ff45ad361a21071a7eedda4c37e6ae8c5a  # frozen: v2.4.2
     hooks:
       - id: codespell
         # TeX Gyre Heros is a font and multline a LaTeX environment, both in publishing/technical.
@@ -106,7 +111,7 @@ repos:
   # Shell script linting
   # ===========================================================================
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: v0.10.0.1
+    rev: a23f6b85d0fdd5bb9d564e2579e678033debbdff  # frozen: v0.10.0.1
     hooks:
       - id: shellcheck
         args: [--severity=warning]
@@ -127,7 +132,7 @@ repos:
   # bump is one sweep each January:
   #   pre-commit run insert-license --all-files
   - repo: https://github.com/Lucas-C/pre-commit-hooks
-    rev: v1.5.5
+    rev: a30f0d816e5062a67d87c8de753cfe499672b959  # frozen: v1.5.5
     hooks:
       - id: insert-license
         name: copyright header (shell)
@@ -143,7 +148,7 @@ repos:
   # Pre-push, not pre-commit: it is the slowest hook here, and a push is the
   # last point where catching a finding is still cheap.
   - repo: https://github.com/semgrep/semgrep
-    rev: v1.156.0
+    rev: ab584982f6ecdaaa7954a14e5350a70c060e097f  # frozen: v1.156.0
     hooks:
       - id: semgrep
         stages: [pre-push]
@@ -161,7 +166,7 @@ repos:
           - --skip-unknown-extensions
 
   - repo: https://github.com/compilerla/conventional-pre-commit
-    rev: v4.4.0
+    rev: 91ab4bf57e58b32adf1a122681f6ebe164d081c8  # frozen: v4.4.0
     hooks:
       - id: conventional-pre-commit
         stages: [commit-msg]
@@ -177,7 +182,7 @@ repos:
   # Actions-aware linter sees it. Not the `actionlint-system` id: CI installs
   # pre-commit but not actionlint, so that one passes locally and fails there.
   - repo: https://github.com/rhysd/actionlint
-    rev: v1.7.12
+    rev: 914e7df21a07ef503a81201c76d2b11c789d3fca  # frozen: v1.7.12
     hooks:
       - id: actionlint
         args: [-shellcheck=, -pyflakes=]

@@ -30,3 +30,16 @@ updates:
       publishing-minor-patch:
         patterns: ["*"]
         update-types: [minor, patch]
+
+  # Hook revs are frozen to commit SHAs, so without this entry nothing ever
+  # proposes a bump and the pins only age.
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      pre-commit-minor-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]

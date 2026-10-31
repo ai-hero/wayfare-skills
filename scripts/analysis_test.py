@@ -569,7 +569,10 @@ class ChangeSetQueries(unittest.TestCase):
 
     def test_an_offmain_unit_is_not_a_commit(self):
         from questions import NEW_A_02, NEW_A_03, RQ_h2_004, RQ_h2_010, RQ_h2_020, RQ_h7_026, RQ_h7_030
-        before = RQ_h2_004.answer(self.con)
+        with mock.patch.dict(sys.modules, _stubs), mock.patch.object(fleet, "BASELINE_CUTOFF", "2026-05-01"):
+            import links
+        self.con.execute("INSERT INTO detectors.duplicate_fixes VALUES (1, 'app1')")
+        self.con.execute("INSERT INTO detectors.duplicate_fixes VALUES (1, 'infra1')")
         self.con.execute("INSERT INTO detectors.cs_units VALUES ('app1', 'pr', '13', NULL, 4, 5, 'haiku')")
         self.con.execute("INSERT INTO detectors.changesets_by_commit VALUES ('app1', NULL, 'app1#pr13', 'pr', '13')")
         self.assertEqual(db.commit_sets(self.con), {("app1", "m8"): 3})
@@ -577,7 +580,10 @@ class ChangeSetQueries(unittest.TestCase):
                                                         "max": 3})
         self.assertEqual(NEW_A_03.answer(self.con), [{"commits": 1, "commits_with_multiple_change_sets": 1,
                                                        "multi_change_set_share": 1.0, "offmain_units_excluded": 1}])
-        self.assertEqual(RQ_h2_004.answer(self.con), before)
+        [repeats] = RQ_h2_004.answer(self.con)
+        self.assertEqual(repeats["fleet_avg_spend_per_change_set"], 0.67)
+        self.assertEqual(links.q_counting_units_compared_two_passes(self.con), [
+            {"repo": "app1", "main": 2, "original": 2, "sets": 3, "offmain_sets_excluded": 5, "ratio": 1.5}])
         change_set = RQ_h2_010.answer(self.con)[0]
         self.assertEqual((change_set["count"], change_set["offmain_change_sets_excluded"]), (3, 5))
         self.assertEqual(RQ_h2_020.answer(self.con), [{"repo": "app1", "spend": 2.0, "change_sets": 3,

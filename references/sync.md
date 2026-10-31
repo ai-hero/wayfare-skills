@@ -720,8 +720,8 @@ rather than reporting clean, the same rule the Upstream lane above follows):
   likewise not a defect: its tasks are committed and unmerged by design until
   its step 7.
 
-  **The goal's `## Log` is a ledger, and the check replays it.** The goals stage
-  opens it with a `cut` line when it writes or re-cuts a goal,
+  **The goal's `## Log` is a replayable record, and the check replays it.** The
+  goals stage opens it with a `cut` line when it writes or re-cuts a goal,
   `cut 12, 13, 15, 18 (budget 4, budget_max 8)`. Every later change has a fixed
   prefix: `admitted N (from M)`, `adopted N (ungrouped, at gate)`,
   `dropped N (...)`, `budget_max A → B: ...` and
@@ -729,7 +729,7 @@ rather than reporting clean, the same rule the Upstream lane above follows):
   give the member set, `budget` (the cut's plus one per admission and adoption)
   and `budget_max` (the last value a line names). A field that disagrees with
   its replay is a hand-edit under an authorization, reported and never silently
-  accepted. A goal with no `cut` line predates the ledger: say the check could
+  accepted. A goal with no `cut` line predates that record: say the check could
   not run on it, which is not a defect, and write its `cut` line the next time
   the goal is `accepted`. A commit count above `budget` is information, not a
   defect. **This is an integrity check against hand-edits, and nothing more**: a
@@ -1015,11 +1015,11 @@ So the pass runs across the roadmap:
    subset this paragraph happens to discuss. The sync decides five of its
    values: `status: accepted`, `parent` on each member with `rank` in dependency
    order, `depends_on` as derived above, `budget` = the member count,
-   `budget_max` = `2 * budget`, and the `cut` line that opens the goal's ledger.
-   The rest of the format is not optional. `anchors.source` and `anchors.target`
-   are anchored here, from the heads this run already resolved: a non-`done`
-   item with no `anchors.target` is a store defect the *next* sync reports
-   **when `$DESIGN_PROJECT` is a project id**, the same carve-out the
+   `budget_max` = `2 * budget`, and the `cut` line that opens the goal's
+   `## Log`. The rest of the format is not optional. `anchors.source` and
+   `anchors.target` are anchored here, from the heads this run already resolved:
+   a non-`done` item with no `anchors.target` is a store defect the *next* sync
+   reports **when `$DESIGN_PROJECT` is a project id**, the same carve-out the
    store-defects finding uses, since self-review mode resolves no target head to
    anchor. So a pass that omits `anchors.target` while a design project is
    configured writes defects it had the values to prevent. `## Stop conditions`

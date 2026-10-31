@@ -1,4 +1,4 @@
-"""Drawn figures for the book's Chapter 4 cards in this deck: 4.3 (Q done-not-done) and 4.6 (Q fix-forwards).
+"""Drawn figures for the book's Chapter 4 cards in this deck: 4.3 (Q done-vs-shipped) and 4.6 (Q fix-forwards).
 
 Each function takes the question's data, draws with figure_lib, writes the summary table and returns the PNG
 the answer slide places with F.picture. Run through deck.py with /tmp/pptxenv/bin/python3.

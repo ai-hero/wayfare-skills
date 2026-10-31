@@ -181,21 +181,42 @@ def changesets(con, d):
         items.append((h(text), text))
     cost = run_batches(d, "cs_worktype_cache", items, CS_HEADER, 60, ["work_type", "theme"])
     tags = {r[0]: r[1:] for r in d.execute("SELECT * FROM cs_worktype_cache")}
-    dependabot = {tuple(r) for r in d.execute("SELECT repo, unit_kind, unit_id FROM cs_units WHERE method='dependabot'")}
-    d.executescript(CS_WORKTYPE_SCHEMA)
-    unlabelled, changed = 0, {}
-    for r, (k, _) in zip(rows, items):
-        if k in tags:
-            raw_w, raw_t = tags[k]
-            w, t, what = normalise_worktype(raw_w, raw_t, (r["repo"], r["unit_kind"], r["unit_id"]) in dependabot)
-            for x in what:
-                changed[x] = changed.get(x, 0) + 1
-            d.execute("INSERT INTO cs_worktype VALUES (?,?,?,?,?,?,?,?)",
-                      (r["repo"], r["unit_kind"], r["unit_id"], r["set_idx"], w, t, raw_w, raw_t))
-        else:
-            unlabelled += 1
-    print("cs_worktype: normalise changed " + ", ".join(f"{n} {what}" for what, n in changed.items()), file=sys.stderr)
     d.commit()
+    unlabelled, changed = 0, {}
+    # cs_worktype has no foreign key to cs_sets (d1_changesets drops and recreates cs_sets), so the link is checked
+    # here: under BEGIN IMMEDIATE no D1 rebuild can land between this check and COMMIT, and a mismatch keeps the
+    # last cs_worktype instead of writing labels for sets that no longer exist.
+    level, d.isolation_level = d.isolation_level, None
+    try:
+        d.execute("BEGIN IMMEDIATE")
+        now = set(d.execute("SELECT repo, unit_kind, unit_id, set_idx, label, shas_json FROM cs_sets"))
+        labelled = {tuple(r) for r in rows}
+        if now != labelled:
+            raise ValueError(f"cs_sets changed while cs_worktype was labelled ({len(labelled - now)} sets gone or "
+                             f"changed, {len(now - labelled)} new); cs_worktype is unchanged. "
+                             "Rerun: python3 detectors/d_shared_labels.py changesets")
+        dependabot = {tuple(r) for r in d.execute(
+            "SELECT repo, unit_kind, unit_id FROM cs_units WHERE method='dependabot'")}
+        for stmt in CS_WORKTYPE_SCHEMA.split(";"):
+            if stmt.strip():
+                d.execute(stmt)
+        for r, (k, _) in zip(rows, items):
+            if k in tags:
+                raw_w, raw_t = tags[k]
+                w, t, what = normalise_worktype(raw_w, raw_t, (r["repo"], r["unit_kind"], r["unit_id"]) in dependabot)
+                for x in what:
+                    changed[x] = changed.get(x, 0) + 1
+                d.execute("INSERT INTO cs_worktype VALUES (?,?,?,?,?,?,?,?)",
+                          (r["repo"], r["unit_kind"], r["unit_id"], r["set_idx"], w, t, raw_w, raw_t))
+            else:
+                unlabelled += 1
+        d.execute("COMMIT")
+    except BaseException:
+        d.execute("ROLLBACK")
+        raise
+    finally:
+        d.isolation_level = level
+    print("cs_worktype: normalise changed " + ", ".join(f"{n} {what}" for what, n in changed.items()), file=sys.stderr)
     if unlabelled:
         print(f"  ! cs_worktype: {unlabelled} change sets have no label and no row", file=sys.stderr)
     print(f"cs_worktype: {d.execute('SELECT COUNT(*) FROM cs_worktype').fetchone()[0]} rows, ${cost:.2f}")

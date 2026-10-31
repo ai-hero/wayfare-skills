@@ -13,6 +13,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -475,6 +476,17 @@ class WriteUnits(unittest.TestCase):
             D1.write_units(self.d, self.units[:2] + [again], self.cache)
         self.assertEqual(self.table("SELECT * FROM cs_sets ORDER BY 1, 2, 3, 4"), before)
 
+    def test_two_pushes_sharing_a_short_sha_are_named_and_nothing_is_written(self):
+        D1.write_units(self.d, self.units, self.cache)
+        before = self.table("SELECT * FROM cs_units ORDER BY 1, 2, 3")
+        pushes = [("app1#pushaaaaaaaaaa", "app1", "push", sha, sha, "commit on main", [commit(sha, "x")], "single-line")
+                  for sha in ("aaaaaaaaaa01", "aaaaaaaaaa02")]
+        with self.assertRaisesRegex(ValueError, "key app1#pushaaaaaaaaaa names app1 push aaaaaaaaaa01 and "
+                                                "app1 push aaaaaaaaaa02"):
+            D1.write_units(self.d, self.units + pushes, self.cache)
+        self.assertEqual(self.table("SELECT * FROM cs_units ORDER BY 1, 2, 3"), before)
+        D1.check_unique(self.units + pushes[:1])
+
     def test_a_failed_write_keeps_the_last_good_tables(self):
         D1.write_units(self.d, self.units, self.cache)
         before = {t: self.table(f"SELECT * FROM {t} ORDER BY 1, 2, 3") for t in ("cs_units", "changesets_by_commit")}
@@ -555,13 +567,56 @@ class ChangeSetQueries(unittest.TestCase):
         [row] = RQ_h1_014.answer(self.con)
         self.assertEqual((row["commits"], row["change_sets"]), (2, 4))
 
+    def test_an_offmain_unit_is_not_a_commit(self):
+        from questions import NEW_A_02, NEW_A_03, RQ_h2_004, RQ_h2_010, RQ_h2_020, RQ_h7_026, RQ_h7_030
+        before = RQ_h2_004.answer(self.con)
+        self.con.execute("INSERT INTO detectors.cs_units VALUES ('app1', 'pr', '13', NULL, 4, 5, 'haiku')")
+        self.con.execute("INSERT INTO detectors.changesets_by_commit VALUES ('app1', NULL, 'app1#pr13', 'pr', '13')")
+        self.assertEqual(db.commit_sets(self.con), {("app1", "m8"): 3})
+        self.assertEqual(NEW_A_02.answer(self.con)[0], {"unit": "commit", "n": 1, "mean": 3, "p50": 3, "p90": 3,
+                                                        "max": 3})
+        self.assertEqual(NEW_A_03.answer(self.con), [{"commits": 1, "commits_with_multiple_change_sets": 1,
+                                                       "multi_change_set_share": 1.0, "offmain_units_excluded": 1}])
+        self.assertEqual(RQ_h2_004.answer(self.con), before)
+        change_set = RQ_h2_010.answer(self.con)[0]
+        self.assertEqual((change_set["count"], change_set["offmain_change_sets_excluded"]), (3, 5))
+        self.assertEqual(RQ_h2_020.answer(self.con), [{"repo": "app1", "spend": 2.0, "change_sets": 3,
+                                                       "spend_per_change_set": 0.67, "offmain_change_sets_excluded": 5}])
+        [row] = RQ_h7_026.answer(self.con)
+        self.assertEqual((row["commits_reclustered_into_change_sets"], row["offmain_change_sets_excluded"]), (3, 5))
+        app1 = RQ_h7_030.answer(self.con)[0]
+        self.assertEqual((app1["change_set_count"], app1["offmain_change_sets_excluded"]), (3, 5))
+
+    def test_no_question_reads_the_comparison_only_tables(self):
+        from questions import RQ_h2_023, RQ_h7_021, RQ_h7_026
+        for stmt in ("CREATE TABLE detectors.session_time_segments (kind, minutes)",
+                     "INSERT INTO detectors.session_time_segments VALUES ('working', 60)",
+                     "CREATE TABLE detectors.followups (followup_within_14d_days)",
+                     "CREATE TABLE detectors.prompt_kind (content_hash, kind)",
+                     "DROP TABLE detectors.changesets"):
+            self.con.execute(stmt)
+        self.assertEqual(RQ_h2_023.answer(self.con)[0]["performance_change_sets_per_working_hour"], 3)
+        self.assertEqual(RQ_h7_021.answer(self.con)[0]["haiku_labeled_changesets"], 1)
+        self.assertEqual(RQ_h7_026.answer(self.con)[0]["commits_reclustered_into_change_sets"], 3)
+        readers = []
+        for folder in ("questions", "report"):
+            for root, _, files in os.walk(os.path.join(ANALYSIS, folder)):
+                for name in files:
+                    if name.endswith(".py"):
+                        with open(os.path.join(root, name), encoding="utf-8") as f:
+                            text = f.read()
+                        if re.search(r"\bchangesets\b(?!_)", text) or \
+                                ("changesets_by_commit" in text and "content_hash" in text):
+                            readers.append(name)
+        self.assertEqual(readers, [])
+
 
 class WorktypeWrite(unittest.TestCase):
-    def test_a_dependabot_set_is_written_as_dependency_security(self):
+    def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         path = os.path.join(tmp.name, "detectors.sqlite")
-        d = sqlite3.connect(path)
+        self.d = d = sqlite3.connect(path)
         self.addCleanup(d.close)
         bump = {**commit("s5", "bump a"), "dependabot_sets": ["minor/patch bumps: a"]}
         D1.write_units(d, [("app1#pr-squash5", "app1", "pr-squash", "5", "s5", "h", [bump], "dependabot"),
@@ -571,21 +626,48 @@ class WorktypeWrite(unittest.TestCase):
             d.execute("INSERT INTO cs_worktype_cache VALUES (?, 'feature', 'product')",
                       (L.h(f"repo app1: {label} | commits: "),))
         d.commit()
-        con = sqlite3.connect(":memory:")
+        self.con = con = sqlite3.connect(":memory:")
         con.row_factory = sqlite3.Row
         self.addCleanup(con.close)
         con.execute("ATTACH DATABASE ? AS detectors", (path,))
         for stmt in ("ATTACH DATABASE ':memory:' AS pr_commits", "CREATE TABLE pr_commits.pr_commits (repo, sha, subject)",
                      "ATTACH DATABASE ':memory:' AS git", "CREATE TABLE git.commits (repo, sha, subject)"):
             con.execute(stmt)
-        err = io.StringIO()
+
+    def label(self):
         with mock.patch.object(L.D1, "call_haiku", side_effect=AssertionError("no model calls")), \
-                contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
-            L.changesets(con, d)
-        self.assertEqual(d.execute("SELECT unit_id, work_type, theme, raw_work_type, raw_theme FROM cs_worktype "
-                                   "ORDER BY unit_id").fetchall(),
-                         [("5", "dependency", "security", "feature", "product"),
-                          ("7", "feature", "product", "feature", "product")])
+                contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+            L.changesets(self.con, self.d)
+
+    def worktype(self):
+        return self.d.execute("SELECT unit_id, set_idx, work_type, theme, raw_work_type, raw_theme FROM cs_worktype "
+                              "ORDER BY unit_id").fetchall()
+
+    def test_a_dependabot_set_is_written_as_dependency_security(self):
+        self.label()
+        self.assertEqual(self.worktype(), [("5", 0, "dependency", "security", "feature", "product"),
+                                           ("7", 0, "feature", "product", "feature", "product")])
+
+    def test_a_build_fails_when_its_sets_no_longer_match_cs_sets(self):
+        rebuilds = {
+            "set gone": "DELETE FROM cs_sets WHERE unit_id = '7'",
+            "set regrouped": "UPDATE cs_sets SET shas_json = '[\"p7\", \"p7b\"]' WHERE unit_id = '7'",
+            "set added": "INSERT INTO cs_sets VALUES ('app1', 'pr', '7', 1, 'second', '[\"p7\"]')",
+        }
+        for name, stmt in rebuilds.items():
+            with self.subTest(name):
+                self.setUp()
+                self.label()
+                before = self.worktype()
+
+                def rebuild_midway(d, *args):
+                    d.execute(stmt)
+                    d.commit()
+                    return 0.0
+                with mock.patch.object(L, "run_batches", side_effect=rebuild_midway), \
+                        self.assertRaisesRegex(ValueError, "cs_sets changed while cs_worktype was labelled"):
+                    self.label()
+                self.assertEqual(self.worktype(), before)
 
 
 class QuestionSlugs(unittest.TestCase):

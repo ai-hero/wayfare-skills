@@ -97,9 +97,9 @@ writing this code itself. `detectors/d1_changesets.py` calls `claude -p
 --model haiku --effort low` from `/tmp` (so it doesn't pick up this repo's
 own CLAUDE.md/AGENTS.md as billed context), batched ~40 commits per call so
 the ~$0.015-0.06 fixed cost per CLI invocation amortizes across many commits
-instead of one call each. Results are cached by `sha256(subject+body)` in
-`detectors.sqlite`'s `changesets` table — editing the prompt does not
-auto-invalidate the cache; delete rows to force relabeling.
+instead of one call each. Results are cached by `sha256(PROMPT_VERSION + unit
+text)` in `detectors.sqlite`'s `cs_cache` table: editing the prompt does not
+invalidate the cache, so bump `PROMPT_VERSION` to force relabeling.
 
 ## Fixed bugs worth knowing about
 

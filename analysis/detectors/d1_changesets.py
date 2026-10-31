@@ -17,11 +17,14 @@ no body are one change set without a model call.
 Tables:
   cs_units   one row per unit (PR or pushed commit): n_commits, n_sets, method
   cs_sets    one row per change set: its label and the commit shas in it
-  changesets / changesets_by_commit   the older per-main-commit shape the
-             question modules read; n_sets there is now the unit's count.
-             changesets.content_hash is the packed unit key ("repo#pr12"), not a
-             hash: join changesets_by_commit to cs_units, cs_sets and cs_worktype
-             on (repo, unit_kind, unit_id), never by parsing it.
+  changesets_by_commit   one row per unit: the main commit it landed as, joined
+             to cs_units, cs_sets and cs_worktype on (repo, unit_kind, unit_id).
+             sha repeats cs_units.main_sha and is NULL for an off-main unit
+             (offmain_units): a per-commit figure filters sha IS NOT NULL, or
+             that unit counts as a commit main never had.
+  changesets, changesets_by_commit.content_hash   kept only for comparison with
+             changesets_msg_v1; no question reads them. content_hash is the packed
+             unit key ("repo#pr12"), not a hash: never join on it or parse it.
 The earlier message-only labels are kept as changesets_msg_v1 for comparison.
 
 Cached by sha256(PROMPT_VERSION + unit text) in cs_cache: a re-run labels only
@@ -276,16 +279,22 @@ SCHEMA = f"""
 
 def check_unique(units):
     """Raise ValueError naming every unit load_units produced twice, with the main commits it came from.
-    Two main commits naming one PR "(#N)" load as the same PR unit twice."""
-    seen, dups = {}, {}
+    Two main commits naming one PR "(#N)" load as the same PR unit twice.
+    Also raises naming every key two different units share: a push unit's key holds only sha[:10], and the key
+    is the unit's id in a Haiku reply and in changesets, so a shared one would label or overwrite the wrong unit."""
+    seen, dups, keys, shared = {}, {}, {}, {}
     for key, repo, kind, uid, main_sha, *_ in units:
         if (repo, kind, uid) in seen:
             dups.setdefault((repo, kind, uid), [seen[(repo, kind, uid)]]).append(main_sha)
+        elif key in keys:
+            shared.setdefault(key, [keys[key]]).append(f"{repo} {kind} {uid}")
         seen[(repo, kind, uid)] = main_sha
-    if dups:
-        raise ValueError("units loaded twice, nothing written: " + "; ".join(
-            f"{repo} {kind} {uid} from main commits {', '.join(str(s) for s in shas)}"
-            for (repo, kind, uid), shas in dups.items()))
+        keys.setdefault(key, f"{repo} {kind} {uid}")
+    problems = [f"{repo} {kind} {uid} from main commits {', '.join(str(s) for s in shas)}"
+                for (repo, kind, uid), shas in dups.items()]
+    problems += [f"key {key} names {' and '.join(names)}" for key, names in shared.items()]
+    if problems:
+        raise ValueError("units loaded twice or sharing a key, nothing written: " + "; ".join(problems))
 
 
 def write_units(d, units, cache):
@@ -338,6 +347,7 @@ def build(limit=None, dry_run=False):
     units = load_units(con)
     if limit:
         units = units[:limit]
+    check_unique(units)
     cache = {h: (json.loads(s), m) for h, s, m in d.execute("SELECT unit_hash, sets_json, method FROM cs_cache")}
     todo = []
     for u in units:
@@ -383,6 +393,9 @@ def build(limit=None, dry_run=False):
                       file=sys.stderr)
 
     write_units(d, units, cache)
+    if "cs_worktype" in names:
+        print("  ! cs_worktype still holds labels for the previous cs_sets: "
+              "rerun python3 detectors/d_shared_labels.py changesets", file=sys.stderr)
     print(f"detectors.sqlite: {len(units)} units, "
           f"{d.execute('SELECT SUM(n_sets) FROM cs_units').fetchone()[0]} change sets, ${total:.2f} spent")
 

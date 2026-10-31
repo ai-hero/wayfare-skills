@@ -11,21 +11,23 @@ def answer(con):
     spend_by_repo = {r["repo"]: r["cost_usd"] for r in con.execute(
         "SELECT repo, SUM(cost_usd) AS cost_usd FROM detectors.session_spend GROUP BY repo"
     ).fetchall()}
-    sets_by_repo = {}
+    sets_by_repo, offmain_by_repo = {}, {}
     for repo, sha in con.execute("SELECT repo, sha FROM git.commits").fetchall():
         sets_by_repo.setdefault(repo, 0)
     for r in con.execute(
-        "SELECT lk.repo, u.n_sets FROM detectors.changesets_by_commit lk "
+        "SELECT lk.repo, lk.sha, u.n_sets FROM detectors.changesets_by_commit lk "
         "JOIN detectors.cs_units u USING (repo, unit_kind, unit_id)"
     ).fetchall():
-        sets_by_repo[r["repo"]] = sets_by_repo.get(r["repo"], 0) + r["n_sets"]
+        into = sets_by_repo if r["sha"] is not None else offmain_by_repo
+        into[r["repo"]] = into.get(r["repo"], 0) + r["n_sets"]
 
     out = []
     for repo, spend in spend_by_repo.items():
         sets = sets_by_repo.get(repo, 0)
         if sets:
             out.append({"repo": repo, "spend": round(spend, 2), "change_sets": sets,
-                        "spend_per_change_set": round(spend / sets, 2)})
+                        "spend_per_change_set": round(spend / sets, 2),
+                        "offmain_change_sets_excluded": offmain_by_repo.get(repo, 0)})
     return sorted(out, key=lambda x: -x["spend_per_change_set"])
 
 

@@ -1,7 +1,7 @@
 """Q9.xx / RQ-h3-021 -- How are bug-fix change sets distributed by scope
 (product code, tests, CI) and type (security or not)? sql: commits
 whose subject starts with "fix" (a conventional-commit prefix already
-present in this fleet's history, see changesets.labels_json), grouped
+present in this fleet's history, see cs_sets.label), grouped
 by the top_dir of the files each one touches. "Security or not" is
 flagged by a keyword match on the subject, which is a proxy, not a
 classification.

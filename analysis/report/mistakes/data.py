@@ -640,7 +640,7 @@ def q_where_fixes_land_scope(con):
             "sec_share_m": [round(sec_m[m] / (sec_m[m] + fix_m[m]), 3) if sec_m[m] + fix_m[m] >= 10 else None for m in MONTHS]}
 
 
-# ------------------------------------------------------------------ Q done-not-done
+# ------------------------------------------------------------------ Q done-vs-shipped
 
 def q_done_not_done_overclaim(con):
     """Weekly evidence that "done" was not done: judge send-backs, logged overclaims, fix-ups of a claim."""
@@ -777,7 +777,7 @@ def q_review_persona_value(con):
             "ran": dict(ran), "clean": dict(clean), "n_runs": len(runs)}
 
 
-# ------------------------------------------------------------------ Q hollow-checks
+# ------------------------------------------------------------------ Q check-depth
 
 GBE_RX = re.compile(r"could not fail|cannot fail|couldn't fail|proves? nothing|proving nothing|silent(ly)? pass|false[- ]clean|"
                     r"never ran|ran nothing|green but|passes? (against|on) (both|the old)|always pass|vacuous|no-op check|"

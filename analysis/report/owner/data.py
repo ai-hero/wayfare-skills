@@ -629,7 +629,7 @@ def q_tool_call_denials_denials(con):
             "last4": [r for r in rate[-4:] if r is not None], "events": PERMISSION_EVENTS}
 
 
-# ---------------------------------------------------------------- Q who-really-reviews who reviews
+# ---------------------------------------------------------------- Q reviewer-identity who reviews
 
 REVIEW_CATS = ["A person reviewed", "An agent, on the owner's account", "Bots only (auto-approve, Copilot)", "No review"]
 

@@ -54,7 +54,7 @@ A question's id never changes: the book cites it (Q work-sources) whichever chap
 - **Q owner-corrections** How often does the owner correct or redirect an agent, and is that falling per change set?
 - **Q owner-interrupts** How often does the owner stop a running agent mid-task?
 - **Q tool-call-denials** How often does the owner deny a tool call, and did denials fall as permissions caught up with policy?
-- **Q who-really-reviews** Who actually reviews and approves merged work, once agents acting under the owner's account are told apart from the owner?
+- **Q reviewer-identity** Who actually reviews and approves merged work, once agents acting under the owner's account are told apart from the owner?
 - **Q one-way-door-changes** Do one-way-door changes stop for a human, or merge like everything else?
 - **Q other-humans** Is the owner the only human in the loop?
 
@@ -155,10 +155,10 @@ A question's id never changes: the book cites it (Q work-sources) whichever chap
 - **Q mistake-kinds** What kinds of mistakes do agents make, and which keep recurring?
 - **Q who-catches-mistakes** Who catches the mistakes: the agent itself, review agents, CI, the judge, or the owner?
 - **Q where-fixes-land** Where do the fixes land: product code, tests, CI, config or docs, and how many are security fixes?
-- **Q done-not-done** How often is "done" not actually done, and what closes the gap?
+- **Q done-vs-shipped** How often is "done" not actually done, and what closes the gap?
 - **Q reviewer-and-judge-changes** How have the reviewer and the judge changed, and how often does each send work back?
 - **Q review-persona-value** Does each review persona earn its place?
-- **Q hollow-checks** How often did a check pass without really checking, and who noticed?
+- **Q check-depth** How often did a check pass without really checking, and who noticed?
 - **Q found-problem-follow-up** What happens to the problems an agent finds but doesn't fix: filed, done, or left to sit?
 - **Q replanning-after-ready** When a work item is marked ready, how often does it need replanning afterwards?
 - **Q errors-vs-corrections** Are agents erring less, or just being corrected less?
@@ -359,12 +359,12 @@ A question's id never changes: the book cites it (Q work-sources) whichever chap
 - **Q unattended-run-length** How long does the factory run without the owner, and is that stretch growing?
 - **Q repos-vs-attention** Does adding repos add output, or split a fixed amount of owner attention?
 - **Q binding-constraint** Which constraint binds the factory now: owner attention, rate limits, spend or CI?
-- **Q one-shot-gap** Is the one-shot gap closing, and in which repos is it still open?
+- **Q one-shot-trend** Is the one-shot gap closing, and in which repos is it still open?
 - **Q evidence-coverage** Which evidence covers which weeks, and which practices predate their own data?
 - **Q sessions-without-merge** What share of agent sessions and spend leads to no merged change?
 - **Q unanswered-questions** Which of the study's questions could not be answered, and why?
 - **Q hypotheses-checked** Which of the owner's hypotheses held, and which findings were surprises?
 - **Q backlog-age** Is the backlog shrinking or growing, and how old is the open work?
 - **Q new-work-sources** Where does new work come from now: the owner, the audits, messages, or one-shot tasks?
-- **Q unfixed-recurring-problems** Which recurring problems has the factory not yet fixed at the source?
+- **Q recurring-problem-fixes** Which recurring problems has the factory not yet fixed at the source?
 - **Q ranked-next-steps** Which next steps does the evidence most support, ranked by what each would save?

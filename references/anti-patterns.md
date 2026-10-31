@@ -61,7 +61,7 @@ The failures this skill exists to prevent, each one observed.
 | Reading an undeclared `source` as an unlimited one | The path check would vanish on exactly the items whose scope nobody wrote down. Absent paths are not admissible. |
 | Reading `budget` as one PR per task | It is a PR allowance. An honest split, an admitted item, or a fix commit each spend one, and going over the expectation is ordinary. |
 | Treating `budget` as a gate | It is an estimate. Padding it to avoid stopping is how the number stops meaning anything. Go over, and say so. |
-| Raising `budget_max` without a `## Log` line | The checkpoint is soft only because every raise is written down. `sync` replays the ledger, and an unlogged raise shows up as a hand-edit. |
+| Raising `budget_max` without a `## Log` line | The checkpoint is soft only because every raise is written down. `sync` replays the goal's `## Log`, and an unlogged raise shows up as a hand-edit. |
 | Raising `budget_max` past the session's ceiling | Admit-then-raise has no end without it. The ceiling is twice the value at the gate, and only a person at a fresh gate moves it. |
 | Raising `budget_max` to open a second PR | A raise carries on in the PR already being built. A remainder that needs a second PR is `stop: budget`: the person saw no plan for that merge. |
 | Opening a PR per task under a goal | One goal is one branch and one PR. Per-task PRs pay for N reviews, N auto-approves and N merges to ship one outcome. |

@@ -291,7 +291,8 @@ def title_html(title):
 
 def chapter(c, defer, shrink, splits=None):
     """`splits` floats a figure to the top of the next page the way a typesetter would: the figure
-    goes after the sentence where the page breaks, and the paragraph carries on after it."""
+    goes after the sentence where the page breaks, and the paragraph carries on after it. A figure
+    that ends its section may float into the next one."""
     splits = splits or {}
     at = {pkey: (fid, cut) for fid, (pkey, cut) in splits.items()}
     import openers
@@ -299,12 +300,12 @@ def chapter(c, defer, shrink, splits=None):
     out = [f'<section class="chapter" id="ch-{c["n"]}">',
            f'<header class="opener{" with-art" if art else ""}">{art}<p class="chapter-number">Chapter {ONES[c["n"]]}</p>'
            f'<h1>{title_html(c["title"])}</h1></header>']
+    figs = {fig_id(b): b for s in c["sections"] for b in s["blocks"] if b["kind"] == "figure"}
     first = True
     for si, s in enumerate(c["sections"]):
         if s["title"]:
             out.append(f'<h2 id="ch-{c["n"]}-{s["slug"]}">{s["html"]}</h2>')
         keys = {id(b): f"k{c['n']}-{si}-{bi}" for bi, b in enumerate(s["blocks"])}
-        figs = {fig_id(b): b for b in s["blocks"] if b["kind"] == "figure"}
         blocks = []
         for b in place(s["blocks"], defer):
             if b["kind"] == "figure" and fig_id(b) in splits:
@@ -585,7 +586,7 @@ def float_figures(doc, c, defer, HTML, budget=12):
         tried.add(fid)
         ok = allowed.get(fid, set())
         used = {k for k, _ in splits.values()}
-        for cand in (float_split(document, fid, para), float_back(document, fid, para, ok)):
+        for cand in (*float_split(document, fid, para), float_back(document, fid, para, ok)):
             if not cand or cand[0] not in ok or cand[0] in used:
                 continue
             trial = {**splits, fid: cand}
@@ -609,16 +610,21 @@ def fit_chapter(doc, c, HTML):
     found, best = score(defer, splits)
     # A float can be blocked by the next figure's placement, so the largest remaining gaps each get
     # one more try: float the figure, re-seat the others around it, keep it if the chapter improves.
+    # A kept float moves the gap to a later figure, which then gets its own try.
     para = {f"k{c['n']}-{si}-{bi}": b["html"] for si, s in enumerate(c["sections"])
             for bi, b in enumerate(s["blocks"]) if b["kind"] == "p"}
     allowed = allowed_cuts(c)
-    for fid, _ in sorted(found.items(), key=lambda kv: -kv[1][1])[:3]:
-        if fid in splits:
-            continue
+    tried = set()
+    for _ in range(6):
+        fid = next((f for f, _ in sorted(found.items(), key=lambda kv: -kv[1][1])
+                    if f not in splits and f not in tried), None)
+        if fid is None:
+            break
+        tried.add(fid)
         document = HTML(string=render_html(doc, defer, only=c, splits=splits), base_url=paths.ASSETS + "/").render()
         ok = allowed.get(fid, set())
         used = {k for k, _ in splits.values()}
-        for cand in (float_split(document, fid, para), float_back(document, fid, para, ok)):
+        for cand in (*float_split(document, fid, para), float_back(document, fid, para, ok)):
             if not cand or cand[0] not in ok or cand[0] in used:
                 continue
             sp = {**splits, fid: cand}
@@ -720,10 +726,11 @@ def cut_after_token(html_text, n):
     return len(html_text) if tok == n and depth == 0 else None
 
 
-def float_split(document, fid, para):
-    """Where to float `fid`: the paragraph key and html cut that put the text following the figure
-    into the gap above it. Reads the current layout: the lines after the figure that would fit the
-    free space on the page before move up, ending at the last whole sentence among them."""
+def float_split(document, fid, para, tries=6):
+    """Where to float `fid`: (paragraph key, html cut) pairs that put the text following the figure
+    into the gap above it, best guess first. Reads the current layout: the lines after the figure
+    that would fit the free space on the page before move up, ending at a whole sentence among
+    them. The fit is estimated, so the cuts run back from the last sentence that seems to fit."""
     pages = document.pages
     for n, page in enumerate(pages[1:], 1):
         fig = next((b for b in boxes(page._page_box) if getattr(b, "element_tag", "") == "figure"
@@ -731,39 +738,50 @@ def float_split(document, fid, para):
         if fig is not None:
             break
     else:
-        return None
+        return []
     prev = pages[n - 1]._page_box
     body_bottom = prev.margin_height() - prev.margin_bottom
     leaves = [b for b in boxes(prev) if type(b).__name__ in ("LineBox", "BlockReplacedBox", "TableRowBox")]
     room = body_bottom - max((b.position_y + b.margin_height() for b in leaves), default=body_bottom) - 4
+    # A heading above the figure is kept with the text after it (break-after: avoid), so it moves up too.
+    room -= max(0, fig.position_y - page._page_box.margin_top)
     fig_bottom = fig.position_y + fig.margin_height()
-    lines = []
+    lines, heads = [], {}
     for pg in pages[n:n + 2]:
         for b in boxes(pg._page_box):
             if type(b).__name__ == "LineBox" and (pg is not page or b.position_y >= fig_bottom):
                 lines.append(b)
-    used, words, key = 0, 0, None
+            elif getattr(b, "element_tag", "") == "h2" and type(b).__name__ == "BlockBox":
+                heads[id(b.element)] = b.margin_height()
+    used, reached = 0, {}
     for ln in lines:
         el = ln.element
+        if el is not None and el.tag == "h2" and id(el) in heads:
+            # The next section's heading moves up with its text; count it once, margins included.
+            if used + heads[id(el)] > room:
+                break
+            used, heads[id(el)] = used + heads[id(el)], 0
+            continue
         if el is None or el.tag != "p" or not el.get("id", "").startswith("k"):
             break
-        if el.get("id") != key:
-            key, words = el.get("id"), 0
         if used + ln.height > room:
             break
         used += ln.height
         text = "".join(t.text for t in boxes(ln) if type(t).__name__ == "TextBox").strip()
         toks = text.split()
-        words += len(toks) - (1 if text.endswith("-") and toks else 0)
-    if key is None or words == 0 or key not in para:
-        return None
-    plain = html.unescape(re.sub(r"<[^>]+>", "", sub_notes(para[key], lambda _: ""))).split()
-    ends = [i for i, t in enumerate(plain[:words]) if SENT_END.search(t) and t not in NOT_END]
-    for t in reversed(ends):
-        cut = cut_after_token(para[key], t)
-        if cut is not None:
-            return key, cut
-    return None
+        key = el.get("id")
+        reached[key] = reached.get(key, 0) + len(toks) - (1 if text.endswith("-") and toks else 0)
+    out = []
+    for key, words in reversed(reached.items()):
+        if key not in para:
+            continue
+        plain = html.unescape(re.sub(r"<[^>]+>", "", sub_notes(para[key], lambda _: ""))).split()
+        ends = [i for i, t in enumerate(plain[:words]) if SENT_END.search(t) and t not in NOT_END]
+        for t in reversed(ends):
+            cut = cut_after_token(para[key], t)
+            if cut is not None:
+                out.append((key, cut))
+    return out[:tries]
 
 
 def float_back(document, fid, para, earliest):
@@ -862,7 +880,16 @@ def evaluate(doc, c, HTML, defer, splits=None, shrink=None):
 
 def allowed_cuts(c):
     """For each figure, the paragraphs it may be floated into: any in its run of text between
-    headings. Whether the result respects the figure's introduction is checked on the layout."""
+    headings, and, when that run ends its section, the next section's first run, since a figure
+    left at a section's end would otherwise strand the page before it. Whether the result respects
+    the figure's introduction is checked on the layout."""
+    def run(si, lo, hi):
+        bl = c["sections"][si]["blocks"]
+        return {f"k{c['n']}-{si}-{i}" for i in range(lo, hi) if bl[i]["kind"] == "p"}
+
+    def first_head(bl, start):
+        return next((i for i in range(start, len(bl)) if bl[i]["kind"] == "h3"), len(bl))
+
     out = {}
     for si, s in enumerate(c["sections"]):
         bl = s["blocks"]
@@ -870,8 +897,11 @@ def allowed_cuts(c):
             if b["kind"] != "figure":
                 continue
             lo = max([i + 1 for i in range(fi) if bl[i]["kind"] == "h3"] or [0])
-            hi = next((i for i in range(fi, len(bl)) if bl[i]["kind"] == "h3"), len(bl))
-            out[fig_id(b)] = {f"k{c['n']}-{si}-{i}" for i in range(lo, hi) if bl[i]["kind"] == "p"}
+            hi = first_head(bl, fi)
+            out[fig_id(b)] = run(si, lo, hi)
+            if hi == len(bl) and si + 1 < len(c["sections"]):
+                nxt = c["sections"][si + 1]["blocks"]
+                out[fig_id(b)] |= run(si + 1, 0, first_head(nxt, 0))
     return out
 
 
@@ -966,7 +996,7 @@ def main():
                 continue
             ok = allowed.get(fid, set())
             used = {k for k, _ in splits.values()}
-            for cand in (float_split(document, fid, para), float_back(document, fid, para, ok)):
+            for cand in (*float_split(document, fid, para), float_back(document, fid, para, ok)):
                 if not cand or cand[0] not in ok or cand[0] in used:
                     continue
                 trial = {**splits, fid: cand}

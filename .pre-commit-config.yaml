@@ -148,7 +148,7 @@ repos:
   # Pre-push, not pre-commit: it is the slowest hook here, and a push is the
   # last point where catching a finding is still cheap.
   - repo: https://github.com/semgrep/semgrep
-    rev: ab584982f6ecdaaa7954a14e5350a70c060e097f  # frozen: v1.156.0
+    rev: 240da9f30cd06fb4ee00c2c31c114c1c1f5ee0f4  # frozen: v1.182.0
     hooks:
       - id: semgrep
         stages: [pre-push]

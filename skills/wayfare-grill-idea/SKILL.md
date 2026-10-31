@@ -126,8 +126,9 @@ slug, or title, plan that task **in place**. Change `status: accepted` to
 `wayfare-sync-plan`.
 
 **Check existing premises before planning.** Read `## Context`, `## Approach`,
-and inherited `## Subtasks`. Check each claim against the named file. Claims can
-concern error paths, pinned values, or missing helpers. Earlier plans used
+and inherited `## Subtasks` (for a goal member with no `## Approach`, its slice:
+`hero_goal_slice GOAL_FILE ID`). Check each claim against the named file. Claims
+can concern error paths, pinned values, or missing helpers. Earlier plans used
 premises the code contradicted, including a rejected seed and a stall
 misidentified as an error path. Correct a failed premise in the item before
 continuing. Report the correction.
@@ -138,9 +139,9 @@ Check whether the work already landed. If the item is fully satisfied, route it
 to `wayfare-sync-plan`'s **already-satisfied** finding. Do not plan it again.
 
 Read the repo's `wayfare: recipe` skills first with
-`hero_local_skills "$ROOT" recipe`. If a recipe fits, name it in `## Approach`.
-`wayfare-build-task` invokes that recipe instead of deriving the repo's
-procedure again.
+`hero_local_skills "$ROOT" recipe`. If a recipe fits, name it in `## Approach`
+(a goal member's slice, when its goal carries `## Plan`). `wayfare-build-task`
+invokes that recipe instead of deriving the repo's procedure again.
 
 Plan against the task's `source` paths, `DESIGN.md`, target design, and the
 relevant steps in wayfare's `ux-flow`. If `DESIGN.md` is absent, report an
@@ -160,7 +161,9 @@ Refresh **both** planning anchors: `anchors.target` to the design head and
 `anchors.source` to the source head. Updating only the design anchor leaves
 source claims stale. `wayfare-sync-plan` reports that mismatch as
 **source-stale**. Use the canonical item format from `docs/PLAN.md`. Emit no new
-items in this mode.
+items in this mode. A task whose `parent` goal carries `## Plan` gets a new
+`### Task ID` slice there instead of `## Approach`, under the limits in
+`../../references/planning.md` (_A goal's plan_).
 
 **Refine pre-populated checklists, never replace them.** A task split by
 wayfare-build-task's Step 2a inherits `## Subtasks` and `## Definition of Done`
@@ -177,15 +180,21 @@ items, or the roadmap (`wayfare-sync-plan` invokes it this way), plan them
 together rather than looping one at a time. Do the shared work first and once:
 settle the decisions that touch more than one item (where state lives, how
 errors surface, which component owns what), check the slicing and the order
-across the whole set, then write each item's `## Approach`, `## Subtasks`, and
-`## Definition of Done` from that shared context. Record the cross-cutting
-decisions where they can be found again, in `DESIGN.md` when they are
-architectural and the items' `## Context` otherwise, because a decision made in
-a planning pass and written nowhere gets remade differently next time. Two
-things are only visible across the set and are the reason for this mode: a task
-that is really a layer of another, and a `depends_on` order that is wrong. One
-ready-mark per item at Step 5, not one for the batch. The user is approving
-plans, not a planning session.
+across the whole set, then write the plans from that shared context. Two things
+are only visible across the set and are the reason for this mode: a task that is
+really a layer of another, and a `depends_on` order that is wrong.
+
+**When the set is, or becomes, a goal's members, the plan goes on the goal.**
+Propose the goal before Step 3's gate, and at Step 4 write it with its `## Plan`
+(Requirements, Design, one `### Task N` slice per member), then each member's
+`## Subtasks` generated from its slice and its own `## Definition of Done`, with
+no `## Approach`. **Read `../../references/planning.md` (_A goal's plan_) before
+proposing one.** Cross-cutting decisions go in `### Design`, not the members'
+`## Context`; an architectural one also goes in `DESIGN.md`, because a decision
+made in a planning pass and written nowhere gets remade differently next time. A
+task left outside any goal keeps its own `## Approach` and its own ready-mark; a
+goal's plan takes one, covering `## Plan` and every member's DoD. The user is
+approving plans, not a planning session.
 
 **Plan only work that needs a decision interview.** Not every item earns a
 grill. Run one when there is more than one reasonable approach and the choice
@@ -372,6 +381,12 @@ flip only the confirmed ones to `status: ready` and append `ready_marked:` with
 the date, leaving the rest in `planning` for a later session. Never flip an item
 unprompted, and never batch beyond what the user named. An unmarked item is
 invisible to `wayfare:wayfare-build-task` by design.
+
+**A goal's members are marked once, on the goal's plan.** Ask about the goal; on
+yes, write `status: ready` + `ready_marked:` on every `planning` member that
+passes `hero_member_planned ITEM_FILE GOAL_FILE` (wayfare-build-task's Step 1
+check for the same mark), and name each that fails with the part it lacks. The
+goal stays `accepted`: `wayfare-start-goal`'s gate authorizes it.
 
 **In Feature mode under `wayfare-sync-plan`, the mark ends this task's grill,
 not the pass.** Flip the task to `ready`, then hand control back to wayfare,

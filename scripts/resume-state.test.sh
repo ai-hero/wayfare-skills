@@ -342,6 +342,29 @@ check "blocked active task is in flight"     "1" "$(val ITEM_INFLIGHT)"
 check "blocked active task is the branch item" ".plans/items/003-foo.md" "$(val ITEM_FILE | sed 's|.*/\(\.plans/items/\)|\1|')"
 rm -rf "$REPO/.plans"
 
+# A goal turn stopped mid-member must resume that member at its first unchecked
+# subtask. Step 0.5's resume row (feature branch, no PR, ITEM_FILE set,
+# SUBTASKS_OPEN > 0) sits above the commit-only row for exactly this. The goal
+# and an earlier committed member carry the same `branch:`; if either were
+# counted, the run would stop on a claim conflict or rebuild the wrong item.
+git -C "$REPO" checkout -q -b feat/goal-40-one-living-spec
+mkdir -p "$REPO/.plans/items"
+printf -- '---\nschema: 1\ndefault_branch: main\nnext_id: 99\n---\n' > "$REPO/.plans/PLAN.md"
+printf -- '---\nid: 40\ntype: goal\nstatus: active\nbranch: feat/goal-40-one-living-spec\n---\n## Plan\n### Task 12\nx\n### Task 13\ny\n' > "$REPO/.plans/items/040-goal.md"
+printf -- '---\nid: 12\ntype: task\nparent: 40\nstatus: committed\nbranch: feat/goal-40-one-living-spec\n---\n## Subtasks\n- [x] 1. a\n## Definition of Done\n- [x] a\n' > "$REPO/.plans/items/012-first.md"
+printf -- '---\nid: 13\ntype: task\nparent: 40\nstatus: active\nbranch: feat/goal-40-one-living-spec\n---\n## Subtasks\n- [x] 1. a\n- [ ] 2. b\n- [ ] 3. c\n## Definition of Done\n- [ ] a\n' > "$REPO/.plans/items/013-second.md"
+make_gh '[]' '[]'
+OUT="$(run)"
+check "goal member: on a feature branch"          "feat/goal-40-one-living-spec" "$(val CURRENT_BRANCH)"
+check "goal member: no PR"                        "false" "$(val PR_EXISTS)"
+check "goal member: the active member is the branch item" ".plans/items/013-second.md" "$(val ITEM_FILE | sed 's|.*/\(\.plans/items/\)|\1|')"
+check "goal member: open subtasks route to resume" "2" "$(val SUBTASKS_OPEN)"
+case "$(val STATE_ERRORS)" in
+  *item-claim-conflict*) FAIL=$((FAIL + 1)); echo "FAIL  goal and committed member must not claim the branch (got: $(val STATE_ERRORS))" ;;
+  *) PASS=$((PASS + 1)) ;;
+esac
+rm -rf "$REPO/.plans"
+
 # ---------- the eval contract ----------------------------------------------
 
 # Output is consumed via `eval`, so a hostile branch name or config value must
@@ -377,7 +400,7 @@ fi
 # refactor that silently stops executing 25 cases still reports 0 failures and
 # exits 0. The whole reason these cases exist is that each one could be wrong
 # SILENTLY; the suite must not be able to go quiet the same way.
-MIN_CASES=68
+MIN_CASES=73
 if [ "$PASS" -lt "$MIN_CASES" ]; then
   echo "resume-state: only $PASS cases ran, expected >= $MIN_CASES — a block stopped executing" >&2
   exit 1

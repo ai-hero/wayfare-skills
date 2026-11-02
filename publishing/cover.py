@@ -533,7 +533,7 @@ EAN_PARITY = ("LLLLLL", "LLGLGG", "LLGGLG", "LLGGGL", "LGLLGG", "LGGLLG", "LGGGL
 def ean13_modules(isbn):
     """The 95 modules of an ISBN-13's EAN-13 barcode, "1" for a bar. A wrong check digit raises: a
     barcode that scans as a different book is worse than none."""
-    digits = isbn.replace("-", "").replace(" ", "")
+    digits = re.sub(r"[-\s]", "", isbn)
     if len(digits) != 13 or not digits.isdigit():
         raise ValueError(f"cover: ISBN {isbn!r} is not 13 digits")
     check = (10 - sum(int(d) * (3 if i % 2 else 1) for i, d in enumerate(digits[:12])) % 10) % 10
@@ -550,7 +550,7 @@ def barcode_svg(meta, x, y):
     """The print ISBN as a scannable EAN-13 in a white box of KDP's barcode size, or "" without one."""
     if not meta.get("isbn"):
         return ""
-    digits = meta["isbn"].replace("-", "")
+    digits = re.sub(r"[-\s]", "", meta["isbn"])
     modules = ean13_modules(digits)
     # 0.33 mm, the EAN-13 nominal module; scanners need the quiet zones (11 and 7 modules) kept clear.
     X = 0.33 / 25.4 * PT

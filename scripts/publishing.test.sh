@@ -406,6 +406,8 @@ except ValueError:
 check("an ISBN with a wrong check digit draws no barcode", True, refused_check)
 check("a cover without an ISBN keeps the barcode area empty", "", cover.barcode_svg({}, 0, 0))
 drawn = cover.barcode_svg({"isbn": "979-8-234-28801-1"}, 0, 0)
+check("a spaced ISBN prints the same digits as a hyphenated one", drawn.replace("979-8-234-28801-1", "979 8 234 28801 1"),
+      cover.barcode_svg({"isbn": "979 8 234 28801 1"}, 0, 0))
 check("the barcode is pure black bars under its ISBN", (True, 30), ("ISBN 979-8-234-28801-1" in drawn,
       drawn.count('fill="#000000"/>')))
 ebook_copyright = dict((name, body) for name, _, _, body in kindle.front_matter(

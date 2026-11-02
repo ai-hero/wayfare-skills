@@ -207,6 +207,12 @@ else:
     pair = [el for el in ET.fromstring(haloed).iter() if el.tag.endswith('}text')]
     assert [(el.get('fill'), el.get('stroke')) for el in pair] == [('none', '#FFFFFF'), ('#383D49', None)], \
         [el.attrib for el in pair]
+    halo = '<text x="200" y="{y}" font-size="16" text-anchor="middle" fill="none" stroke="#FFFFFF" stroke-width="8">{s}</text>'
+    word = '<text x="200" y="{y}" font-size="16" text-anchor="middle" fill="#383D49">{s}</text>'
+    lines = ''.join(halo.format(y=y, s=s) + word.format(y=y, s=s) for y, s in ((200, 'two line'), (220, 'label')))
+    two = artwork.legible(f'<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">{lines}</svg>')
+    ys = [float(el.get('y')) for el in ET.fromstring(two).iter() if el.tag.endswith('}text')]
+    assert ys[0] == ys[1] and ys[2] == ys[3], f'a halo drifted off its label: {ys}'
     print('PASS: a drawing goes white, its type grows only as far as its boxes allow, and a halo sits under its label')
 print('PASS: PNG and PDF regenerate from the accessible SVG, written last; charts keep text and get chips')
 PY

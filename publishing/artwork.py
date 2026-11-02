@@ -267,7 +267,7 @@ def legible(svg):
     for t in sorted(texts, key=lambda t: (t["box"] or (0,), t["x"], t["anchor"], t["y"])):
         last = runs[-1][-1] if runs else None
         if (last and last["box"] == t["box"] and last["x"] == t["x"] and last["anchor"] == t["anchor"]
-                and 0 < t["y"] - last["y"] <= 2 * max(last["size"], t["size"])):
+                and 0 <= t["y"] - last["y"] <= 2 * max(last["size"], t["size"])):
             runs[-1].append(t)
         else:
             runs.append([t])

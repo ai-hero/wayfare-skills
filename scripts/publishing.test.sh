@@ -307,6 +307,21 @@ check("a chapter opener carries its art", True, 'class="opener with-art"' in ope
 check("a chapter with no scene keeps the plain opener", True,
       'class="opener"' in book.chapter({"n": 9, "title": "Nine", "sections": []}, {}, {}))
 
+fig = {"kind": "figure", "type": "diagram", "label": "Diagram", "number": "9.1", "caption_html": "C", "ref": "d"}
+para = lambda t: {"kind": "p", "html": t}
+nine = {"n": 9, "title": "Nine", "sections": [
+    {"title": "A", "slug": "a", "html": "A", "blocks": [para("One."), fig]},
+    {"title": "B", "slug": "b", "html": "B", "blocks": [para("Two. Three."), {"kind": "h3", "html": "S"}, para("Four.")]}]}
+check("a figure that ends its section may float into the next section's first run",
+      {"k9-0-0", "k9-1-0"}, book.allowed_cuts(nine)["fig-diagram-9-1"])
+nine["sections"][0]["blocks"] += [{"kind": "h3", "html": "T"}, para("Five.")]
+check("a figure before a subhead stays in its run", {"k9-0-0"}, book.allowed_cuts(nine)["fig-diagram-9-1"])
+del nine["sections"][0]["blocks"][2:]
+floated = book.chapter(nine, {}, {}, {"fig-diagram-9-1": ("k9-1-0", len("Two."))})
+check("a float into the next section sets the figure after its heading and inside its paragraph", True,
+      floated.index("<h2") < floated.index(">B</h2>") < floated.index("Two.") < floated.index('id="fig-diagram-9-1"')
+      < floated.index("Three.") and floated.count('id="fig-diagram-9-1"') == 1)
+
 import fitz
 table_pages = []
 original_svg = fitz.Page.get_svg_image

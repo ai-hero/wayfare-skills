@@ -15,6 +15,7 @@ import html
 import json
 import math
 import os
+import re
 import subprocess
 
 import fitz
@@ -525,6 +526,54 @@ def wrap_lines(text, width_pt, size, font="Geist"):
     return lines + ([cur] if cur else [])
 
 
+EAN_L = ("0001101", "0011001", "0010011", "0111101", "0100011", "0110001", "0101111", "0111011", "0110111", "0001011")
+EAN_PARITY = ("LLLLLL", "LLGLGG", "LLGGLG", "LLGGGL", "LGLLGG", "LGGLLG", "LGGGLL", "LGLGLG", "LGLGGL", "LGGLGL")
+
+
+def ean13_modules(isbn):
+    """The 95 modules of an ISBN-13's EAN-13 barcode, "1" for a bar. A wrong check digit raises: a
+    barcode that scans as a different book is worse than none."""
+    digits = re.sub(r"[-\s]", "", isbn)
+    if len(digits) != 13 or not digits.isdigit():
+        raise ValueError(f"cover: ISBN {isbn!r} is not 13 digits")
+    check = (10 - sum(int(d) * (3 if i % 2 else 1) for i, d in enumerate(digits[:12])) % 10) % 10
+    if check != int(digits[12]):
+        raise ValueError(f"cover: ISBN {isbn!r} has check digit {digits[12]}, expected {check}")
+    flip = lambda bits: "".join("1" if b == "0" else "0" for b in bits)  # noqa: E731
+    left = "".join(EAN_L[int(d)] if p == "L" else flip(EAN_L[int(d)])[::-1]
+                   for d, p in zip(digits[1:7], EAN_PARITY[int(digits[0])]))
+    right = "".join(flip(EAN_L[int(d)]) for d in digits[7:])
+    return "101" + left + "01010" + right + "101"
+
+
+def barcode_svg(meta, x, y):
+    """The print ISBN as a scannable EAN-13 in a white box of KDP's barcode size, or "" without one."""
+    if not meta.get("isbn"):
+        return ""
+    digits = re.sub(r"[-\s]", "", meta["isbn"])
+    modules = ean13_modules(digits)
+    # 0.33 mm, the EAN-13 nominal module; scanners need the quiet zones (11 and 7 modules) kept clear.
+    X = 0.33 / 25.4 * PT
+    bars_w = 95 * X
+    left = x + (BARCODE_W - bars_w) / 2 + 3 * X
+    top, h = y + 0.24 * PT, 0.62 * PT
+    guards = {0, 1, 2, 45, 46, 47, 48, 49, 92, 93, 94}
+    # Pure black on white whatever the palette: scanners read contrast, not the book's ink token. One
+    # rect per bar, not per module: abutting rects can rasterize with a hairline seam inside a bar.
+    runs = [(m.start(), m.end()) for m in re.finditer("1+", modules)]
+    bars = "".join(f'<rect x="{left + a * X:.3f}" y="{top:.2f}" width="{(b - a) * X:.3f}" '
+                   f'height="{h + (5 * X if a in guards else 0):.2f}" fill="#000000"/>' for a, b in runs)
+    ty = top + h + 5 * X + 1.6
+    mono = 'font-family="Geist Mono" font-size="8.4" fill="#000000"'
+    text = (f'<text x="{left - 7 * X:.2f}" y="{ty + 6:.2f}" text-anchor="end" {mono}>{digits[0]}</text>'
+            f'<text x="{left + 24 * X:.2f}" y="{ty + 6:.2f}" text-anchor="middle" letter-spacing="1.2" {mono}>{digits[1:7]}</text>'
+            f'<text x="{left + 71 * X:.2f}" y="{ty + 6:.2f}" text-anchor="middle" letter-spacing="1.2" {mono}>{digits[7:]}</text>')
+    label = (f'<text x="{x + BARCODE_W / 2:.2f}" y="{y + 0.17 * PT:.2f}" text-anchor="middle" font-family="Geist Mono"'
+             f' font-size="7.5" letter-spacing="0.6" fill="#000000">ISBN {esc(meta["isbn"])}</text>')
+    return (f'<rect x="{x:.2f}" y="{y:.2f}" width="{BARCODE_W:.2f}" height="{BARCODE_H:.2f}" fill="#FFFFFF"/>'
+            f'{label}{bars}{text}')
+
+
 def wrap_svg(meta, pages):
     spine = pages * PAPER_IN_PER_PAGE * PT
     W, H = 2 * TRIM_W + spine + 2 * BLEED, TRIM_H + 2 * BLEED
@@ -543,7 +592,8 @@ def wrap_svg(meta, pages):
     back.append(f'<text x="{BLEED + m:.2f}" y="{BLEED + TRIM_H - 0.55 * PT - 14:.2f}" font-family="Geist Mono"'
                 f' font-size="7.5" letter-spacing="1.05" fill="{QUIET}">{esc(meta["affiliation"].upper())}</text>')
     bx, by = BLEED + TRIM_W - m - BARCODE_W, BLEED + TRIM_H - 0.55 * PT - BARCODE_H
-    back.append(f'<rect x="{bx:.2f}" y="{by:.2f}" width="{BARCODE_W:.2f}" height="{BARCODE_H:.2f}" fill="{PAGE}"'
+    back.append(barcode_svg(meta, bx, by) or
+                f'<rect x="{bx:.2f}" y="{by:.2f}" width="{BARCODE_W:.2f}" height="{BARCODE_H:.2f}" fill="{PAGE}"'
                 f' stroke="{HAIR}" stroke-width="0.6" stroke-dasharray="2 2"/>')
     sx, cy = BLEED + TRIM_W + spine / 2, H / 2
     fs = min(9.0, spine * 0.42)

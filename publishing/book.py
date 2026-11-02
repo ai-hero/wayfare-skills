@@ -503,7 +503,7 @@ def front(meta, chapters, appendix_title=None, note_title=None, references_prese
 <section class="copyright">
   <p>{esc(full_title(meta))}{": " + esc(meta["subtitle"]) if meta.get("subtitle") else ""}</p>
   <p>{esc(meta.get("copyright"))}</p>{f"""
-  <p>ISBN {esc(meta["isbn"])}</p>""" if meta.get("isbn") else ""}
+  <p>ISBN {esc(meta["isbn"])} (paperback)</p>""" if meta.get("isbn") else ""}
   <p>{esc(meta.get("edition"))} edition · {esc(meta.get("date"))}</p>
 </section>
 {contents(chapters, appendix_title, references_present, note_title, about_title)}

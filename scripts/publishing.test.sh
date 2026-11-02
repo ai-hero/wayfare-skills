@@ -394,6 +394,26 @@ except SystemExit:
     refused_unnumbered = True
 check("a reference the paper did not number stops the evidence build", True, refused_unnumbered)
 
+import cover
+check("the paperback ISBN encodes as its EAN-13 bars",
+      "10101110110010111000100100100110100001010001101010110110010010001001000111001011001101100110101",
+      cover.ean13_modules("979-8-234-28801-1"))
+try:
+    cover.ean13_modules("979-8-234-28801-2")
+    refused_check = False
+except ValueError:
+    refused_check = True
+check("an ISBN with a wrong check digit draws no barcode", True, refused_check)
+check("a cover without an ISBN keeps the barcode area empty", "", cover.barcode_svg({}, 0, 0))
+drawn = cover.barcode_svg({"isbn": "979-8-234-28801-1"}, 0, 0)
+check("a spaced ISBN prints the same digits as a hyphenated one", drawn.replace("979-8-234-28801-1", "979 8 234 28801 1"),
+      cover.barcode_svg({"isbn": "979 8 234 28801 1"}, 0, 0))
+check("the barcode is pure black bars under its ISBN", (True, 30), ("ISBN 979-8-234-28801-1" in drawn,
+      drawn.count('fill="#000000"/>')))
+ebook_copyright = dict((name, body) for name, _, _, body in kindle.front_matter(
+    {"title": "T", "author": "A", "isbn": "979-8-234-28801-1"}))["copyright"]
+check("the Kindle copyright page leaves out the paperback's ISBN", False, "979-8" in ebook_copyright)
+
 import guide_scenes
 for key in ("g1", "g2"):
     pages = sorted(n for k, n in guide_scenes.SCENES if k == key)

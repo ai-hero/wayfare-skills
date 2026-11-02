@@ -32,7 +32,8 @@ DEF_RE = re.compile(r"^\[\^([a-z0-9][a-z0-9-]*)\]:\s*(.+)$", re.S)
 # editions use some.
 # photo, linkedin and x are optional and left out when unset; subtitle is optional too, but the
 # print and Kindle title pages still set an empty line for it. part ("Part I") is optional and
-# names the volume of a series; isbn is optional and printed on the copyright page when set.
+# names the volume of a series; isbn is the paperback's, optional, and printed on the print copyright
+# page and as a barcode on the cover wrap when set. The Kindle edition carries none.
 # about_photo is optional and sits on the About the Author page when `about-author.md` exists.
 META_REQUIRED = ("title", "author", "affiliation", "email", "edition", "date", "year", "copyright")
 

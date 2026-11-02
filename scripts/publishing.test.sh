@@ -125,6 +125,17 @@ files["OEBPS/ch-1.xhtml"] = kindle.page("One", '<section id="ch-1"><h2 id="ch-1-
 problems = kindle.check(files)
 check("a repeated id is a problem", ["OEBPS/ch-1.xhtml: id x is used twice"], problems)
 
+note = {"title": "About the Author", "blocks": [{"html": "Bio."}]}
+check("the author page closes the contents", ("about.xhtml", "About the Author", []),
+      kindle.contents_tree([chapter], None, True, "About the Author")[-1])
+name, _, kind, body = kindle.about(note, b"jpeg", "A & B")
+check("the author page is back matter with its photo", ("about", "backmatter", True, True),
+      (name, kind, f'src="{kindle.ABOUT_PHOTO}" alt="A &amp; B"' in body, well_formed(body)))
+check("no photo, no image", False, "<img" in kindle.about(note, None, "A")[3])
+check("the print contents lists the author page last", True,
+      book.contents([], None, True, None, "About the Author").endswith('href="#about"><span class="toc-num"></span>About the Author</a></li></ol></section>'))
+check("no about-author.md, no author page", "", book.about(None, {}))
+
 import hashlib
 import pathlib
 import urllib.error

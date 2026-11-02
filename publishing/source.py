@@ -33,6 +33,7 @@ DEF_RE = re.compile(r"^\[\^([a-z0-9][a-z0-9-]*)\]:\s*(.+)$", re.S)
 # photo, linkedin and x are optional and left out when unset; subtitle is optional too, but the
 # print and Kindle title pages still set an empty line for it. part ("Part I") is optional and
 # names the volume of a series; isbn is optional and printed on the copyright page when set.
+# about_photo is optional and sits on the About the Author page when `about-author.md` exists.
 META_REQUIRED = ("title", "author", "affiliation", "email", "edition", "date", "year", "copyright")
 
 
@@ -562,16 +563,26 @@ def plain_figure_text(chapters, appendix):
                     figure(ch)
 
 
-def build_preface():
-    """The front matter's preface, from `preface.md` beside the chapters; None without the file."""
-    if not os.path.exists(paths.PREFACE):
+def build_note(path, default):
+    """A one-section note beside the chapters, its `# ` heading as the title; None without the file."""
+    if not os.path.exists(path):
         return None
-    with open(paths.PREFACE, encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         text = f.read()
     m = re.search(r"^# (.+)$", text, re.M)
     blocks = [{"kind": "p", "md": b["text"], "html": md_html(b["text"])}
               for s in D.parse_book(text) for b in s["blocks"] if b["kind"] == "p"]
-    return {"title": m.group(1).strip() if m else "Preface", "blocks": blocks}
+    return {"title": m.group(1).strip() if m else default, "blocks": blocks}
+
+
+def build_preface():
+    """The front matter's preface, from `preface.md`."""
+    return build_note(paths.PREFACE, "Preface")
+
+
+def build_about():
+    """The back matter's author page, from `about-author.md`."""
+    return build_note(paths.ABOUT, "About the Author")
 
 
 def convert_text(b):
@@ -605,7 +616,7 @@ def main():
     if ERRORS:
         raise SystemExit("source: " + "\n  ".join(["fix these markers:"] + ERRORS))
     doc = {"meta": meta, "preface": build_preface(), "chapters": chapters, "appendix": appendix,
-           "references": references, "words": words, "warnings": WARN}
+           "references": references, "about": build_about(), "words": words, "warnings": WARN}
     with open(os.path.join(build, "book.json"), "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=1, ensure_ascii=False)
     figs = sum(1 for c in chapters for s in c["sections"] for b in s["blocks"] if b["kind"] == "figure")

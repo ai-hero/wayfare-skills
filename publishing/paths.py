@@ -12,6 +12,7 @@ MANUSCRIPT = os.environ.get("MANUSCRIPT_DIR", os.path.join(ROOT, "analysis", "ma
 BOOK = os.path.join(MANUSCRIPT, "book")
 APPENDIX = os.path.join(MANUSCRIPT, "appendix")
 PREFACE = os.path.join(MANUSCRIPT, "preface.md")
+ABOUT = os.path.join(MANUSCRIPT, "about-author.md")
 DECKS = os.path.join(ANALYSIS, "decks")
 DIAGRAMS = os.path.join(ANALYSIS, "diagrams", "book")
 DIAGRAMS_PAPER = os.path.join(ANALYSIS, "diagrams", "paper")  # the same diagrams saying paper and Section

@@ -416,7 +416,7 @@ def appendix_name(a):
     return a.get("title", "Evidence") if a and a.get("parts") else None
 
 
-def contents(chapters, appendix_title, references_present=False, note_title=None):
+def contents(chapters, appendix_title, references_present=False, note_title=None, about_title=None):
     rows = [f'<li class="toc-appendix"><a href="#preface"><span class="toc-num"></span>{esc(note_title)}</a></li>'] if note_title else []
     rows += [f'<li><a href="#ch-{c["n"]}"><span class="toc-num">{ONES[c["n"]]}</span>{esc(c["title"])}</a></li>'
              for c in chapters]
@@ -424,6 +424,8 @@ def contents(chapters, appendix_title, references_present=False, note_title=None
         rows.append(f'<li class="toc-appendix"><a href="#appendix"><span class="toc-num">Appendix</span>{esc(appendix_title)}</a></li>')
     if references_present:
         rows.append('<li class="toc-appendix"><a href="#references"><span class="toc-num"></span>References</a></li>')
+    if about_title:
+        rows.append(f'<li class="toc-appendix"><a href="#about"><span class="toc-num"></span>{esc(about_title)}</a></li>')
     return f'<section class="contents"><p class="contents-title">Contents</p><ol>{"".join(rows)}</ol></section>'
 
 
@@ -434,6 +436,20 @@ def preface(note):
     body = "".join(f"<p>{b['html']}</p>" for b in note["blocks"])
     return (f'<section class="preface" id="preface"><header class="opener"><h1>{esc(note["title"])}</h1></header>'
             f'{body}</section>')
+
+
+def about(note, meta):
+    """The author page closes the book, after the references."""
+    if not note:
+        return ""
+    import pathlib
+    photo = ""
+    if meta.get("about_photo"):
+        uri = pathlib.Path(paths.EDITIONS, meta["about_photo"]).as_uri()
+        photo = f'<img class="about-photo" src="{esc(uri)}" alt="{esc(meta["author"])}">'
+    body = "".join(f"<p>{b['html']}</p>" for b in note["blocks"])
+    return (f'<section class="about" id="about"><header class="opener"><h1>{esc(note["title"])}</h1></header>'
+            f'{photo}{body}</section>')
 
 
 BOOK_UTM = "utm_source=book&utm_medium=print&utm_campaign=software-factory"
@@ -473,7 +489,7 @@ def author_foot(meta):
     return f'<table class="title-foot-grid">{rows}</table>'
 
 
-def front(meta, chapters, appendix_title=None, note_title=None, references_present=False):
+def front(meta, chapters, appendix_title=None, note_title=None, references_present=False, about_title=None):
     title, sub = esc(meta["title"]), esc(meta.get("subtitle"))
     part = f'<p class="part">{esc(meta["part"])}</p>' if meta.get("part") else ""
     return f"""
@@ -489,7 +505,7 @@ def front(meta, chapters, appendix_title=None, note_title=None, references_prese
   <p>ISBN {esc(meta["isbn"])}</p>""" if meta.get("isbn") else ""}
   <p>{esc(meta.get("edition"))} edition · {esc(meta.get("date"))}</p>
 </section>
-{contents(chapters, appendix_title, references_present, note_title)}
+{contents(chapters, appendix_title, references_present, note_title, about_title)}
 """
 
 
@@ -505,10 +521,12 @@ def render_html(doc, defer=None, shrink=None, only=None, splits=None):
         body = chapter(only, defer or {}, shrink or {}, splits)
     else:
         body = (front(meta, doc["chapters"], appendix_name(doc.get("appendix")),
-                      (doc.get("preface") or {}).get("title"), bool(doc.get("references")))
+                      (doc.get("preface") or {}).get("title"), bool(doc.get("references")),
+                      (doc.get("about") or {}).get("title"))
                 + preface(doc.get("preface"))
                 + "\n".join(chapter(c, defer or {}, shrink or {}, splits) for c in doc["chapters"])
-                + appendix(doc.get("appendix")) + references(doc.get("references")))
+                + appendix(doc.get("appendix")) + references(doc.get("references"))
+                + about(doc.get("about"), meta))
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{esc(full_title(meta))}</title>'
             f'<meta name="author" content="{esc(meta["author"])}">'
             f'<style>{font_faces()}\n{css}</style></head>'

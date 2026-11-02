@@ -124,7 +124,9 @@ fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 touch "$TMP/FLEET.md"
-WAYFARE_FLEET_ROOT="$TMP" "$PYTHON" - "$ROOT/publishing" "$ROOT/analysis/report" "$TMP" <<'PY'
+DS_FONTS="${WAYFARE_FLEET_ROOT:-$HOME/workspaces/aihero}/aihero-design-system-design/fonts"
+WAYFARE_FLEET_ROOT="$TMP" "$PYTHON" - "$ROOT/publishing" "$ROOT/analysis/report" "$TMP" "$DS_FONTS" <<'PY'
+import os
 import pathlib
 import sys
 import xml.etree.ElementTree as ET
@@ -177,5 +179,34 @@ assert {'url(#book-fill-a5153e)', 'url(#book-fill-7b8290)'} <= fills
 chips = [el for el in root.iter() if el.tag.endswith('}rect') and el.get('rx') == '1']
 assert chips, 'value labels on hatched bars need chips'
 assert not warnings, warnings
+
+for family, file in (('Geist', 'Geist-VariableFont_wght.ttf'), ('Geist Mono', 'GeistMono-VariableFont_wght.ttf')):
+    book.FONTS[family] = os.path.join(sys.argv[4], file)
+if not os.path.exists(book.FONTS['Geist']):
+    print(f'SKIP: no design-system fonts in {sys.argv[4]}, so drawing type growth is untested')
+else:
+    def drawing(box_w):
+        return f'''<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300">
+<rect width="400" height="300" rx="9" fill="#F4F5F8"/>
+<rect x="20" y="20" width="{box_w}" height="120" rx="9" fill="#FFFFFF" stroke="#C6C9D0"/>
+<text x="{20 + box_w / 2}" y="60" font-size="24" text-anchor="middle" dominant-baseline="hanging">Work item</text>
+</svg>'''
+
+    def grown(svg):
+        root = ET.fromstring(svg)
+        text = next(el for el in root.iter() if el.tag.endswith('}text'))
+        return float(text.get('font-size')), [el.get('fill') for el in root if el.tag.endswith('}rect')][0]
+    roomy = artwork.legible(drawing(300))
+    assert roomy.startswith('<svg '), 'an SVG written after a PDF render lost its default namespace'
+    assert grown(roomy) == (round(24 * artwork.STEPS[0], 1), '#FFFFFF'), grown(roomy)
+    assert artwork.legible(roomy) == roomy, 'a second pass grew the type again'
+    tight = artwork.legible(drawing(122))
+    assert grown(tight)[0] == 24, 'type grew out of a box sized to its words'
+    haloed = artwork.legible(drawing(300).replace(
+        '<text ', '<text stroke="#F4F5F8" stroke-width="10" paint-order="stroke" fill="#383D49" ', 1))
+    pair = [el for el in ET.fromstring(haloed).iter() if el.tag.endswith('}text')]
+    assert [(el.get('fill'), el.get('stroke')) for el in pair] == [('none', '#FFFFFF'), ('#383D49', None)], \
+        [el.attrib for el in pair]
+    print('PASS: a drawing goes white, its type grows only as far as its boxes allow, and a halo sits under its label')
 print('PASS: PNG and PDF regenerate from the accessible SVG, written last; charts keep text and get chips')
 PY

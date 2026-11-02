@@ -50,7 +50,9 @@ INK, BODY, MUTED, RULE = "#0B0D14", "#383D49", "#666D7B", "#C6C9D0"  # ink-figur
 PINK, PINK_TINT, PINK_DARK = "#E93A61", "#FEF1F4", "#A5153E"  # pal-300, accent-tint, pal-500
 GREY, GREY_DARK, GREY_LIGHT, GREY_TINT = "#C6C9D0", "#7B8290", "#C6C9D0", "#F4F5F8"  # ink-line, -quiet, -line, -raise
 EVIDENCE, EVIDENCE_TINT = INK, "#FFFFFF"  # the system's `success` tone is ink, not a hue
-WELL = GREY_TINT  # bg-muted: every diagram sits on the sunken well, groups on white sub-wells
+# White, not the design system's sunken bg-muted well: on e-ink and in print the tint reads as a grey
+# cast over the whole figure. Groups keep their GREY outline, so they still read as sub-wells.
+WELL = "#FFFFFF"
 RADIUS = 9  # rounded-sm (4px) at the ~2.3 canvas px per CSS px this canvas prints at
 TRACK_EYEBROW, TRACK_LABEL = 0.1, 0.06  # --tracking-eyebrow, --tracking-label, in em
 FONT = "Geist, 'Helvetica Neue', Arial, sans-serif"

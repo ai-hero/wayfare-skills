@@ -15,11 +15,15 @@ a { color: inherit; text-decoration: none; }
 code { font-family: "Geist Mono", monospace; font-size: 0.88em; hyphens: none; -webkit-hyphens: none; }
 
 /* ---------- openers ---------- */
-.opener-art { margin: 1em 0 0; text-align: center; page-break-inside: avoid; }
-.opener-art img { width: 100%; max-height: 40vh; object-fit: contain; }
-hr.opener-rule { width: 3em; height: 0; margin: 3em 0 1.1em; border: 0; border-top: 0.2em solid #D63358; }
+/* The art, the chapter number and a three-line title share one phone-sized screen: at 40vh the
+   longest title (Chapter Five) ran onto the next screen, away from its number. */
+.opener-art { margin: 1em 0 0; text-align: center; page-break-inside: avoid; page-break-after: avoid; break-after: avoid; }
+.opener-art img { width: 100%; max-height: 30vh; object-fit: contain; }
+hr.opener-rule { width: 3em; height: 0; margin: 3em 0 1.1em; border: 0; border-top: 0.2em solid #D63358;
+  page-break-after: avoid; break-after: avoid; }
+.opener-art + hr.opener-rule { margin-top: 1.6em; }
 .chapter-number { font-family: "Geist Mono", monospace; font-size: 0.72em; letter-spacing: 0.16em;
-  text-transform: uppercase; color: inherit; margin: 0 0 0.9em; text-indent: 0; }
+  text-transform: uppercase; color: inherit; margin: 0 0 0.9em; text-indent: 0; page-break-after: avoid; break-after: avoid; }
 h1 { font-family: "Manrope", sans-serif; font-weight: 300; font-size: 2.1em; line-height: 1.12;
   letter-spacing: -0.015em; margin: 0 0 1.4em; hyphens: manual; -webkit-hyphens: manual; }
 h2 { font-family: "Geist", sans-serif; font-weight: 300; font-size: 1.3em; line-height: 1.25;

@@ -243,6 +243,30 @@ def preface(note):
             f'<hr class="opener-rule" aria-hidden="true"/><h1>{esc(note["title"])}</h1>{body}</section>')
 
 
+ABOUT_PHOTO = "images/about.jpg"
+
+
+def about(note, photo, author):
+    """The author page closes the book, after the references."""
+    img = f'<img class="about-photo" src="{ABOUT_PHOTO}" alt="{esc(author)}"/>' if photo else ""
+    body = "".join(f"<p>{b['html']}</p>" for b in note["blocks"])
+    return ("about", note["title"], "backmatter",
+            f'<section id="about" aria-labelledby="about-title"><hr class="opener-rule" aria-hidden="true"/>'
+            f'<h1 id="about-title">{esc(note["title"])}</h1>{img}{body}</section>')
+
+
+def about_jpeg(meta):
+    """The author photo, scaled to what a reader shows; None when meta.json names none."""
+    if not meta.get("about_photo"):
+        return None
+    from PIL import Image
+    im = Image.open(os.path.join(paths.EDITIONS, meta["about_photo"])).convert("RGB")
+    im.thumbnail((600, 800))
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=85, optimize=True)
+    return buf.getvalue()
+
+
 def footnotes(name, body):
     """The author's notes as EPUB footnotes: a numbered call in the text and the note at the end of
     its file, which Kindle shows as a pop-up. Left as the span, the note runs into the sentence."""
@@ -301,7 +325,7 @@ def link(docs):
     return out, broken, unlinked
 
 
-def contents_tree(chapters, note_title, has_refs):
+def contents_tree(chapters, note_title, has_refs, about_title=None):
     """The contents as (href, label, children), labels escaped: the nav document and the NCX are
     both drawn from it, so the two menus cannot disagree."""
     tree = [("preface.xhtml", esc(note_title), [])] if note_title else []
@@ -311,6 +335,8 @@ def contents_tree(chapters, note_title, has_refs):
         tree.append((f'ch-{c["n"]}.xhtml', f'{ONES[c["n"]]}. {esc(c["title"])}', subs))
     if has_refs:
         tree.append(("references.xhtml", "References", []))
+    if about_title:
+        tree.append(("about.xhtml", esc(about_title), []))
     return tree
 
 
@@ -345,7 +371,7 @@ def ncx(meta, ident, tree):
             f'<docTitle><text>{esc(full_title(meta))}</text></docTitle><navMap>{points(tree)}</navMap></ncx>')
 
 
-def opf(meta, ident, docs, images, fonts, first):
+def opf(meta, ident, docs, images, fonts, first, about_photo=False):
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     items = ['<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
              '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>',
@@ -354,6 +380,8 @@ def opf(meta, ident, docs, images, fonts, first):
     items += [f'<item id="{name}" href="{name}.xhtml" media-type="application/xhtml+xml"/>' for name, *_ in docs]
     items += [f'<item id="font{i}" href="{href}" media-type="font/ttf"/>' for i, href in enumerate(fonts)]
     items += [f'<item id="img{i}" href="{href}" media-type="image/png"/>' for i, (href, _) in enumerate(images.files.values())]
+    if about_photo:
+        items.append(f'<item id="about-photo" href="{ABOUT_PHOTO}" media-type="image/jpeg"/>')
     spine = []
     for name, *_ in docs:
         spine.append(f'<itemref idref="{name}"/>')
@@ -478,9 +506,13 @@ def main():
         docs.append(("references", "References", "backmatter",
                      f'<section epub:type="bibliography" role="doc-bibliography" id="references"><h1>References</h1>'
                      f'<div class="reference-list">{refs}</div></section>'))
+    photo = about_jpeg(meta) if doc.get("about") else None
+    if doc.get("about"):
+        docs.append(about(doc["about"], photo, meta["author"]))
     docs = [(name, title, kind, footnotes(name, body)) for name, title, kind, body in docs]
     docs, broken, unlinked = link(docs)
-    tree = contents_tree(doc["chapters"], (doc.get("preface") or {}).get("title"), bool(doc.get("references")))
+    tree = contents_tree(doc["chapters"], (doc.get("preface") or {}).get("title"), bool(doc.get("references")),
+                         (doc.get("about") or {}).get("title"))
     first = "preface.xhtml" if doc.get("preface") else f"ch-{doc['chapters'][0]['n']}.xhtml"
     xhtml_nav = nav(tree, first)
     ident = uuid.uuid5(uuid.NAMESPACE_URL, f"aihero.studio/book/{full_title(meta)}")
@@ -491,7 +523,10 @@ def main():
     css = faces + css
 
     files = {"OEBPS/kindle.css": css, "OEBPS/nav.xhtml": xhtml_nav, "OEBPS/toc.ncx": ncx(meta, ident, tree),
-             "OEBPS/content.opf": opf(meta, ident, docs, images, fonts, first), "OEBPS/images/cover.jpg": cover_jpeg()}
+             "OEBPS/content.opf": opf(meta, ident, docs, images, fonts, first, bool(photo)),
+             "OEBPS/images/cover.jpg": cover_jpeg()}
+    if photo:
+        files[f"OEBPS/{ABOUT_PHOTO}"] = photo
     files.update({f"OEBPS/{name}.xhtml": page(title, body, kind) for name, title, kind, body in docs})
     files.update({f"OEBPS/{href}": data for href, data in images.files.values()})
     files.update({f"OEBPS/{href}": data for href, data in fonts.items()})

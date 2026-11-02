@@ -222,13 +222,13 @@ diagrams = [source.figure({"ref": "Diagram " + ident, "caption": "A diagram."},
                           1, {}, drawn, {}, paths.ASSETS, counters) for ident in ("1.2", "1.1")]
 check("diagram numbers follow reading order while authored ids stay stable",
       [("1.2", "1.1"), ("1.1", "1.2")], [(b["id"], b["number"]) for b in diagrams])
-check("diagram numbering leaves figure and table sequences alone", (0, 0),
-      (counters["figure"], counters["table"]))
+check("diagrams share the figure count and leave tables alone", (2, 0), (counters["figure"], counters["table"]))
+check("a diagram prints as a Figure", {"Figure"}, {b["label"] for b in diagrams})
 idx = source.figure_index([{"sections": [{"blocks": diagrams}]}])
 for ident, number in (("1.2", "1.1"), ("1.1", "1.2")):
     marker = source.XREF_RE.fullmatch("{{diagram:" + ident + "}}")
     check(f"authored diagram {ident} links to its printed number {number}",
-          f'(<a class="xref" href="#fig-diagram-{number.replace(".", "-")}">Diagram {number}</a>)',
+          f'(<a class="xref" href="#fig-figure-{number.replace(".", "-")}">Figure {number}</a>)',
           source.xref_html(marker, idx, {}, 1))
 paths.DIAGRAMS = original_diagrams
 

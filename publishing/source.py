@@ -75,7 +75,7 @@ def copy_drawn(meta, assets):
             dst = f"{meta['name']}.{ext}"
             shutil.copyfile(src, os.path.join(assets, dst))
             files[ext] = dst
-    return artwork.prepare(files, assets, warn=warn)
+    return artwork.prepare(files, assets, warn=warn, drawing=meta["name"].startswith(("diagram-", "figure-")))
 
 
 def table_rows(meta):
@@ -170,7 +170,7 @@ def figure_index(chapters):
                 if b["type"] == "card":
                     idx[f"fig:{b['key'][2:]}"] = b
                 elif b.get("id"):
-                    idx[f"{b['label'].lower()}:{b['id']}"] = b
+                    idx[f"{b['ref_kind']}:{b['id']}"] = b
     return idx
 
 
@@ -420,8 +420,9 @@ def figure(b, n, cards, drawn, results, assets, counters):
         warn(f"chapter {n}: [[{ref}]] matches no drawn asset in {paths.DIAGRAMS}")
         out.update(type="missing", label=kind_word, number=ident)
         return out
+    # Prose and `{{diagram:1.9}}` name the authored kind and id; the printed label is always Figure.
     out.update(alt=meta.get("alt", ""), source=meta.get("source", ""), width=meta.get("width"),
-               height=meta.get("height"))
+               height=meta.get("height"), ref_kind=kind_word.lower())
     for key in ("chart_id", "evidence_ids"):
         if meta.get(key):
             out[key] = meta[key]
@@ -430,16 +431,12 @@ def figure(b, n, cards, drawn, results, assets, counters):
         out.update(type="table", label="Table", number=f"{n}.{counters['table']}", id=meta["id"],
                    rows=[[{"md": c, "html": md_html(c)} for c in r] for r in table_rows(meta)])
         return out
-    if meta.get("kind") == "figure":
-        counters["figure"] += 1
-        number = f"{n}.{counters['figure']}"
-        if number != meta["id"]:
-            warn(f"chapter {n}: authored Figure {meta['id']} falls at position {number} among the chapter's figures")
-        out.update(type="drawn", label="Figure", number=number, id=meta["id"])
-    else:
-        # References use the authored id; using it as the printed number puts inserted diagrams out of order.
-        counters["diagram"] = counters.get("diagram", 0) + 1
-        out.update(type="diagram", label="Diagram", number=f"{n}.{counters['diagram']}", id=meta["id"])
+    # Diagrams and charts share one count in reading order, so a reader meets Figure 2.1, 2.2, 2.3
+    # rather than two interleaved series; references use the authored id, never the printed number.
+    counters["figure"] += 1
+    number = f"{n}.{counters['figure']}"
+    out.update(type="drawn" if meta.get("kind") == "figure" else "diagram", label="Figure", number=number,
+               id=meta["id"])
     out["files"] = copy_drawn(meta, assets)
     if not out["files"]:
         warn(f"chapter {n}: {ref} has a sidecar but no svg, pdf or png in {paths.DIAGRAMS}")

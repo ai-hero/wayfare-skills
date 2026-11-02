@@ -66,12 +66,11 @@ class Refs:
                         continue
                     lab = f"{'tab' if b['type'] == 'table' else 'fig'}:{b['label'].lower()}-{b['number']}"
                     b["_label"] = lab
-                    # A diagram's printed number can equal another diagram's authored id, and prose
-                    # names ids, so a diagram is found by its id alone.
-                    if b["type"] != "diagram":
-                        self.figs[f"{b['label']} {b['number']}"] = lab
+                    # A printed number can equal another figure's authored id, and prose names ids,
+                    # so an id always wins and a printed number only fills a gap.
+                    self.figs.setdefault(f"{b['label']} {b['number']}", lab)
                     if b.get("id"):
-                        self.figs[f"{b['label']} {b['id']}"] = lab
+                        self.figs[f"{b['ref_kind'].capitalize()} {b['id']}"] = lab
                     if b["type"] == "card":
                         self.cards[b["key"][2:]] = lab
                     if b.get("rid"):
@@ -83,7 +82,7 @@ class Refs:
                 for b in s["blocks"]:
                     if b["kind"] == "figure" and b["type"] != "missing":
                         self.index[f"fig:{b['key'][2:]}" if b["type"] == "card"
-                                   else f"{b['label'].lower()}:{b['id']}"] = b
+                                   else f"{b['ref_kind']}:{b['id']}"] = b
         # Empty in the paper, as `book.without_appendix` drops the book's evidence links: each would
         # point at a page the paper does not print.
         self.evidenced = {sl for p in doc.get("appendix", {}).get("parts", []) for g in p["groups"]

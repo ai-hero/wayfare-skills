@@ -122,6 +122,14 @@ def label_backgrounds(root, bars):
             parent.insert(list(parent).index(el), chip)
 
 
+def serialize(root):
+    # WeasyPrint's PDF writer registers the empty prefix for another namespace on first use, which
+    # silently drops this one: every SVG written after the first render would come out as `ns0:svg`,
+    # which no renderer reads as SVG.
+    ET.register_namespace("", SVG)
+    return ET.tostring(root, encoding="unicode") + "\n"
+
+
 def recolor(svg, unmapped=None):
     """The SVG mapped to the book's palette. Chart fills outside the palette are added to `unmapped`."""
     root = ET.fromstring(svg)
@@ -175,7 +183,137 @@ def recolor(svg, unmapped=None):
     if chart:
         label_backgrounds(root, bars)
     root.set(MARKER, VERSION)
-    return ET.tostring(root, encoding="unicode") + "\n"
+    return serialize(root)
+
+
+LEGIBLE = "data-book-legible"
+# A diagram's boxes were sized to its words, so a blind scale spills text out of them: each run of
+# lines grows around its own centre by the largest step at which every run still fits its box and
+# meets nothing it did not already meet.
+STEPS = (1.15, 1.1, 1.05)
+WELL = "#f4f5f8"
+
+
+def text_width():
+    from PIL import ImageFont
+    import book
+    faces = {}
+
+    def width(text, size, mono, weight, spacing):
+        if (mono, weight) not in faces:
+            face = ImageFont.truetype(book.FONTS["Geist Mono" if mono else "Geist"], 100)
+            face.set_variation_by_axes([weight])
+            faces[mono, weight] = face
+        return faces[mono, weight].getlength(text) * size / 100 + spacing * size * max(len(text) - 1, 0)
+    return width
+
+
+def legible(svg):
+    """A drawing on white, with its type as large as its boxes allow."""
+    root = ET.fromstring(svg)
+    if root.get(LEGIBLE):
+        return svg
+    canvas = dimensions(svg)
+    W, H = canvas[0] / 0.75, canvas[1] / 0.75
+    # On e-ink and in print the design system's sunken well reads as a grey cast over the whole figure.
+    whitened = False
+    for el in root.iter(f"{{{SVG}}}rect"):
+        if (el.get("fill", "").lower() == WELL and float(el.get("width", 0)) >= W - 1
+                and float(el.get("height", 0)) >= H - 1):
+            el.set("fill", "#FFFFFF")
+            whitened = True
+    # A label's halo is a stroke in the well's colour; left grey on white it prints as a smudge.
+    for el in root.iter(f"{{{SVG}}}text"):
+        if whitened and el.get("stroke", "").lower() == WELL:
+            el.set("stroke", "#FFFFFF")
+    rects = []
+    for el in root.iter(f"{{{SVG}}}rect"):
+        if el.get("transform"):
+            continue
+        x, y, w, h = (float(el.get(k, "0")) for k in ("x", "y", "width", "height"))
+        if (w < W - 1 or h < H - 1) and w >= 30 and h >= 20:
+            rects.append((x, y, x + w, y + h))
+    width, texts = text_width(), []
+    for el in root.iter(f"{{{SVG}}}text"):
+        words = "".join(el.itertext())
+        size = re.fullmatch(r"[\d.]+", el.get("font-size", ""))
+        if not words.strip() or not size or el.get("x") is None or el.get("transform"):
+            continue
+        spacing = el.get("letter-spacing", "")
+        texts.append({"el": el, "s": words, "x": float(el.get("x")), "y": float(el.get("y")),
+                      "size": float(size[0]), "mono": "Mono" in el.get("font-family", ""),
+                      "weight": int(el.get("font-weight") or 400), "anchor": el.get("text-anchor", "start"),
+                      "hanging": el.get("dominant-baseline") == "hanging",
+                      "spacing": float(spacing[:-2]) if spacing.endswith("em") else 0.0})
+
+    def bbox(t, size=None, y=None):
+        size, y = size or t["size"], t["y"] if y is None else y
+        w = width(t["s"], size, t["mono"], t["weight"], t["spacing"])
+        left = t["x"] - {"middle": w / 2, "end": w}.get(t["anchor"], 0)
+        top = y if t["hanging"] else y - 0.78 * size
+        return left, top, left + w, top + 0.95 * size
+
+    def within(b, r, pad):
+        return b[0] >= r[0] + pad and b[1] >= r[1] + pad and b[2] <= r[2] - pad and b[3] <= r[3] - pad
+
+    def meets(a, b):
+        return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+    for t in texts:
+        t["box"] = min((r for r in rects if within(bbox(t), r, -3)),
+                       key=lambda r: (r[2] - r[0]) * (r[3] - r[1]), default=None)
+        t["old"] = bbox(t)
+    runs = []
+    for t in sorted(texts, key=lambda t: (t["box"] or (0,), t["x"], t["anchor"], t["y"])):
+        last = runs[-1][-1] if runs else None
+        if (last and last["box"] == t["box"] and last["x"] == t["x"] and last["anchor"] == t["anchor"]
+                and 0 <= t["y"] - last["y"] <= 2 * max(last["size"], t["size"])):
+            runs[-1].append(t)
+        else:
+            runs.append([t])
+
+    def placed(f):
+        out = {}
+        for run in runs:
+            mid = (min(t["old"][1] for t in run) + max(t["old"][3] for t in run)) / 2
+            for t in run:
+                y = mid + (t["y"] - mid) * f
+                out[id(t)] = (t["size"] * f, y, bbox(t, t["size"] * f, y))
+        return out
+
+    def fits(f):
+        new = placed(f)
+        for t in texts:
+            b = new[id(t)][2]
+            if t["box"] is not None:
+                if not within(b, t["box"], 4 if within(t["old"], t["box"], 4) else -3):
+                    return False
+            elif b[0] < 0 or b[1] < 0 or b[2] > W or b[3] > H or any(
+                    meets(b, r) and not meets(t["old"], r) for r in rects):
+                return False
+        return not any(meets(new[id(a)][2], new[id(c)][2]) and not meets(a["old"], c["old"])
+                       for i, a in enumerate(texts) for c in texts[i + 1:])
+
+    step = next((f for f in STEPS if fits(f)), None)
+    if step:
+        new = placed(step)
+        for t in texts:
+            size, y, _ = new[id(t)]
+            t["el"].set("font-size", f"{size:.1f}")
+            t["el"].set("y", f"{y:.1f}")
+    # WeasyPrint ignores paint-order and draws a one-element halo over its own label, hiding it, so
+    # the halo becomes its own unfilled copy painted first, as svg_lib draws it.
+    for parent in list(root.iter()):
+        for el in list(parent):
+            if el.tag == f"{{{SVG}}}text" and el.get("stroke") and el.get("paint-order") == "stroke":
+                halo = ET.Element(el.tag, dict(el.attrib, fill="none"))
+                halo.text = el.text
+                del halo.attrib["paint-order"]
+                parent.insert(list(parent).index(el), halo)
+                for name in ("stroke", "stroke-width", "stroke-linejoin", "paint-order"):
+                    el.attrib.pop(name, None)
+    root.set(LEGIBLE, str(step or 1))
+    return serialize(root)
 
 
 def dimensions(svg):
@@ -194,10 +332,11 @@ def warn_stderr(msg):
     print(f"warn: {msg}", file=sys.stderr)
 
 
-def prepare(files, folder, raster=True, warn=warn_stderr):
+def prepare(files, folder, raster=True, warn=warn_stderr, drawing=False):
     """When the SVG is recolored, derive its PDF (and PNG when `raster`) from it: kindle.py prefers
     the PNG, so a stale one would ship the old colors in the EPUB. The SVG is written last, so a
-    failed render never leaves a marked SVG beside stale companions."""
+    failed render never leaves a marked SVG beside stale companions. A `drawing` (a diagram, not a
+    chart) also goes through `legible`."""
     if not files.get("svg"):
         return files
     path = os.path.join(folder, files["svg"])
@@ -205,6 +344,8 @@ def prepare(files, folder, raster=True, warn=warn_stderr):
         original = f.read()
     unmapped = set()
     svg = recolor(original, unmapped)
+    if drawing:
+        svg = legible(svg)
     if unmapped:
         warn(f"artwork: {files['svg']} has chart fills outside the book palette, left unpatterned: "
              + ", ".join(sorted(unmapped)))

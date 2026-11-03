@@ -2144,13 +2144,22 @@ class ExtractTar(unittest.TestCase):
         fn()
         if hasattr(tarfile, "data_filter"):
             saved = tarfile.data_filter
+            had_default = "extraction_filter" in tarfile.TarFile.__dict__
+            saved_default = tarfile.TarFile.__dict__.get("extraction_filter")
             del tarfile.data_filter
+            # 3.14 extracts through data_filter when no filter is given, so with
+            # it deleted the default raises NameError. 3.9 applied no filter.
+            tarfile.TarFile.extraction_filter = staticmethod(lambda member, path: member)
             try:
                 for p in self.dest.iterdir():
                     shutil.rmtree(p) if p.is_dir() else p.unlink()
                 fn()
             finally:
                 tarfile.data_filter = saved
+                if had_default:
+                    tarfile.TarFile.extraction_filter = saved_default
+                else:
+                    del tarfile.TarFile.extraction_filter
 
     @staticmethod
     def tar(*entries):

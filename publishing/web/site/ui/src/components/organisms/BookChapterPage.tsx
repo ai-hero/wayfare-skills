@@ -146,7 +146,7 @@ function Masthead({ chapter }: { chapter: Chapter }) {
     <>
       {chapter.opener && (
         // The art is drawn on white, so the plate stays white in dark mode.
-        <img src={chapter.opener} alt="" aria-hidden className="mb-8 h-auto w-full max-w-md rounded-lg bg-ink-white p-3" />
+        <img src={chapter.opener} alt="" aria-hidden width={374} height={236} className="mb-8 h-auto w-full max-w-md rounded-lg bg-ink-white p-3" />
       )}
       <ArticleMasthead
         eyebrow={

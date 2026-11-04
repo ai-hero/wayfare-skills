@@ -20,6 +20,14 @@ MANIFEST = os.path.join(paths.EDITIONS, "worksheet.json")
 W, H = 612.0, 792.0
 M = 44.0
 REQUIRED = ("file", "title", "subtitle", "how", "scale", "flows", "before", "gap_prompts", "source", "cta")
+FOOTER_TOP = H - 34
+
+
+def fits(what, end, limit):
+    """Each page is a fixed-size SVG that clips, so copy that runs long adds no page and prints cut
+    off. The drawn extent is the only place an overflow shows."""
+    if end > limit:
+        raise SystemExit(f"worksheet: {what} ends at {end:.0f}pt, past its limit of {limit:.0f}pt; shorten the copy")
 
 
 def head(n, title):
@@ -63,6 +71,7 @@ def page_one(c):
     for k, flow in enumerate(c["flows"][:3], 1):
         tb, y = flow_table(k, flow, y, c["scale"])
         out.append(tb)
+    fits("page 1", y - 14, FOOTER_TOP)
     return out
 
 
@@ -87,9 +96,11 @@ def page_two(c):
     out.append(mono(M + 12, y + 18, "Your first gap", 7, ROSE_DARK))
     yy = y + 38
     for prompt in c["gap_prompts"]:
+        fits("a gap prompt", M + 12 + width(prompt, 8.4), M + half - 12)
         out.append(text(M + 12, yy, prompt, 8.4, "Geist", 400, INK))
         out.append(line(M + 12, yy + 14, M + half - 12, yy + 14, HAIR, 0.7))
         yy += 28
+    fits("the first-gap box", yy - 14, y + 150)
     bx = M + half + 16
     out.append(rect(bx, y, half, 150, SUNK, "none", 0, 4))
     out.append(mono(bx + 12, y + 18, "Before you speed it up", 7, QUIET))
@@ -98,9 +109,11 @@ def page_two(c):
         b, yy = block(bx + 12, yy, ln, half - 24, 8.4, "Geist", 300, INK, 1.35)
         out.append(b)
         yy += 6
+    fits("the before-you-speed-it-up box", yy - 6, y + 150)
     y += 172
     out.append(text(M, y, c["cta"], 11, "Manrope", 300, INK))
     out.append(text(M, y + 16, c["source"], 7.6, "Geist", 300, QUIET))
+    fits("page 2", y + 16, FOOTER_TOP)
     return out
 
 
@@ -110,6 +123,8 @@ def svg(body):
 
 
 def main(argv=None):
+    if not os.path.exists(MANIFEST):
+        raise SystemExit(f"worksheet: no copy at {MANIFEST}")
     with open(MANIFEST, encoding="utf-8") as f:
         c = json.load(f)
     missing = [k for k in REQUIRED if k not in c]
@@ -127,10 +142,10 @@ def main(argv=None):
     print_page(page, out, 6000)
     os.remove(page)
     with fitz.open(out) as doc:
-        # A trailing page break leaves one blank page; any other count means the layout overflowed.
+        # A trailing page break leaves one blank page, which is all this count can catch: see fits().
         blank = len(doc) == 3 and not doc[-1].get_text().strip() and not doc[-1].get_drawings()
         if len(doc) != 2 and not blank:
-            raise SystemExit(f"worksheet: printed {len(doc)} pages for 2; a section overflowed its page")
+            raise SystemExit(f"worksheet: printed {len(doc)} pages for 2")
         if blank:
             doc.delete_page(2)
             doc.save(out + ".tmp", garbage=3, deflate=True)

@@ -6,7 +6,8 @@
 # the author's-note parser and title helpers every edition shares
 # (publishing/inline.py), the print path's URL fetcher, font pin and opener art
 # (publishing/book.py, publishing/openers.py), the technical paper's evidence
-# split (publishing/technical.py) and the field guides' scene registry.
+# split (publishing/technical.py), the field guides' scene registry and the
+# worksheet's overflow refusal (publishing/worksheet.py).
 #
 # Usage: bash scripts/publishing.test.sh
 
@@ -418,6 +419,33 @@ import guide_scenes
 for key in ("g1", "g2"):
     pages = sorted(n for k, n in guide_scenes.SCENES if k == key)
     check(f"guide {key} has one scene per page, 1 to 20 with no gap", list(range(1, 21)), pages)
+
+import guides
+import worksheet
+# The fonts live outside the repo; any fixed advance exercises the layout.
+guides._metrics = lambda font: ({32: 0}, {0: (500, 0)}, 1000)
+flow = {"name": "Flow", "question": "Q?", "statements": ["A statement."] * 3}
+copy = {"title": "T", "subtitle": "S", "how": "H", "scale": ["0 no", "1 some", "2 yes"], "flows": [flow] * 5,
+        "before": ["B."], "gap_prompts": ["P?"], "source": "S", "cta": "C"}
+
+
+def refused(page, c):
+    try:
+        page(c)
+        return False
+    except SystemExit:
+        return True
+
+
+long_flow = {**flow, "statements": ["A statement that runs long. " * 60] * 3}
+check("worksheet copy that fits draws both pages", (False, False),
+      (refused(worksheet.page_one, copy), refused(worksheet.page_two, copy)))
+check("worksheet copy too long for page 1 is refused, not clipped", True,
+      refused(worksheet.page_one, {**copy, "flows": [long_flow] * 5}))
+check("worksheet copy too long for page 2 is refused, not clipped", True,
+      refused(worksheet.page_two, {**copy, "flows": [long_flow] * 5}))
+check("a gap prompt too wide for its box is refused", True,
+      refused(worksheet.page_two, {**copy, "gap_prompts": ["A long prompt. " * 20]}))
 
 sys.exit(1 if failed else 0)
 EOF

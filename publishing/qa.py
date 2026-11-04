@@ -73,7 +73,7 @@ def spread(doc, left, out):
 
 def main(argv=None):
     argv = argv if argv is not None else sys.argv[2:]
-    editions = [a for a in argv if not a.replace(",", "").replace("-", "").isdigit()] or ["book", "technical", "guide-01", "guide-02"]
+    editions = [a for a in argv if not a.replace(",", "").replace("-", "").isdigit()] or ["book", "technical", "guide-01", "guide-02", "worksheet"]
     nums = [a for a in argv if a not in editions]
     wanted = None
     if nums:

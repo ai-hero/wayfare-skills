@@ -10,8 +10,8 @@ design system. What lands in `$WEBSITE_DIR`:
   own chunk rather than one bundle the size of the book;
 - for each blog post below, a generated component under `ui/src/data/platform/`, its entry in
   `blogs.ts`, and its line in `scripts/generate-blog-thumbnails.cjs`;
-- `ui/public/book/assets/`: one file per figure, SVG for drawn diagrams and PNG for cards, named by
-  content hash so a rebuilt figure is never served from a stale cache;
+- `ui/public/book/assets/`: one file per figure or chapter opener, SVG for drawn diagrams and openers
+  and PNG for cards, named by content hash so a rebuilt file is never served from a stale cache;
 - every file under `publishing/web/site/` (the routes, components and an e2e spec), copied over
   as is.
 

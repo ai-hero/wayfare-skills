@@ -153,17 +153,23 @@ def svg(n, cls="opener-art"):
             f'role="img" aria-hidden="true">{"".join(g.out)}</svg>')
 
 
+def standalone(n):
+    """The opener as a standalone SVG file's text, sized in points, or "" for a chapter with none."""
+    body = svg(n, "")
+    return body.replace(' class=""', f' width="{W:g}" height="{H:g}"', 1) + "\n" if body else ""
+
+
 def write_png(n, folder, width_px=1200):
     """The opener as a PNG, for an edition that needs an image file. Printed through Chrome, not
     MuPDF: MuPDF ignores the CSS transforms that pose the arms and draws them straight. The art has
     no text, so it is printed without fonts."""
-    body = svg(n, "")
+    body = standalone(n)
     if not body:
         return None
     from cover import chrome_pdf, raster
     os.makedirs(folder, exist_ok=True)
     pdf = os.path.join(folder, f"opener-chapter-{n}.pdf")
     path = pdf[:-4] + ".png"
-    chrome_pdf(body.replace(' class=""', f' width="{W:g}" height="{H:g}"', 1), W, H, pdf, fonts=False)
+    chrome_pdf(body, W, H, pdf, fonts=False)
     raster(pdf, path, size=(width_px, round(width_px * H / W)))
     return path

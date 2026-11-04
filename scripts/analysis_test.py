@@ -604,16 +604,20 @@ class ChangeSetQueries(unittest.TestCase):
         self.assertEqual(RQ_h2_023.answer(self.con)[0]["performance_change_sets_per_working_hour"], 3)
         self.assertEqual(RQ_h7_021.answer(self.con)[0]["haiku_labeled_changesets"], 1)
         self.assertEqual(RQ_h7_026.answer(self.con)[0]["commits_reclustered_into_change_sets"], 3)
+        # Tracked files only: the gitignored views.py and deck.py exist only in a
+        # checkout holding the study's results, so walking the folder makes this
+        # pass in CI and fail on that checkout.
+        tracked = subprocess.run(["git", "ls-files", "--", "questions", "report"], cwd=ANALYSIS,
+                                 capture_output=True, text=True, check=True).stdout.split()
+        sources = [path for path in tracked if path.endswith(".py")]
+        self.assertTrue(sources)
         readers = []
-        for folder in ("questions", "report"):
-            for root, _, files in os.walk(os.path.join(ANALYSIS, folder)):
-                for name in files:
-                    if name.endswith(".py"):
-                        with open(os.path.join(root, name), encoding="utf-8") as f:
-                            text = f.read()
-                        if re.search(r"\bchangesets\b(?!_)", text) or \
-                                ("changesets_by_commit" in text and "content_hash" in text):
-                            readers.append(name)
+        for path in sources:
+            with open(os.path.join(ANALYSIS, path), encoding="utf-8") as f:
+                text = f.read()
+            if re.search(r"\bchangesets\b(?!_)", text) or \
+                    ("changesets_by_commit" in text and "content_hash" in text):
+                readers.append(path)
         self.assertEqual(readers, [])
 
 

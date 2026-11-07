@@ -39,11 +39,13 @@ controls:
     and the repo quietly stops receiving security fixes. Both halves are
     required; either alone is a false sense of safety. Moving the pins has its
     own risk: a release adopted the day it publishes can be the poisoned one,
-    caught and yanked days later. So an adopted release must be old enough for
-    the tier of the advisory it fixes: 0 days for critical or CISA KEV, 2 for
-    high, 7 for medium, low, or none. Dependabot's cooldown enforces only the
-    last row and does not apply to security updates, so the rest is held at
-    review (references/dependency-cooldown.md).
+    caught and yanked days later. So a version update must be 7 days old when
+    adopted. A package whose update closes an open Dependabot alert has no age
+    wait, at any severity: a fresh poisoned release could ride a real advisory,
+    and extra checks on a security update younger than 7 days plus review are
+    what remain. Dependabot's cooldown covers version updates only, and a
+    rebase can retarget past it, so age is measured again at review
+    (references/dependency-cooldown.md).
 
 - id: C-APPROVAL
   title: Automated approval cannot be subverted

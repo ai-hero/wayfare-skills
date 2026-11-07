@@ -140,11 +140,11 @@ expensive-model work):
   risk, so flag it)?
 - Which fixed release may we adopt today? Read
   `../../references/dependency-cooldown.md` before naming the version for a
-  hand-made fix (an override, a transitive bump, a manifest edit). Only the
-  alert's first patched version gets the advisory's tier; any later release is
-  on its own row, usually 7 days. Pick the newest fixed release that has cleared
-  its row, not simply the newest release. If none has, the plan item names the
-  first patched version and the date it clears.
+  hand-made fix (an override, a transitive bump, a manifest edit). A release at
+  or past the alert's first patched version closes the alert and has no age
+  wait, at any severity; one younger than 7 days gets the reference's two extra
+  checks. If the release you would pick fails a check, the plan item says which
+  check and that it needs a person.
 - What is the correct update command for this ecosystem
   (`npm install PACKAGE@VERSION`, `uv lock && uv sync` after a `pyproject.toml`
   edit, a version pin bump in `.github/workflows/*.yml`)?

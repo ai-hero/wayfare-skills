@@ -158,8 +158,8 @@ for that reason and closes the bots' PRs after its own merge.
    rebase. Then check release age per
    [dependency-cooldown.md](dependency-cooldown.md), on the head as it now
    stands: a hold STOPs here with the hold lines, before the test and before the
-   approval in step 3 that would otherwise stand on a release too young for its
-   tier, and the item keeps its status. Once the check passes, flip the item to
+   approval in step 3 that would otherwise stand on a release the rule holds,
+   and the item keeps its status. Once the check passes, flip the item to
    `active`, because this is the first act on the PR.
 
 2. **Test.** `gh pr checkout N`, which puts this checkout on the bot's branch,

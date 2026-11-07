@@ -114,10 +114,10 @@ Every audit judges `main`. The engine re-runs itself from the plugin checkout's
 branch the checkout is on, and by default it reads each audited repo at
 `origin/main` too.
 
-A dependency release is adopted only once it is old enough, and how old depends
-on the most severe advisory it fixes. `references/dependency-cooldown.md` is the
-rule's one home; the bot-PR procedure, `wayfare-ship-pr` and the security audit
-apply it rather than restating the tiers.
+The 7-day age wait on a dependency release applies to version updates only; a
+package whose update closes an open Dependabot alert has none, at any severity.
+`references/dependency-cooldown.md` is the rule's one home; the bot-PR procedure,
+`wayfare-ship-pr` and the security audit apply it rather than restating it.
 
 ## Decisions
 

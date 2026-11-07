@@ -27,7 +27,7 @@ stronger model investigates, judges, and specifies the fix. Cheaper models
 execute the plan. **The plan is the product.** This skill absorbed the former
 `scan-vulns` skill. Parts A and B retain its Dependabot and Docker CVE scans.
 Put apply and commit commands in the plan's execution recipe. Do not execute
-them in this session's working tree.
+them in this session's working tree. Deep audit: `wayfare:wayfare-audit-deep`.
 
 ## The Hard Rule
 

@@ -35,8 +35,9 @@ typecheck:
     @python3 -c "\
     import json, sys, yaml; \
     from pathlib import Path; \
-    j=[p for p in Path('.').rglob('*.json') if '.git/' not in str(p)]; \
-    y=[p for p in list(Path('.').rglob('*.yml'))+list(Path('.').rglob('*.yaml')) if '.git/' not in str(p)]; \
+    skip=('.git/', 'assets/security-audit/'); \
+    j=[p for p in Path('.').rglob('*.json') if not any(s in str(p) for s in skip)]; \
+    y=[p for p in list(Path('.').rglob('*.yml'))+list(Path('.').rglob('*.yaml')) if not any(s in str(p) for s in skip)]; \
     [json.load(open(p)) for p in j]; \
     [yaml.safe_load(open(p)) for p in y]; \
     print(f'{len(j)} JSON + {len(y)} YAML parsed')"
@@ -56,6 +57,14 @@ test:
 # Plugin structure: skill frontmatter, cross-references, naming.
 validate:
     @bash scripts/validate.sh
+
+# Network: compares the vendored tree with its pinned upstream commit. Not in
+# `check`, so the normal path stays offline; vendored-pin.yaml runs it on a PR
+# that touches the tree.
+
+# The vendored security audit matches its pinned upstream commit.
+verify-vendored-upstream:
+    @python3 scripts/security_audit_upstream.py verify --upstream
 
 # Delegated to pre-commit for the same reason lint is: these hooks are pied
 # there, and a second copy of the same formatter can disagree with the one the

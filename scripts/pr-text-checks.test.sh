@@ -258,6 +258,13 @@ printf 'debugger;\n' > "$R/new.js" # leftovers: ok
 check "an untracked new file is read" "debug" "$(left)"
 printf 'console.log(x) // leftovers: ok, the fixture\n' > "$R/new.js" # leftovers: ok
 check "the allow marker accepts a line" "" "$(left)"
+mkdir -p "$R/assets/security-audit/skill"
+printf 'console.log(x)\n' > "$R/assets/security-audit/skill/v.cjs" # leftovers: ok
+check "the vendored tree is not scanned" "" "$(left)"
+mkdir -p "$R/assets/security-audit-x"
+printf 'console.log(x)\n' > "$R/assets/security-audit-x/o.cjs" # leftovers: ok
+check "a sibling asset still is" "debug" "$(left)"
+rm "$R/assets/security-audit-x/o.cjs" "$R/assets/security-audit/skill/v.cjs"
 rm "$R/new.js"
 git -C "$R" commit -q -m wip
 

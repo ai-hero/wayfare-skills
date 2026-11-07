@@ -18,6 +18,11 @@ default_install_hook_types:
   - commit-msg
   - pre-push
 
+# Third-party bytes held to a hash manifest. Top-level, so a hook added later is
+# excluded too: mdformat, markdownlint --fix and the whitespace fixers would
+# rewrite these files and the copy could no longer be compared with upstream.
+exclude: ^assets/security-audit/
+
 repos:
   # ===========================================================================
   # General safety checks

@@ -1,0 +1,3 @@
+# Third-party bytes held to a hash manifest. Without -text, core.autocrlf rewrites
+# them on checkout and the manifest check fails on that machine alone.
+assets/security-audit/** -text linguist-vendored

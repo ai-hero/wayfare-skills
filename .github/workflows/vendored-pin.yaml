@@ -1,0 +1,34 @@
+name: Vendored pin
+
+# Only on a PR that touches the tree, so the normal path stays offline and this
+# spends minutes only when a refresh or an edit is actually in review.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "assets/security-audit/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vendored-pin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Vendored tree matches its pinned commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4
+
+      # Offline, validate.sh cannot see a file and its manifest row edited
+      # together. Exit 2 (upstream unreachable) fails here too: a pin nobody
+      # could compare is not a pin that held.
+      - name: compare with upstream
+        run: just verify-vendored-upstream
+        env:
+          GH_TOKEN: ${{ github.token }}

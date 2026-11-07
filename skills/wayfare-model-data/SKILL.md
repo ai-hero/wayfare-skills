@@ -8,7 +8,7 @@ compatibility: "Requires the complete Wayfare plugin, git, and a Go backend on M
 
 # Model data: one representation, one access path, indexed and measured
 
-Every fleet backend stores documents in MongoDB and caches reads in Redis. Each
+Fleet backends store documents in MongoDB, and most cache reads in Redis. Each
 repo holds its own copy of the store and cache helpers. This skill gives every
 data change the same contract, then requires evidence for it.
 
@@ -27,14 +27,22 @@ WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfar
 hero_at_fleet_root && echo "FLEET_ROOT" || true
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
-git -C "$ROOT" grep -q 'go.mongodb.org/mongo-driver' -- '*.go' || echo "NO_MONGO"
+MONGO_RC=0
+git -C "$ROOT" grep -q --untracked 'go.mongodb.org/mongo-driver' -- '*.go' || MONGO_RC=$?
+case "$MONGO_RC" in
+  0) ;;
+  1) echo "NO_MONGO" ;;
+  *) echo "GREP_FAILED rc=$MONGO_RC" ;;
+esac
+
 ```
 
 If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
 **At the fleet root** in [docs/FLEET-MD.md](../../docs/FLEET-MD.md).
 
 If `NO_MONGO` printed, report that this skill does not apply and stop. If
-`HERO.md` is missing, continue with detection.
+`GREP_FAILED` printed, report the failure and stop. Do not read it as
+`NO_MONGO`. If `HERO.md` is missing, continue with detection.
 
 ## Step 1: Find this repo's versions of the helpers
 
@@ -43,6 +51,7 @@ repo's own files before you write code. Follow the repo's existing variant. Do
 not move a repo to another variant as part of a feature.
 
 ```bash
+cd "$(git rev-parse --show-toplevel)" || exit 1
 git grep -l 'bson:"' -- '*.go' ':!*_test.go'
 git grep -nE 'func .*\) (Workspace|collection|tenant|coll)\(|func .*[Ss]copedFilter' -- '*.go' ':!*_test.go'
 git grep -nE 'IndexModel|keys: +bson' -- '*.go' ':!*_test.go'
@@ -51,7 +60,8 @@ git grep -nE 'cachedSlice|cachedCollections|cacheRegistry|BumpGeneration' -- '*.
 git grep -lE 'testcontainers|MONGODB_URI|MONGODB_TEST_URI|DRIFT_TEST_MONGO_URI' -- '*_test.go'
 ```
 
-The commands find, in order, each item below. Expect one of the known variants.
+The commands find, in order, each item below. If a repo fits no variant, say so
+and read its code. Do not assume a helper exists.
 
 - **Stored types:** `lib/domain`, `lib/types`, `lib/store`, or drift's `lib/`
   envelope.
@@ -71,13 +81,11 @@ If you must break a recorded decision, ask the user first.
 
 Then find where the data runs:
 
-- `docker-compose.prod.yaml` cannot answer this. Some apps on Atlas also define
+- `docker-compose.prod.yaml` cannot answer this. An app on Atlas can also define
   a `mongo:` service, and an environment value overrides its URI.
-- On 2026-11-07, the infrastructure declared Atlas Flex for `auth`,
-  `aihero-steadfast`, and `elevate-commons`. Atlas Flex has the limits in
-  [references/optimize.md](references/optimize.md).
-- The other apps had no Atlas module. Ask the user to confirm the target before
-  a decision depends on it.
+- Ask the user whether production is Atlas Flex or a `mongo:8` container. Atlas
+  Flex has the limits in [references/optimize.md](references/optimize.md).
+- Do not write the answer into this plugin. This repo is public.
 
 ## Step 2: Apply the contract
 

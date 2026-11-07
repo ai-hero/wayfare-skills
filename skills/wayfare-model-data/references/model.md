@@ -13,9 +13,13 @@ A new field needs these decisions in the same change:
 1. **Field name.** Use `snake_case` in the bson tag. Do not reuse the name of a
    removed field.
 2. **Absent value.** Old documents do not have the new field. State what the
-   code reads for an absent field, and test it.
-3. **Proto.** Add the field with the next free number, and never renumber. Run
-   the repo's `proto-breaking` command before you change a shipped proto.
+   code reads for an absent field, and test it. A filter does not see Go's zero
+   value: `{archived: false}` skips a document with no such field. Backfill
+   first, or use `{archived: {$ne: true}}`. Use a pointer if the code must tell
+   absent from zero.
+3. **Proto.** Add the field with the next free number, and never renumber. Do
+   not reuse a removed number. Mark it `reserved`. If the repo has a
+   `proto-breaking` command, run it before you change a shipped proto.
 4. **Converter.** Update the hand-written converter in both directions.
 5. **Cache shape.** Read the repo's `lib/cache`. If a cached struct changes
    shape, bump `keyVersion` so a new binary does not decode old JSON.
@@ -27,12 +31,12 @@ repo only.
 
 | Item | Default | Trap |
 | -- | -- | -- |
-| Id | The repo's existing id type | Mixed id types across references make joins fail with no error. Compare a reference's type with its target's `_id` |
+| Id | `bson.ObjectID` `_id`, with references in the same type | Mixed id types across references make joins fail with no error. Compare a reference's type with its target's `_id` |
 | Time | UTC `time.Time`, field name `created_at` or `updated_at` | A date stored as a string sorts by text and cannot use date operators |
-| Tenant | First field of the document and of each compound index | A field that is only in the filter does not protect a cache key |
+| Tenant | First key of each compound index, except a unique index that must hold across tenants | A field that is only in the filter does not protect a cache key |
 | Delete | Hard delete unless the product needs a restore | A soft-delete field must appear in every filter and in the index that serves it |
-| Concurrency | A version or timestamp in the update filter | A read followed by a blind write loses updates |
-| Polymorphic document | One `type` field and one struct per type | A map of unknown fields cannot be indexed or validated |
+| Concurrency | An integer version in the update filter. Treat zero matched as a conflict | A read followed by a blind write loses updates. A timestamp has millisecond precision, so two writes in one millisecond can both match. `{version: 0}` does not match an old document with no version |
+| Polymorphic document | One struct with a `type` field | A map of unknown fields cannot be indexed or validated |
 
 ## Embed or reference
 
@@ -44,7 +48,8 @@ Choose from the read pattern, then check the bound.
 - **Never** use an array that grows with user activity. A document has a 16 MB
   limit. Each element also adds index entries when the array is indexed.
 - **Do not copy** a table-per-entity design from a relational model. If two
-  collections are always read together, embed one in the other.
+  collections are always read together and the child count has a known small
+  bound, embed one in the other.
 - **Copy a field** from another entity only if a read needs it often. Name who
   updates the copy when the source changes.
 

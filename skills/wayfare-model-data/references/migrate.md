@@ -23,23 +23,26 @@ Always set an explicit name. Include each key in the name, in order.
 | -- | -- |
 | Same name, same spec | No-op. This is the idempotence |
 | Same name, different keys or options | Error 86 `IndexKeySpecsConflict`. The boot stops |
-| New name, same keys, different options | Error 85 `IndexOptionsConflict`. The boot stops |
+| New name, same keys, adds `unique`, `sparse`, or `partialFilterExpression` | Succeeds. Both indexes exist |
+| New name, same keys, identical options or `expireAfterSeconds` | Error 85 `IndexOptionsConflict`. The boot stops |
 | No name, extended key list | A second index is created silently |
 | `unique` over existing duplicates | Error 11000 `DuplicateKey`. The boot stops |
 
 ## Change an existing index
 
-If the keys change:
+Create the replacement first, then remove the old index. This order keeps reads
+indexed. It also keeps a unique constraint enforced.
 
 1. Add a step that creates the replacement under a new name.
 2. Deploy, and confirm that the new index exists.
-3. Add a later step that drops the old name. Treat `IndexNotFound` as success.
+3. Add a later step that drops the old name.
+4. Confirm the drop with `getIndexes`. On `mongo:8` a drop of a missing name
+   returned `ok`, so a wrong old name passes with no error.
 
-If only options such as `unique` change, the old and new index cannot exist
-together, because that is error 85:
+Error 85 needs a different path:
 
-1. Add one step that drops the old name, then creates the new name.
-2. Tell the user that reads on those keys are unindexed between the two calls.
+- For identical options, keep the old name. A rename alone gains nothing.
+- For `expireAfterSeconds`, change the value with `collMod`.
 
 ## Before you add a unique index
 
@@ -61,7 +64,7 @@ Use expand and contract. Each release must run beside the previous one.
    fallback.
 
 Do not combine these into one release if old and new code overlap during deploy.
-Auth overlaps. Read the repo's deploy method before you assume it does not.
+Read the repo's deploy file before you assume they do not overlap.
 
 ## Backfill rules
 
@@ -71,8 +74,9 @@ Auth overlaps. Read the repo's deploy method before you assume it does not.
 - Do not scan a whole collection on each boot. A step that always scans costs
   the same on every restart. Use a filter with an index, or use the repo's
   marker mechanism where one exists.
-- Check the boot budget. Repos bound boot at different values, from 30 seconds
-  to 10 minutes. A slow step that exceeds the budget stops the deploy.
+- Check both boot limits, and use the shorter one. The context deadline in
+  `service/main.go` is one. The health check budget in the deploy file is the
+  other, and it can kill the task first.
 - Log the count changed and the duration.
 
 ## Destructive steps

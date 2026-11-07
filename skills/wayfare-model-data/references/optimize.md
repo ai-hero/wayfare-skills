@@ -40,22 +40,25 @@ and a cluster in different regions pay the distance on every command.
 
 ## Add a slow-command log
 
-If the repo logs no command durations, propose this as its own PR. Chain it with
-`chainMonitors`, the repo's existing helper. Then log at `Warn` above a
-configurable threshold.
+If the repo logs no command durations, propose this as its own PR. If the repo
+has a monitor chain such as `chainMonitors`, add to it. If it has no command
+monitor, install one. Log at `Warn` above a configurable threshold.
 
 - Record the collection at `Started`, keyed by `RequestID`. The outcome events
-  carry no command body. Evict by age, as `pendingBumps` does.
-- Log the command name, collection, and `Duration` at the outcome.
+  carry no command body. Evict by age.
+- Log the command name, collection, and `Duration` at the outcome. If the entry
+  was evicted, log without the collection. The oldest commands are the slowest.
 - Do not log filter values. They hold subjects and email addresses.
 
 ## Run explain
 
-Use the dev stack, or a disposable container if the repo has no dev stack:
+Use the dev stack, or a disposable container if the repo has no dev stack.
+Replace `EXPLAIN_NAME` with a name unique to this run, because other sessions
+can run this at the same time:
 
 ```bash
-docker run -d --rm --name explain-mongo mongo:8 --quiet
-docker exec explain-mongo mongosh --quiet test --eval 'SCRIPT'
+docker run -d --rm --name EXPLAIN_NAME mongo:8 --quiet
+docker exec EXPLAIN_NAME mongosh --quiet test --eval 'SCRIPT'
 ```
 
 1. Create the repo's declared indexes for the collection with the exact keys.
@@ -65,7 +68,6 @@ docker exec explain-mongo mongosh --quiet test --eval 'SCRIPT'
    per tenant and per parent to a realistic value, because they set each
    examined count. State your values in the report.
 3. Run the exact filter, sort, and limit:
-4. Run the exact filter, sort, and limit:
 
 ```javascript
 db.COLL.find(FILTER).sort(SORT).limit(N).explain("executionStats")
@@ -76,7 +78,7 @@ Read these fields:
 - `queryPlanner.winningPlan`: walk the stages.
 - `executionStats.totalDocsExamined`, `totalKeysExamined`, and `nReturned`.
 
-Delete the container when you finish: `docker rm -f explain-mongo`.
+Delete the container when you finish: `docker rm -f EXPLAIN_NAME`.
 
 The examined counts prove the plan. Local timings do not predict production,
 because a small seed hides a scan and the container has no network distance. A
@@ -87,14 +89,15 @@ better plan with the same local time is not proof of a production gain.
 | `COLLSCAN` | No usable index. Add one, unless the collection is small and bounded |
 | `SORT` stage above the scan | The index does not supply the order. The whole match is read and sorted |
 | Examined far above returned | The index narrows too little. Move the selective keys forward |
-| `IXSCAN`, examined close to returned, no `SORT` | Correct |
+| `IXSCAN`, examined close to returned, no `SORT`, `nReturned` above 0 | Correct |
+| `nReturned` is 0 | Proves nothing. Fix the seed or the filter, then run it again |
 
 ## Build the compound index
 
 Order the keys as **tenant, then equality, then sort, then range**. Match the
 sort direction, or its exact reverse.
 
-The sort must include every key of the query's sort, including a tie-break.
+The index must include every key of the query's sort, including a tie-break.
 
 | Shape (measured) | Plan | Examined / returned |
 | -- | -- | -- |
@@ -147,8 +150,9 @@ reference.
 
 Use the repo's helper. Read its header comments first.
 
-1. Add the collection to the repo's registry (`cachedCollections` or
-   `cacheRegistry`) and to `ttlFor`.
+1. Add the collection to the repo's cache registry and TTL lookup, if it has
+   them. Names differ by repo: `cachedCollections`, `cacheRegistry`, `ttlFor`,
+   `readKey`, `listTTL`.
 2. Name the read. Pass each owner axis that the filter scopes by.
 3. Pass anything else that changes the returned rows as its own key part.
 4. Confirm how writes invalidate. The monitor handles this in most repos.

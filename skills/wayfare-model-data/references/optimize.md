@@ -46,8 +46,8 @@ such as `chainMonitors`. If the repo has no command monitor, install one.
 
 - Record the collection at `Started`, keyed by `RequestID`. The outcome events
   carry no command body. Evict by age.
-- Log the command name, collection, and `Duration` at the outcome, at `Warn`
-  above `MONGO_SLOW_COMMAND`. If the entry was evicted, log without the
+- Log the command name, collection, and `Duration` at the outcome, at `Warn` at
+  or above `MONGO_SLOW_COMMAND`. If the entry was evicted, log without the
   collection. The oldest commands are the slowest.
 
 Read the log with these limits:
@@ -66,7 +66,8 @@ These rules apply to every log line in a store, not only the slow-command log.
 - Do not log a driver error from a write, or its `Failure`. A duplicate-key
   error quotes the duplicated value. Log the operation, the collection, and the
   error code instead.
-- Return the error to the caller unchanged. Keep any log of it to the code.
+- Return the error to the caller. A handler maps it to a status code and never
+  sends its text to the client.
 
 ## Run explain
 

@@ -113,10 +113,11 @@ defaults.
 
 ### Step 1: Identify the PR
 
-If `$ARGUMENTS` provided:
+If `$ARGUMENTS` names a PR (a goal turn's permissions line alone does not):
 
 ```bash
-gh pr view "$ARGUMENTS" --json number,url,headRefName,baseRefName,state,isDraft,mergeable,mergeStateStatus
+PR_ARG=$(printf '%s\n' "$ARGUMENTS" | sed 's/gates pre-authorized in-session.*//' | awk 'NF{print $1; exit}')
+gh pr view "$PR_ARG" --json number,url,headRefName,baseRefName,state,isDraft,mergeable,mergeStateStatus
 ```
 
 Otherwise auto-detect from the current branch:
@@ -523,9 +524,24 @@ Record the timestamp first so we can find the workflow run we just triggered
 without confusing it with prior runs.
 
 ```bash
-TRIGGERED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-gh pr comment $PR_NUMBER --body "@auto-approve"
+date -u +%Y-%m-%dT%H:%M:%SZ
 ```
+
+Keep that value as `TRIGGERED_AT`, then post the trigger as its own Bash call,
+with the literal PR number and nothing chained to it:
+
+```bash
+gh pr comment PR_NUMBER --body "@auto-approve"
+```
+
+**This comment and the merge in Step 7a each run alone.** An allow rule covers a
+chain only when every part of it is allowed, and a redirect adds a check on its
+target. Anything extra can send the call to the auto-mode classifier, which by
+default blocks an agent approving or merging its own PR.
+
+**If the post fails or is blocked, stop here.** Return `stop: awaiting-human`
+naming the action, and do not continue to Step 5. Never reword the command or
+move it to a script to get past a block.
 
 The workflow run is keyed off the `issue_comment` event, not a commit SHA. We
 capture `TRIGGERED_AT` so Step 5 can disambiguate this run from prior
@@ -541,6 +557,14 @@ malformed URL silently. Capture the workflow ID first, bail out loudly if it is
 empty, then poll the runs endpoint directly:
 
 ```bash
+TRIGGERED_AT=ISO_VALUE_FROM_STEP_4
+# Empty or unfilled, `.created_at > ""` matches every earlier run, so this latches
+# onto an old run and a goal can merge on a stale approval.
+case "$TRIGGERED_AT" in
+  20[0-9][0-9]-*T*Z) ;;
+  *) echo "TRIGGERED_AT is not set; use the value Step 4 printed."; exit 1 ;;
+esac
+
 WF_ID=$(gh api "/repos/{owner}/{repo}/actions/workflows" \
   --jq '.workflows[] | select(.name == "Auto Approve") | .id' | head -1)
 
@@ -747,6 +771,7 @@ case "$MERGE_METHOD" in
     ;;
 esac
 MERGE_FLAG="--$MERGE_METHOD"
+echo "MERGE_FLAG=$MERGE_FLAG"
 
 gh pr view $PR_NUMBER --json mergeable,mergeStateStatus,reviewDecision,statusCheckRollup,headRefName
 # mergeStateStatus BEHIND or DIRTY here → Step 3a once (rebase, re-trigger,
@@ -774,7 +799,9 @@ case "$STACKED_COUNT" in ''|*[!0-9]*)
 esac
 ```
 
-`STACKED_COUNT > 0` is a **stop-and-ask**, not a warning to print past:
+`STACKED_COUNT > 0` is a **stop-and-ask**, not a warning to print past. Under a
+goal turn's permissions line, return `stop: awaiting-human` naming the
+dependents and merge nothing:
 
 ```
 PR #104 has 1 open PR stacked on its branch:
@@ -842,24 +869,27 @@ Merge now? [y/N]
 whether to retry without `--auto`:
 
 ```bash
-gh pr merge $PR_NUMBER $MERGE_FLAG --auto 2> merge_err.log
-RC=$?
-
-if [ $RC -ne 0 ]; then
-  if grep -qi "auto.merge.*not.*enabled\|auto-merge is not allowed" merge_err.log; then
-    # Repo has auto-merge disabled — fall back to immediate merge with
-    # the same method. This is safe: branch protection still applies.
-    gh pr merge $PR_NUMBER $MERGE_FLAG
-  else
-    # Branch protection, missing checks, conflicts, permissions — surface
-    # the error and stop. Do NOT retry without --auto, because that path
-    # bypasses the wait-for-checks safety net.
-    cat merge_err.log
-    echo "Merge failed. Resolve the underlying issue and re-run wayfare:wayfare-ship-pr, or merge manually."
-    exit 1
-  fi
-fi
+gh pr merge PR_NUMBER MERGE_FLAG --auto
 ```
+
+Run it as its own Bash call, with the literal number and the `MERGE_FLAG` the
+check above printed, and no redirect (Step 4 says why). Read its exit status and
+stderr from the result. A blocked merge is Step 4's stop, not a failure to
+retry.
+
+- **Non-zero, and stderr matches `auto.?merge.*not.*(enabled|allowed)`, ignoring
+  case:** the repo has auto-merge disabled. Fall back to an immediate merge with
+  the same method. This is safe: branch protection still applies.
+
+  ```bash
+  gh pr merge PR_NUMBER MERGE_FLAG
+  ```
+
+- **Non-zero for any other reason** (branch protection, missing checks,
+  conflicts, permissions): surface the error, say
+  `Merge failed. Resolve the underlying issue and re-run wayfare:wayfare-ship-pr, or merge manually.`,
+  and stop. Do NOT retry without `--auto`, because that path bypasses the
+  wait-for-checks safety net.
 
 **Never force-merge or override branch protection.** Never pass `--admin`. The
 fallback above is *only* for the specific "auto-merge not enabled on this repo"
@@ -1098,13 +1128,12 @@ if [ "$RESET_OK" = "true" ] && [ "$MERGED" = "true" ]; then
     fi
   fi
 fi
-
-# 6. Tidy up the merge-error tempfile from Step 7a regardless of success.
-rm -f merge_err.log
 ```
 
 If the user confirms the cleanup prompt above, run `git branch -d BRANCH_NAME`
-for each listed branch. Do NOT use `-D`; refuse to force-delete.
+for each listed branch. Do NOT use `-D`; refuse to force-delete. Under a goal
+turn's permissions line, ignore that printed question: report the list, delete
+nothing, and continue.
 
 After the cleanup, suggest (do not auto-execute) running `/clear` to start the
 next task on a fresh conversation context. The orchestrating skill (e.g.
@@ -1113,7 +1142,8 @@ clobber the conversation here.
 
 #### Step 7c: the REQUEST_CHANGES path, surfacing it and offering next steps
 
-Show the verdict comment, then ask:
+Show the verdict comment. Under a goal turn's permissions line, return
+`stop: awaiting-human` naming the verdict and the PR. Otherwise ask:
 
 ```
 Auto-approve REQUESTED CHANGES on PR #PR_NUMBER.

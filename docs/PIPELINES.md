@@ -87,7 +87,7 @@ wayfare-build-task drives it directly without delegating):
 | 2 | `implement` | `inline` | executes the resolved work-item against its `success` criteria |
 | 3 | `simplify` | `/simplify` (external) | review the dirty diff for reuse/quality/efficiency and fix; `(–)` if `/simplify` unavailable |
 | 4 | `push` | `wayfare:wayfare-push-pr` | tests first (lint/typecheck/unit + UI smoke via Playwright MCP), then commits outstanding work with a conventional commit and pushes a draft PR |
-| 5 | `self-review` | `wayfare:wayfare-review-pr --no-mark-ready` (Steps 1 to 8) | run the pr-review-toolkit agents plus a security pass on the draft, apply fixes |
+| 5 | `self-review` | `wayfare:wayfare-review-pr --no-mark-ready` (Steps 1 to 8) | run the pr-review-toolkit agents plus a security pass on the draft, apply fixes (a goal's `respond` answers the fix prompt) |
 | 6 | `mark-ready` | `wayfare:wayfare-review-pr`'s own Step 9, or `gh pr ready` | hard user gate that converts draft → ready |
 | 7 | `await-review` | `inline` (poll) | poll for the configured Code Review Agent's first comment; `(–)` if `agent: none` |
 | 8 | `respond` | `wayfare:wayfare-respond-pr` | address the bot's inline comments and resolve threads |

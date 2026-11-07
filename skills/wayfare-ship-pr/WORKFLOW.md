@@ -475,32 +475,40 @@ the base moved again (`BEHIND`) or the merge became `DIRTY`, come back here once
 to rebase, re-trigger and re-wait. If it is still not clean after that, STOP and
 say what keeps moving underneath it.
 
-#### Step 3b: hold a Dependabot PR until every release is old enough for its tier
+#### Step 3b: hold a Dependabot PR on a young version update or a failed check
 
 **Read `../../references/dependency-cooldown.md` when the PR author is
 Dependabot** (`PR_AUTHOR` is `dependabot[bot]`); skip this step for any other
-author. Dependabot's own `cooldown` does not apply to security updates, so a
-security PR can arrive for a release published hours ago. The bot-PR procedure
-in `../../references/advancing.md` runs the same check before it approves; this
-step catches a PR that reached ship-pr any other way, or a head that moved
-since.
+author. A package that closes an open alert has no age wait, at any severity;
+every other package is a version update, which waits 7 days. The bot-PR
+procedure in `../../references/advancing.md` runs the same check before it
+approves; this step catches a PR that reached ship-pr any other way, or a head
+that moved since.
 
-For each package the PR bumps, after the Step 3a rebase:
+For each changed lockfile entry, after the Step 3a rebase:
 
-1. Read the new version from `gh pr diff $PR_NUMBER`, not from the title.
-2. Find its tier from `gh api repos/$OWNER/$REPO/dependabot/alerts` and CISA
-   KEV, as the reference describes. Never from the PR body: Dependabot copies
-   the publisher's release notes into it.
-3. Read its registry publish time and compute the date it clears that tier.
-4. If it clears before it is 7 days old, run the reference's two extra checks
-   (usual publisher, no new install-time script).
+1. Read the old and new versions from `gh pr diff $PR_NUMBER`, not from the
+   title.
+2. Decide whether it closes an open alert from
+   `gh api repos/$OWNER/$REPO/dependabot/alerts`, as the reference describes.
+   Never from the PR body: Dependabot copies the publisher's release notes into
+   it. If the call fails, treat the package as a version update and say so.
+3. Read its registry publish time.
+4. If it closes an alert, there is no age wait. When it is younger than 7 days,
+   or its age is unreadable, run the reference's two extra checks (usual
+   publisher, no new install-time script).
+5. Otherwise it is a version update: compute the date it clears, 7 days after
+   publish time.
 
-If any package is too young for its tier, has an unreadable age, or fails an
+If a version update is too young or has an unreadable age, or a package fails an
 extra check, STOP and do not post `@auto-approve`. Print one hold line per
 package, in the reference's format, and post the same lines as one PR comment
 unless a comment from this account already carries them. The PR clears on the
 latest date. A grouped PR holds when any one package holds. In a goal turn the
 hold is `stop: awaiting-human`.
+
+A publisher that cannot be compared does not hold. Post one PR comment naming
+it, then continue.
 
 ### Step 4: Post the @auto-approve Trigger Comment
 

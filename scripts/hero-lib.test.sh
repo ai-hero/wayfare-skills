@@ -86,8 +86,8 @@ mkdir -p "$TMP/fleet" "$TMP/nofleet/repo"
 # hero_fleet_root prints a physical path; macOS mktemp hands back the /var
 # symlink, so resolve the fixture the same way or every path check fails.
 F="$(cd "$TMP/fleet" && pwd -P)"
-mkdir -p "$F/auth" "$F/web/deep"
-cat > "$F/FLEET.md" <<'EOF'
+mkdir -p "$F/auth" "$F/web/deep" "$F/.fleet"
+cat > "$F/.fleet/FLEET.md" <<'EOF'
 # Fleet
 
 ## Fleet
@@ -163,21 +163,21 @@ EOF
 
 # The heading's trailing spaces cannot live in this file because the
 # trailing-whitespace hook strips them, so they are added after the heredoc.
-awk '!done && /^### auth$/ { print "### auth   "; done = 1; next } { print }' "$F/FLEET.md" > "$F/FLEET.md.tmp" && mv "$F/FLEET.md.tmp" "$F/FLEET.md"
+awk '!done && /^### auth$/ { print "### auth   "; done = 1; next } { print }' "$F/.fleet/FLEET.md" > "$F/FLEET.md.tmp" && mv "$F/FLEET.md.tmp" "$F/.fleet/FLEET.md"
 
 check "fleet-root: found from a nested dir" \
   "$F" "$(hero_fleet_root "$F/web/deep")"
 check "fleet-root: the fleet folder itself" \
   "$F" "$(hero_fleet_root "$F")"
 hero_fleet_root "$TMP/nofleet/repo" >/dev/null 2>&1; rc=$?
-# TMP lives under a system temp dir that carries no FLEET.md, so the walk
+# TMP lives under a system temp dir that carries no fleet map, so the walk
 # must reach / and fail rather than find a stray file on the way up.
 check "fleet-root: absent returns 1" "1" "$rc"
 
-hero_at_fleet_root "$F"; check "at-fleet-root: FLEET.md and no HERO.md" "0" "$?"
+hero_at_fleet_root "$F"; check "at-fleet-root: .fleet/FLEET.md and no HERO.md" "0" "$?"
 hero_at_fleet_root "$F/auth"; check "at-fleet-root: a repo dir is not" "1" "$?"
 touch "$F/HERO.md"
-hero_at_fleet_root "$F"; check "at-fleet-root: HERO.md beside FLEET.md means repo" "1" "$?"
+hero_at_fleet_root "$F"; check "at-fleet-root: HERO.md beside .fleet/ means repo" "1" "$?"
 rm "$F/HERO.md"
 
 check "fleet-field: reads the ## Fleet section" \
@@ -202,7 +202,7 @@ hero_fleet_repo_field example port "$F" >/dev/null 2>&1
 check "repo-field: an H3 outside ## Repos does not answer for a repo row" "1" "$?"
 hero_fleet_repo_field fenced port "$F" >/dev/null 2>&1
 check "repo-field: a fenced example row is skipped" "1" "$?"
-hero_md_field "$F/FLEET.md" port auth >/dev/null 2>&1
+hero_md_field "$F/.fleet/FLEET.md" port auth >/dev/null 2>&1
 check "md-field: a bare BLOCK name is rejected, not read as absent" "2" "$?"
 
 check "repos: TSV — group lowercased, port de-quoted, comment stripped, trailing slash dropped, absolute kept, fenced/foreign rows absent" \
@@ -220,8 +220,8 @@ check "repos: the outside-the-fleet reason names the resolved path" \
 # written, so a relative path through a symlink to the same place stays out.
 G="$TMP/gfleet"; mkdir -p "$G/inside" "$TMP/gout/abs" "$TMP/ghome/.plug/tilde"
 G="$(cd "$G" && pwd -P)"; GOUT="$(cd "$TMP/gout" && pwd -P)"; GHOME="$(cd "$TMP/ghome" && pwd -P)"
-ln -s "$GOUT/abs" "$G/linked"
-cat > "$G/FLEET.md" <<EOF
+ln -s "$GOUT/abs" "$G/linked"; mkdir -p "$G/.fleet"
+cat > "$G/.fleet/FLEET.md" <<EOF
 ## Repos
 
 ### inside
@@ -261,46 +261,75 @@ if command -v zsh >/dev/null 2>&1; then
     "auth" "$(zsh -c ". '$LIB'; hero_fleet_repos '$F' 2>/dev/null | head -1 | cut -f1")"
 fi
 
-# A committed FLEET.md (HERO.md beside it) is repo content, never the fleet.
-mkdir -p "$F/auth/deep"; printf '## Repos\n' > "$F/auth/FLEET.md"; touch "$F/auth/HERO.md"
-check "fleet-root: passes over a FLEET.md inside a repo and keeps walking" \
+# A committed map (HERO.md beside it) is repo content, never the fleet.
+mkdir -p "$F/auth/deep" "$F/auth/.fleet"; printf '## Repos\n' > "$F/auth/.fleet/FLEET.md"; touch "$F/auth/HERO.md"
+check "fleet-root: passes over a .fleet/FLEET.md inside a repo and keeps walking" \
   "$F" "$(hero_fleet_root "$F/auth/deep" 2>/dev/null)"
-rm "$F/auth/FLEET.md" "$F/auth/HERO.md"
+rm -r "$F/auth/.fleet" "$F/auth/HERO.md"
 check "fleet-root: prints the physical path from a symlinked start" \
   "$F" "$(hero_fleet_root "$TMP/fleet/web/deep")"
 check "fleet-root: defaults to PWD" \
   "$F" "$(cd "$F/web" && hero_fleet_root)"
 
-# A FLEET.md inside a git work tree is a clone's content: its register would run
-# the clone's checkers.py. The folder holding FLEET.md is tested, never the
-# register, so a git-checkout .fleet/ under a plain folder still resolves.
-mkdir -p "$F/.fleet" "$TMP/clone/sub"; git init -q "$TMP/clone" 2>/dev/null
-printf '## Repos\n' > "$TMP/clone/FLEET.md"
+# A map inside a git work tree is a clone's content: its register would run
+# the clone's checkers.py. The folder holding .fleet/ is tested, never .fleet/
+# itself, so the register being its own git checkout still resolves. Both
+# spellings are checked: the legacy top-level FLEET.md is still read.
+mkdir -p "$TMP/clone/sub" "$TMP/clone/.fleet"; git init -q "$TMP/clone" 2>/dev/null
+printf '## Repos\n' > "$TMP/clone/.fleet/FLEET.md"
 CLONE="$(cd "$TMP/clone" && pwd -P)"
-hero_fleet_root "$CLONE/sub" >/dev/null 2>&1; check "fleet-root: a FLEET.md in a git work tree is never the fleet" "1" "$?"
+hero_fleet_root "$CLONE/sub" >/dev/null 2>&1; check "fleet-root: a committed .fleet/FLEET.md in a git work tree is never the fleet" "1" "$?"
 check "fleet-root: the pass-over is named on stderr" \
   "1" "$(hero_fleet_root "$CLONE/sub" 2>&1 >/dev/null | grep -c "inside a git work tree")"
 hero_at_fleet_root "$CLONE"; check "at-fleet-root: a git work tree is not" "1" "$?"
+rm -rf "$CLONE/.fleet"; printf '## Repos\n' > "$CLONE/FLEET.md"
+hero_fleet_root "$CLONE/sub" >/dev/null 2>&1; check "fleet-root: a committed legacy FLEET.md in a git work tree is never the fleet" "1" "$?"
+hero_at_fleet_root "$CLONE"; check "at-fleet-root: a git work tree with a legacy FLEET.md is not" "1" "$?"
 git init -q "$F/.fleet" 2>/dev/null
 check "fleet-root: a git-checkout .fleet/ does not stop a plain folder resolving" \
   "$F" "$(hero_fleet_root "$F/web/deep" 2>/dev/null)"
 hero_at_fleet_root "$F"; check "at-fleet-root: a plain folder with a git .fleet/ is" "0" "$?"
-rm -rf "$F/.fleet" "$TMP/clone"
+mkdir -p "$F/.fleet/sub"
+check "fleet-root: a walk from inside the register passes it over and lands on the fleet folder" \
+  "$F" "$(hero_fleet_root "$F/.fleet/sub" 2>/dev/null)"
+rm -rf "$F/.fleet/.git" "$F/.fleet/sub" "$TMP/clone"
 
-# The walk covers ancestors, not just the FLEET.md folder.
-mkdir -p "$TMP/clone/docs"; git init -q "$TMP/clone" 2>/dev/null
-printf '## Repos\n' > "$TMP/clone/docs/FLEET.md"
+# The legacy top-level FLEET.md is read only while .fleet/FLEET.md is absent,
+# and says so; once both exist the register's copy wins. Delete these with the
+# fallback in hero_fleet_map.
+LG="$TMP/legacy"; mkdir -p "$LG/repo"; LG="$(cd "$LG" && pwd -P)"
+printf '## Fleet\n\n- name: old\n' > "$LG/FLEET.md"
+check "fleet-map: a legacy top-level FLEET.md still resolves the fleet" \
+  "$LG" "$(hero_fleet_root "$LG/repo" 2>/dev/null)"
+hero_at_fleet_root "$LG"; check "at-fleet-root: a legacy top-level FLEET.md still counts" "0" "$?"
+check "fleet-map: the legacy read is named on stderr with the move" \
+  "1" "$(hero_fleet_field name "$LG" 2>&1 >/dev/null | grep -c "move it into the register as $LG/.fleet/FLEET.md")"
+mkdir -p "$LG/.fleet"; printf '## Fleet\n\n- name: new\n' > "$LG/.fleet/FLEET.md"
+check "fleet-map: .fleet/FLEET.md wins over the legacy copy" \
+  "new" "$(hero_fleet_field name "$LG" 2>/dev/null)"
+check "fleet-map: a leftover legacy copy is named as ignored" \
+  "1" "$(hero_fleet_field name "$LG" 2>&1 >/dev/null | grep -c "ignoring $LG/FLEET.md")"
+rm "$LG/FLEET.md"
+check "fleet-map: no note once only .fleet/FLEET.md exists" \
+  "" "$(hero_fleet_field name "$LG" 2>&1 >/dev/null)"
+rm -rf "$LG/.fleet"
+hero_fleet_root "$LG/repo" >/dev/null 2>&1; check "fleet-root: an empty .fleet/ is no fleet" "1" "$?"
+rm -rf "$LG"
+
+# The walk covers ancestors, not just the folder holding .fleet/.
+mkdir -p "$TMP/clone/docs/.fleet"; git init -q "$TMP/clone" 2>/dev/null
+printf '## Repos\n' > "$TMP/clone/docs/.fleet/FLEET.md"
 hero_fleet_root "$CLONE/docs" >/dev/null 2>&1; rc=$?
-check "fleet-root: a FLEET.md in a subfolder of a clone is not the fleet" "1" "$rc"
+check "fleet-root: a map in a subfolder of a clone is not the fleet" "1" "$rc"
 hero_at_fleet_root "$CLONE/docs"; check "at-fleet-root: a subfolder of a clone is not" "1" "$?"
 rm -rf "$TMP/clone"
 
 # A .git FILE (a worktree or submodule pointer) counts, even a dangling one.
-mkdir -p "$TMP/gitfile"; printf '## Repos\n' > "$TMP/gitfile/FLEET.md"
+mkdir -p "$TMP/gitfile/.fleet"; printf '## Repos\n' > "$TMP/gitfile/.fleet/FLEET.md"
 printf 'gitdir: /nonexistent\n' > "$TMP/gitfile/.git"
 GITFILE="$(cd "$TMP/gitfile" && pwd -P)"
-hero_fleet_root "$GITFILE" >/dev/null 2>&1; check "fleet-root: a .git file beside FLEET.md is not the fleet" "1" "$?"
-hero_at_fleet_root "$GITFILE"; check "at-fleet-root: a .git file beside FLEET.md is not" "1" "$?"
+hero_fleet_root "$GITFILE" >/dev/null 2>&1; check "fleet-root: a .git file beside .fleet/ is not the fleet" "1" "$?"
+hero_at_fleet_root "$GITFILE"; check "at-fleet-root: a .git file beside .fleet/ is not" "1" "$?"
 rm -rf "$TMP/gitfile"
 
 # The walk never asks git, so a GIT_DIR from a hook cannot make a plain folder
@@ -312,8 +341,8 @@ GIT_DIR="$GD/.git" hero_at_fleet_root "$F"; check "at-fleet-root: GIT_DIR in the
 rm -rf "$GD"
 
 # A dotfiles repo at $HOME is not a clone; a clone below it still is.
-DH="$TMP/dothome"; mkdir -p "$DH/fleet/repo" "$DH/clone"; git init -q "$DH" 2>/dev/null
-printf '## Repos\n' > "$DH/fleet/FLEET.md"; printf '## Repos\n' > "$DH/clone/FLEET.md"
+DH="$TMP/dothome"; mkdir -p "$DH/fleet/repo" "$DH/fleet/.fleet" "$DH/clone/.fleet"; git init -q "$DH" 2>/dev/null
+printf '## Repos\n' > "$DH/fleet/.fleet/FLEET.md"; printf '## Repos\n' > "$DH/clone/.fleet/FLEET.md"
 git init -q "$DH/clone" 2>/dev/null
 DH="$(cd "$DH" && pwd -P)"
 check "fleet-root: a .git at \$HOME does not hide a fleet below it" \
@@ -332,8 +361,8 @@ hero_in_git_worktree "$TMP/no/such/dir"; check "in-git-worktree: an unresolvable
 hero_at_fleet_root "$TMP/no/such/dir"; check "at-fleet-root: an unresolvable folder is not a fleet" "1" "$?"
 
 # `~user/x` is not expanded: a relative row, held to the fleet folder.
-U="$TMP/ufleet"; mkdir -p "$U/~nobody/x"; U="$(cd "$U" && pwd -P)"
-cat > "$U/FLEET.md" <<'EOF'
+U="$TMP/ufleet"; mkdir -p "$U/~nobody/x" "$U/.fleet"; U="$(cd "$U" && pwd -P)"
+cat > "$U/.fleet/FLEET.md" <<'EOF'
 ## Repos
 
 ### u
@@ -538,8 +567,8 @@ check "compat: neither set is rc 1" \
 # path otherwise, and the two must not be answered differently by different
 # callers. rc 3 (set, unreachable) is deliberately not rc 1 (none).
 FL="$TMP/connfleet"   # not $TMP/fleet: that fixture is git-init-ed above and reused
-mkdir -p "$FL/app" "$FL/ds"
-cat > "$FL/FLEET.md" <<'EOF'
+mkdir -p "$FL/app" "$FL/ds" "$FL/.fleet"
+cat > "$FL/.fleet/FLEET.md" <<'EOF'
 # Fleet
 
 ## Fleet
@@ -2243,6 +2272,7 @@ check "forbidden: the shared workflow"      "yes" "$(hero_path_forbidden .github
 check "forbidden: .claude rules"            "yes" "$(hero_path_forbidden .claude/rules/comments.md && echo yes || echo no)"
 check "forbidden: HERO.md"                  "yes" "$(hero_path_forbidden HERO.md && echo yes || echo no)"
 check "forbidden: FLEET.md"                 "yes" "$(hero_path_forbidden FLEET.md && echo yes || echo no)"
+check "forbidden: .fleet/FLEET.md"          "yes" "$(hero_path_forbidden .fleet/FLEET.md && echo yes || echo no)"
 # Nested copies count too: a monorepo subproject's .github ships the same way.
 check "forbidden: nested .github"           "yes" "$(hero_path_forbidden apps/web/.github/workflows/x.yaml && echo yes || echo no)"
 check "forbidden: nested HERO.md"           "yes" "$(hero_path_forbidden packages/api/HERO.md && echo yes || echo no)"

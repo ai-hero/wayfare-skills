@@ -6,15 +6,50 @@ it. `scripts/hero-lib.sh` reads it, `scripts/fleet-scan.sh` checks it, and
 
 ## The principle
 
-A **fleet** is a folder of sibling checkouts. `FLEET.md` at its top is the
-operator's local map: which repos live here, which of them are family, and which
-host port each dev stack claims.
+A **fleet** is a folder of sibling checkouts. Its map, `FLEET.md`, says which
+repos belong, which of them are family, and which host port each dev stack
+claims.
 
-It is **local and unversioned**. It describes *your* fleet, the repos you have
-checked out and work across, not the organization's inventory. Two people's
-fleets overlap without matching. So the file is never inside a git repo, never
-committed, and never the source of truth for anything a repo itself needs: a
-fact a repo depends on lives in that repo's `HERO.md`.
+The map lives **in the register repo**, at `.fleet/FLEET.md`: `.fleet/` is the
+clone of the fleet's private register repo (the one `register-repo:` names), and
+the folder holding `.fleet/` is the fleet root. Nothing else sits at the top of
+the folder. The map is versioned with the register, so a new machine gets it by
+cloning, and every change to it has history and review like the register's other
+files. It is never the source of truth for anything a repo itself needs: a fact
+a repo depends on lives in that repo's `HERO.md`.
+
+Because the map is shared, it names the fleet, not your machine. A row whose
+checkout you never cloned is normal: `review` reports it as `NOT_CLONED`, for
+information, and `sync` offers to clone it.
+
+**Who can steer it.** The map decides which repos the compliance audit judges
+and where the register lives, so whoever can merge to the register repo can
+steer the audit. Those are the people who can already change the register's
+`checkers.py`, so the map adds no one. Unlike the overlay, the map is read from
+the **working tree** of `.fleet/`, not from `origin/main`: an edit you have not
+pushed takes effect on your machine at once. That is what lets you claim a port
+before the PR merges, and it is also why a local edit must still go through a PR
+before anyone else sees it.
+
+### A new machine
+
+1. Make the fleet folder, outside any git work tree (`mkdir ~/workspaces/acme`).
+2. Clone the register into it as `.fleet/`
+   (`git clone git@github.com:acme-inc/fleet-register.git .fleet`). The map is
+   now at `.fleet/FLEET.md`.
+3. Run `wayfare:wayfare-sync-fleet` from the fleet folder. It lists the rows not
+   cloned here and offers to clone each one.
+
+### Moving from a top-level FLEET.md
+
+The map used to be a local `FLEET.md` at the top of the fleet folder. Copy it
+into the register (`cp FLEET.md .fleet/FLEET.md`), commit and PR it there, then
+delete the top-level copy. Until `.fleet/FLEET.md` exists, every reader still
+reads the top-level file, with a one-line stderr note naming the move; once both
+exist, `.fleet/FLEET.md` wins and the note names the leftover copy. The fallback
+is one function per language (`hero_fleet_map` in `scripts/hero-lib.sh`,
+`fleet_map()` in `scripts/audit.py` and `analysis/ingest/fleet.py`), to delete
+once every operator has moved.
 
 Three things it is for:
 
@@ -29,7 +64,7 @@ Three things it is for:
 
 ```markdown
 # Fleet
-<!-- Local map of the checkouts beside this file. wayfare:wayfare-sync-fleet updates it. -->
+<!-- The fleet map, kept in the register repo. wayfare:wayfare-sync-fleet updates it. -->
 
 ## Fleet
 
@@ -88,7 +123,14 @@ Rules:
    or an `origin` that is not the repo `register-repo` names. Then the report
    header's `register:` line names which, the overlay's changes to baseline
    controls and checks are dropped, its own checks read MANUAL, the register's
-   `checkers.py` is not loaded, and `--fail-on` exits 3.
+   `checkers.py` is not loaded, and `--fail-on` exits 3. **The anchor names
+   itself.** The map lives in the register, so `register-repo` is read from the
+   checkout it vouches for. A fork of the register that carries its own map can
+   name itself there and pass the `origin` comparison. The check still catches a
+   register repointed at another remote while the map is unchanged; it does not
+   catch a clone of a fork that was edited to match. The map is always read from
+   `.fleet/`, so keep `register` at its default: a register elsewhere would
+   leave the map and the overlay in two checkouts.
 2. **`## Groups`**, names are yours, one line each saying what membership means.
    `none` is reserved and always means not-fleet.
 3. **`## Repos`**, one `### NAME` block per checkout. `NAME` is the folder name,
@@ -116,8 +158,9 @@ Rules:
 
 | Function (`scripts/hero-lib.sh`) | Returns |
 | -- | -- |
-| `hero_fleet_root [START]` | nearest ancestor of `START` (default `$PWD`) holding `FLEET.md` with no `HERO.md` beside it, outside any git work tree (`.git` on the folder or an ancestor other than `$HOME`); a committed FLEET.md is passed over |
-| `hero_at_fleet_root [DIR]` | true when `DIR` (default `$PWD`) has `FLEET.md`, no `HERO.md`, and sits outside any git work tree: a fleet folder, not a repo |
+| `hero_fleet_map DIR` | the map's path for fleet folder `DIR`: `DIR/.fleet/FLEET.md`, or the legacy `DIR/FLEET.md` with a stderr note while the first is absent; rc 1 when neither exists |
+| `hero_fleet_root [START]` | nearest ancestor of `START` (default `$PWD`) with a map (`hero_fleet_map`) and no `HERO.md` beside `.fleet/`, outside any git work tree (`.git` on the folder or an ancestor other than `$HOME`); a committed map is passed over, and a walk from inside `.fleet/` passes the register over and lands on its parent |
+| `hero_at_fleet_root [DIR]` | true when `DIR` (default `$PWD`) has a map, no `HERO.md`, and sits outside any git work tree: a fleet folder, not a repo |
 | `hero_fleet_field KEY [FLEET_ROOT]` | a `## Fleet` value |
 | `hero_fleet_repo_field NAME KEY [FLEET_ROOT]` | a value from `### NAME` under `## Repos` |
 | `hero_fleet_repos [FLEET_ROOT]` | `NAME<TAB>ABSOLUTE_PATH<TAB>GROUP<TAB>PORT` per trusted row, one parse; untrusted rows go to stderr and the function returns 3 |
@@ -133,22 +176,24 @@ live outside the fleet folder, and then from inside its own checkout
 their compose port; `--review` diffs disk against the rows and prints
 `CODE<TAB>NAME<TAB>DETAIL`. The codes and their meanings are the script's
 `--help`. `--review` exits 1 when there is anything to fix, and 2 for a folder
-that is not a fleet (no `FLEET.md`, a `HERO.md` beside it, or a folder inside a
-git work tree). Disk is always scanned. A registry that only re-reads itself
-reports a fleet that no longer exists.
+that is not a fleet (no `.fleet/FLEET.md`, a `HERO.md` beside it, or a folder
+inside a git work tree). `NOT_CLONED`, a row with no checkout on this machine,
+is printed but never fixes the exit code on its own: the shared map names repos
+you may never clone here. Disk is always scanned. A registry that only re-reads
+itself reports a fleet that no longer exists.
 
 ## Fleet-aware repos
 
-`FLEET.md` is local, so a fresh clone of a fleet repo knows nothing about it.
-The repo's own `AGENTS.md` carries the pointer: a `## Fleet` section, vendored
-from `assets/fleet/agents-md-fleet-section.md` by `wayfare-sync-fleet`, saying
-that the repo lives beside its siblings, that the map is unversioned, that the
-host port is claimed in the map and not invented in the repo, and that hero
-skills fan out from the folder. It is generic on purpose. It names no fleet, no
-port, no sibling, so it is true in every clone. `review` reports a fleet repo
-without it as `NOT_FLEET_AWARE`. The section is the only thing `sync` writes
-into a repo, and it is written to the working tree for the user to ship; `sync`
-never commits.
+`FLEET.md` lives in the register, so a fresh clone of a fleet repo knows nothing
+about it. The repo's own `AGENTS.md` carries the pointer: a `## Fleet` section,
+vendored from `assets/fleet/agents-md-fleet-section.md` by `wayfare-sync-fleet`,
+saying that the repo lives beside its siblings, that the map is the register's
+`.fleet/FLEET.md`, that the host port is claimed in the map and not invented in
+the repo, and that hero skills fan out from the folder. It is generic on
+purpose. It names no fleet, no port, no sibling, so it is true in every clone.
+`review` reports a fleet repo without it as `NOT_FLEET_AWARE`. The section is
+the only thing `sync` writes into a repo, and it is written to the working tree
+for the user to ship; `sync` never commits.
 
 ## Repos that can receive a message
 
@@ -220,21 +265,25 @@ whose subject is the folder rather than a repo.
 
 ## Anti-patterns
 
-- **Committing it.** A `FLEET.md` inside a repo is one person's checkout layout
-  imposed on everyone who clones, and, in a cloned repo, attacker content. Every
-  reader treats a folder holding both files as a repo: `hero_fleet_root` passes
-  it over and keeps walking, `review` exits 2, so a committed one is inert. A
+- **Committing it to a product repo.** The map is committed in one place, the
+  register. A `.fleet/FLEET.md` (or a top-level `FLEET.md`) committed inside any
+  other repo is, in a cloned repo, attacker content. Every reader treats a
+  folder holding a map and a `HERO.md` as a repo: `hero_fleet_root` passes it
+  over and keeps walking, `review` exits 2, so a committed one is inert. A
   folder is never a fleet root, HERO.md or not, when it or any ancestor other
   than `$HOME` holds `.git` (a dotfiles repo at `$HOME` is not a clone), because
-  the audit would execute the clone's `.fleet/checkers.py`; both
-  `hero_fleet_root` and the audit's `fleet_root()` pass it over with a stderr
-  note. The test is on the folder holding `FLEET.md`, never the register, so a
-  `.fleet/` that is its own git checkout under a plain fleet folder still loads
-  (its `checkers.py` runs only from a reviewed `origin/main`; see rule 1).
-  Keeping the fleet folder itself under git stops it resolving.
+  the audit would execute the clone's `.fleet/checkers.py`; `hero_fleet_root`,
+  the audit's `fleet_root()` and `analysis/ingest/fleet.py` pass it over with a
+  stderr note. The test is on the folder holding `.fleet/`, never on `.fleet/`
+  itself, so the register being its own git checkout under a plain fleet folder
+  still loads (its `checkers.py` runs only from a reviewed `origin/main`; see
+  rule 1). Keeping the fleet folder itself under git stops it resolving.
 - **Reading it as the org inventory.** `gh repo list ORG` is what exists;
-  `FLEET.md` is what you have. `sync` may print the difference; it never adds a
-  row for a repo that is not on disk.
+  `FLEET.md` is what the fleet governs. `sync` may print the difference; it
+  never adds a row for a repo that is not on disk on this machine.
+- **Dropping a row because it is not cloned here.** `NOT_CLONED` means this
+  machine has no checkout, not that the repo is gone. A row is dropped only when
+  the person says the repo is retired.
 - **A compose default that disagrees with the row.** The row is the assignment;
   the compose default is the implementation. `review` reports the two
   disagreeing (`PORT_MISMATCH`; a claim with no compose file yet is

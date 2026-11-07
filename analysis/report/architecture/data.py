@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
 import records as R  # noqa: E402
 from record import adoption, changeset_facts, rows, stage_of, week_of  # noqa: E402
-from ingest.fleet import ALLIED, APP, APP_NO_FEATURES  # noqa: E402
+from ingest.fleet import ALLIED, APP, APP_NO_FEATURES, fleet_map  # noqa: E402
 from evolution import WEEKS, MONTHS, APPS  # noqa: E402
 
 CH_DB = os.path.join(HERE, "..", "..", "..", ".analysis", "data", "architecture.sqlite")
@@ -442,8 +442,8 @@ def q_fleet_architecture_home(con):
                     hits[r].append(f)
         facts.append({"fact": name, "repos": len(hits), "files": sum(len(v) for v in hits.values()),
                       "where": {r: v for r, v in sorted(hits.items())}})
-    fleet_md = os.path.join(FLEET_ROOT, "FLEET.md")
-    fm = open(fleet_md).read() if os.path.exists(fleet_md) else ""
+    fleet_md = fleet_map(FLEET_ROOT)
+    fm = open(fleet_md).read() if fleet_md else ""
     reg_log = subprocess.run(["git", "-C", FLEET_REGISTER, "log", "--reverse", "--format=%cs"], capture_output=True,
                              text=True).stdout.split()
     return {"weeks": WEEKS, "carry": carry, "facts": facts, "fleet_md_lines": len(fm.splitlines()),

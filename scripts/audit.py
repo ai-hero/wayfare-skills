@@ -33,9 +33,10 @@ fleet's own OVERLAY — its
 incident history and any checks of its own — lives in the
 fleet folder's register checkout, named by FLEET.md's `register:` key
 (default .fleet/). The two are merged by id, overlay winning. Run inside a
-fleet (any checkout below a FLEET.md) and the family is FLEET.md's rows
-whose group is not `none`; run anywhere else and the family is the current
-repo alone, baseline only. --fleet PATH names the fleet root explicitly.
+fleet (any checkout below a folder holding .fleet/FLEET.md) and the family is
+FLEET.md's rows whose group is not `none`; run anywhere else and the family is
+the current repo alone, baseline only, with a warning on stderr. --fleet PATH
+names the fleet root explicitly.
 
 Each repo is audited at --ref (default origin/main) in a detached worktree,
 not at whatever branch the checkout sits on; --no-snapshot audits the
@@ -140,15 +141,33 @@ def in_git_worktree(d):
     return any((p / ".git").exists() for p in (d, *d.parents) if p != home)
 
 
+def fleet_map(d, quiet=False):
+    """The map's path for fleet folder d, or None. The top-level FLEET.md is the
+    layout before the map moved into the register; it is read only while
+    .fleet/FLEET.md is absent, with a stderr note. Every reader resolves the
+    path here, so retiring that fallback is this one function."""
+    new, legacy = d / ".fleet" / "FLEET.md", d / "FLEET.md"
+    if new.is_file():
+        if legacy.is_file() and not quiet:
+            print(f"fleet_map: ignoring {legacy}; the map is {new}, so delete the old copy", file=sys.stderr)
+        return new
+    if legacy.is_file():
+        if not quiet:
+            print(f"fleet_map: reading legacy {legacy}; move it into the register as {new}", file=sys.stderr)
+        return legacy
+    return None
+
+
 def fleet_root(start=None):
-    """The nearest ancestor holding FLEET.md that is neither beside a HERO.md
-    nor inside a git work tree, or None: a committed FLEET.md is a clone's
-    content, and its register would run the clone's checkers.py. Tests the
-    FLEET.md folder, never the register, which is the real fleet's own
-    checkout."""
+    """The nearest ancestor holding a fleet map (fleet_map) that is neither
+    beside a HERO.md nor inside a git work tree, or None: a committed map is a
+    clone's content, and its register would run the clone's checkers.py. Tests
+    the folder holding .fleet/, never .fleet/ itself, which is the real fleet's
+    own checkout; a walk from inside it passes it over and lands on its
+    parent."""
     d = pathlib.Path(start or os.getcwd()).resolve()
     while True:
-        if (d / "FLEET.md").is_file() and not (d / "HERO.md").is_file():
+        if fleet_map(d, quiet=True) and not (d / "HERO.md").is_file():
             if not in_git_worktree(d):
                 return d
             print(f"fleet_root: passing over {d}; a folder inside a git work tree is never a fleet root", file=sys.stderr)
@@ -163,10 +182,13 @@ def read_fleet(root):
     trailing `# comment` is stripped from every value."""
     fields, repos, sec, cur, fence = {}, [], None, None, False
     seen = set()
+    path = fleet_map(root)
+    if path is None:
+        sys.exit(f"{root}: no fleet map at {root / '.fleet' / 'FLEET.md'}")
     try:
-        text = (root / "FLEET.md").read_text()
+        text = path.read_text()
     except (OSError, UnicodeDecodeError) as e:
-        sys.exit(f"{root / 'FLEET.md'}: cannot read: {e}")
+        sys.exit(f"{path}: cannot read: {e}")
     for line in text.splitlines():
         if line.startswith("```"):
             fence = not fence
@@ -218,13 +240,22 @@ def configure(root=None, load_overlay=True):
     global ROOT, FAMILY, REGISTER, REGISTER_REPO, TEMPLATE
     if root:
         root = pathlib.Path(root).resolve()
-        if not (root / "FLEET.md").is_file():
-            sys.exit(f"--fleet {root}: no FLEET.md there")
+        if fleet_map(root, quiet=True) is None:
+            sys.exit(f"--fleet {root}: no fleet map there; clone the register into {root / '.fleet'} "
+                     "so .fleet/FLEET.md exists")
     else:
         root = fleet_root()
     REPO_DIR.clear()
     GROUP_REPOS.clear()
     if root is None:
+        # Not an error: lone repos and this plugin's own CI audit outside a
+        # fleet on purpose. Not silent either: a fleet machine missing its
+        # register would otherwise read greener, every overlay check absent.
+        if load_overlay:
+            print("audit: no fleet map found walking up from here (.fleet/FLEET.md), so this run is "
+                  "baseline only: the fleet's register overlay and its checks are not applied. "
+                  "Inside a fleet, clone the fleet's register repo into the fleet folder as .fleet/ "
+                  "(docs/FLEET-MD.md).", file=sys.stderr)
         rc, top = sh(pathlib.Path.cwd(), "git rev-parse --show-toplevel")
         repo = pathlib.Path(top.strip()) if rc == 0 and top.strip() else pathlib.Path.cwd()
         ROOT, FAMILY, REGISTER, TEMPLATE = repo.parent, (repo.name,), None, None
@@ -3765,8 +3796,10 @@ def _register_file(base, name, shown=None):
 def _register_pair(name):
     """(baseline doc, overlay doc, reviewed) for one register file."""
     src, reviewed, note = register_source()
+    if src is None:
+        return _register_file(BASELINE, name), {}, reviewed
     shown = f"{REGISTER / name} ({note.split('  ')[0]})"
-    over = _register_file(src, name, shown) if src else {}
+    over = _register_file(src, name, shown)
     return _register_file(BASELINE, name), over, reviewed
 
 

@@ -1,7 +1,7 @@
 ---
 name: wayfare-sync-fleet
 # prettier-ignore
-description: "Create or update FLEET.md, the local map of sibling checkouts, groups, and ports. Propose rows and write only what the user confirms. Use from the folder containing the repos when adding a checkout or claiming a port. Use wayfare-review-fleet to report drift without writing."
+description: "Create or update FLEET.md, the fleet map of sibling checkouts, groups, and ports, kept in the register checkout at .fleet/. Propose rows and write only what the user confirms. Use from the folder containing the repos when adding a checkout or claiming a port. Use wayfare-review-fleet to report drift without writing."
 argument-hint: ""
 compatibility: "Requires the complete Wayfare plugin and a writable fleet folder containing sibling checkouts."
 ---
@@ -10,7 +10,8 @@ compatibility: "Requires the complete Wayfare plugin and a writable fleet folder
 
 A fleet folder holds sibling repos. `FLEET.md` records fleet membership and the
 host port assigned to each dev stack. The map lets a fleet run select the
-correct repos and avoid port collisions. Read
+correct repos and avoid port collisions. It lives in the register repo, cloned
+at `.fleet/`, so the file this skill writes is `.fleet/FLEET.md`. Read
 [docs/FLEET-MD.md](../../docs/FLEET-MD.md) before the first `sync`.
 
 ## Instructions
@@ -29,13 +30,16 @@ SCAN="$(dirname "$HERO_LIB")/fleet-scan.sh"
 
 if FLEET_ROOT=$(hero_fleet_root); then
   echo "FLEET_ROOT=$FLEET_ROOT"
+  echo "MAP=$(hero_fleet_map "$FLEET_ROOT")"
   hero_fleet_repos "$FLEET_ROOT"
 else
-  # No FLEET.md above us. The candidate is this folder when not in git, else
-  # the repo's parent — never a repo root: bootstrap would write FLEET.md
-  # into the checkout, the standard's first anti-pattern.
+  # No map above us. The candidate is this folder when not in git, else the
+  # repo's parent (from inside .fleet/, the fleet folder) — never a repo root:
+  # bootstrap would write a map into a product checkout, the standard's first
+  # anti-pattern.
   CAND=$(git rev-parse --show-toplevel 2>/dev/null); CAND="${CAND:+$(dirname "$CAND")}"; CAND="${CAND:-$PWD}"
   echo "NO_FLEET candidate=$CAND"
+  if [ -e "$CAND/.fleet/.git" ]; then echo "REGISTER=$CAND/.fleet"; else echo "NO_REGISTER"; fi
   "$SCAN" "$CAND" --list
 fi
 ```
@@ -43,17 +47,32 @@ fi
 > Each bash block below runs in a fresh shell, so re-source `hero-lib.sh` at the
 > top of any block that calls a `hero_*` function.
 
-`NO_FLEET` → bootstrap (below), but **confirm the candidate folder first**: show
-its path and the checkouts the scan found, and ask. A wrong guess writes a
-registry into someone's home directory.
+`NO_FLEET` with `NO_REGISTER` → **stop.** The map lives in the register repo, so
+there is nowhere to write it yet. Tell the person to clone the fleet's register
+into the candidate folder as `.fleet/` (`git clone <register> .fleet`), or, for
+a new fleet, to create the private register repo and clone that, then run this
+skill again. Never create `.fleet/` as a plain folder: a map outside a git
+checkout has no history and no review, which is the state the register exists to
+end.
+
+`NO_FLEET` with `REGISTER=` → bootstrap (below), but **confirm the candidate
+folder first**: show its path and the checkouts the scan found, and ask. A wrong
+guess writes a registry into someone's home directory.
+
+`MAP=` ending in a top-level `FLEET.md` (not `.fleet/FLEET.md`) is the legacy
+layout. Offer the move from the standard's *Moving from a top-level FLEET.md*
+before converging, and write the result to `.fleet/FLEET.md`.
 
 ## Converge FLEET.md with the folder
 
 Both modes use this sequence: **scan, propose, write only what the user
-confirms.** `sync` writes only `FLEET.md`. Send the `## Fleet` section as a
-message to each fleet repo after confirmation, as specified below. Route other
-repo changes, including ports and missing `HERO.md`, to the skill that owns
-them.
+confirms.** `sync` writes only `.fleet/FLEET.md`, and **never commits it**: the
+edit lands as an uncommitted change in the register checkout, for the person to
+commit and open a PR there. Say so when you write it. Readers take the map from
+the working tree, so the change is live on this machine at once, and reaches
+everyone else only when that PR merges. Send the `## Fleet` section as a message
+to each fleet repo after confirmation, as specified below. Route other repo
+changes, including ports and missing `HERO.md`, to the skill that owns them.
 
 **Bootstrap: no FLEET.md yet.**
 
@@ -71,9 +90,9 @@ them.
    about membership: a repo is fleet when the user says so. `what` comes from
    the repo's `README.md` first line or `HERO.md`'s framework field. Leave it
    blank rather than invent it.
-5. Show the whole file, confirm, write `FLEET_ROOT/FLEET.md`. Then run
-   `"$SCAN" "$FLEET_ROOT" --review` and show it. A fresh registry that already
-   reports collisions is telling the truth on day one.
+5. Show the whole file, confirm, write `CAND/.fleet/FLEET.md`. Then run
+   `"$SCAN" "$CAND" --review` and show it. A fresh registry that already reports
+   collisions is telling the truth on day one.
 
 **Converge: FLEET.md exists.**
 
@@ -83,8 +102,8 @@ them.
    | Finding | Proposal |
    | -- | -- |
    | `BAD_ROW` | the row could not be trusted (the detail says why: a bad name, a dashed or non-numeric value, a duplicate, a relative path outside the fleet). Fix or drop it, and never guess a replacement |
-   | `MISSING` | drop the row, or fix `path` if the folder moved. Ask first |
-   | `NOT_GIT` | same as `MISSING`. A folder that stopped being a checkout is not a repo |
+   | `NOT_CLONED` | normal for a shared map: this machine has no checkout. Offer to clone it (`git clone git@github.com:ORG/NAME.git FLEET_ROOT/NAME`, or to the row's `path`), and if it moved, fix `path`. **Never propose dropping the row** on this finding alone: drop it only when the person says the repo is retired |
+   | `NOT_GIT` | the folder exists but is not a checkout. Ask whether it moved (fix `path`), whether to re-clone it, or whether the repo is retired (drop the row) |
    | `PORT_MISMATCH` | the row is the assignment, the compose default is the implementation. Ask which is right. If the repo must change, hand it to `wayfare:wayfare-build-task` in that repo. The standard's last anti-pattern names every place the port appears. Never edit the repo from here |
    | `PORT_UNIMPLEMENTED` | the claim is made, the repo has no compose file yet. Nothing to fix here. It clears when the dev stack lands |
    | `PORT_UNPARSED` | a compose file the scanner cannot read a host port from. Look at it: either it publishes no port (drop the row's port) or it uses a syntax worth adding to `hero_compose_port` |
@@ -102,13 +121,15 @@ them.
    one by name. Offering a row per parked clone is how a repo nobody claimed
    acquires one and starts reading as a member.
 
-3. If `org` is set, list what exists there and is not on disk.
+3. If `org` is set, list what exists there, is not on disk, and has no row.
    `gh repo list ORG --limit 200 --json name,isArchived --jq '.[] | select(.isArchived|not) | .name'`
-   minus the folder's checkouts. Print it as *not cloned*. Add no rows.
+   minus the folder's checkouts and the rows. Print it as *in the org, not in
+   the fleet*. Add no rows.
 
-4. Show the proposed rows, confirm, write. Re-run `--review` and show the
-   remainder. The repo-side findings that were routed elsewhere stay until those
-   PRs merge, and that is the correct state.
+4. Show the proposed rows, confirm, write `FLEET_ROOT/.fleet/FLEET.md`, and say
+   it is an uncommitted change in the register for the person to commit and PR.
+   Re-run `--review` and show the remainder. The repo-side findings that were
+   routed elsewhere stay until those PRs merge, and that is the correct state.
 
 **Make the repos fleet-aware, after the rows are written, in both modes.**
 
@@ -169,6 +190,10 @@ copy as output that re-vendoring can overwrite.
   that owns them, in that repo, on a PR.
 - **Adding rows for repos that are not on disk.** The org listing is
   informational. See the standard.
+- **Dropping a row because it is not cloned here.** The map is shared; another
+  machine has that checkout. Offer the clone; drop only a retired repo.
+- **Committing the map.** `sync` leaves the change in the register's working
+  tree. The person commits it and opens the PR, under the register's own review.
 
 ## Next steps
 

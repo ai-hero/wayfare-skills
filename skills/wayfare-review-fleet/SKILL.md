@@ -1,17 +1,18 @@
 ---
 name: wayfare-review-fleet
 # prettier-ignore
-description: "Compare FLEET.md with sibling checkouts. Report unmapped repos, missing checkouts, and port collisions. Write nothing. Use from the folder containing the repos to check the map before a fleet run."
+description: "Compare FLEET.md with sibling checkouts. Report unmapped repos, rows not cloned here, and port collisions. Write nothing. Use from the folder containing the repos to check the map before a fleet run."
 argument-hint: ""
-compatibility: "Requires the complete Wayfare plugin and a fleet folder containing sibling checkouts and FLEET.md."
+compatibility: "Requires the complete Wayfare plugin and a fleet folder containing sibling checkouts and the register clone at .fleet/ holding FLEET.md."
 ---
 
 # Review the fleet: what the map claims against what is there
 
-`FLEET.md` identifies fleet checkouts and the host port assigned to each dev
-stack. Every fleet run reads this map. A stale map can direct work to the wrong
-repo or allow a port collision. This skill reports differences and writes
-nothing. Use `wayfare-sync-fleet` to update the map. Follow
+`FLEET.md`, kept in the register checkout at `.fleet/FLEET.md`, identifies fleet
+checkouts and the host port assigned to each dev stack. Every fleet run reads
+this map. A stale map can direct work to the wrong repo or allow a port
+collision. This skill reports differences and writes nothing. Use
+`wayfare-sync-fleet` to update the map. Follow
 [docs/FLEET-MD.md](../../docs/FLEET-MD.md).
 
 ## Instructions
@@ -39,9 +40,10 @@ fi
 > Each bash block below runs in a fresh shell, so re-source `hero-lib.sh` at the
 > top of any block that calls a `hero_*` function.
 
-`NO_FLEET` → STOP. There is no map to review. Report that fact and offer
-`wayfare:wayfare-sync-fleet`, which bootstraps one. Do not guess a candidate
-folder here: choosing one is a write decision and belongs to `sync`.
+`NO_FLEET` → STOP. There is no map to review. Report that fact, say the map is
+read from `.fleet/FLEET.md` (a missing register clone is the usual cause), and
+offer `wayfare:wayfare-sync-fleet`, which bootstraps one. Do not guess a
+candidate folder here: choosing one is a write decision and belongs to `sync`.
 
 ### Report the drift
 
@@ -53,6 +55,12 @@ Print each finding with its meaning from the standard and the repo it names.
 Exit 1 means there is something to fix. Say which of
 `wayfare:wayfare-sync-fleet` or a repo-side skill fixes it. Write nothing: not
 `FLEET.md`, not a repo.
+
+`NOT_CLONED` is information, not drift: the map is shared through the register,
+so it names repos this machine has no checkout of, and on its own it leaves the
+exit code at 0. List those rows separately as *not cloned here* and point at
+`wayfare:wayfare-sync-fleet`, which offers to clone them. Never call one stale
+or suggest dropping it: only the person can say a repo is retired.
 
 Two findings are about the repo, not the map, and no fleet-root write fixes
 them:
@@ -75,3 +83,4 @@ Never create the inbox or edit the exclude file from the fleet root.
 ## Next steps
 
 - Rows to add, remove, or a port to claim → `wayfare:wayfare-sync-fleet`
+- Rows not cloned here → `wayfare:wayfare-sync-fleet`, which offers the clone

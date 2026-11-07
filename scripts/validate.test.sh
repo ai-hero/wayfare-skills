@@ -223,6 +223,11 @@ run_validate "$d"
 check "inline fleet test in references/: rc" "1" "$RC"
 check_contains "inline fleet test in references/: reported" "$OUT" "inline fleet-root test"
 
+d=$(fixture inline-fleet-test-register-path)
+printf '\n```bash\n[ -f "$PWD/.fleet/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true\n```\n' >> "$d/references/zz.md"
+run_validate "$d"
+check_contains "inline fleet test on .fleet/FLEET.md: reported" "$OUT" "inline fleet-root test"
+
 d=$(fixture new-skill-scaffold)
 cp "$ROOT_REPO/scripts/new-skill.sh" "$d/scripts/new-skill.sh"
 "$d/scripts/new-skill.sh" zzscaffold "Scaffold fixture for validate.test.sh. Use when testing the scaffold." > /dev/null

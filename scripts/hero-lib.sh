@@ -44,7 +44,7 @@ hero_root() {
 # answer for the repo row.
 #
 #   hero_md_field "$root/HERO.md" default-branch
-#   hero_md_field "$fleet/FLEET.md" port "### auth" "## Repos"
+#   hero_md_field "$fleet/.fleet/FLEET.md" port "### auth" "## Repos"
 #
 # Prints the value (trimmed, comments stripped) on stdout.
 #
@@ -258,8 +258,8 @@ hero_connection_compat() { # KIND KEY LEGACY_KEY [ROOT]
 # Resolve a repo-kind connection to an absolute checkout path.
 #   hero_connection_repo design-system
 #
-# `at` holds a FLEET.md ROW NAME when there is a fleet, because the map is
-# local and paths differ per machine, and a plain path otherwise
+# `at` holds a FLEET.md ROW NAME when there is a fleet, because checkout
+# paths differ per machine, and a plain path otherwise
 # (docs/CONNECTIONS.md). Resolving it in the caller is how the two spellings
 # get answered differently in different places: a row name read as a path
 # becomes "$ROOT/design-system", which does not exist, and the run reports "no
@@ -583,9 +583,9 @@ hero_check_staleness() {
 
 # ---------- fleet ----------------------------------------------------------
 #
-# A fleet is a folder of sibling checkouts with a FLEET.md at its top:
-# operator's local map of the repos they work across. It is unversioned and
-# never inside a repo; docs/FLEET-MD.md is the standard.
+# A fleet is a folder of sibling checkouts mapped by .fleet/FLEET.md: the map
+# lives in the register repo cloned at .fleet/, and the folder holding .fleet/
+# is the fleet root. docs/FLEET-MD.md is the standard.
 #
 # Every function here defaults to $PWD, not hero_root: a fleet folder is by
 # definition not a repo root, and under a dotfiles-managed $HOME hero_root is
@@ -610,10 +610,26 @@ hero_in_git_worktree() { # DIR
   return 1
 }
 
-# Nearest ancestor (inclusive) of START holding FLEET.md, or return 1. A
-# directory holding HERO.md beside it, or sitting inside a git work tree, is a
-# repo that committed a FLEET.md: repo content, not the operator's map, so it
-# is passed over (stderr note) and the walk continues upward.
+# The map's path for fleet folder DIR, or return 1. The top-level FLEET.md is
+# the layout before the map moved into the register; it is read only while
+# .fleet/FLEET.md is absent, with a stderr note. Every reader resolves the
+# path here, so retiring that fallback is this one function.
+hero_fleet_map() { # DIR
+  if [ -f "$1/.fleet/FLEET.md" ]; then
+    [ ! -f "$1/FLEET.md" ] || echo "hero_fleet_map: ignoring $1/FLEET.md; the map is $1/.fleet/FLEET.md, so delete the old copy" >&2
+    printf '%s' "$1/.fleet/FLEET.md"; return 0
+  fi
+  if [ -f "$1/FLEET.md" ]; then
+    echo "hero_fleet_map: reading legacy $1/FLEET.md; move it into the register as $1/.fleet/FLEET.md" >&2
+    printf '%s' "$1/FLEET.md"; return 0
+  fi
+  return 1
+}
+
+# Nearest ancestor (inclusive) of START that holds a fleet map
+# (hero_fleet_map), or return 1. A directory holding HERO.md, or sitting inside
+# a git work tree, is a repo that committed a map: repo content, not the
+# operator's, so it is passed over (stderr note) and the walk continues upward.
 # shellcheck disable=SC2120  # in-file callers take the default; the tests pass START
 hero_fleet_root() { # [START]
   local d
@@ -621,12 +637,13 @@ hero_fleet_root() { # [START]
   # Parameter expansion, not $(dirname): a subshell per level, and a dirname
   # that returns empty (stripped PATH) would leave `d` unchanged and spin.
   while [ -n "$d" ]; do
-    if [ -f "$d/FLEET.md" ]; then
+    if hero_fleet_map "$d" >/dev/null 2>&1; then
       if [ -f "$d/HERO.md" ]; then
-        echo "hero_fleet_root: passing over $d; FLEET.md beside HERO.md is a repo, not a fleet" >&2
+        echo "hero_fleet_root: passing over $d; a fleet map beside HERO.md is a repo, not a fleet" >&2
       elif hero_in_git_worktree "$d"; then
-        # Tests the folder holding FLEET.md, never the register: the real
-        # fleet's .fleet/ is its own checkout and must keep loading.
+        # Tests the folder holding .fleet/, never .fleet/ itself: the register
+        # is a git checkout, and the map inside it must keep resolving. A walk
+        # from inside .fleet/ passes it over here and lands on its parent.
         echo "hero_fleet_root: passing over $d; a folder inside a git work tree is never a fleet root" >&2
       else
         printf '%s' "$d"; return 0
@@ -638,30 +655,34 @@ hero_fleet_root() { # [START]
   return 1
 }
 
-# True when DIR (default $PWD) is a fleet folder rather than a repo: it holds
-# FLEET.md, no HERO.md, and sits outside any git work tree. Skills test this in
+# True when DIR (default $PWD) is a fleet folder rather than a repo: it has a
+# fleet map (hero_fleet_map), no HERO.md, and sits outside any git work tree. Skills test this in
 # Step 0 and hand off to "At the fleet root" in docs/FLEET-MD.md instead of
 # treating the folder as a project.
 hero_at_fleet_root() { # [DIR]
   local d
   d=$(cd "${1:-$PWD}" 2>/dev/null && pwd -P) || return 1
-  [ -f "$d/FLEET.md" ] && [ ! -f "$d/HERO.md" ] && ! hero_in_git_worktree "$d"
+  hero_fleet_map "$d" >/dev/null 2>&1 && [ ! -f "$d/HERO.md" ] && ! hero_in_git_worktree "$d"
 }
 
 # A fleet-level `- key: value` from the `## Fleet` section.
 #   hero_fleet_field name
 hero_fleet_field() { # KEY [FLEET_ROOT]
   local root
+  local map
   root="${2:-$(hero_fleet_root)}" || return 1
-  hero_md_field "$root/FLEET.md" "$1" "## Fleet"
+  map=$(hero_fleet_map "$root") || return 1
+  hero_md_field "$map" "$1" "## Fleet"
 }
 
 # One `- key: value` from a repo's `### NAME` block under `## Repos`.
 #   hero_fleet_repo_field auth port
 hero_fleet_repo_field() { # NAME KEY [FLEET_ROOT]
   local root
+  local map
   root="${3:-$(hero_fleet_root)}" || return 1
-  hero_md_field "$root/FLEET.md" "$2" "### $1" "## Repos"
+  map=$(hero_fleet_map "$root") || return 1
+  hero_md_field "$map" "$2" "### $1" "## Repos"
 }
 
 # Every repo listed under `## Repos`, one per line:
@@ -686,16 +707,17 @@ hero_fleet_repo_field() { # NAME KEY [FLEET_ROOT]
 # trusted wherever they resolve. A relative path (`~user/x` included) is held
 # to the fleet folder wherever it resolves, so `..` and symlink escapes are
 # not. Roots found by hero_fleet_root are never inside a git work tree, so
-# their FLEET.md is not a clone's; an explicit FLEET_ROOT argument is the
+# their map is not a clone's; an explicit FLEET_ROOT argument is the
 # operator's own word.
 #
 # Locals are rpath/rgroup/rport, never `path`: sourced from zsh, `local path`
 # empties the PATH-tied array and awk becomes "command not found", leaving an empty
 # registry with rc 0.
 hero_fleet_repos() { # [FLEET_ROOT]
-  local root
+  local root map
   root="${1:-$(hero_fleet_root)}" || return 1
-  [ -r "$root/FLEET.md" ] || { echo "hero_fleet_repos: cannot read $root/FLEET.md" >&2; return 1; }
+  map=$(hero_fleet_map "$root") || { echo "hero_fleet_repos: no fleet map under $root (.fleet/FLEET.md)" >&2; return 1; }
+  [ -r "$map" ] || { echo "hero_fleet_repos: cannot read $map" >&2; return 1; }
   awk '
     # \034 (file separator), not a tab: `read` with a whitespace IFS collapses
     # consecutive tabs, so an empty path would shift group into its column.
@@ -713,7 +735,7 @@ hero_fleet_repos() { # [FLEET_ROOT]
       if (k == "path") rpath = v; else if (k == "group") rgroup = v; else rport = v
     }
     END { flush() }
-  ' "$root/FLEET.md" | {
+  ' "$map" | {
     local name rpath rgroup rport v reason seen nbad real abs
     seen=" "; nbad=0
     while IFS=$'\034' read -r name rpath rgroup rport; do

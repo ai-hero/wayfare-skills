@@ -7,6 +7,7 @@
 # Each case is a drift that would otherwise go unreported: a port read from
 # the wrong spelling of the compose file, a collision hidden behind a
 # `HOST_PORT` grep, a row that points at a folder that is no longer a repo.
+# NOT_CLONED is the exception: reported, but never a reason to exit 1.
 #
 # Usage: bash scripts/fleet-scan.test.sh
 
@@ -96,7 +97,8 @@ check "list: a plain folder is not a checkout" \
 "$SCAN" "$F" --review >/dev/null 2>&1
 check "review: no FLEET.md exits 2" "2" "$?"
 
-cat > "$F/FLEET.md" <<'EOM'
+mkdir -p "$F/.fleet"
+cat > "$F/.fleet/FLEET.md" <<'EOM'
 # Fleet
 
 ## Fleet
@@ -179,7 +181,7 @@ EOM
 OUT=$("$SCAN" "$F" --review); RC=$?
 check "review: findings exit 1" "1" "$RC"
 check "review: every finding, sorted" \
-"$(printf 'BAD_ROW\t../escape\ta repo name is [A-Za-z0-9._-] only, not %s../escape%s\nBAD_ROW\tevil\ta value starts with %s-%s or holds a control character\nMISSING\tgone\t%s/gone\nNOT_GIT\tfolder\t%s/plain-folder\nNO_HERO\tclash\t%s/clash\nNOT_FLEET_AWARE\tclash\t%s/clash\nNOT_FLEET_AWARE\tweb\t%s/web\nPORT_COLLISION\tclash\t33000, also auth\nPORT_COLLISION\tweb2\t3000, also web\nPORT_COLLISION\tweb2\t33001, also web\nPORT_MISMATCH\tweb\t33001 -> 3000\nPORT_MISMATCH\tweb2\t33001 -> 3000\nPORT_UNIMPLEMENTED\tlonefleet\t33030 (no compose file)\nPORT_UNPARSED\toddfleet\t33031 (compose file, no readable host port)' "'" "'" "'" "'" "$F" "$F" "$F" "$F" "$F" | sort)" \
+"$(printf 'BAD_ROW\t../escape\ta repo name is [A-Za-z0-9._-] only, not %s../escape%s\nBAD_ROW\tevil\ta value starts with %s-%s or holds a control character\nNOT_CLONED\tgone\t%s/gone\nNOT_GIT\tfolder\t%s/plain-folder\nNO_HERO\tclash\t%s/clash\nNOT_FLEET_AWARE\tclash\t%s/clash\nNOT_FLEET_AWARE\tweb\t%s/web\nPORT_COLLISION\tclash\t33000, also auth\nPORT_COLLISION\tweb2\t3000, also web\nPORT_COLLISION\tweb2\t33001, also web\nPORT_MISMATCH\tweb\t33001 -> 3000\nPORT_MISMATCH\tweb2\t33001 -> 3000\nPORT_UNIMPLEMENTED\tlonefleet\t33030 (no compose file)\nPORT_UNPARSED\toddfleet\t33031 (compose file, no readable host port)' "'" "'" "'" "'" "$F" "$F" "$F" "$F" "$F" | sort)" \
 "$OUT"
 
 # A `none` row is exempt from NO_HERO/NO_AGENTS: it lives here, it is not fleet.
@@ -193,26 +195,39 @@ check "review: port-range picks the app port over the database's, and a trailing
 check "review: a checkout with no row is not reported" \
   "" "$(printf '%s\n' "$OUT" | grep -E 'extra')"
 
-# A repo that committed its own FLEET.md is not a fleet.
+# A repo that committed its own map is not a fleet.
 touch "$F/HERO.md"
 "$SCAN" "$F" --review >/dev/null 2>&1
-check "review: HERO.md beside FLEET.md exits 2" "2" "$?"
+check "review: HERO.md beside .fleet/ exits 2" "2" "$?"
 rm "$F/HERO.md"
 
-# A FLEET.md inside a git work tree is a clone's content, and the message must
-# say that rather than blame a HERO.md that is not there.
-WT="$TMP/wtfleet"; mkdir -p "$WT/.git"; printf '## Repos\n' > "$WT/FLEET.md"
+# A map inside a git work tree is a clone's content, and the message must say
+# that rather than blame a HERO.md that is not there. Both spellings: the
+# legacy top-level FLEET.md is still read.
+WT="$TMP/wtfleet"; mkdir -p "$WT/.git" "$WT/.fleet"; printf '## Repos\n' > "$WT/.fleet/FLEET.md"
 WTERR=$("$SCAN" "$WT" --review 2>&1 >/dev/null); WTRC=$?
-check "review: a FLEET.md inside a git work tree exits 2" "2" "$WTRC"
+check "review: a .fleet/FLEET.md inside a git work tree exits 2" "2" "$WTRC"
 check "review: the work-tree refusal names the work tree, not HERO.md" \
   "1 0" "$(printf '%s\n' "$WTERR" | grep -c 'inside a git work tree') $(printf '%s\n' "$WTERR" | grep -c 'HERO.md')"
+rm -rf "$WT/.fleet"; printf '## Repos\n' > "$WT/FLEET.md"
+"$SCAN" "$WT" --review >/dev/null 2>&1
+check "review: a legacy FLEET.md inside a git work tree exits 2" "2" "$?"
 rm -rf "$WT"
+
+# The legacy top-level FLEET.md is read while .fleet/FLEET.md is absent, and
+# --review says so. Delete with the fallback in hero_fleet_map.
+LG="$TMP/legacyfleet"; mkdir -p "$LG"; printf '# Fleet\n\n## Fleet\n\n- name: t\n' > "$LG/FLEET.md"
+LGERR=$("$SCAN" "$LG" --review 2>&1 >/dev/null); LGRC=$?
+check "review: a legacy top-level FLEET.md still reviews" "0" "$LGRC"
+check "review: the legacy read is named on stderr" \
+  "1" "$(printf '%s\n' "$LGERR" | grep -c 'move it into the register')"
+rm -rf "$LG"
 
 # The first sync: a FLEET.md with no rows yet claims nothing, so review has
 # nothing to say about the checkouts. `--list` is what shows them, and it still
 # sees every one. Before, this reported the whole folder as findings, which
 # made an empty map look like a fleet-wide problem instead of an empty map.
-printf '# Fleet\n\n## Fleet\n\n- name: t\n' > "$F/FLEET.md"
+printf '# Fleet\n\n## Fleet\n\n- name: t\n' > "$F/.fleet/FLEET.md"
 OUT=$("$SCAN" "$F" --review)
 check "review: zero rows reports no checkout as a finding" \
   "0" "$(printf '%s\n' "$OUT" | grep -c 'extra')"
@@ -224,7 +239,7 @@ check "review: --list still sees every checkout when no row exists" \
 # groups).
 printf '# W\n\n## Fleet\n' > "$F/web/CLAUDE.md"
 rm "$F/clash/docker-compose.dev.yaml"
-cat > "$F/FLEET.md" <<'EOM'
+cat > "$F/.fleet/FLEET.md" <<'EOM'
 ## Repos
 
 ### auth
@@ -264,6 +279,16 @@ EOM
 OUT=$("$SCAN" "$F" --review); RC=$?
 check "review: clean fleet exits 0 with no output" "0|" "$RC|$OUT"
 
+# The map is shared through the register, so a row this machine never cloned
+# is normal: reported, never a reason to exit 1.
+printf '\n### elsewhere\n\n- group: apps\n- port: 33040\n' >> "$F/.fleet/FLEET.md"
+OUT=$("$SCAN" "$F" --review); RC=$?
+check "review: a row not cloned here is NOT_CLONED and exits 0" \
+  "$(printf '0|NOT_CLONED\telsewhere\t%s/elsewhere' "$F")" "$RC|$OUT"
+mkdir -p "$F/plain-folder"; printf '\n### folder\n\n- path: ./plain-folder\n- group: apps\n' >> "$F/.fleet/FLEET.md"
+"$SCAN" "$F" --review >/dev/null 2>&1
+check "review: NOT_CLONED beside a real finding still exits 1" "1" "$?"
+
 # ---------- --review: inbox and exclude ------------------------------------
 
 # Real checkouts: `git check-ignore` needs one. A `.plans/` in the user's
@@ -288,7 +313,8 @@ mkgit parked     0 bare  1
 mkgit parkedleak 0 bare  0
 mkdir -p "$G/fakegit/.git" "$G/fakegit/.plans"
 touch "$G/fakegit/HERO.md"; printf '## Fleet\n' > "$G/fakegit/AGENTS.md"
-cat > "$G/FLEET.md" <<'EOM'
+mkdir -p "$G/.fleet"
+cat > "$G/.fleet/FLEET.md" <<'EOM'
 ## Repos
 
 ### ready
@@ -326,12 +352,12 @@ EOM
 OUT=$("$SCAN" "$G" --review); RC=$?
 check "review: inbox findings exit 1" "1" "$RC"
 check "review: NO_INBOX and PLANS_NOT_EXCLUDED, sorted" \
-"$(printf 'MISSING\tgone\t%s/gone\nNO_INBOX\tfakegit\t%s/fakegit/.plans/inbox\nNO_INBOX\tnoinbox\t%s/noinbox/.plans/inbox\nNO_INBOX\tnoplans\t%s/noplans/.plans/inbox\nPLANS_NOT_EXCLUDED\tleaky\t%s/leaky/.plans\nPLANS_NOT_EXCLUDED\tparkedleak\t%s/parkedleak/.plans' "$G" "$G" "$G" "$G" "$G" "$G" | sort)" \
+"$(printf 'NOT_CLONED\tgone\t%s/gone\nNO_INBOX\tfakegit\t%s/fakegit/.plans/inbox\nNO_INBOX\tnoinbox\t%s/noinbox/.plans/inbox\nNO_INBOX\tnoplans\t%s/noplans/.plans/inbox\nPLANS_NOT_EXCLUDED\tleaky\t%s/leaky/.plans\nPLANS_NOT_EXCLUDED\tparkedleak\t%s/parkedleak/.plans' "$G" "$G" "$G" "$G" "$G" "$G" | sort)" \
 "$OUT"
 # Sending to a `none` repo is meant to fail, so its missing inbox is correct.
 check "review: group none is exempt from NO_INBOX" \
   "0" "$(printf '%s\n' "$OUT" | grep -c '^NO_INBOX	parked')"
-check "review: a missing checkout is MISSING only, never NO_INBOX" \
+check "review: a checkout not cloned here is NOT_CLONED only, never NO_INBOX" \
   "1" "$(printf '%s\n' "$OUT" | grep -c 'gone')"
 check "review: a .git that git cannot read is not PLANS_NOT_EXCLUDED" \
   "0" "$(printf '%s\n' "$OUT" | grep -c '^PLANS_NOT_EXCLUDED	fakegit')"
@@ -339,7 +365,7 @@ check "review: a .git that git cannot read is not PLANS_NOT_EXCLUDED" \
 mkdir -p "$G/noinbox/.plans/inbox" "$G/noplans/.plans/inbox" "$G/fakegit/.plans/inbox"
 printf '.plans/\n' >> "$G/leaky/.git/info/exclude"
 printf '.plans/\n' >> "$G/parkedleak/.git/info/exclude"
-sed -i.bak '/^### gone$/,$d' "$G/FLEET.md" && rm "$G/FLEET.md.bak"
+sed -i.bak '/^### gone$/,$d' "$G/.fleet/FLEET.md" && rm "$G/.fleet/FLEET.md.bak"
 OUT=$("$SCAN" "$G" --review); RC=$?
 check "review: every inbox present and .plans/ excluded exits 0" "0|" "$RC|$OUT"
 

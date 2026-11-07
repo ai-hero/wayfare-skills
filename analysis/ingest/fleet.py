@@ -7,10 +7,11 @@ shared wayfare-skills plugin, not fleet-specific tooling):
   (CLAUDE_PLUGIN_ROOT, then WAYFARE_ROOT -- see scripts/hero-lib.sh's own
   header comment), not a hardcoded path.
 - ROOT is found the same way scripts/hero-lib.sh's hero_fleet_root finds
-  it: the nearest ancestor of the current directory holding FLEET.md with
-  no sibling HERO.md and outside any git work tree (a repo that committed
-  its own FLEET.md is not a fleet folder). WAYFARE_FLEET_ROOT overrides it,
-  for a script run from outside any repo.
+  it: the nearest ancestor of the current directory holding .fleet/FLEET.md
+  (the map, in the register checkout) with no sibling HERO.md and outside
+  any git work tree (a repo that committed its own map is not a fleet
+  folder). WAYFARE_FLEET_ROOT overrides it, for a script run from outside
+  any repo. FLEET_MAP is the map's path; fleet_map() resolves it.
 - Facts FLEET.md/HERO.md don't carry at all -- a baseline before/after
   cutoff date, which repos have no roadmap yet, which app IS the design
   system, role labels finer than a FLEET.md group -- come from
@@ -42,13 +43,28 @@ def _in_git_worktree(d):
         d = parent
 
 
+def fleet_map(d, quiet=False):
+    """The map's path for fleet folder d, or None. Mirrors audit.py's
+    fleet_map, legacy fallback included: the top-level FLEET.md is read only
+    while .fleet/FLEET.md is absent, with a stderr note. Retire it here and
+    there together."""
+    new, legacy = os.path.join(d, ".fleet", "FLEET.md"), os.path.join(d, "FLEET.md")
+    if os.path.isfile(new):
+        return new
+    if os.path.isfile(legacy):
+        if not quiet:
+            print(f"ingest/fleet.py: reading legacy {legacy}; move it into the register as {new}", file=sys.stderr)
+        return legacy
+    return None
+
+
 def _fleet_root():
     env = os.environ.get("WAYFARE_FLEET_ROOT")
     if env:
         return os.path.abspath(env)
     d = os.path.realpath(os.getcwd())
     while True:
-        if os.path.isfile(os.path.join(d, "FLEET.md")) and not os.path.isfile(os.path.join(d, "HERO.md")):
+        if fleet_map(d, quiet=True) and not os.path.isfile(os.path.join(d, "HERO.md")):
             if not _in_git_worktree(d):
                 return d
             print(f"ingest/fleet.py: passing over {d}; a folder inside a git work tree is never a fleet root", file=sys.stderr)
@@ -57,7 +73,7 @@ def _fleet_root():
             break
         d = parent
     sys.exit(
-        "ingest/fleet.py: no FLEET.md found walking up from the current directory, and "
+        "ingest/fleet.py: no .fleet/FLEET.md found walking up from the current directory, and "
         "WAYFARE_FLEET_ROOT isn't set. Run analysis scripts from inside the fleet folder "
         "(or a repo beneath it), or export WAYFARE_FLEET_ROOT=/path/to/fleet."
     )
@@ -65,6 +81,9 @@ def _fleet_root():
 
 PLUGIN = _plugin_root()
 ROOT = _fleet_root()
+FLEET_MAP = fleet_map(ROOT)
+if FLEET_MAP is None:
+    sys.exit(f"ingest/fleet.py: no fleet map at {os.path.join(ROOT, '.fleet', 'FLEET.md')}")
 # analysis/ingest/fleet.py -> repo root's gitignored .analysis/data (large, personal, rebuildable)
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".analysis", "data")
 
@@ -96,7 +115,7 @@ def _fleet_field(key):
     """A `- key: value` line under FLEET.md's `## Fleet` section (mirrors
     scripts/hero-lib.sh's hero_fleet_field), e.g. `register: .fleet/`."""
     in_section = False
-    for line in open(os.path.join(ROOT, "FLEET.md")):
+    for line in open(FLEET_MAP):
         if re.match(r"^## Fleet\s*$", line):
             in_section = True; continue
         if in_section and re.match(r"^## ", line):
@@ -110,7 +129,7 @@ def _fleet_field(key):
 
 def _groups():
     groups, name = {}, None
-    for line in open(os.path.join(ROOT, "FLEET.md")):
+    for line in open(FLEET_MAP):
         m = re.match(r"### (\S+)", line)
         if m: name = m.group(1); continue
         m = re.match(r"- group: (\w+)", line)

@@ -40,9 +40,9 @@ right for what it describes: *"copying a file into a sibling checkout's
 That is an argument about **teammates**, and it still holds, work handed to
 another repo's *people* goes through `handoff --repo` and a tracker issue.
 
-This channel is for **agents on one machine**, addressed by the local
-`FLEET.md`, and being invisible to teammates and dying with the checkout is the
-point, not the flaw. The two lanes divide on who the reader is:
+This channel is for **agents on one machine**, addressed by the fleet's
+`FLEET.md` rows, and being invisible to teammates and dying with the checkout is
+the point, not the flaw. The two lanes divide on who the reader is:
 
 | The reader is | Use | Lives |
 | -- | -- | -- |

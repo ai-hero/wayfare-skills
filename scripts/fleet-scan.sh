@@ -3,7 +3,7 @@
 # All Rights Reserved.
 
 # Enumerate the repos checked out in a fleet folder, and diff them against
-# FLEET.md. The engine behind wayfare:wayfare-review-fleet, which prints this
+# the fleet map, .fleet/FLEET.md. The engine behind wayfare:wayfare-review-fleet, which prints this
 # output, and `sync` uses it to propose rows.
 #
 # Usage: fleet-scan.sh [FLEET_ROOT] [--list | --review]
@@ -15,8 +15,11 @@
 #
 # --review: compare the listing with FLEET.md rows and print one finding per
 #   line as CODE<TAB>NAME<TAB>DETAIL (DETAIL is free text), sorted:
+#   NOT_CLONED         a row with no checkout on this machine (detail: path).
+#                      Informational: the map is shared through the register,
+#                      so it names repos this machine never cloned. It alone
+#                      never makes --review exit 1
 #   BAD_ROW            a row hero_fleet_repos refused   (detail: the reason)
-#   MISSING            a row whose path does not exist  (detail: path)
 #   NOT_GIT            a row whose path is not a git repo
 #   PORT_MISMATCH      row port differs from compose    (detail: row -> compose)
 #   PORT_UNIMPLEMENTED row claims a port, no compose file
@@ -40,11 +43,11 @@
 #   what is on disk.
 #
 # Exit codes:
-#   0  --list ran; or --review found nothing
-#   1  --review found at least one finding
-#   2  usage error; or, for --review, no FLEET.md at the root, a HERO.md
-#      beside it, or a root inside a git work tree (a repo that committed a
-#      FLEET.md is not a fleet)
+#   0  --list ran; or --review found nothing beyond NOT_CLONED
+#   1  --review found at least one other finding
+#   2  usage error; or, for --review, no .fleet/FLEET.md at the root, a
+#      HERO.md beside it, or a root inside a git work tree (a repo that
+#      committed a map is not a fleet)
 
 set -uo pipefail
 
@@ -55,7 +58,7 @@ HERO_LIB="$(cd "$(dirname "$0")" && pwd)/hero-lib.sh"
 # The end line tracks the header block above. Add a line up there and this
 # range silently truncates `--help` mid-sentence — no error, and the Exit
 # codes section is what falls off first.
-usage() { sed -n '5,47p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '5,50p' "$0" | sed 's/^# \{0,1\}//'; }
 
 MODE=list
 ROOT=""
@@ -86,15 +89,17 @@ if [ "$MODE" = list ]; then
   exit 0
 fi
 
-[ -f "$ROOT/FLEET.md" ] || { echo "fleet-scan: no FLEET.md in $ROOT; run wayfare:wayfare-sync-fleet to create one" >&2; exit 2; }
-[ ! -f "$ROOT/HERO.md" ] || { echo "fleet-scan: $ROOT holds HERO.md beside FLEET.md, which is a repo, not a fleet" >&2; exit 2; }
-hero_at_fleet_root "$ROOT" || { echo "fleet-scan: $ROOT is inside a git work tree, so its FLEET.md is a clone's content, not a fleet map" >&2; exit 2; }
+# Called once with stderr open so a legacy top-level map's note reaches the
+# reader; the later reads route stderr into $BAD or /dev/null.
+hero_fleet_map "$ROOT" >/dev/null || { echo "fleet-scan: no fleet map in $ROOT; clone the register into $ROOT/.fleet so .fleet/FLEET.md exists, or run wayfare:wayfare-sync-fleet to create it" >&2; exit 2; }
+[ ! -f "$ROOT/HERO.md" ] || { echo "fleet-scan: $ROOT holds HERO.md beside its fleet map, which is a repo, not a fleet" >&2; exit 2; }
+hero_at_fleet_root "$ROOT" || { echo "fleet-scan: $ROOT is inside a git work tree, so its map is a clone's content, not a fleet map" >&2; exit 2; }
 
 BAD=$(mktemp) || exit 2
 trap 'rm -f "$BAD"' EXIT
 LISTING=$(scan)
 ROWS=$(hero_fleet_repos "$ROOT" 2>"$BAD"); rc=$?
-case "$rc" in 0|3) ;; *) echo "fleet-scan: cannot read the rows of $ROOT/FLEET.md" >&2; exit 2 ;; esac
+case "$rc" in 0|3) ;; *) echo "fleet-scan: cannot read the rows of $ROOT's fleet map" >&2; exit 2 ;; esac
 TAB=$'\t'
 NL=$'\n'
 
@@ -105,7 +110,7 @@ review() {
   ports=""   # "PORT NAME" lines: every claim and every published port
   while IFS="$TAB" read -r name repo_path group rport; do
     [ -n "$name" ] || continue
-    [ -e "$repo_path" ] || { printf 'MISSING\t%s\t%s\n' "$name" "$repo_path"; continue; }
+    [ -e "$repo_path" ] || { printf 'NOT_CLONED\t%s\t%s\n' "$name" "$repo_path"; continue; }
     [ -e "$repo_path/.git" ] || { printf 'NOT_GIT\t%s\t%s\n' "$name" "$repo_path"; continue; }
     case "$LISTING" in
       *"$TAB$repo_path$TAB"*) actual=${LISTING#*"$TAB$repo_path$TAB"}; actual=${actual%%"$NL"*} ;;
@@ -175,4 +180,5 @@ review() {
 FINDINGS=$(review) || { echo "fleet-scan: review failed" >&2; exit 2; }
 [ -n "$FINDINGS" ] || exit 0
 sort <<< "$FINDINGS"
+grep -qv "^NOT_CLONED$TAB" <<< "$FINDINGS" || exit 0
 exit 1

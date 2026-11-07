@@ -71,7 +71,7 @@ The failures this skill exists to prevent, each one observed.
 | Building the task in the parent instead of a subagent | The plan is settled, so the build is execution. A scoped subagent on a cheaper model is faster and stays on this one task. |
 | Stopping a change at the `source` boundary | `source` is where the build starts. A route changed and its caller left on the old signature is a half-change the branch test finds anyway. Follow what the change implicates; skip what merely sits nearby. |
 | Widening a member task's `source:` from inside a turn | The admission test bounds on those paths *because* they were fixed at plan time and read aloud at the gate. A build that moves them picks its own bound. Record the extra files in `## Log` and leave the field alone. |
-| Reading "not a fence" as reaching the forbidden paths | `.github/`, `.claude/`, `HERO.md`, `FLEET.md` and anything governing auth or secrets stay hard-fenced for a build subagent, for the same privilege reason they are never admissible. |
+| Reading "not a fence" as reaching the forbidden paths | `.github/`, `.claude/`, `HERO.md`, `FLEET.md` (`.fleet/FLEET.md` too) and anything governing auth or secrets stay hard-fenced for a build subagent, for the same privilege reason they are never admissible. |
 | Two build subagents at once | They share one checkout and one branch. Sequential is what keeps the tree coherent, not a speed compromise. |
 | Fixing a failed branch test in the parent | It gets its own scoped agent and its own commit, capped at two attempts. A third means the diagnosis is wrong. |
 | Setting `parent` before writing the log line | A crash between them wedges the goal: `wayfare-start-goal` STOPs and `sync` is forbidden to fix it. Log line first. |

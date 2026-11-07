@@ -810,10 +810,10 @@ done
 [[ $FLEET_GATE_ERRORS -eq 0 ]] && pass "every skill that reads HERO.md tests for the fleet root"
 
 # The inline two-file test misses hero-lib.sh's work-tree rule, so a clone that
-# commits FLEET.md reads as a fleet to it and as a repo to the lib.
+# commits a map reads as a fleet to it and as a repo to the lib.
 INLINE_FLEET_ERRORS=0
 while IFS= read -r f; do
-  hits=$(grep -nE -- '-f "\\?\$(PWD|ROOT)/FLEET\.md" \] && \[ ! -f' "$f" || true)
+  hits=$(grep -nE -- '-f "\\?\$(PWD|ROOT)/(\.fleet/)?FLEET\.md" \] && \[ ! -f' "$f" || true)
   [ -z "$hits" ] && continue
   INLINE_FLEET_ERRORS=$((INLINE_FLEET_ERRORS + 1))
   error "inline fleet-root test instead of hero_at_fleet_root" \

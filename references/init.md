@@ -291,14 +291,14 @@ three states it is in: unset, `type: none`, or set.
 ```bash
 # reference — the template this repo was cloned from
 git log --reverse --format='%s' | head -3          # a template's initial commit often survives
-grep -n '^- template:' ../FLEET.md 2>/dev/null     # the fleet names its template row
+grep -n '^- template:' ../.fleet/FLEET.md 2>/dev/null   # the fleet names its template row
 
 # architecture — is the record here, or somewhere else?
 ls DESIGN.md docs/architecture* 2>/dev/null
 
 # infrastructure — IaC in this repo, or a sibling that holds it
 ls -d terraform infra deploy k8s helm charts 2>/dev/null
-grep -n '^### ' ../FLEET.md 2>/dev/null | head -20
+grep -n '^### ' ../.fleet/FLEET.md 2>/dev/null | head -20
 ```
 
 **What to look for:**
@@ -581,8 +581,8 @@ grep -E "port\|PORT\|:3000\|:8000\|:8080\|:5173\|:4000" pyproject.toml package.j
 - Language and framework from dependency files
 - Monorepo structure (nx, turborepo, `workspaces` in `package.json`, multiple
   `pyproject.toml`): one repo with many packages. A folder of sibling checkouts
-  is a **fleet**, mapped by `FLEET.md` (`wayfare:wayfare-sync-fleet`), and is
-  not a monorepo
+  is a **fleet**, mapped by `.fleet/FLEET.md` (`wayfare:wayfare-sync-fleet`),
+  and is not a monorepo
 - **Dependency file** per project (pyproject.toml, package.json, go.mod, and so
   on), needed by `wayfare:wayfare-audit-security` and
   `wayfare:wayfare-push-pr`'s test phase

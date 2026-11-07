@@ -75,12 +75,16 @@ is the fleet's.
   `.yml`. Writing the second spelling beside the first would leave two live
   `issue_comment` workflows, and every trigger would run twice.
 
-- **A folder of sibling checkouts is a fleet, not a project.** `FLEET.md` at its
-  top maps it ([docs/FLEET-MD.md](./docs/FLEET-MD.md)); every repo skill tests
-  for it in Step 0 and fans out instead of running against the folder. New
-  skills get the check from `scripts/new-skill.sh`. An agent that needs
-  something from a sibling sends a message rather than reaching into that repo
-  directly; see [docs/MESSAGES.md](./docs/MESSAGES.md).
+- **A folder of sibling checkouts is a fleet, not a project.** `.fleet/FLEET.md`
+  maps it ([docs/FLEET-MD.md](./docs/FLEET-MD.md)): the map lives in the
+  register repo cloned at `.fleet/`, so read its path from `hero_fleet_map` (or
+  `fleet_map()` in Python), never by spelling `FLEET.md` beside the folder. That
+  helper also holds the legacy top-level fallback, so retiring it is one place
+  per language. Every repo skill tests for the fleet in Step 0 and fans out
+  instead of running against the folder. New skills get the check from
+  `scripts/new-skill.sh`. An agent that needs something from a sibling sends a
+  message rather than reaching into that repo directly; see
+  [docs/MESSAGES.md](./docs/MESSAGES.md).
 
 - **Work is concurrent, so rebase before you judge.** Other sessions and other
   people merge underneath every PR. Before a review, an approval, or a merge,
@@ -154,8 +158,9 @@ bash scripts/validate.sh       # plugin structure
 ## Fleet
 
 This repo is one checkout in a fleet: sibling repos in the folder above it,
-mapped by that folder's `FLEET.md` (`wayfare:wayfare-sync-fleet`). The map is
-local and unversioned, so clone this repo beside the others and run
+mapped by `FLEET.md` in the fleet's register checkout, `.fleet/FLEET.md`
+(`wayfare:wayfare-sync-fleet`). Clone the register into the fleet folder as
+`.fleet/`, clone this repo beside the others, and run
 `wayfare:wayfare-review-fleet`. The host port this dev stack publishes is
 claimed in that map, not chosen here: take the next free port there first, then
 set it in every place this repo names it (compose defaults, health checks). Any

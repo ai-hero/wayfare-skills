@@ -507,7 +507,7 @@ procedures:
 | Command | What it does |
 | -- | -- |
 | `wayfare:wayfare-check-preflight` | Catch missing tooling, stale `HERO.md`, env mismatches, and busy ports before a pipeline step does destructive work |
-| `wayfare:wayfare-setup-dev` | Set up a developer's local environment (tools, auth, dependencies) |
+| `wayfare:wayfare-setup-dev` | Set up a developer's local environment (tools, auth, dependencies). Run at the fleet root, it sets up the whole machine from the register's `.fleet/setup.yaml` ([docs/SETUP-YAML.md](./docs/SETUP-YAML.md)), clones the repos you pick, restores their `.plans/` and `.env` from an old machine, then sets up each repo |
 | `wayfare:wayfare-create-skill` | Create a new Claude Code skill, subagent, rule, or hook |
 
 ### Development Cycle

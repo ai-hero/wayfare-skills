@@ -258,3 +258,31 @@ skill posts. What still needs judgment runs on demand, not on every commit.
   cloned fork of the register carrying its own map still vouches for itself
   there. The vendored `## Fleet` section changed, so every consumer's copy
   drifts until it is re-vendored.
+
+### 2026-11-07: Machine setup is data in the register, .fleet/setup.yaml, run by a script
+
+- Context: a new developer machine was set up from a hand-written runbook in
+  hero-template (`docs/device-setup.md`). An agent re-typed it step by step, a
+  little differently each run, and a fleet on wayfare that is not A.I. Hero had
+  nothing to start from. The owner decided setup should come from a
+  configurable file in the register, so everyone using wayfare gets the same.
+- Decision: `.fleet/setup.yaml`, beside `.fleet/FLEET.md`, holds machine-level
+  setup only, under a versioned schema (`docs/SETUP-YAML.md`) that rejects
+  unknown keys and wrong types. Per-repo setup stays in each repo's `HERO.md`.
+  `scripts/fleet-setup.py`, run through `uv` with inline metadata, validates
+  the file, prints the plan, and with `apply` runs one group's missing steps,
+  checking each first and stopping at the first open person step.
+  `wayfare-setup-dev` gets a fleet mode at the fleet root (its `WORKFLOW.md`):
+  walk the groups, clone the repos the person picks, restore `.plans/` and
+  `.env` from an old machine, then the per-repo procedure in each.
+- Consequences: the script, not the agent, runs the commands, so a rerun is safe
+  by construction and the commands are the file's, not a paraphrase. A secret is
+  declared by its variable name only; a server that needs one becomes a person
+  step run in a separate terminal, so the value never passes through the agent
+  or the script's output, and verify checks report exit status alone. The file
+  runs commands on every developer's machine, so whoever can merge to the
+  register can run code there: the same people who can change `checkers.py`,
+  with the skill asking before each group as the second gate. Bootstrap (tools,
+  Homebrew, `gh`, `uv`, Claude Code, wayfare, the register clone) stays a manual
+  list in the schema doc, because the skill cannot install itself. Only
+  `macos-arm64` is a platform so far.

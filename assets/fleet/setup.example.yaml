@@ -1,0 +1,89 @@
+# An example .fleet/setup.yaml: the machine setup every developer in a fleet
+# gets from wayfare:wayfare-setup-dev, run at the fleet root. Copy it into the
+# register checkout as .fleet/setup.yaml and edit it there. The schema is
+# docs/SETUP-YAML.md; check a change with
+#   uv run scripts/fleet-setup.py --file .fleet/setup.yaml validate
+#
+# Machine-level only. A step one repo needs belongs in that repo's HERO.md
+# (## Developer Setup), which the skill reads per repo.
+
+version: 1                    # required; the only version there is
+platform: macos-arm64         # Apple Silicon macOS, the only platform so far
+workspace: ~/workspaces/acme  # the fleet root on a new machine
+
+notes:                        # shown once, before the plan
+  - Every step checks before it acts, so running setup twice is safe.
+
+groups:                       # run in this order, steps in file order
+  - name: base
+    title: GitHub CLI and Claude Code
+    steps:
+      - brew: [gh, uv]          # uv runs the setup script itself
+      - person:               # never run by the script; the skill stops here
+          title: Sign in to GitHub
+          why: browser        # password | browser | secret | gui | choice
+          run: gh auth login && gh auth setup-git
+          check: gh auth status   # exit 0 means done, so a rerun skips it
+      - path:                 # export PATH="ENTRY:$PATH", added once
+          file: ~/.zshrc
+          entries:
+            - $HOME/.local/bin
+      - installer:            # skipped when `check` is a command on PATH
+          name: Claude Code
+          check: claude
+          run: curl -fsSL https://claude.ai/install.sh | bash
+
+  - name: dev-tools
+    title: Container runtime and dev tools
+    notes:
+      - OrbStack needs a paid licence for work use after its 30-day trial.
+    steps:
+      - cask: [orbstack]
+      - brew: [just, go, node, pipx]
+      - pipx: [pre-commit]
+      - git:
+          pull.rebase: "false"  # values are strings; quote true and false
+      - shell:                # each line added once, exactly as written
+          file: ~/.zshrc
+          lines:
+            - alias gst='git status'
+
+  - name: claude
+    title: Claude Code plugins and MCP servers
+    steps:
+      - marketplace:          # before any plugin that comes from it
+          - name: wayfare
+            source: ai-hero/wayfare-skills
+      - plugin: [wayfare@wayfare]
+      - mcp:
+          name: playwright
+          transport: stdio
+          command: npx
+          args: [-y, "@playwright/mcp@0.0.83"]   # npx/uvx need an exact version
+      - mcp:
+          name: vanta
+          transport: http
+          url: https://mcp.vanta.com/mcp
+      - mcp:
+          name: context7
+          transport: stdio
+          command: npx
+          args: [-y, "@upstash/context7-mcp@4.4.4"]
+          # Names only. The person types the value in a separate terminal;
+          # there is no field that can hold it.
+          secrets: [CONTEXT7_API_KEY]
+
+  - name: extras
+    title: Tools few people need
+    optional: true            # asked once, with this question
+    ask: Install the extra tools (helm, yq)?
+    steps:
+      - brew: [helm, yq]
+
+verify:                       # pass or fail by exit status; output is not shown
+  - name: github sign-in
+    run: gh auth status
+    passes: gh holds a valid github.com token
+  - name: docker compose
+    run: docker compose version
+    passes: the container engine is up and has Compose

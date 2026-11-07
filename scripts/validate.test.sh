@@ -294,6 +294,18 @@ run_validate "$d"
 check "goals.md grant hidden behind an earlier clean match: rc" "1" "$RC"
 check_contains "goals.md grant hidden behind an earlier clean match: reported" "$OUT" "carries both the commit-only line and the permissions grant"
 
+d=$(fixture ship-chains-trigger)
+printf '\n```bash\nT=$(date)\ngh pr comment 1 --body "@auto-approve"\n```\n' >> "$d/skills/wayfare-ship-pr/WORKFLOW.md"
+run_validate "$d"
+check "ship chains the trigger: rc" "1" "$RC"
+check_contains "ship chains the trigger: reported" "$OUT" "chains other commands with the auto-approve trigger or the merge"
+
+d=$(fixture ship-chains-merge)
+printf '\n```bash\ngh pr merge 1 --squash\necho done\n```\n' >> "$d/skills/wayfare-ship-pr/WORKFLOW.md"
+run_validate "$d"
+check "ship chains the merge: rc" "1" "$RC"
+check_contains "ship chains the merge: reported" "$OUT" "chains other commands with the auto-approve trigger or the merge"
+
 # ---------- cross-agent manifest agreement ----------------------------------
 
 d=$(fixture portable-version-mismatch)

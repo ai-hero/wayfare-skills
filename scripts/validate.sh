@@ -868,6 +868,29 @@ else
   fi
 fi
 
+# ── ship: the auto-approve trigger and the merge each run alone ──
+# A permission rule matches a whole Bash call and the auto-mode classifier judges
+# a chain as one action, so a fence that adds anything to either command turns an
+# allowed step into a block that stops an authorized goal.
+SHIP_MD="$PLUGIN_ROOT/skills/wayfare-ship-pr/WORKFLOW.md"
+if [[ -f "$SHIP_MD" ]]; then
+  SHIP_BAD=$(awk '
+    /^ *```/ {
+      if (inf) { if (hit && n > 1) bad++; inf = 0 } else { inf = 1; n = 0; hit = 0 }
+      next
+    }
+    inf && NF { n++; if (/gh pr comment .*@auto-approve|gh pr merge /) hit = 1 }
+    END { print bad + 0 }
+  ' "$SHIP_MD")
+  if [[ "$SHIP_BAD" -gt 0 ]]; then
+    error "skills/wayfare-ship-pr/WORKFLOW.md chains other commands with the auto-approve trigger or the merge ($SHIP_BAD fence(s))" \
+      "skills/wayfare-ship-pr/WORKFLOW.md" "" \
+      "Give \`gh pr comment ... @auto-approve\` and \`gh pr merge\` a fence of their own: allow rules match a whole call"
+  else
+    pass "wayfare-ship-pr runs the auto-approve trigger and the merge as single commands"
+  fi
+fi
+
 # ── goal turn: the per-task build launch never carries the grant ──
 # references/goals.md step 4 hands each task's build a `commit only: goal G
 # branch GOAL_BRANCH` line and nothing else; commit-only mode never reaches

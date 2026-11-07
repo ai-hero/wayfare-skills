@@ -155,7 +155,7 @@ for that reason and closes the bots' PRs after its own merge.
    → `@dependabot recreate`. Then poll the head SHA every 30 s for up to 10
    minutes and continue once it moves; a head that never moves is a STOP
    ("Dependabot did not respond. Is it enabled for this repo?"), never a local
-   rebase. Then check release age per
+   rebase. Then check release age and the extra checks per
    [dependency-cooldown.md](dependency-cooldown.md), on the head as it now
    stands: a hold STOPs here with the hold lines, before the test and before the
    approval in step 3 that would otherwise stand on a release the rule holds,
@@ -181,6 +181,8 @@ for that reason and closes the bots' PRs after its own merge.
      `source` paths) and whether any touches a changed API;
    - the alert it closes, if any, and whether the vulnerable path is reachable
      here (harden's reachability questions);
+   - any publisher that could not be compared, and any failed alerts call (the
+     reference requires both be reported);
    - CI on the head.
 
    Humanize it with [wayfare:write-like-me](../skills/write-like-me/SKILL.md)'s

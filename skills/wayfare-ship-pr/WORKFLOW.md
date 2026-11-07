@@ -485,7 +485,7 @@ procedure in `../../references/advancing.md` runs the same check before it
 approves; this step catches a PR that reached ship-pr any other way, or a head
 that moved since.
 
-For each package the PR bumps, after the Step 3a rebase:
+For each changed lockfile entry, after the Step 3a rebase:
 
 1. Read the old and new versions from `gh pr diff $PR_NUMBER`, not from the
    title.
@@ -504,9 +504,11 @@ If a version update is too young or has an unreadable age, or a package fails an
 extra check, STOP and do not post `@auto-approve`. Print one hold line per
 package, in the reference's format, and post the same lines as one PR comment
 unless a comment from this account already carries them. The PR clears on the
-latest date. A grouped PR holds when any one package holds. Report a publisher
-that cannot be compared in the PR comment; it does not hold. In a goal turn the
+latest date. A grouped PR holds when any one package holds. In a goal turn the
 hold is `stop: awaiting-human`.
+
+A publisher that cannot be compared does not hold. Post one PR comment naming
+it, then continue.
 
 ### Step 4: Post the @auto-approve Trigger Comment
 

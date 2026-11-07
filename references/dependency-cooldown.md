@@ -32,7 +32,9 @@ On a security update the wait costs a known hole left open, and it was stalling
 security fixes, so we chose to drop it there. The trade, in plain words: a fresh
 poisoned release could ride a real advisory, including a low-severity one, and
 merge with no wait. What remains against that is the two extra checks and
-review.
+review, and both are limited. Review judges reachability and call sites; it does
+not read the release's code. The extra checks are fullest on npm. Outside it, a
+package may get a publisher comparison only, or neither check.
 
 ## What Dependabot does and does not enforce
 
@@ -52,8 +54,14 @@ update, whatever opened the PR.
 
 - **Take each version from the diff, never the title.** `@dependabot rebase`
   ignores cooldown and can retarget the PR to a newer release while the title
-  keeps the old version. Read the old and new versions from the manifest or
-  lockfile lines the diff changes.
+  keeps the old version. Read the old and new versions from the lockfile lines
+  the diff changes. Use the manifest only when there is no lockfile, because a
+  manifest can hold a range.
+- **Every changed lockfile entry is a package.** That includes a transitive
+  entry the PR moves or adds, and it is judged alone, so two installed copies of
+  one name get two verdicts. An added entry has no old version, so it closes no
+  alert and is a version update. This can hold a security PR until the entry
+  clears; leaving it out would let a fresh release in unmeasured.
 - **In a grouped PR, each package is judged alone.** A package that closes an
   alert needs no age check. Any other package in the group is a version update,
   even when the PR is a security PR for another package in it. The PR passes
@@ -70,14 +78,18 @@ else:
 ```bash
 gh api "repos/$OWNER/$REPO/dependabot/alerts?state=open&per_page=100" --paginate \
   --jq '.[] | select(.dependency.package.name == "PKG")
-        | {sev: .security_advisory.severity, cve: .security_advisory.cve_id,
+        | {eco: .dependency.package.ecosystem, manifest: .dependency.manifest_path,
+           sev: .security_advisory.severity, cve: .security_advisory.cve_id,
            range: .security_vulnerability.vulnerable_version_range,
            fixed: .security_vulnerability.first_patched_version.identifier}'
 ```
 
-Apply the two tests above to each alert. One alert passing both is enough. An
-alert with a `null` `fixed` closes nothing, because no version is past it. A
-call that succeeds with no matching alert means the package is a version update.
+Use only alerts whose `eco` is the package's ecosystem and whose `manifest` is a
+file the diff changes for this entry; a same-named package elsewhere closes
+nothing. Apply the two tests above to each of those alerts. One alert passing
+both is enough. An alert with a `null` `fixed` closes nothing, because no
+version is past it. A call that succeeds with no matching alert means the
+package is a version update.
 
 When the alerts call fails (alerts disabled, token scope), the package cannot be
 shown to close an alert, so it is treated as a version update. Say that plainly
@@ -135,11 +147,15 @@ whatever the severity:
 2. **It adds no install-time script.** Diff `npm view PKG@VER scripts --json`
    against the previous version: a new `preinstall`, `install` or `postinstall`
    runs on every developer machine and CI runner the moment the lockfile lands.
-   A script list that cannot be read is a failed check. This check is npm's; Go
-   modules and Actions run no install hook.
+   Also read the lockfile lines the diff adds: a `hasInstallScript: true` that
+   was not there before is a new install-time script, whichever package carries
+   it. A script list that cannot be read is a failed check. This check runs on
+   npm only; Go modules and Actions run no install hook, and a PyPI or other
+   package goes unchecked here, which the trade under Why accepts.
 
-Neither check catches a stolen token used to publish a payload in runtime code.
-On a security update, only review stands against that.
+Neither check catches a stolen token used to publish a payload in runtime code,
+and review does not read that code, so on a security update nothing stands
+against it. That is the trade under Why.
 
 ## Holding
 

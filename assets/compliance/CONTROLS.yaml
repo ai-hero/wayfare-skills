@@ -42,8 +42,8 @@ controls:
     caught and yanked days later. So a version update must be 7 days old when
     adopted. A package whose update closes an open Dependabot alert has no age
     wait, at any severity: a fresh poisoned release could ride a real advisory,
-    and extra checks on a security update younger than 7 days plus review are
-    what remain. Dependabot's cooldown covers version updates only, and a
+    and limited extra checks on a security update younger than 7 days plus
+    review are what remain. Dependabot's cooldown covers version updates only, and a
     rebase can retarget past it, so age is measured again at review
     (references/dependency-cooldown.md).
 

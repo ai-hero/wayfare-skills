@@ -143,8 +143,12 @@ expensive-model work):
   hand-made fix (an override, a transitive bump, a manifest edit). A release at
   or past the alert's first patched version closes the alert and has no age
   wait, at any severity; one younger than 7 days gets the reference's two extra
-  checks. If the release you would pick fails a check, the plan item says which
-  check and that it needs a person.
+  checks. You choose the version here, so prefer the newest fixed release at
+  least 7 days old, and go younger only when none exists. If the release you
+  would pick fails a check, the plan item says which check and that it needs a
+  person. A bumped package that closes no alert, such as a parent of the
+  vulnerable package, is a version update: under 7 days, the plan item names the
+  date it clears.
 - What is the correct update command for this ecosystem
   (`npm install PACKAGE@VERSION`, `uv lock && uv sync` after a `pyproject.toml`
   edit, a version pin bump in `.github/workflows/*.yml`)?

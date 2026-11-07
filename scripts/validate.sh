@@ -957,6 +957,18 @@ else
   fi
 fi
 
+bold "4. Vendored security audit"
+
+# Offline. No skip when python3 or the script is missing: a pin nobody checks
+# prints the same as a pin that holds.
+if VENDORED_OUT=$(python3 "$PLUGIN_ROOT/scripts/security_audit_upstream.py" verify 2>&1); then
+  pass "assets/security-audit matches its manifest ($VENDORED_OUT)"
+else
+  error "assets/security-audit differs from its manifest: $(printf '%s' "$VENDORED_OUT" | head -5 | tr '\n' ';')" \
+    "assets/security-audit/MANIFEST.sha256" "" \
+    "Never edit the vendored tree. Restore it with git, or take an upstream change with scripts/security_audit_upstream.py refresh"
+fi
+
 echo ""
 echo "────────────────────────────"
 

@@ -59,6 +59,8 @@ cp "$ROOT_REPO/AGENTS.md" "$BASE/AGENTS.md"
 cp -R "$ROOT_REPO/assets/auto-approve" "$BASE/assets/auto-approve"
 cp -R "$ROOT_REPO/assets/design-system" "$BASE/assets/design-system"
 cp -R "$ROOT_REPO/assets/fleet" "$BASE/assets/fleet"
+cp -R "$ROOT_REPO/assets/security-audit" "$BASE/assets/security-audit"
+cp "$ROOT_REPO/scripts/security_audit_upstream.py" "$BASE/scripts/security_audit_upstream.py"
 cp "$ROOT_REPO/.claude-plugin/plugin.json" "$BASE/.claude-plugin/plugin.json"
 cp "$ROOT_REPO/.claude-plugin/marketplace.json" "$BASE/.claude-plugin/marketplace.json"
 cp "$ROOT_REPO/.agents/plugins/marketplace.json" "$BASE/.agents/plugins/marketplace.json"
@@ -99,6 +101,20 @@ d=$(fixture clean)
 run_validate "$d"
 check "clean fixture: rc" "0" "$RC"
 check_contains "clean fixture: ALL CHECKS PASSED" "$OUT" "ALL CHECKS PASSED"
+
+# ---------- vendored security audit reaches the validator's exit code -------
+
+d=$(fixture vendored-one-byte)
+printf 'x' >> "$d/assets/security-audit/skill/SKILL.md"
+run_validate "$d"
+check "vendored one-byte edit: rc" "1" "$RC"
+check_contains "vendored one-byte edit: tag" "$OUT" "VENDORED_CHANGED skill/SKILL.md"
+
+d=$(fixture vendored-missing)
+mv "$d/assets/security-audit/skill/HUNTING.md" "$d/gone"
+run_validate "$d"
+check "vendored missing file: rc" "1" "$RC"
+check_contains "vendored missing file: tag" "$OUT" "VENDORED_MISSING skill/HUNTING.md"
 
 # ---------- Agent Skills portability contract -----------------------------
 

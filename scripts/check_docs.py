@@ -34,7 +34,9 @@ import re
 import subprocess
 import sys
 
-EXCLUDE_DIRS = ("analysis/",)
+# assets/security-audit/ is third-party text this repo may not edit, so a finding
+# on it could never be fixed.
+EXCLUDE_DIRS = ("analysis/", "assets/security-audit/")
 
 NUMBER_WORDS = {w: i for i, w in enumerate(
     "zero one two three four five six seven eight nine ten eleven twelve "

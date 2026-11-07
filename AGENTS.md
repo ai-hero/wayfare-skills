@@ -45,10 +45,9 @@ not the logic and must stay small.
 ## Layout
 
 `ls` shows it. The two non-obvious facts: `assets/` is installed **into** other
-repos (the auto-approve caller, the design-system rule and hook, the `## Fleet`
-section for AGENTS.md), with the exception of `assets/compliance/`, the register
-baseline the engine reads in place. And `pr-check.yaml` is this repo's own gate
-while `auto-approve.yaml` is the fleet's.
+repos, except `assets/compliance/` and `assets/security-audit/`, which are read
+in place. And `pr-check.yaml` is this repo's own gate while `auto-approve.yaml`
+is the fleet's.
 
 ## Conventions
 
@@ -128,6 +127,11 @@ while `auto-approve.yaml` is the fleet's.
 
 - **Assets are vendored downstream, not authored there.** Fix a bug here, then
   re-vendor. A consuming repo's copy is output.
+
+- **`assets/security-audit/` is the one asset nobody here authors, so never edit
+  it.** `validate.sh` holds it to its hash manifest, and every formatter is
+  excluded from it. An upstream fix is taken with
+  `scripts/security_audit_upstream.py refresh`, and a local fix does not exist.
 
 - **`hooks/hooks.json` runs in every session of everyone with the plugin
   enabled**, in every repo they open. Its Stop hook gates itself to repos with a

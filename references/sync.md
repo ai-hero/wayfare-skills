@@ -198,6 +198,21 @@ this run's report as written: `skipped (no issues connection)` and
 lane, never dropped. Launched as a fan-out agent, it returns `Finding lane:` and
 `Finding key:` lines instead; carry them into the report unchanged.
 
+**The upstream pin, after `harden`, in both modes.**
+`wayfare:wayfare-audit-deep` wraps a pinned copy of a third-party audit, and it
+runs only on request, so nothing else says when the pin falls behind. Carry this
+one line into the run's report as written, once per run however many repos it
+covers. It writes no item and asks nothing.
+
+```bash
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+python3 "$WAYFARE_ROOT/scripts/security_audit_upstream.py" status --summary
+```
+
+`UPSTREAM_NOT_CHECKED` reads `not checked` in the report, never current. This
+line is the only part of the deep audit `sync` touches: never run the audit
+here.
+
 **The `comments` stage: prose that has gone false about the code.** Runs after
 `wayfare-audit-security`, before `compliance`, in both modes.
 

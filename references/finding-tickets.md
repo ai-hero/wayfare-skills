@@ -19,6 +19,7 @@ scanner or the engine reports it against the default branch as it is merged:
 | A dependency CVE | an open Dependabot alert (alerts are computed on the default branch) |
 | A container CVE | Scout or Trivy reports it on the image the deploy runs: the Deployment `registry` tag built from the default branch. A base image scanned from a Dockerfile in the checkout is a candidate |
 | A control check | `scripts/audit.py` reports `FAIL` for the check at `origin/main` (its default snapshot; a `--no-snapshot` run reads the checkout as it sits, which is a candidate) |
+| A deep audit finding | a `wayfare:wayfare-audit-deep` record is `confirmed` and a person triaged it and asked for the ticket. Nothing files it automatically |
 
 A candidate is anything else: an `ERROR` cell, a `MANUAL` check, a part that ran
 `skipped (unavailable)`, a code-hardening finding from Part C of the security
@@ -112,12 +113,17 @@ Every ticket's title starts with a fixed prefix and its key, then one space:
 - **A control check.** The key is the check id (`CI-20`). One ticket per check,
   not per repo and not per control. Its body lists the failing repos, one line
   each with the check's `detail`.
+
 - **A vulnerability.** One ticket per finding group: the advisories one fix
   clears, in one package or one base image. The key is the smallest GHSA id in
   the group, else the smallest CVE id, else the scanner's own id. It is fixed
   once filed: a group that later gains or loses an id keeps its ticket's key.
   The body names every id of the group and lists the affected repos the way a
   check lists its failing ones.
+
+- **A deep audit finding.** The key is the `DEEP-` hash
+  `wayfare:wayfare-audit-deep` derives from the fingerprint. One ticket per
+  fingerprint. The body carries no reproduction.
 
 A key or id is `[A-Za-z0-9-]+`. Anything else in that position is a scanner
 value the procedure does not understand; stop the lane and report it. That check

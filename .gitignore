@@ -228,3 +228,7 @@ __marimo__/
 # Software-factory research data: ingested sqlite DBs, caches, transcripts.
 # Personal, and rebuildable from analysis/ingest/* against live sources.
 .analysis/
+
+# The Python rules above would hide a lib/ or build/ directory an upstream update
+# adds, and the copy would then differ from its manifest only on a fresh clone.
+!assets/security-audit/**

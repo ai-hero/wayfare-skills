@@ -35,6 +35,9 @@ TODO_MARK = re.compile(r"\b(TODO|FIXME|XXX)\b")  # leftovers: ok
 TRACKED = re.compile(r"#\d+|\b[A-Z][A-Z0-9]+-\d+\b|https?://")
 PROSE = re.compile(r"\.(md|mdx|rst|txt|adoc)$")
 ALLOW = "leftovers: ok"
+# Third-party bytes held to a hash manifest: a hit there could only be fixed by
+# breaking the manifest, and a refresh would otherwise stop on upstream's code.
+VENDORED = "assets/security-audit/"
 # Explicit prefixes and flags override the diff.noprefix, diff.mnemonicPrefix
 # and color configs, any of which silently changes the headers this parser
 # reads. core.quotePath=false keeps non-ASCII paths unescaped.
@@ -119,7 +122,7 @@ def main():
     hits = []
     try:
         for path, n, text in scan(args.base):
-            if PROSE.search(path) or ALLOW in text:
+            if PROSE.search(path) or ALLOW in text or path.startswith(VENDORED):
                 continue
             if DEBUG.search(text):
                 hits.append(f"{path}:{n}: debug: {text.strip()[:80]}")

@@ -78,10 +78,10 @@ is the fleet's.
 - **A folder of sibling checkouts is a fleet, not a project.** `.fleet/FLEET.md`
   maps it ([docs/FLEET-MD.md](./docs/FLEET-MD.md)): the map lives in the
   register repo cloned at `.fleet/`, so read its path from `hero_fleet_map` (or
-  `fleet_map()` in Python), never by spelling `FLEET.md` beside the folder. That
-  helper also holds the legacy top-level fallback, so retiring it is one place
-  per language. Every repo skill tests for the fleet in Step 0 and fans out
-  instead of running against the folder. New skills get the check from
+  one of the two Python `fleet_map()`s), never by spelling `FLEET.md` beside the
+  folder. Those three functions also hold the legacy top-level fallback, so
+  retiring it is those three. Every repo skill tests for the fleet in Step 0 and
+  fans out instead of running against the folder. New skills get the check from
   `scripts/new-skill.sh`. An agent that needs something from a sibling sends a
   message rather than reaching into that repo directly; see
   [docs/MESSAGES.md](./docs/MESSAGES.md).

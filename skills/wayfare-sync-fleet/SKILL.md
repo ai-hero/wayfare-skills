@@ -28,9 +28,13 @@ HERO_LIB="$WAYFARE_ROOT/scripts/hero-lib.sh"
 . "$HERO_LIB" || { echo "fleet: cannot load $HERO_LIB — STOP (reinstall the plugin)"; exit 1; }
 SCAN="$(dirname "$HERO_LIB")/fleet-scan.sh"
 
-if FLEET_ROOT=$(hero_fleet_root); then
+FLEET_ROOT=$(hero_fleet_root); rc=$?
+if [ "$rc" = 2 ]; then
+  echo "MAP_UNREADABLE"
+elif [ "$rc" = 0 ]; then
   echo "FLEET_ROOT=$FLEET_ROOT"
   echo "MAP=$(hero_fleet_map "$FLEET_ROOT")"
+  PIN=$(hero_register_pin "$FLEET_ROOT") && echo "PIN=$PIN" || echo "UNPINNED"
   hero_fleet_repos "$FLEET_ROOT"
 else
   # No map above us. The candidate is this folder when not in git, else the
@@ -47,6 +51,10 @@ fi
 > Each bash block below runs in a fresh shell, so re-source `hero-lib.sh` at the
 > top of any block that calls a `hero_*` function.
 
+`MAP_UNREADABLE` → **stop.** `.fleet/FLEET.md` exists but is not a readable file
+(the error above names it). Report it and stop: never fall back to a top-level
+copy or bootstrap a new map over a broken register.
+
 `NO_FLEET` with `NO_REGISTER` → **stop.** The map lives in the register repo, so
 there is nowhere to write it yet. Tell the person to clone the fleet's register
 into the candidate folder as `.fleet/` (`git clone <register> .fleet`), or, for
@@ -59,6 +67,23 @@ end.
 folder first**: show its path and the checkouts the scan found, and ask. A wrong
 guess writes a registry into someone's home directory.
 
+`UNPINNED` → offer to pin the register on this machine, after reading its
+`origin` and confirming it is the fleet's register
+(`git -C "$FLEET_ROOT/.fleet" remote get-url origin`). The pin lives outside the
+register, so a fork carrying its own map cannot vouch for itself; the audit
+warns while it is missing and will read the register UNREVIEWED once the legacy
+top-level fallback is removed. On confirmation, run, with `OWNER/NAME` from that
+`origin`:
+
+```bash
+mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/wayfare"
+printf '%s %s\n' "$FLEET_ROOT" OWNER/NAME >> "${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"
+```
+
+`PIN=` that differs from the map's `register-repo` or from the register's
+`origin` is a finding: report all three and stop. Never rewrite a pin to match
+the map; the pin is what the map is checked against.
+
 `MAP=` ending in a top-level `FLEET.md` (not `.fleet/FLEET.md`) is the legacy
 layout. Offer the move from the standard's *Moving from a top-level FLEET.md*
 before converging, and write the result to `.fleet/FLEET.md`.
@@ -66,12 +91,14 @@ before converging, and write the result to `.fleet/FLEET.md`.
 ## Converge FLEET.md with the folder
 
 Both modes use this sequence: **scan, propose, write only what the user
-confirms.** `sync` writes only `.fleet/FLEET.md`, and **never commits it**: the
-edit lands as an uncommitted change in the register checkout, for the person to
-commit and open a PR there. Say so when you write it. Readers take the map from
-the working tree, so the change is live on this machine at once, and reaches
-everyone else only when that PR merges. Send the `## Fleet` section as a message
-to each fleet repo after confirmation, as specified below. Route other repo
+confirms.** `sync` writes only `.fleet/FLEET.md` (and, when asked, this
+machine's register pin), and **never commits the map**: the edit lands as an
+uncommitted change in the register checkout, for the person to commit and open a
+PR there. Say so when you write it. Fan-out and `review` read the map from the
+working tree, so a row is usable on this machine at once; the compliance audit
+reads the register UNREVIEWED until the change is merged and pulled, and
+everyone else sees it only then. Send the `## Fleet` section as a message to
+each fleet repo after confirmation, as specified below. Route other repo
 changes, including ports and missing `HERO.md`, to the skill that owns them.
 
 **Bootstrap: no FLEET.md yet.**
@@ -90,7 +117,8 @@ changes, including ports and missing `HERO.md`, to the skill that owns them.
    about membership: a repo is fleet when the user says so. `what` comes from
    the repo's `README.md` first line or `HERO.md`'s framework field. Leave it
    blank rather than invent it.
-5. Show the whole file, confirm, write `CAND/.fleet/FLEET.md`. Then run
+5. Show the whole file, confirm, write `CAND/.fleet/FLEET.md`. Then offer the
+   register pin (the `UNPINNED` step above, with `CAND` as the root), run
    `"$SCAN" "$CAND" --review` and show it. A fresh registry that already reports
    collisions is telling the truth on day one.
 
@@ -102,7 +130,11 @@ changes, including ports and missing `HERO.md`, to the skill that owns them.
    | Finding | Proposal |
    | -- | -- |
    | `BAD_ROW` | the row could not be trusted (the detail says why: a bad name, a dashed or non-numeric value, a duplicate, a relative path outside the fleet). Fix or drop it, and never guess a replacement |
-   | `NOT_CLONED` | normal for a shared map: this machine has no checkout. Offer to clone it (`git clone git@github.com:ORG/NAME.git FLEET_ROOT/NAME`, or to the row's `path`), and if it moved, fix `path`. **Never propose dropping the row** on this finding alone: drop it only when the person says the repo is retired |
+   | `NOT_CLONED` | normal for a shared map: this machine has no checkout. Offer to clone it **only to `FLEET_ROOT/NAME`** (`git clone git@github.com:ORG/NAME.git "$FLEET_ROOT/NAME"`), and only when the row's path resolves there. A row with any other `path:` is reported, never offered: fix the row first. **Never propose dropping the row** on this finding alone: drop it only when the person says the repo is retired |
+   | `ABSENT_OUTSIDE` | an absolute or `~/` row whose folder does not exist. Report it and **never offer a clone or any write there**: the map is shared content, and an absolute path is a place someone else named, such as a skills or shell-config folder. The person installs it themselves, or fixes the row |
+   | `MOVED` | the repo is checked out under another folder name. Propose fixing the row's `path` to where it is (or renaming the folder), never a second clone |
+   | `DANGLING_LINK` | the row's path is a symlink to nothing. Ask where the checkout went; fix the link or the row. Never clone through the link |
+   | `NO_PARENT` | a relative `path:` whose parent folder is missing, usually a typo. Propose the corrected path; never create the parent folders |
    | `NOT_GIT` | the folder exists but is not a checkout. Ask whether it moved (fix `path`), whether to re-clone it, or whether the repo is retired (drop the row) |
    | `PORT_MISMATCH` | the row is the assignment, the compose default is the implementation. Ask which is right. If the repo must change, hand it to `wayfare:wayfare-build-task` in that repo. The standard's last anti-pattern names every place the port appears. Never edit the repo from here |
    | `PORT_UNIMPLEMENTED` | the claim is made, the repo has no compose file yet. Nothing to fix here. It clears when the dev stack lands |

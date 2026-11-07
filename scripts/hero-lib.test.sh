@@ -302,8 +302,11 @@ printf '## Fleet\n\n- name: old\n' > "$LG/FLEET.md"
 check "fleet-map: a legacy top-level FLEET.md still resolves the fleet" \
   "$LG" "$(hero_fleet_root "$LG/repo" 2>/dev/null)"
 hero_at_fleet_root "$LG"; check "at-fleet-root: a legacy top-level FLEET.md still counts" "0" "$?"
+check "fleet-map: a silent probe does not use up the note" "" "${HERO_FLEET_NOTED:-}"
 check "fleet-map: the legacy read is named on stderr with the move" \
   "1" "$(hero_fleet_field name "$LG" 2>&1 >/dev/null | grep -c "move it into the register as $LG/.fleet/FLEET.md")"
+check "fleet-map: the note prints once per shell" \
+  "1" "$( (hero_fleet_map "$LG" >/dev/null; hero_fleet_field name "$LG" >/dev/null; hero_fleet_repos "$LG" >/dev/null) 2>&1 | grep -c "reading legacy")"
 mkdir -p "$LG/.fleet"; printf '## Fleet\n\n- name: new\n' > "$LG/.fleet/FLEET.md"
 check "fleet-map: .fleet/FLEET.md wins over the legacy copy" \
   "new" "$(hero_fleet_field name "$LG" 2>/dev/null)"
@@ -312,9 +315,51 @@ check "fleet-map: a leftover legacy copy is named as ignored" \
 rm "$LG/FLEET.md"
 check "fleet-map: no note once only .fleet/FLEET.md exists" \
   "" "$(hero_fleet_field name "$LG" 2>&1 >/dev/null)"
+
+# Present but unreadable is an error (rc 2), never the legacy copy and never
+# "no fleet". A clone committing such a map is still just passed over.
+printf '## Fleet\n\n- name: old\n' > "$LG/FLEET.md"
+for kind in dir link; do
+  rm -rf "$LG/.fleet/FLEET.md"
+  case "$kind" in dir) mkdir "$LG/.fleet/FLEET.md" ;; link) ln -s "$LG/.fleet/nowhere" "$LG/.fleet/FLEET.md" ;; esac
+  hero_fleet_map "$LG" >/dev/null 2>&1; check "fleet-map: a $kind map is rc 2" "2" "$?"
+  hero_fleet_root "$LG/repo" >/dev/null 2>&1; check "fleet-root: a $kind map is rc 2, not the legacy copy" "2" "$?"
+  hero_at_fleet_root "$LG" 2>/dev/null; check "at-fleet-root: a $kind map is rc 2" "2" "$?"
+  hero_fleet_field name "$LG" >/dev/null 2>&1; check "fleet-field: a $kind map fails, not the legacy copy" "2" "$?"
+  hero_fleet_repos "$LG" >/dev/null 2>&1; check "repos: a $kind map is rc 2" "2" "$?"
+done
+check "fleet-map: the unreadable error names the file" \
+  "1" "$(hero_fleet_map "$LG" 2>&1 >/dev/null | grep -c "$LG/.fleet/FLEET.md exists but is not a readable file")"
+rm -rf "$LG/.fleet/FLEET.md"; printf '## Fleet\n' > "$LG/.fleet/FLEET.md"; chmod 000 "$LG/.fleet/FLEET.md"
+if [ ! -r "$LG/.fleet/FLEET.md" ]; then
+  hero_fleet_map "$LG" >/dev/null 2>&1; check "fleet-map: an unreadable map is rc 2" "2" "$?"
+fi
+chmod 644 "$LG/.fleet/FLEET.md"; rm "$LG/FLEET.md"
+UC="$TMP/unreadclone"; mkdir -p "$UC/.git" "$UC/.fleet/FLEET.md"
+hero_fleet_root "$UC" >/dev/null 2>&1; check "fleet-root: an unreadable map inside a clone is passed over (rc 1)" "1" "$?"
+rm -rf "$UC"
+
+# A register that is not a git checkout: a folder named .fleet is never the
+# root, so the walk from inside it lands on its parent, and no legacy branch is
+# taken there.
+check "fleet-map: a folder named .fleet is never a fleet folder" \
+  "1" "$(hero_fleet_map "$LG/.fleet" >/dev/null 2>&1; echo $?)"
+mkdir -p "$LG/.fleet/sub"
+check "fleet-root: from a plain .fleet/ lands on its parent" "$LG" "$(hero_fleet_root "$LG/.fleet" 2>/dev/null)"
+check "fleet-root: from a plain .fleet/sub lands on the fleet folder" "$LG" "$(hero_fleet_root "$LG/.fleet/sub" 2>/dev/null)"
+hero_at_fleet_root "$LG/.fleet"; check "at-fleet-root: a plain .fleet/ is not a fleet root" "1" "$?"
 rm -rf "$LG/.fleet"
 hero_fleet_root "$LG/repo" >/dev/null 2>&1; check "fleet-root: an empty .fleet/ is no fleet" "1" "$?"
 rm -rf "$LG"
+
+# The register pin lives outside the register, keyed by the fleet root.
+PX="$TMP/pinxdg"; mkdir -p "$PX/wayfare"
+printf '# fleets\n/elsewhere acme/other\n%s Acme/Fleet-Register # trailing\n' "$F" > "$PX/wayfare/registers"
+check "register-pin: the root's line, lowercased, comment stripped" \
+  "acme/fleet-register" "$(XDG_CONFIG_HOME="$PX" hero_register_pin "$F")"
+XDG_CONFIG_HOME="$PX" hero_register_pin "$TMP/nofleet" >/dev/null; check "register-pin: an unpinned root is rc 1" "1" "$?"
+XDG_CONFIG_HOME="$TMP/no-such-xdg" hero_register_pin "$F" >/dev/null; check "register-pin: no pin file is rc 1" "1" "$?"
+rm -rf "$PX"
 
 # The walk covers ancestors, not just the folder holding .fleet/.
 mkdir -p "$TMP/clone/docs/.fleet"; git init -q "$TMP/clone" 2>/dev/null
@@ -588,6 +633,11 @@ conn_at "- type: registry
 - at: ds"
 check "connection repo: a row name resolves through the fleet map" \
   "$(cd "$FL/ds" && pwd -P)" "$(hero_connection_repo design-system "$FL/app" 2>/dev/null)"
+# app/ds exists, so a path fallback would resolve `at: ds` and hide the break.
+mv "$FL/.fleet/FLEET.md" "$FL/.fleet/map.bak"; mkdir "$FL/.fleet/FLEET.md" "$FL/app/ds"
+check "connection repo: an unreadable fleet map is rc 3, never a path fallback" \
+  "3" "$(hero_connection_repo design-system "$FL/app" >/dev/null 2>&1; echo $?)"
+rmdir "$FL/.fleet/FLEET.md" "$FL/app/ds"; mv "$FL/.fleet/map.bak" "$FL/.fleet/FLEET.md"
 conn_at "- type: registry
 - at: ../ds"
 check "connection repo: a relative path resolves against ROOT, not cwd" \

@@ -15,10 +15,18 @@
 #
 # --review: compare the listing with FLEET.md rows and print one finding per
 #   line as CODE<TAB>NAME<TAB>DETAIL (DETAIL is free text), sorted:
-#   NOT_CLONED         a row with no checkout on this machine (detail: path).
-#                      Informational: the map is shared through the register,
-#                      so it names repos this machine never cloned. It alone
-#                      never makes --review exit 1
+#   NOT_CLONED         a row whose path under the fleet folder does not exist
+#                      (detail: path). Informational: the map is shared through
+#                      the register, so it names repos this machine never
+#                      cloned. It alone never makes --review exit 1
+#   MOVED              a NOT_CLONED row whose repo is checked out elsewhere in
+#                      the folder: an unmapped checkout whose origin's repo
+#                      name is the row name (detail: where it is)
+#   DANGLING_LINK      a row whose path is a symlink to nothing
+#   NO_PARENT          a relative row whose parent folder does not exist in
+#                      the fleet folder, usually a mistyped `path:`
+#   ABSENT_OUTSIDE     an absolute row (outside the fleet folder) whose path
+#                      does not exist; sync never clones there
 #   BAD_ROW            a row hero_fleet_repos refused   (detail: the reason)
 #   NOT_GIT            a row whose path is not a git repo
 #   PORT_MISMATCH      row port differs from compose    (detail: row -> compose)
@@ -39,15 +47,15 @@
 #                      ignore, so the store can be committed
 #
 #   A checkout with no row is NOT reported. FLEET.md defines the fleet; a
-#   folder cloned beside it does not join by being there. Use --list to see
-#   what is on disk.
+#   folder cloned into the fleet folder does not join by being there. Use
+#   --list to see what is on disk.
 #
 # Exit codes:
 #   0  --list ran; or --review found nothing beyond NOT_CLONED
 #   1  --review found at least one other finding
-#   2  usage error; or, for --review, no .fleet/FLEET.md at the root, a
-#      HERO.md beside it, or a root inside a git work tree (a repo that
-#      committed a map is not a fleet)
+#   2  usage error; or, for --review, no .fleet/FLEET.md at the root (or one
+#      that is not a readable file), a HERO.md in the root, or a root inside a
+#      git work tree (a repo that committed a map is not a fleet)
 
 set -uo pipefail
 
@@ -58,7 +66,7 @@ HERO_LIB="$(cd "$(dirname "$0")" && pwd)/hero-lib.sh"
 # The end line tracks the header block above. Add a line up there and this
 # range silently truncates `--help` mid-sentence — no error, and the Exit
 # codes section is what falls off first.
-usage() { sed -n '5,50p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '5,58p' "$0" | sed 's/^# \{0,1\}//'; }
 
 MODE=list
 ROOT=""
@@ -91,9 +99,11 @@ fi
 
 # Called once with stderr open so a legacy top-level map's note reaches the
 # reader; the later reads route stderr into $BAD or /dev/null.
-hero_fleet_map "$ROOT" >/dev/null || { echo "fleet-scan: no fleet map in $ROOT; clone the register into $ROOT/.fleet so .fleet/FLEET.md exists, or run wayfare:wayfare-sync-fleet to create it" >&2; exit 2; }
+hero_fleet_map "$ROOT" >/dev/null; rc=$?
+[ "$rc" != 2 ] || exit 2
+[ "$rc" = 0 ] || { echo "fleet-scan: no fleet map in $ROOT; clone the register into $ROOT/.fleet so .fleet/FLEET.md exists, or run wayfare:wayfare-sync-fleet to create it" >&2; exit 2; }
 [ ! -f "$ROOT/HERO.md" ] || { echo "fleet-scan: $ROOT holds HERO.md beside its fleet map, which is a repo, not a fleet" >&2; exit 2; }
-hero_at_fleet_root "$ROOT" || { echo "fleet-scan: $ROOT is inside a git work tree, so its map is a clone's content, not a fleet map" >&2; exit 2; }
+hero_at_fleet_root "$ROOT" 2>/dev/null || { echo "fleet-scan: $ROOT is inside a git work tree, so its map is a clone's content, not a fleet map" >&2; exit 2; }
 
 BAD=$(mktemp) || exit 2
 trap 'rm -f "$BAD"' EXIT
@@ -106,11 +116,27 @@ NL=$'\n'
 # A function, not an inline $( … ): bash 3.2 cannot parse an unparenthesised
 # `pat)` inside a command substitution.
 review() {
-  local name repo_path group rport actual line ports
-  ports=""   # "PORT NAME" lines: every claim and every published port
+  local name repo_path group rport actual line ports uncloned origin_name moved
+  ports=""      # "PORT NAME" lines: every claim and every published port
+  uncloned=""   # "NAME<TAB>PATH" lines, held back until MOVED is ruled out
   while IFS="$TAB" read -r name repo_path group rport; do
     [ -n "$name" ] || continue
-    [ -e "$repo_path" ] || { printf 'NOT_CLONED\t%s\t%s\n' "$name" "$repo_path"; continue; }
+    if [ ! -e "$repo_path" ]; then
+      # A claim is a claim whether or not this machine cloned the repo, and
+      # another row on the same port still collides with it.
+      [ -z "$rport" ] || ports="$ports$rport $name$NL"
+      if [ -L "$repo_path" ]; then
+        printf 'DANGLING_LINK\t%s\t%s\n' "$name" "$repo_path"
+      else
+        case "$repo_path" in
+          "$ROOT"/*)
+            if [ -d "${repo_path%/*}" ]; then uncloned="$uncloned$name$TAB$repo_path$NL"
+            else printf 'NO_PARENT\t%s\t%s\n' "$name" "$repo_path"; fi ;;
+          *) printf 'ABSENT_OUTSIDE\t%s\t%s\n' "$name" "$repo_path" ;;
+        esac
+      fi
+      continue
+    fi
     [ -e "$repo_path/.git" ] || { printf 'NOT_GIT\t%s\t%s\n' "$name" "$repo_path"; continue; }
     case "$LISTING" in
       *"$TAB$repo_path$TAB"*) actual=${LISTING#*"$TAB$repo_path$TAB"}; actual=${actual%%"$NL"*} ;;
@@ -161,11 +187,24 @@ review() {
   # Its port is still collected: a non-fleet repo's compose binds the host port
   # just the same, so it can still collide with a claimed one. `--list` remains
   # the way to discover what is on disk.
+  moved=""
   while IFS="$TAB" read -r name repo_path actual; do
     [ -n "$name" ] || continue
     case "$ROWS" in *"$TAB$repo_path$TAB"*) continue ;; esac
     case "$actual" in -|'?') ;; *) ports="$ports$actual $name$NL" ;; esac
+    [ -n "$uncloned" ] || continue
+    origin_name=$(git -C "$repo_path" remote get-url origin 2>/dev/null) || continue
+    origin_name=${origin_name%/}; origin_name=${origin_name%.git}; origin_name=${origin_name##*[/:]}
+    case "$NL$uncloned" in *"$NL$origin_name$TAB"*)
+      printf 'MOVED\t%s\tchecked out at %s\n' "$origin_name" "$repo_path"
+      moved="$moved$origin_name$NL" ;;
+    esac
   done <<< "$LISTING"
+  while IFS="$TAB" read -r name repo_path; do
+    [ -n "$name" ] || continue
+    case "$NL$moved" in *"$NL$name$NL"*) continue ;; esac
+    printf 'NOT_CLONED\t%s\t%s\n' "$name" "$repo_path"
+  done <<< "$uncloned"
 
   printf '%s' "$ports" | sort -u | awk '
     NF == 2 { if ($1 in first) printf "PORT_COLLISION\t%s\t%s, also %s\n", $2, $1, first[$1]; else first[$1] = $2 }'

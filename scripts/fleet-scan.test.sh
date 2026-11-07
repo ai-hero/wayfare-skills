@@ -181,7 +181,7 @@ EOM
 OUT=$("$SCAN" "$F" --review); RC=$?
 check "review: findings exit 1" "1" "$RC"
 check "review: every finding, sorted" \
-"$(printf 'BAD_ROW\t../escape\ta repo name is [A-Za-z0-9._-] only, not %s../escape%s\nBAD_ROW\tevil\ta value starts with %s-%s or holds a control character\nNOT_CLONED\tgone\t%s/gone\nNOT_GIT\tfolder\t%s/plain-folder\nNO_HERO\tclash\t%s/clash\nNOT_FLEET_AWARE\tclash\t%s/clash\nNOT_FLEET_AWARE\tweb\t%s/web\nPORT_COLLISION\tclash\t33000, also auth\nPORT_COLLISION\tweb2\t3000, also web\nPORT_COLLISION\tweb2\t33001, also web\nPORT_MISMATCH\tweb\t33001 -> 3000\nPORT_MISMATCH\tweb2\t33001 -> 3000\nPORT_UNIMPLEMENTED\tlonefleet\t33030 (no compose file)\nPORT_UNPARSED\toddfleet\t33031 (compose file, no readable host port)' "'" "'" "'" "'" "$F" "$F" "$F" "$F" "$F" | sort)" \
+"$(printf 'BAD_ROW\t../escape\ta repo name is [A-Za-z0-9._-] only, not %s../escape%s\nBAD_ROW\tevil\ta value starts with %s-%s or holds a control character\nNOT_CLONED\tgone\t%s/gone\nNOT_GIT\tfolder\t%s/plain-folder\nNO_HERO\tclash\t%s/clash\nNOT_FLEET_AWARE\tclash\t%s/clash\nNOT_FLEET_AWARE\tweb\t%s/web\nPORT_COLLISION\tclash\t33000, also auth\nPORT_COLLISION\tlone\t33002, also gone\nPORT_COLLISION\tweb2\t3000, also web\nPORT_COLLISION\tweb2\t33001, also web\nPORT_MISMATCH\tweb\t33001 -> 3000\nPORT_MISMATCH\tweb2\t33001 -> 3000\nPORT_UNIMPLEMENTED\tlonefleet\t33030 (no compose file)\nPORT_UNPARSED\toddfleet\t33031 (compose file, no readable host port)' "'" "'" "'" "'" "$F" "$F" "$F" "$F" "$F" | sort)" \
 "$OUT"
 
 # A `none` row is exempt from NO_HERO/NO_AGENTS: it lives here, it is not fleet.
@@ -288,6 +288,62 @@ check "review: a row not cloned here is NOT_CLONED and exits 0" \
 mkdir -p "$F/plain-folder"; printf '\n### folder\n\n- path: ./plain-folder\n- group: apps\n' >> "$F/.fleet/FLEET.md"
 "$SCAN" "$F" --review >/dev/null 2>&1
 check "review: NOT_CLONED beside a real finding still exits 1" "1" "$?"
+
+# A claim by a row not cloned here still collides: the port is taken on every
+# machine that does clone it.
+printf '\n### elsewhere2\n\n- group: apps\n- port: 33040\n' >> "$F/.fleet/FLEET.md"
+OUT=$("$SCAN" "$F" --review); RC=$?
+check "review: two uncloned rows on one port collide (exit 1)" \
+  "1|1" "$RC|$(printf '%s\n' "$OUT" | grep -c 'PORT_COLLISION	elsewhere2	33040, also elsewhere')"
+printf '\n### auth2\n\n- path: ./nope/auth2\n- group: apps\n- port: 33000\n' >> "$F/.fleet/FLEET.md"
+OUT=$("$SCAN" "$F" --review)
+check "review: an uncloned row colliding with a cloned one is reported" \
+  "1" "$(printf '%s\n' "$OUT" | grep -c 'PORT_COLLISION	auth2	33000, also auth')"
+
+# NOT_CLONED only for a path that simply does not exist under the root.
+# Anything that looks like drift exits 1.
+check "review: a relative row whose parent folder is missing is NO_PARENT" \
+  "$(printf 'NO_PARENT\tauth2\t%s/nope/auth2' "$F")" "$(printf '%s\n' "$OUT" | grep '^NO_PARENT')"
+ln -s "$F/no-such-target" "$F/linked"
+printf '\n### linked\n\n- group: apps\n' >> "$F/.fleet/FLEET.md"
+printf '\n### abswhere\n\n- path: %s/elsewhere-abs\n- group: apps\n' "$TMP" >> "$F/.fleet/FLEET.md"
+mkdir -p "$F/renamed/.git"; git -C "$F/renamed" init -q 2>/dev/null
+git -C "$F/renamed" remote add origin git@example.com:acme/moved-away.git
+printf '\n### moved-away\n\n- group: apps\n' >> "$F/.fleet/FLEET.md"
+OUT=$("$SCAN" "$F" --review); RC=$?
+check "review: a dangling symlink at the row path is DANGLING_LINK" \
+  "$(printf 'DANGLING_LINK\tlinked\t%s/linked' "$F")" "$(printf '%s\n' "$OUT" | grep '^DANGLING_LINK')"
+check "review: an absent absolute row is ABSENT_OUTSIDE" \
+  "$(printf 'ABSENT_OUTSIDE\tabswhere\t%s/elsewhere-abs' "$TMP")" "$(printf '%s\n' "$OUT" | grep '^ABSENT_OUTSIDE')"
+check "review: an unmapped checkout whose origin names an uncloned row is MOVED, not NOT_CLONED" \
+  "$(printf 'MOVED\tmoved-away\tchecked out at %s/renamed|0' "$F")" \
+  "$(printf '%s\n' "$OUT" | grep '^MOVED')|$(printf '%s\n' "$OUT" | grep -c 'NOT_CLONED	moved-away')"
+rm -rf "$F/renamed" "$F/linked"
+for row in elsewhere elsewhere2 auth2 linked abswhere moved-away folder; do
+  awk -v r="### $row" '$0 == r { skip = 1; next } /^### / { skip = 0 } !skip' "$F/.fleet/FLEET.md" > "$F/.fleet/m" && mv "$F/.fleet/m" "$F/.fleet/FLEET.md"
+done
+"$SCAN" "$F" --review >/dev/null 2>&1
+check "review: the fixture is clean again after removing the drift rows" "0" "$?"
+
+# A register that is not a git checkout is never the root: run from inside it,
+# --review refuses (exit 2) rather than reading .fleet/ as a fleet folder and
+# turning the real NOT_GIT below into an exit-0 NOT_CLONED.
+mkdir -p "$F/plain-folder" "$F/.fleet/sub"
+printf '\n### folder\n\n- path: ./plain-folder\n- group: apps\n' >> "$F/.fleet/FLEET.md"
+OUT=$("$SCAN" "$F" --review 2>/dev/null)
+check "review: the fixture has a real NOT_GIT" "1" "$(printf '%s\n' "$OUT" | grep -c '^NOT_GIT	folder')"
+"$SCAN" "$F/.fleet" --review >/dev/null 2>&1
+check "review: run from inside a plain .fleet/ exits 2" "2" "$?"
+"$SCAN" "$F/.fleet/sub" --review >/dev/null 2>&1
+check "review: run from a plain .fleet/sub exits 2" "2" "$?"
+rm -rf "$F/.fleet/sub"
+
+# Present but unreadable is an error, never the legacy copy.
+UR="$TMP/unreadable"; mkdir -p "$UR/.fleet/FLEET.md"; printf '## Repos\n' > "$UR/FLEET.md"
+URERR=$("$SCAN" "$UR" --review 2>&1 >/dev/null); URRC=$?
+check "review: a .fleet/FLEET.md directory exits 2 and names the file" \
+  "2|1" "$URRC|$(printf '%s\n' "$URERR" | grep -c 'not a readable file')"
+rm -rf "$UR"
 
 # ---------- --review: inbox and exclude ------------------------------------
 

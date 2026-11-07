@@ -746,9 +746,12 @@ holds `FLEET.md`). No check names a repo: which repos pass is the audit's
 output, computed per run, never a field in the rule. Inside a fleet the family
 is FLEET.md's rows whose group is not `none`; anywhere else, the current repo
 alone against the baseline, with a stderr warning that the fleet's overlay is
-not applied. The engine and the baseline run from the plugin checkout's
-origin/main, not its working tree; `HERO_SKILLS_PLUGIN=<checkout>` runs the
-invoked engine against that checkout's assets instead, to test unmerged work.
-`scripts/consistency.py` writes the fleet's human table into that checkout.
-`wayfare-sync-plan` runs the audit as its `compliance` stage;
-`wayfare-audit-compliance` runs it alone. See `assets/compliance/README.md`.
+not applied. A repo whose `AGENTS.md` carries the vendored `## Fleet` section
+stops instead, because it is a fleet repo on a machine missing its register;
+`--no-fleet` runs it alone on purpose. The engine and the baseline run from the
+plugin checkout's origin/main, not its working tree;
+`HERO_SKILLS_PLUGIN=<checkout>` runs the invoked engine against that checkout's
+assets instead, to test unmerged work. `scripts/consistency.py` writes the
+fleet's human table into that checkout. `wayfare-sync-plan` runs the audit as
+its `compliance` stage; `wayfare-audit-compliance` runs it alone. See
+`assets/compliance/README.md`.

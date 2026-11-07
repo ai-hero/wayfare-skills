@@ -63,6 +63,25 @@ check "a clone committing a legacy FLEET.md is passed over too" "$FLEET" "$(root
 rm "$FLEET/FLEET.md"
 check "clone alone resolves no fleet" "" "$(root_from "$CLONE")"
 
+# A register that is not a git checkout: a folder named .fleet is never the
+# root, so the walk from inside it lands on its parent.
+PLAIN="$WORK/plainfleet"
+mkdir -p "$PLAIN/.fleet/sub"
+printf '# Fleet\n\n## Fleet\n' > "$PLAIN/.fleet/FLEET.md"
+check "from a plain .fleet/ lands on its parent" "$PLAIN" "$(root_from "$PLAIN/.fleet")"
+check "from a plain .fleet/sub lands on the fleet folder" "$PLAIN" "$(root_from "$PLAIN/.fleet/sub")"
+
+# Present but unreadable stops the import with the file named, never the
+# legacy copy.
+rm "$PLAIN/.fleet/FLEET.md"; mkdir "$PLAIN/.fleet/FLEET.md"; printf '## Fleet\n' > "$PLAIN/FLEET.md"
+check "an unreadable .fleet/FLEET.md resolves no root" "" "$(root_from "$PLAIN")"
+ERR=$(cd "$PLAIN" && python3 -I -c '
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("fleet", sys.argv[1])
+spec.loader.exec_module(importlib.util.module_from_spec(spec))
+' "$FLEET_PY" 2>&1 >/dev/null)
+check "an unreadable .fleet/FLEET.md is named" "1" "$(printf '%s\n' "$ERR" | grep -c 'not a readable file')"
+
 if [ "$FAIL" -gt 0 ]; then
   echo "ingest-fleet: $PASS passed, $FAIL FAILED"
   exit 1

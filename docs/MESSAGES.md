@@ -375,7 +375,8 @@ One `msg_id` **per recipient**, correlation has to be pairwise or a reply cannot
 be attributed, plus one `group:` shared by all of them. Each recipient learns it
 is one of N (`part: 2 of 3`, `peers:`), which is what tells it that answering
 alone unblocks nobody, and therefore how cheap declining is. Peers are named
-because they are rows in the same local fleet; nothing leaves the machine.
+because they are rows in the same fleet map, checked out on this machine;
+nothing leaves the machine.
 
 The sender lists all N in `awaiting:` and resumes when the last one is settled.
 Two rules that are easy to get backwards:

@@ -116,6 +116,12 @@ run_validate "$d"
 check "vendored missing file: rc" "1" "$RC"
 check_contains "vendored missing file: tag" "$OUT" "VENDORED_MISSING skill/HUNTING.md"
 
+d=$(fixture vendored-no-checker)
+mv "$d/scripts/security_audit_upstream.py" "$d/gone.py"
+run_validate "$d"
+check "vendored check cannot run: rc" "1" "$RC"
+check_contains "vendored check cannot run: reported" "$OUT" "could not be checked"
+
 # ---------- Agent Skills portability contract -----------------------------
 
 d=$(fixture missing-compatibility)

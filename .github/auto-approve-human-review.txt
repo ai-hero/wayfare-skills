@@ -40,10 +40,10 @@ agents/*
 commands/*
 output-styles/*
 
-# Third-party text and code held to a hash manifest. A PR can edit a file and its
-# manifest row together, so the check cannot see that, and the model that reviews
-# a refresh would be reading upstream's words.
+# Third-party text and code. The model that reviews a refresh would be reading
+# upstream's words, and the workflow is what compares the tree with upstream.
 assets/security-audit/*
+.github/workflows/vendored-pin.yaml
 
 # Run for a maintainer who opens this checkout, which is also the installed
 # plugin and holds a token that can approve fleet-wide.

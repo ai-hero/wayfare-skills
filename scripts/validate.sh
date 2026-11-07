@@ -961,8 +961,14 @@ bold "4. Vendored security audit"
 
 # Offline. No skip when python3 or the script is missing: a pin nobody checks
 # prints the same as a pin that holds.
-if VENDORED_OUT=$(python3 "$PLUGIN_ROOT/scripts/security_audit_upstream.py" verify 2>&1); then
+VENDORED_RC=0
+VENDORED_OUT=$(python3 "$PLUGIN_ROOT/scripts/security_audit_upstream.py" verify 2>&1) || VENDORED_RC=$?
+if [[ $VENDORED_RC -eq 0 ]]; then
   pass "assets/security-audit matches its manifest ($VENDORED_OUT)"
+elif [[ $VENDORED_RC -ne 1 ]]; then
+  error "assets/security-audit could not be checked (exit $VENDORED_RC): $(printf '%s' "$VENDORED_OUT" | tail -1)" \
+    "scripts/security_audit_upstream.py" "" \
+    "This is not a clean result. Fix what stopped the check"
 else
   error "assets/security-audit differs from its manifest: $(printf '%s' "$VENDORED_OUT" | head -5 | tr '\n' ';')" \
     "assets/security-audit/MANIFEST.sha256" "" \

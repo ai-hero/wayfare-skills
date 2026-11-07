@@ -48,7 +48,7 @@ but its suite only runs where that venv exists (see Testing).
 | `assets/` | Files installed **into** other repos, except two read in place: `assets/compliance/`, the baseline register, and `assets/security-audit/`, a pinned third-party copy. |
 | `plugin.json`, `.claude-plugin/`, `.agents/` | One portable manifest for Agent Plugin hosts, a separate Claude Code adapter, and marketplace metadata over the same skills. |
 | `.github/workflows/auto-approve.yaml` | The shared reusable workflow ~25 repos execute at `@main`. |
-| `.github/workflows/pr-check.yaml` | This repo's own gate. |
+| `.github/workflows/pr-check.yaml`, `vendored-pin.yaml` | This repo's own gates. |
 | `publishing/`, `publish` | Builds the book's editions (print, technical with its evidence document, web, field guides, slides, cover, Kindle) and their QA from `analysis/manuscript/` into the gitignored `.analysis/`. |
 | `analysis/` | The research pipeline (ingest, cube, detectors, questions, report) that reads the fleet's repos and session data into a gitignored `.analysis/` store. Code commits; data and results never do. |
 
@@ -62,7 +62,7 @@ but its suite only runs where that venv exists (see Testing).
 | skill → skill | Stage skills are not user-invocable and are reached only through the skill that chains them; `validate.sh` enforces who may chain whom. |
 | `assets/` → consumers | Vendored into other repos by the installers and the fleet scan. Treat as downstream output: fix here, re-vendor. Where a copy must not drift (the auto-approve caller, the exception-expiry gate), an audit check holds the consumer's file byte-identical to this one. |
 | `assets/compliance/` → engine | Not installed anywhere. The engine reads the baseline in place and merges the fleet's overlay over it by id. |
-| `assets/security-audit/` → the repo | Third-party bytes under a hash manifest, outside `skills/` so no host loads them as a skill. Nothing here edits them, and every formatter, scanner and doc check is excluded from the path. `wayfare-audit-deep` reads them by path and restates none of them. A person approves a change to the path. |
+| `assets/security-audit/` → the repo | Third-party bytes under a hash manifest, outside `skills/` so no host loads them as a skill. Nothing here edits them, and every formatter, scanner and doc check is excluded from the path. `wayfare-audit-deep` reads them by path and restates none of them. `vendored-pin.yaml` compares the tree with upstream on a PR that touches it, and a person approves that PR. |
 | `.github/workflows/auto-approve.yaml` → consumers | Executed *in place* by ~25 repos via `uses: …@main`. Not copied; resolved at trigger time. A consumer's caller is also held to the vendored `caller.yaml` when `@auto-approve` runs. Any workflow a PR touches whose `uses:` (as YAML resolves it, at the base or the head) calls this one must be byte-identical to `assets/auto-approve/caller.yaml` at `main`, and deleting it, or moving it where it no longer runs, always fails. That is CI-20, keyed on content rather than the audit's one path. A change to `auto-approve.yaml`, the vendored `caller.yaml`, the hooks and what they source, or the plugin manifests needs a person: `.github/auto-approve-human-review.txt` lists them, and the workflow reads it from `main`. |
 | `FLEET.md` → the audit | A folder is never a fleet root (`fleet_root()`, `hero_fleet_root`) when it or an ancestor other than `$HOME` holds `.git`: `FLEET.md` is the operator's unversioned map, and a cloned one would make the audit execute the clone's `.fleet/checkers.py`. Tested on the `FLEET.md` folder, never the register. |
 | register → the audit | The overlay (`CONTROLS.yaml`, `CHECKS.yaml`, `checkers.py`) is read from a commit of the register checkout: `origin/main`, freshly fetched, else HEAD; only a register with no `.git` is read from its working tree. The engine trusts the operator's branch protection to make `origin/main` reviewed and does not check it. Anything short of a clean, pushed, fetched `origin/main` is unreviewed: the header's `register:` line says why, the overlay's changes to baseline records are dropped, its own checks read MANUAL, `checkers.py` is not loaded, and `--fail-on` exits 3. |
@@ -214,5 +214,7 @@ skill posts. What still needs judgment runs on demand, not on every commit.
 - Consequences: the age check reads an author-set date, so a backdated commit
   passes it and the review of the refresh PR is the real gate. That review reads
   third-party text, which is why the path needs a person rather than auto-approve.
+  The offline check cannot see a file and its manifest row edited together, so
+  `vendored-pin.yaml` compares with upstream, only on a PR that touches the tree.
   A repo nobody syncs hears nothing, which is accepted: the wrapper checks again
-  at the start of every run.
+  at the start of every run. The wrapper is user-only, so no agent can start it.

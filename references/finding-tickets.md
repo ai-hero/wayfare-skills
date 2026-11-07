@@ -11,15 +11,15 @@ one.
 
 ## What is filed
 
-Only **confirmed** findings, never candidates. A finding is confirmed when a
-scanner or the engine reports it against the default branch as it is merged:
+Only **confirmed** findings, never candidates. A finding is confirmed when the
+table's condition holds against the default branch as it is merged:
 
 | Finding | Confirmed when |
 | -- | -- |
 | A dependency CVE | an open Dependabot alert (alerts are computed on the default branch) |
 | A container CVE | Scout or Trivy reports it on the image the deploy runs: the Deployment `registry` tag built from the default branch. A base image scanned from a Dockerfile in the checkout is a candidate |
 | A control check | `scripts/audit.py` reports `FAIL` for the check at `origin/main` (its default snapshot; a `--no-snapshot` run reads the checkout as it sits, which is a candidate) |
-| A deep audit finding | a `wayfare:wayfare-audit-deep` record is `confirmed` and a person triaged it and asked for the ticket. Nothing files it automatically |
+| A deep audit finding | a `wayfare:wayfare-audit-deep` record is `confirmed` on a commit of the default branch, and a person triaged it and asked for the ticket. Nothing files it automatically |
 
 A candidate is anything else: an `ERROR` cell, a `MANUAL` check, a part that ran
 `skipped (unavailable)`, a code-hardening finding from Part C of the security
@@ -123,7 +123,8 @@ Every ticket's title starts with a fixed prefix and its key, then one space:
 
 - **A deep audit finding.** The key is the `DEEP-` hash
   `wayfare:wayfare-audit-deep` derives from the fingerprint. One ticket per
-  fingerprint. The body carries no reproduction.
+  fingerprint. The body carries no reproduction. No audit lane reports it, so a
+  person closes it, citing the merged fix.
 
 A key or id is `[A-Za-z0-9-]+`. Anything else in that position is a scanner
 value the procedure does not understand; stop the lane and report it. That check

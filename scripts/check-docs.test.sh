@@ -246,5 +246,13 @@ while IFS= read -r phrase; do
   check "R6 phrase '$phrase' is banned in docs" "prose" "$(checks_of)"
 done <<<"$r6"
 
+# Third-party text this repo may not edit, so a finding on it could never be fixed.
+fixture; mkdir -p "$R/assets/security-audit/skill"
+printf '# V\n\nAn em dash \xe2\x80\x94 here.\n' > "$R/assets/security-audit/skill/V.md"
+check "the vendored security audit is not read" "" "$(run)"
+fixture; mkdir -p "$R/assets/security-audit-x"
+printf '# V\n\nAn em dash \xe2\x80\x94 here.\n' > "$R/assets/security-audit-x/V.md"
+check "a sibling of the vendored path still is" "prose" "$(checks_of)"
+
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -185,6 +185,8 @@ against it either fails late or, worse, half-works.
 3. **Conversational skills stay in this session.** `wayfare-grill-idea` and
    `wayfare-write-handoff` are a dialogue with the user; a subagent has no one
    to talk to. Pick one repo, `cd` into it, and continue here.
+   `wayfare-check-audit-claim` also stays in this session and needs no repo,
+   because a claim belongs to none.
 
 4. **Every other skill runs once per chosen repo, in a subagent, in parallel.**
    Use the Agent tool (`general-purpose`) with a prompt of this shape,

@@ -79,6 +79,26 @@ HERO.md, which a clone controls, and these tickets carry finding detail. Print
 the route (type, team or repo, project, label) and the planned counts, and write
 on the user's word, as `wayfare-write-handoff` does for `--issue`.
 
+## What a priority commits to
+
+Read this section before you file on a `linear` route. A `github` route has no
+priority, so skip it there. For a Security-labelled ticket, the Linear priority
+sets a deadline in the compliance tool, and the tool reads that deadline as a
+commitment.
+
+- **Read the mapping before you choose.** Read `getSlas`, and read
+  `soonestRemediateByDate` from `getAutomatedTestDetails` when a test is
+  failing. Do not use a mapping from memory. If the compliance tool is out of
+  reach, record `not checked` and ask the person before you choose a priority.
+- **Severity is not the priority by default.** Choose the priority after you
+  read the deadline it sets.
+- **Filing starts the clock.** A ticket filed only for the record still has a
+  deadline.
+- **A date in a ticket title does not move the deadline.**
+
+Those two tools are on the allowlist in `wayfare:wayfare-check-audit-claim`.
+Report a deadline through that skill, as a reading of the tool.
+
 ## One ticket per key
 
 Every ticket's title starts with a fixed prefix and its key, then one space:
@@ -205,7 +225,8 @@ closing comment that cites the evidence:
 - the versions in the lockfile on origin/main, or the check passing there
 - the merged PR
 - the external scanner's state (Vanta, Scout), or `not checked` when the scanner
-  is out of reach
+  is out of reach. Check a Vanta reading with
+  `wayfare:wayfare-check-audit-claim` first
 
 The lane that reported the finding must have run on this pass. A `skipped` or
 `FAILED` lane has no evidence of absence and changes no repo line. The tickets

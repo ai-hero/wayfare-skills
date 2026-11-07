@@ -1151,16 +1151,19 @@ forms). For deeper coverage, run a real E2E suite directly.
 Render DAG with `self-review` active. Run
 `wayfare:wayfare-review-pr --no-mark-ready` (auto-detects your draft PR and runs
 the pr-review-toolkit agents plus a security pass in parallel, applies fixes),
-forwarding the goal's permissions line verbatim when this run carries one (Step
-9). The `--no-mark-ready` flag is **required** here so wayfare-review-pr stops
-before its own Step 9 mark-ready prompt, because wayfare-build-task's Step 6
-below owns that gate, and double-prompting would be confusing.
+forwarding the goal's permissions line verbatim, on its own line, when this run
+carries one (Step 9). The `--no-mark-ready` flag is **required** here so
+wayfare-review-pr stops before its own Step 9 mark-ready prompt, because
+wayfare-build-task's Step 6 below owns that gate, and double-prompting would be
+confusing.
 
 **Artifact (contract item 5):** `hero_self_review_count "$PR_NUMBER"` ≥ 1 AND
 `hero_self_review_fixes_count "$PR_NUMBER"` ≥ 1 before Step 6 (source
 `hero-lib.sh` first; each bash block is a fresh shell). It is the same
 author-filtered signal wayfare-ship-pr's Step 3a reads, so a stranger's comment
-carrying the marker does not count.
+carrying the marker does not count. A `stop:` from wayfare-review-pr is this
+run's stop: render `(✗)`, report it verbatim, and do not re-invoke. Contract
+item 5 is about a step that did not run; this one ran and handed back.
 
 This step covers `wayfare-review-pr`'s functional work in Steps 1 to 8 only:
 post the review comment, ask permission to apply fixes (or answer from the
@@ -1357,7 +1360,7 @@ none of them are optional:
 - **A human comment on the PR cancels it.** If anyone has commented since the PR
   opened, stop and hand back to the goal turn rather than merging past them.
 
-When a goal turn's hand-off reaches a gate at Steps 6 to 9 and the authorization
+When a goal turn's hand-off reaches a gate at Steps 5 to 9 and the authorization
 is *not* in the invocation, do not fall back to prompting. A headless `/goal`
 run hangs on a prompt. Stop and return `stop: reauthorize` to wayfare, which
 reports it.

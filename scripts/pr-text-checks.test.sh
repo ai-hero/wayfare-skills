@@ -206,6 +206,25 @@ for form in '"@greptile review" comment' '`@greptile review` comment'; do
 done
 check "an unquoted trigger yields no text" "" "$(TRIGGER='auto on push' bash -c "$EXTRACT"'; printf "%s" "$TEXT"')"
 
+# review-pr receives a goal turn's permissions line in its arguments. Run the
+# skill's own parser, so the test cannot drift from the skill.
+REVIEW_MD="$HERE/../skills/wayfare-review-pr/WORKFLOW.md"
+PARSER=$(awk '/^NO_MARK_READY=false$/ { on = 1 } on && /^```$/ { exit } on { print }' "$REVIEW_MD")
+check "parser found in review-pr" "yes" "$([ -n "$PARSER" ] && echo yes || echo no)"
+LINE='gates pre-authorized in-session for goal 7: mark-ready, respond, deploy=verify'
+# The newline matters: the parser's last line is a comment, which would swallow
+# anything appended to it.
+parse() { ARGUMENTS="$1" bash -c "$PARSER"$'\n''printf "%s|%s" "$NO_MARK_READY" "$ARGS_FILTERED"'; }
+check "flag alone" "true|" "$(parse "--no-mark-ready")"
+check "PR and flag" "true|#42" "$(parse '#42 --no-mark-ready')"
+check "flag, then the line on its own" "true|" "$(parse "--no-mark-ready
+$LINE")"
+check "PR, flag, then the line" "true|#42" "$(parse "#42 --no-mark-ready
+$LINE")"
+check "the line alone is no PR id" "false|" "$(parse "$LINE")"
+check "a flag after the line on one line still counts" "true|" "$(parse "$LINE --no-mark-ready")"
+check "the PR lookup reads the filtered value" "1" "$(grep -c 'PR_ARG=$(printf .%s. "$ARGS_FILTERED"' "$REVIEW_MD")"
+
 # diff_leftovers over a real repo. Fixture lines carry `leftovers: ok` in a
 # shell comment outside the quotes, so this file passes its own scan while the
 # fixture files it writes do not carry the marker.

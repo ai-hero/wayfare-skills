@@ -237,16 +237,21 @@ its member set is: change it and `wayfare-start-goal` re-asks.
    permission mode.
 
    **The id satisfies wayfare's gates, not auto mode's.** The classifier reads
-   the person's messages and the agent's tool calls, never Claude's text, so it
-   sees a bare number with no gate around it. By default it blocks an agent's
-   merge or `@auto-approve` on its own PR however the goal was authorized.
-   Reaching the merge unattended takes an `autoMode.allow` entry in
-   `~/.claude/settings.json` naming those two actions, plus a permission rule
-   for each single command (wayfare-ship-pr Step 4). That entry applies to every
-   session, not just an authorized goal, so it is the person's to add. A turn
-   never edits it. A block is `stop: awaiting-human` naming the action: never
-   reword the command, move it to a script or hand it to a subagent to get past
-   one.
+   the person's messages, the agent's tool calls and CLAUDE.md, not Claude's
+   text, so it sees a bare number with no gate around it. By default it blocks
+   an agent's merge or `@auto-approve` on its own PR. To reach the merge
+   unattended, the person adds a narrow permission rule for each single command
+   (wayfare-ship-pr Step 4), which resolves before the classifier, or an
+   `autoMode.allow` entry in `~/.claude/settings.json`, which the classifier
+   reads. Keep `"$defaults"` in that list: without it, the entry replaces the
+   built-in exceptions. A rule's `*` also matches later flags, so
+   `Bash(gh pr merge * --squash*)` allows `--admin`.
+
+   Both apply to every session, not just an authorized goal, so a prompt
+   injection in any session can use them, and they are the person's to add. A
+   turn never edits them. A block is `stop: awaiting-human` naming the action:
+   never reword the command, move it to a script or hand it to a subagent to get
+   past one.
 
 4. **Run the turn, now, in this session.** The id typed at the gate is the go:
    run *One turn* on the goal without asking anything further, and end with its
@@ -876,7 +881,8 @@ between turns:
    **Run this hand-off in the turn's own session, never through an Agent
    launch.** The classifier judges a subagent's task description before it
    starts, and auto mode drops `Agent` allow rules, so a launch whose brief is
-   to ship and merge is blocked at spawn. Build and fix agents are unaffected:
+   to ship and merge is blocked at spawn. *Carrying a bot's PR* merges under the
+   same grant, so the same holds there. Build and fix agents are unaffected:
    they only commit.
 
    Its Step 0.5 sees a feature branch with a clean tree and unpushed commits and

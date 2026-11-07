@@ -869,26 +869,49 @@ else
 fi
 
 # ── ship: the auto-approve trigger and the merge each run alone ──
-# A permission rule matches a whole Bash call and the auto-mode classifier judges
-# a chain as one action, so a fence that adds anything to either command turns an
-# allowed step into a block that stops an authorized goal.
+# An allow rule covers a chain only when every part is allowed, and a redirect
+# adds a check on its target, so anything beside either command can send it to
+# the auto-mode classifier, which blocks an agent merging its own PR.
 SHIP_MD="$PLUGIN_ROOT/skills/wayfare-ship-pr/WORKFLOW.md"
-if [[ -f "$SHIP_MD" ]]; then
+if [[ ! -f "$SHIP_MD" ]]; then
+  error "skills/wayfare-ship-pr/WORKFLOW.md is missing" "skills/wayfare-ship-pr/WORKFLOW.md" "" \
+    "This guard checks the trigger and merge commands there; restore the file or update the guard"
+else
   SHIP_BAD=$(awk '
     /^ *```/ {
-      if (inf) { if (hit && n > 1) bad++; inf = 0 } else { inf = 1; n = 0; hit = 0 }
+      if (inf) { if (hit && (n > 1 || chained)) bad++; inf = 0 } else { inf = 1; n = 0; hit = 0; chained = 0 }
       next
     }
-    inf && NF { n++; if (/gh pr comment .*@auto-approve|gh pr merge /) hit = 1 }
+    inf && NF {
+      n++
+      if (/gh pr comment .*@auto-approve|gh pr merge( |$)/) {
+        hit = 1
+        if (/;|&&|\||>|\$\(|\\$/) chained = 1
+      }
+    }
     END { print bad + 0 }
   ' "$SHIP_MD")
-  if [[ "$SHIP_BAD" -gt 0 ]]; then
+  if [[ "$SHIP_BAD" != 0 ]]; then
     error "skills/wayfare-ship-pr/WORKFLOW.md chains other commands with the auto-approve trigger or the merge ($SHIP_BAD fence(s))" \
       "skills/wayfare-ship-pr/WORKFLOW.md" "" \
-      "Give \`gh pr comment ... @auto-approve\` and \`gh pr merge\` a fence of their own: allow rules match a whole call"
+      "Give \`gh pr comment ... @auto-approve\` and \`gh pr merge\` a fence of their own, with no redirect"
+  elif ! grep -qF 'gh pr comment PR_NUMBER --body "@auto-approve"' "$SHIP_MD" || ! grep -qF 'gh pr merge PR_NUMBER MERGE_FLAG --auto' "$SHIP_MD"; then
+    error "skills/wayfare-ship-pr/WORKFLOW.md no longer runs the auto-approve trigger and the merge as single commands" \
+      "skills/wayfare-ship-pr/WORKFLOW.md" "" \
+      "Keep both commands in their own fence; moving them into a script also hides them from allow rules"
   else
     pass "wayfare-ship-pr runs the auto-approve trigger and the merge as single commands"
   fi
+fi
+
+# ── self-review: unattended fixes keep their computed path check ──
+REVIEW_MD="$PLUGIN_ROOT/skills/wayfare-review-pr/WORKFLOW.md"
+if [[ -f "$REVIEW_MD" ]] && ! grep -qF 'if hero_path_forbidden "$p"' "$REVIEW_MD"; then
+  error "skills/wayfare-review-pr/WORKFLOW.md lost the path check on goal-authorized fixes" \
+    "skills/wayfare-review-pr/WORKFLOW.md" "" \
+    "Step 6 checks every path a goal-authorized fix touched; those fixes are pushed with nobody reading them"
+else
+  pass "wayfare-review-pr checks the paths goal-authorized fixes touched"
 fi
 
 # ── goal turn: the per-task build launch never carries the grant ──

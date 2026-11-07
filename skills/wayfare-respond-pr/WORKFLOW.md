@@ -73,7 +73,8 @@ gh pr list --head "$BRANCH" --json number,title,url,headRefName --jq '.[0]'
 If argument provided:
 
 ```bash
-gh pr view $PR_ARG --json number,title,url,headRefName,baseRefName,state
+PR_ARG=$(printf '%s\n' "$ARGUMENTS" | sed 's/gates pre-authorized in-session.*//' | awk 'NF{print $1; exit}')
+gh pr view "$PR_ARG" --json number,title,url,headRefName,baseRefName,state
 ```
 
 **If PR is merged or closed:** Report status and stop.

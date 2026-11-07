@@ -163,5 +163,8 @@ did not read. Do not rank by traffic unless you have traffic data.
   [references/migrate.md](references/migrate.md).
 - **MongoDB's published optimizer skill does not fit Flex.** Its general route
   depends on Performance Advisor, which Flex does not offer.
+- **A driver error from a write can contain personal data.** A duplicate-key
+  error quotes the duplicated value. Read the logging rules in
+  [references/optimize.md](references/optimize.md) before you log a store error.
 - **Do not copy a pattern from another repo's store without checking it.** The
   copies have diverged, and a neighbour's query can have the same index gap.

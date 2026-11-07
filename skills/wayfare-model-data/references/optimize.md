@@ -40,15 +40,33 @@ and a cluster in different regions pay the distance on every command.
 
 ## Add a slow-command log
 
-If the repo logs no command durations, propose this as its own PR. If the repo
-has a monitor chain such as `chainMonitors`, add to it. If it has no command
-monitor, install one. Log at `Warn` above a configurable threshold.
+`hero-template`'s `lib/store/slowlog.go` is the reference. If the repo logs no
+command durations, port it as its own PR. Add it to the repo's monitor chain,
+such as `chainMonitors`. If the repo has no command monitor, install one.
 
 - Record the collection at `Started`, keyed by `RequestID`. The outcome events
   carry no command body. Evict by age.
-- Log the command name, collection, and `Duration` at the outcome. If the entry
-  was evicted, log without the collection. The oldest commands are the slowest.
+- Log the command name, collection, and `Duration` at the outcome, at `Warn`
+  above `MONGO_SLOW_COMMAND`. If the entry was evicted, log without the
+  collection. The oldest commands are the slowest.
+
+Read the log with these limits:
+
+- `Duration` starts after server selection and pool checkout. A request that
+  waits for a connection logs nothing, or a fast duration. A quiet log does not
+  clear Mongo.
+- The driver reports a write error, such as a duplicate key, as `Succeeded`. A
+  slow one logs `failed=false`.
+
+## Keep personal data out of logs
+
+These rules apply to every log line in a store, not only the slow-command log.
+
 - Do not log filter values. They hold subjects and email addresses.
+- Do not log a driver error from a write, or its `Failure`. A duplicate-key
+  error quotes the duplicated value. Log the operation, the collection, and the
+  error code instead.
+- Return the error to the caller unchanged. Keep any log of it to the code.
 
 ## Run explain
 

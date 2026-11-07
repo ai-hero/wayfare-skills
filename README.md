@@ -544,6 +544,7 @@ procedures:
 | Command | What it does |
 | -- | -- |
 | `wayfare:wayfare-recomponentize-ui` | Refactor a project's UI into atomic components, sourcing primitives from a design-system registry and codemodding off-token styling |
+| `wayfare:wayfare-model-data` | Model stored data, write boot migrations, add indexes, cache reads, and fix slow queries in a MongoDB and Redis backend. Requires explain or measured evidence for each performance claim. `audit` reports a repo's gaps and writes nothing |
 | `wayfare:write-like-me` | Write or rewrite prose so it reads like Rahul wrote it, with the AI-writing patterns removed ([skills/write-like-me](./skills/write-like-me/SKILL.md), vendored from the claude.ai plugin skill). The pipeline steps that emit prose run its Inline mode |
 | `wayfare:wayfare-audit-plugin` | Audit the wayfare plugin itself for quality and consistency |
 

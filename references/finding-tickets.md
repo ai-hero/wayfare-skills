@@ -79,6 +79,23 @@ HERO.md, which a clone controls, and these tickets carry finding detail. Print
 the route (type, team or repo, project, label) and the planned counts, and write
 on the user's word, as `wayfare-write-handoff` does for `--issue`.
 
+## What a priority commits to
+
+Read this section before you file. For a Security-labelled ticket, the priority
+sets a deadline in the compliance tool, and the tool reads that deadline as a
+commitment.
+
+- **Read the mapping before you choose.** Read `getSlas` and the test's
+  `soonestRemediateByDate`. Do not use a mapping from memory.
+- **Severity is not the priority by default.** Choose the priority after you
+  read the deadline it sets.
+- **Filing starts the clock.** A ticket filed only for the record still has a
+  deadline.
+- **A date in a ticket title does not move the deadline.**
+
+Those two reads are on the allowlist in `wayfare:wayfare-check-audit-claim`.
+Report a deadline through that skill, as a reading of the tool.
+
 ## One ticket per key
 
 Every ticket's title starts with a fixed prefix and its key, then one space:

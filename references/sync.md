@@ -207,7 +207,7 @@ parent session prints it once.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/security_audit_upstream.py status --summary)
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/security_audit_upstream.py status --summary)
 ```
 
 Any output that is not `UPSTREAM_CURRENT`, `UPSTREAM_BEHIND` or
@@ -300,7 +300,7 @@ Run the engine for this repo alone, as it sits:
 # a checker that raised.
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 CALLER_DIR=$(pwd)
-(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/audit.py --cwd "$CALLER_DIR" \
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/audit.py --cwd "$CALLER_DIR" \
   --repo . --no-snapshot --json) > "$SCRATCH/compliance.jsonl" 2> "$SCRATCH/compliance.err"; COMPLIANCE_RC=$?
 [ "$COMPLIANCE_RC" = 2 ] && ! grep -q '^register: ' "$SCRATCH/compliance.err" && COMPLIANCE_RC=not-run
 case "$COMPLIANCE_RC" in
@@ -344,7 +344,7 @@ candidates. Confirm them at merged state before filing:
 
 ```bash
 CALLER_DIR=$(pwd)
-(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/audit.py --cwd "$CALLER_DIR" \
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/audit.py --cwd "$CALLER_DIR" \
   --repo . --json) > "$SCRATCH/compliance-main.jsonl" 2> "$SCRATCH/compliance-main.err"; COMPLIANCE_MAIN_RC=$?
 [ "$COMPLIANCE_MAIN_RC" = 2 ] && ! grep -q '^register: ' "$SCRATCH/compliance-main.err" && COMPLIANCE_MAIN_RC=not-run
 ```

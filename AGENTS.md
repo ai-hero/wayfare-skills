@@ -60,9 +60,10 @@ is the fleet's.
   a missing import by installing into the system or Homebrew Python: that passes
   on the machine it was installed on and fails on the next, which is how
   `audit.test.sh` broke on Homebrew's python3.15. A skill runs a script as
-  `(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/x.py ...)`, any
-  repo path passed as an argument: `uv` started in a consumer repo runs that
-  repo's `.venv` or `.python-version` interpreter and reads its `[tool.uv]`.
+  `(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/x.py ...)`,
+  any repo path passed as an argument: `uv` started in a consumer repo runs that
+  repo's `.venv` or `.python-version` interpreter and reads its `[tool.uv]`, and
+  an activated venv's `VIRTUAL_ENV` or `CONDA_PREFIX` outranks the cd.
   `scripts/uv-cwd.test.sh` holds every skill call to that form.
 
 - **This file follows [docs/AGENTS-MD.md](./docs/AGENTS-MD.md)**, and

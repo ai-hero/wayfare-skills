@@ -61,7 +61,7 @@ WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfar
 . "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
 hero_fleet_step0 || exit 1
 case "$(pwd -P)/" in "$(cd -P "$TARGET" && pwd)"/*) echo "SESSION_INSIDE_TARGET" ;; esac
-VERIFY_OUT=$( (cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/security_audit_upstream.py verify --upstream) 2>&1 ); VERIFY_RC=$?
+VERIFY_OUT=$( (cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/security_audit_upstream.py verify --upstream) 2>&1 ); VERIFY_RC=$?
 printf '%s\n' "$VERIFY_OUT"
 case "$VERIFY_RC" in
   0|1) ;;
@@ -69,7 +69,7 @@ case "$VERIFY_RC" in
   *) VERIFY_RC=not-run ;;
 esac
 echo "VERIFY_RC=$VERIFY_RC"
-(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/security_audit_upstream.py status --summary)
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/security_audit_upstream.py status --summary)
 ```
 
 - `FLEET_ROOT` printed: never fan out. Continue only with the one repo the

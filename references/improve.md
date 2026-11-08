@@ -21,13 +21,14 @@ fleet there is no template and no backport; say so.
 the family audit:
 
 1. Run the engine for the whole family, at merged state:
-   `(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/audit.py --fleet "$FLEET_ROOT" --md)`
+   `(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/audit.py --fleet "$FLEET_ROOT" --md)`
    (it snapshots each repo at `origin/main`; pass `--no-snapshot` only when the
    user asks to audit the checkouts as they sit). Print the table. Run it from
-   the plugin checkout, never from the fleet: `uv` started in a folder runs any
-   `.venv` or `.python-version` interpreter it finds there.
+   the plugin checkout with the venv variables stripped, never from the fleet:
+   `uv` runs any `.venv` or `.python-version` interpreter in the folder it
+   starts in, or the one an inherited `VIRTUAL_ENV` or `CONDA_PREFIX` names.
 2. Regenerate the fleet's table:
-   `(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/consistency.py --fleet "$FLEET_ROOT")`
+   `(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/consistency.py --fleet "$FLEET_ROOT")`
    writes `CONSISTENCY.md` into the register checkout, with `FIRST_SEEN.json`
    beside it: the date each open failure was first seen, which the table's ages
    and deadlines count from. It is a git repo; propose one commit of both files

@@ -7,8 +7,11 @@
 # directory it starts in: a committed .venv/bin/python, or a .python-version
 # naming any path, runs before the script does. Skills start in a consumer
 # repo, possibly one under review, so each call must cd to the plugin first.
-# This plants both in a fake consumer repo, runs every uv call the skills and
-# references contain from there, and fails if the planted interpreter ran.
+# uv takes VIRTUAL_ENV, CONDA_PREFIX and UV_PYTHON ahead of any directory, and
+# a session that activated the repo's venv exports them, so each call strips
+# them too. This plants all of it in a fake consumer repo, runs every uv call
+# the skills and references contain from there with those variables pointing
+# at the plant, and fails if the planted interpreter ran.
 #
 # A fresh cache per case, because a script environment uv already built is
 # reused without looking for an interpreter: on a shared cache only the first
@@ -39,12 +42,14 @@ T="$(cd "$T" && pwd -P)"
 # shellcheck disable=SC2046
 unset $(git rev-parse --local-env-vars)
 export UV_OFFLINE=1
-unset VIRTUAL_ENV UV_PYTHON UV_PROJECT_ENVIRONMENT
 
 R="$T/consumer"
 MARK="$T/planted-interpreter-ran"
 mkdir -p "$R/.venv/bin" "$R/bin"
 for p in "$R/.venv/bin/python" "$R/bin/python3"; do
+  # A fresh regular file in this run's own temp dir, never through a link:
+  # writing through one would overwrite a real interpreter.
+  [ ! -e "$p" ] && [ ! -L "$p" ] || { echo "uv-cwd.test.sh: $p already exists"; exit 1; }
   printf '#!/bin/sh\necho "$0 $*" >> "%s"\nexec "%s" "$@"\n' "$MARK" "$REAL_PY" > "$p"
   chmod +x "$p"
 done
@@ -56,6 +61,8 @@ export WAYFARE_ROOT="$ROOT" CALLER_DIR="$R" SCRATCH="$T/scratch" FLEET_ROOT="$T/
 export BODY=$'ok\n\n_Generated using wayfare._' MSG="fix: x" REPLY="ok" COMMENT_BODY="ok" TEXT="ok"
 export PR_TITLE="fix: x" DEFAULT_BRANCH=main FINGERPRINT=fp
 mkdir -p "$SCRATCH" "$FLEET_ROOT"
+# What an activated venv or conda env in the consumer repo leaves exported.
+export VIRTUAL_ENV="$R/.venv" CONDA_PREFIX="$R/.venv" UV_PYTHON="$R/.venv/bin/python" UV_PROJECT_ENVIRONMENT="$R/.venv"
 
 ran_planted() { # COMMAND -> yes | no, running COMMAND in the consumer repo
   local cache
@@ -73,7 +80,8 @@ check "fixture: uv started in the consumer repo runs its interpreter" "yes" \
 # with a trailing backslash is joined first; one quoted inline in prose is
 # taken from its backticks.
 CMDS="$T/cmds"
-"$UV" run --quiet --no-project --python "$REAL_PY" python -I - "$ROOT" > "$CMDS" <<'PY'
+env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT \
+  "$UV" run --quiet --no-project --python "$REAL_PY" python -I - "$ROOT" > "$CMDS" <<'PY'
 import pathlib, re, sys
 root = pathlib.Path(sys.argv[1])
 for md in sorted([*root.glob("skills/**/*.md"), *root.glob("references/*.md")]):
@@ -86,11 +94,12 @@ for md in sorted([*root.glob("skills/**/*.md"), *root.glob("references/*.md")]):
             print(f"{md.relative_to(root)}\t{cmd}")
 PY
 
+FORM='(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet '
 n=0
 while IFS=$'\t' read -r file cmd; do
   n=$((n + 1))
-  check "$file: runs from the plugin checkout with --no-config: $cmd" "yes" \
-    "$(grep -qF '(cd "$WAYFARE_ROOT" && uv run --no-config ' <<<"$cmd" && echo yes || echo no)"
+  check "$file: the plugin-checkout form, environment stripped: $cmd" "yes" \
+    "$(grep -qF "$FORM" <<<"$cmd" && echo yes || echo no)"
   check "$file: planted interpreter never runs: $cmd" "no" "$(ran_planted "$cmd")"
 done < "$CMDS"
 # A drifted extraction would find nothing and pass.

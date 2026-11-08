@@ -1282,6 +1282,15 @@ class Configured(unittest.TestCase):
                 _src, reviewed, note = audit.register_source()
             self.assertFalse(reviewed, f"a {state} map reads as reviewed")
             self.assertIn("FLEET.md differs from origin/main", note)
+        # A linked .fleet/ would leave the map's folder and the register's
+        # resolved path unequal, skipping the review: it is refused instead.
+        moved = self.root / "realreg"
+        reg.rename(moved)
+        reg.symlink_to(moved)
+        audit._REGISTER_READ.clear()
+        with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(io.StringIO()):
+            audit.configure(self.root, load_overlay=False)
+        self.assertIn("is a symlink", str(cm.exception))
 
     def test_an_untracked_map_is_not_reviewed(self):
         """git diff ignores untracked files, so a map the register never
@@ -1297,15 +1306,29 @@ class Configured(unittest.TestCase):
         self.assertFalse(reviewed, note)
         self.assertIn("FLEET.md differs from origin/main", note)
 
+    def test_remote_identity(self):
+        """ssh and https spell one repo; another host or a local path with the
+        same OWNER/NAME is a different repo."""
+        same = ("git@github.com:Fx/Register.git", "https://github.com/fx/register",
+                "ssh://git@github.com:22/fx/register.git", "https://user@github.com/fx/register/")
+        self.assertEqual({audit.remote_identity(u) for u in same}, {"github.com/fx/register"})
+        self.assertEqual(audit.remote_identity("git@gitlab.com:fx/register.git"), "gitlab.com/fx/register")
+        self.assertEqual(audit.remote_identity("/tmp/x/fx/register.git"), "file/tmp/x/fx/register")
+        self.assertEqual(audit.remote_identity("file:///tmp/x/fx/register"), "file/tmp/x/fx/register")
+
     def test_register_pin(self):
         fleet_fixture(self.root, "## Fleet\n- name: fx\n")
         review_register(self.root)
+        local = audit.remote_identity(str(self.root / "fx" / "register.git"))
         pins = pathlib.Path(os.environ["XDG_CONFIG_HOME"]) / "wayfare" / "registers"
         pins.parent.mkdir(parents=True, exist_ok=True)
         self.addCleanup(lambda: pins.unlink(missing_ok=True))
         cases = (("absent", None, True, "is not pinned"),
-                 ("match", f"# a comment\n{self.root} fx/register\n", True, ""),
-                 ("mismatch", f"{self.root} fx/other\n", False, "this machine pins fx/other"))
+                 ("match", f"# a comment\n{self.root} {local}\n", True, ""),
+                 ("mismatch", f"{self.root} {local[:-len('register')]}other\n", False, "this machine pins"),
+                 # The same OWNER/NAME on a host, against a local-path origin.
+                 ("other host, two-part", f"{self.root} fx/register\n", False, "this machine pins github.com/fx/register"),
+                 ("other host", f"{self.root} gitlab.com/fx/register\n", False, "this machine pins gitlab.com/fx/register"))
         for label, text, want_reviewed, want_text in cases:
             pins.unlink(missing_ok=True)
             if text is not None:
@@ -1317,9 +1340,37 @@ class Configured(unittest.TestCase):
             self.assertEqual(reviewed, want_reviewed, f"{label}: {note}")
             self.assertIn(want_text, err.getvalue() + note, label)
             if label == "absent":
-                self.assertIn(f"printf '%s %s\\n' '{self.root}' 'fx/register'", err.getvalue())
+                self.assertIn("HOST/OWNER/NAME >>", err.getvalue(), "the command carries a placeholder")
+                self.assertIn(f"origin is {local}", err.getvalue())
             if label == "match":
                 self.assertNotIn("not pinned", err.getvalue())
+
+    def test_the_pin_command_carries_nothing_from_the_map(self):
+        """A quote in register-repo once broke out of the printed printf."""
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n")
+        review_register(self.root, name="fx/reg'; touch pwned; echo '")
+        audit._REGISTER_READ.clear()
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            audit.configure(self.root, load_overlay=False)
+            audit.register_source()
+        self.assertIn("not pinned", err.getvalue())
+        self.assertNotIn("pwned", err.getvalue())
+        self.assertNotIn("reg'", err.getvalue())
+
+    def test_an_origin_with_odd_characters_is_not_shown(self):
+        """The observed origin is printed only when it is a plain slug; the
+        remote is as untrusted as the map."""
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n")
+        reg = review_register(self.root)
+        odd = self.root / "fx" / "reg'x $(touch pwned).git"
+        git(self.root, "clone", "-q", "--bare", str(self.root / "fx" / "register.git"), str(odd))
+        git(reg, "remote", "set-url", "origin", str(odd))
+        audit._REGISTER_READ.clear()
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            audit.configure(self.root, load_overlay=False)
+            audit.register_source()
+        self.assertIn("not shown: unexpected characters", err.getvalue())
+        self.assertNotIn("pwned", err.getvalue())
 
     def test_register_must_stay_inside(self):
         write(self.root, ".fleet/FLEET.md", "## Fleet\n- name: fx\n- register: ../elsewhere\n")
@@ -1380,14 +1431,18 @@ class Configured(unittest.TestCase):
         cwd = os.getcwd()
         try:
             os.chdir(r)
-            with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(io.StringIO()) as stop:
                 audit.configure(None)
+            with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()) as quiet:
+                audit.configure(None, no_fleet_flag=False)
             with contextlib.redirect_stderr(io.StringIO()) as err:
                 audit.configure(None, no_fleet=True)
         finally:
             os.chdir(cwd)
-        self.assertIn(".fleet/FLEET.md", str(cm.exception))
-        self.assertIn("--no-fleet", str(cm.exception))
+        self.assertEqual(cm.exception.code, audit.EXIT_NO_FLEET_MAP)
+        self.assertIn(".fleet/FLEET.md", stop.getvalue())
+        self.assertIn("--no-fleet", stop.getvalue())
+        self.assertNotIn("--no-fleet", quiet.getvalue(), "consistency.py has no --no-fleet to suggest")
         self.assertEqual(audit.FAMILY, ("member",), "--no-fleet audits the repo alone")
         self.assertEqual(err.getvalue(), "", "--no-fleet is the operator's word, not a finding")
 
@@ -1396,7 +1451,8 @@ class Configured(unittest.TestCase):
         write(r, "AGENTS.md", "# A\n\n## Fleet\n\ntext\n")
         base = [sys.executable, str(HERE / "audit.py"), "--no-snapshot", "--json"]
         p = subprocess.run(base, cwd=str(r), capture_output=True, text=True, env=CLEAN_ENV)
-        self.assertNotEqual(p.returncode, 0)
+        self.assertEqual(p.returncode, audit.EXIT_NO_FLEET_MAP, p.stderr)
+        self.assertIn("NO_FLEET_MAP", p.stderr)
         self.assertIn(".fleet/FLEET.md", p.stderr)
         p = subprocess.run(base + ["--no-fleet"], cwd=str(r), capture_output=True, text=True, env=CLEAN_ENV)
         self.assertEqual(p.returncode, 0, p.stderr)
@@ -1406,8 +1462,12 @@ class Configured(unittest.TestCase):
         (self.root / "repo").mkdir()
         reg = self.root / ".fleet"
         reg.mkdir()
-        for label, make in (("directory", lambda m: m.mkdir()),
-                            ("dangling link", lambda m: m.symlink_to(reg / "nowhere"))):
+        real = write(self.root, "elsewhere.md", "## Fleet\n- name: elsewhere\n")
+        # A link to a readable map is refused too: git reviews the link's
+        # target string, so its content would arrive unreviewed.
+        for label, make, why in (("directory", lambda m: m.mkdir(), "not a readable file"),
+                                 ("dangling link", lambda m: m.symlink_to(reg / "nowhere"), "is a symlink"),
+                                 ("link to a readable map", lambda m: m.symlink_to(real), "is a symlink")):
             m = reg / "FLEET.md"
             make(m)
             with self.assertRaises(audit.FleetMapError, msg=label):
@@ -1416,7 +1476,7 @@ class Configured(unittest.TestCase):
                 audit.fleet_root(self.root / "repo")
             with self.assertRaises(SystemExit, msg=label) as cm, contextlib.redirect_stderr(io.StringIO()):
                 audit.configure(self.root)
-            self.assertIn("not a readable file", str(cm.exception))
+            self.assertIn(why, str(cm.exception))
             m.rmdir() if m.is_dir() and not m.is_symlink() else m.unlink()
 
     def test_an_unreadable_map_inside_a_clone_is_passed_over(self):

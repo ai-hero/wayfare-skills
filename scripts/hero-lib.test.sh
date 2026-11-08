@@ -175,6 +175,8 @@ hero_fleet_root "$TMP/nofleet/repo" >/dev/null 2>&1; rc=$?
 check "fleet-root: absent returns 1" "1" "$rc"
 
 hero_at_fleet_root "$F"; check "at-fleet-root: .fleet/FLEET.md and no HERO.md" "0" "$?"
+check "fleet-step0: a fleet folder prints FLEET_ROOT, rc 0" "FLEET_ROOT|0" "$(out=$(hero_fleet_step0 "$F"); rc=$?; printf '%s|%s' "$out" "$rc")"
+check "fleet-step0: a repo folder prints nothing, rc 0" "|0" "$(hero_fleet_step0 "$F/auth"; echo "|$?")"
 hero_at_fleet_root "$F/auth"; check "at-fleet-root: a repo dir is not" "1" "$?"
 touch "$F/HERO.md"
 hero_at_fleet_root "$F"; check "at-fleet-root: HERO.md beside .fleet/ means repo" "1" "$?"
@@ -319,17 +321,35 @@ check "fleet-map: no note once only .fleet/FLEET.md exists" \
 # Present but unreadable is an error (rc 2), never the legacy copy and never
 # "no fleet". A clone committing such a map is still just passed over.
 printf '## Fleet\n\n- name: old\n' > "$LG/FLEET.md"
-for kind in dir link; do
+# A symlink is refused even when it points at a readable map: git reviews the
+# link's target string, not what it points at.
+printf '## Fleet\n\n- name: elsewhere\n' > "$TMP/elsewhere-map.md"
+for kind in dir link reallink; do
   rm -rf "$LG/.fleet/FLEET.md"
-  case "$kind" in dir) mkdir "$LG/.fleet/FLEET.md" ;; link) ln -s "$LG/.fleet/nowhere" "$LG/.fleet/FLEET.md" ;; esac
+  case "$kind" in
+    dir) mkdir "$LG/.fleet/FLEET.md" ;;
+    link) ln -s "$LG/.fleet/nowhere" "$LG/.fleet/FLEET.md" ;;
+    reallink) ln -s "$TMP/elsewhere-map.md" "$LG/.fleet/FLEET.md" ;;
+  esac
   hero_fleet_map "$LG" >/dev/null 2>&1; check "fleet-map: a $kind map is rc 2" "2" "$?"
   hero_fleet_root "$LG/repo" >/dev/null 2>&1; check "fleet-root: a $kind map is rc 2, not the legacy copy" "2" "$?"
   hero_at_fleet_root "$LG" 2>/dev/null; check "at-fleet-root: a $kind map is rc 2" "2" "$?"
   hero_fleet_field name "$LG" >/dev/null 2>&1; check "fleet-field: a $kind map fails, not the legacy copy" "2" "$?"
   hero_fleet_repos "$LG" >/dev/null 2>&1; check "repos: a $kind map is rc 2" "2" "$?"
 done
+check "fleet-step0: an unreadable map prints FLEET_MAP_BROKEN and is rc 2" \
+  "1|2" "$(out=$(hero_fleet_step0 "$LG" 2>/dev/null); rc=$?; printf '%s|%s' "$(printf '%s\n' "$out" | grep -c '^FLEET_MAP_BROKEN')" "$rc")"
+check "fleet-map: the symlink error names it" \
+  "1" "$(hero_fleet_map "$LG" 2>&1 >/dev/null | grep -c "$LG/.fleet or its FLEET.md is a symlink")"
+rm -rf "$LG/.fleet/FLEET.md"; mkdir "$LG/.fleet/FLEET.md"
 check "fleet-map: the unreadable error names the file" \
   "1" "$(hero_fleet_map "$LG" 2>&1 >/dev/null | grep -c "$LG/.fleet/FLEET.md exists but is not a readable file")"
+# A linked .fleet/ is refused too, whatever it holds.
+rm -rf "$LG/.fleet/FLEET.md"; mv "$LG/.fleet" "$TMP/realreg"; printf '## Fleet\n' > "$TMP/realreg/FLEET.md"
+ln -s "$TMP/realreg" "$LG/.fleet"
+hero_fleet_map "$LG" >/dev/null 2>&1; check "fleet-map: a symlinked .fleet/ is rc 2" "2" "$?"
+hero_fleet_root "$LG/repo" >/dev/null 2>&1; check "fleet-root: a symlinked .fleet/ is rc 2" "2" "$?"
+rm "$LG/.fleet"; rm "$TMP/realreg/FLEET.md"; mv "$TMP/realreg" "$LG/.fleet"; rm -f "$TMP/elsewhere-map.md"
 rm -rf "$LG/.fleet/FLEET.md"; printf '## Fleet\n' > "$LG/.fleet/FLEET.md"; chmod 000 "$LG/.fleet/FLEET.md"
 if [ ! -r "$LG/.fleet/FLEET.md" ]; then
   hero_fleet_map "$LG" >/dev/null 2>&1; check "fleet-map: an unreadable map is rc 2" "2" "$?"
@@ -354,9 +374,15 @@ rm -rf "$LG"
 
 # The register pin lives outside the register, keyed by the fleet root.
 PX="$TMP/pinxdg"; mkdir -p "$PX/wayfare"
-printf '# fleets\n/elsewhere acme/other\n%s Acme/Fleet-Register # trailing\n' "$F" > "$PX/wayfare/registers"
-check "register-pin: the root's line, lowercased, comment stripped" \
-  "acme/fleet-register" "$(XDG_CONFIG_HOME="$PX" hero_register_pin "$F")"
+printf '# fleets\n/elsewhere acme/other\n%s GitHub.com/Acme/Fleet-Register.git # trailing\n' "$F" > "$PX/wayfare/registers"
+check "register-pin: the root's line, lowercased, .git and comment stripped" \
+  "github.com/acme/fleet-register" "$(XDG_CONFIG_HOME="$PX" hero_register_pin "$F")"
+printf '%s acme/fleet-register\n' "$F" > "$PX/wayfare/registers"
+check "register-pin: a two-part pin reads as github.com" \
+  "github.com/acme/fleet-register" "$(XDG_CONFIG_HOME="$PX" hero_register_pin "$F")"
+printf '%s gitlab.com/acme/fleet-register\n' "$F" > "$PX/wayfare/registers"
+check "register-pin: another host stays that host" \
+  "gitlab.com/acme/fleet-register" "$(XDG_CONFIG_HOME="$PX" hero_register_pin "$F")"
 XDG_CONFIG_HOME="$PX" hero_register_pin "$TMP/nofleet" >/dev/null; check "register-pin: an unpinned root is rc 1" "1" "$?"
 XDG_CONFIG_HOME="$TMP/no-such-xdg" hero_register_pin "$F" >/dev/null; check "register-pin: no pin file is rc 1" "1" "$?"
 rm -rf "$PX"

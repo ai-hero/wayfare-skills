@@ -30,7 +30,7 @@ below only after the checklist passes.
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 . "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
-hero_at_fleet_root && echo "FLEET_ROOT" || true
+hero_fleet_step0 || exit 1
 ```
 
 If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow

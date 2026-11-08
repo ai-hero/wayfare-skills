@@ -617,8 +617,8 @@ hero_in_git_worktree() { # DIR
 }
 
 # The map's path for fleet folder DIR. rc 0 found; 1 no map; 2 DIR/.fleet/FLEET.md
-# exists but is not a readable file (a directory, a dangling link, no read
-# permission), which is an error and never "no map": falling back to the
+# exists but is not a readable regular file (a directory, a symlink, no read
+# permission) or DIR/.fleet is a symlink, which is an error and never "no map": falling back to the
 # legacy copy or to no fleet would hide a broken register. The top-level
 # FLEET.md is the layout before the map moved into the register; it is read
 # only while .fleet/FLEET.md is absent, with a stderr note. The Python
@@ -637,7 +637,15 @@ hero_fleet_map() { # DIR
   local d=${1%/} new old
   case "${d##*/}" in .fleet) return 1 ;; esac
   new="$d/.fleet/FLEET.md"; old="$d/FLEET.md"
-  if [ -e "$new" ] || [ -L "$new" ]; then
+  # A symlink at either step is refused, not followed: git reviews a link's
+  # target string, never what it points at, so a committed link would hand
+  # the audit family to a sibling's working tree under a clean review, and a
+  # linked .fleet/ puts the register outside the folder the review checks.
+  if [ -L "$d/.fleet" ] || [ -L "$new" ]; then
+    echo "hero_fleet_map: $d/.fleet or its FLEET.md is a symlink; the register must be a real checkout holding a real file" >&2
+    return 2
+  fi
+  if [ -e "$new" ]; then
     if [ ! -f "$new" ] || [ ! -r "$new" ]; then
       echo "hero_fleet_map: $new exists but is not a readable file; fix the register checkout (the legacy top-level FLEET.md is not read while it is there)" >&2
       return 2
@@ -708,18 +716,40 @@ hero_at_fleet_root() { # [DIR]
   hero_fleet_map "$d" >/dev/null; return 2
 }
 
-# The register OWNER/NAME this machine pins for FLEET_ROOT, or return 1. The
-# pin file is ${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers: one line per
-# fleet, the root's absolute physical path, whitespace, OWNER/NAME; `#` starts
-# a comment. It lives outside the register on purpose: the map's own
-# register-repo is written from inside the checkout it vouches for.
+# Step 0's fleet test, the one form every skill uses: prints FLEET_ROOT and
+# returns 0 at a fleet folder, prints nothing and returns 0 in a repo, and
+# prints FLEET_MAP_BROKEN and returns 2 when the folder's .fleet/FLEET.md is
+# unreadable. `hero_at_fleet_root && echo FLEET_ROOT || true` read that rc 2 as
+# "a repo" and ran the repo procedure in the fleet folder; validate.sh fails
+# that form.
+#   hero_fleet_step0 || exit 1
+hero_fleet_step0() { # [DIR]
+  hero_at_fleet_root "${1:-$PWD}"
+  case $? in
+    0) echo "FLEET_ROOT" ;;
+    2) echo "FLEET_MAP_BROKEN: the fleet map here is unreadable (error above). STOP: report it; do not run this repo procedure in the fleet folder"
+       return 2 ;;
+  esac
+  return 0
+}
+
+# The register HOST/OWNER/NAME this machine pins for FLEET_ROOT, or return 1.
+# The pin file is ${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers: one line
+# per fleet, the root's absolute physical path, whitespace, HOST/OWNER/NAME
+# (lowercase, no .git; a local-path register is `file` plus its absolute
+# path); `#` starts a comment. A two-part OWNER/NAME, the earlier spelling, is
+# read as github.com/OWNER/NAME. It lives outside the register on purpose: the
+# map's own register-repo is written from inside the checkout it vouches for.
 # scripts/audit.py's pinned_register() reads the same file the same way.
 hero_register_pin() { # FLEET_ROOT
-  local root file
+  local root file v
   root=$(cd "$1" 2>/dev/null && pwd -P) || return 1
   file="${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"
   [ -r "$file" ] || return 1
-  awk -v want="$root" '{ sub(/#.*/, "") } NF == 2 && $1 == want { print tolower($2); found = 1; exit } END { exit !found }' "$file"
+  v=$(awk -v want="$root" '{ sub(/#.*/, "") } NF == 2 && $1 == want { print tolower($2); found = 1; exit } END { exit !found }' "$file") || return 1
+  v=${v%/}; v=${v%.git}
+  case "$v" in file*) ;; */*/*) ;; */*) v="github.com/$v" ;; esac
+  printf '%s\n' "$v"
 }
 
 # A fleet-level `- key: value` from the `## Fleet` section.

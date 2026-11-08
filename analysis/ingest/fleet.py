@@ -59,6 +59,9 @@ def fleet_map(d, quiet=False):
     if os.path.basename(os.path.normpath(d)) == ".fleet":
         return None
     new, legacy = os.path.join(d, ".fleet", "FLEET.md"), os.path.join(d, "FLEET.md")
+    if os.path.islink(os.path.join(d, ".fleet")) or os.path.islink(new):
+        raise FleetMapError(f"{os.path.join(d, '.fleet')} or its FLEET.md is a symlink; the register must be "
+                            "a real checkout holding a real file")
     if os.path.lexists(new):
         if not os.path.isfile(new) or not os.access(new, os.R_OK):
             raise FleetMapError(f"{new} exists but is not a readable file; fix the register checkout "

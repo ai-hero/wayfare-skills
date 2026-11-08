@@ -135,7 +135,7 @@ def main():
     rc = audit.run_at_origin("consistency.py")
     if rc is not None:
         sys.exit(rc)
-    audit.configure(a.fleet or None)
+    audit.configure(a.fleet or None, no_fleet_flag=False)
     _ORG = audit.read_fleet(audit.ROOT)[0].get("org") if audit.REGISTER is not None else None
     if audit.REGISTER is None:
         sys.exit("not inside a fleet: CONSISTENCY.md is the fleet's table and lives in its register checkout")

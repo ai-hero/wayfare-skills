@@ -72,17 +72,24 @@ guess writes a registry into someone's home directory.
 (`git -C "$FLEET_ROOT/.fleet" remote get-url origin`). The pin lives outside the
 register, so a fork carrying its own map cannot vouch for itself; the audit
 warns while it is missing and will read the register UNREVIEWED once the legacy
-top-level fallback is removed. On confirmation, run, with `OWNER/NAME` from that
-`origin`:
+top-level fallback is removed. On confirmation, run, with `HOST/OWNER/NAME`
+typed from that `origin` (lowercase, no `.git`: `git@github.com:acme/reg.git` is
+`github.com/acme/reg`), never copied from the map:
 
 ```bash
 mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/wayfare"
-printf '%s %s\n' "$FLEET_ROOT" OWNER/NAME >> "${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"
+printf '%s %s\n' "$FLEET_ROOT" HOST/OWNER/NAME >> "${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"
 ```
 
 `PIN=` that differs from the map's `register-repo` or from the register's
 `origin` is a finding: report all three and stop. Never rewrite a pin to match
-the map; the pin is what the map is checked against.
+the map; the pin is what the map is checked against. The pin is
+`HOST/OWNER/NAME`; an older two-part pin reads as `github.com/OWNER/NAME`.
+
+A map whose `## Fleet` `org:` differs from the pinned OWNER is also a finding
+(`ORG_MISMATCH`): report both values and offer no clone until the person says
+which is right. A map change that moves `org:` is exactly what would send every
+new machine's clones to another owner.
 
 `MAP=` ending in a top-level `FLEET.md` (not `.fleet/FLEET.md`) is the legacy
 layout. Offer the move from the standard's *Moving from a top-level FLEET.md*
@@ -130,7 +137,7 @@ changes, including ports and missing `HERO.md`, to the skill that owns them.
    | Finding | Proposal |
    | -- | -- |
    | `BAD_ROW` | the row could not be trusted (the detail says why: a bad name, a dashed or non-numeric value, a duplicate, a relative path outside the fleet). Fix or drop it, and never guess a replacement |
-   | `NOT_CLONED` | normal for a shared map: this machine has no checkout. Offer to clone it **only to `FLEET_ROOT/NAME`** (`git clone git@github.com:ORG/NAME.git "$FLEET_ROOT/NAME"`), and only when the row's path resolves there. A row with any other `path:` is reported, never offered: fix the row first. **Never propose dropping the row** on this finding alone: drop it only when the person says the repo is retired |
+   | `NOT_CLONED` | normal for a shared map: this machine has no checkout. Offer to clone it **only to `FLEET_ROOT/NAME`**, and only when the row's path resolves there; a row with any other `path:` is reported, never offered: fix the row first. Take the clone source's host and owner from **this machine's pin** (`PIN=HOST/OWNER/NAME` from Step 0 gives `git@HOST:OWNER/NAME.git`), never from the map's `org:`, which a merged map change could point at a look-alike org. Show the full URL in the confirmation. With `UNPINNED`, or a `file…` pin, offer no clone: pin first. **Never propose dropping the row** on this finding alone: drop it only when the person says the repo is retired |
    | `ABSENT_OUTSIDE` | an absolute or `~/` row whose folder does not exist. Report it and **never offer a clone or any write there**: the map is shared content, and an absolute path is a place someone else named, such as a skills or shell-config folder. The person installs it themselves, or fixes the row |
    | `MOVED` | the repo is checked out under another folder name. Propose fixing the row's `path` to where it is (or renaming the folder), never a second clone |
    | `DANGLING_LINK` | the row's path is a symlink to nothing. Ask where the checkout went; fix the link or the row. Never clone through the link |

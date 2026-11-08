@@ -282,10 +282,12 @@ drift belongs in that task's Definition of Done.
 
 **The `compliance` stage: this repo against the register.** The register has two
 halves: the generic baseline shipped with the plugin (`assets/compliance/`) and
-the fleet's overlay in the checkout FLEET.md names (`register:`, default
-`.fleet/`), holding incident history and any checks of its own. No check names a
-repo. Outside a fleet only the baseline applies. Run the engine for this repo
-alone, as it sits:
+the fleet's overlay in the register checkout, `.fleet/`, which also holds
+`FLEET.md` (a map there may name no other `register:`), holding incident history
+and any checks of its own. No check names a repo. Outside a fleet only the
+baseline applies, except that a repo whose `AGENTS.md` carries the vendored
+`## Fleet` section and finds no map stops the engine with rc 4 (`NO_FLEET_MAP`).
+Run the engine for this repo alone, as it sits:
 
 ```bash
 # --repo . resolves this checkout to its FLEET.md row (a basename is not the
@@ -296,7 +298,11 @@ alone, as it sits:
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 "$WAYFARE_ROOT/scripts/audit.py" \
   --repo . --no-snapshot --json > "$SCRATCH/compliance.jsonl" 2> "$SCRATCH/compliance.err"; COMPLIANCE_RC=$?
-[ "$COMPLIANCE_RC" = 0 ] || echo "COMPLIANCE_AUDIT_RC=$COMPLIANCE_RC — read $SCRATCH/compliance.err; rc 2 means a checker raised (its cells are in the JSON with status ERROR), anything else means the engine did not run: render (–) and say why."
+case "$COMPLIANCE_RC" in
+  0) ;;
+  4) echo "COMPLIANCE_NO_FLEET_MAP: this repo declares a fleet but no .fleet/FLEET.md was found above it; the engine did not run" ;;
+  *) echo "COMPLIANCE_AUDIT_RC=$COMPLIANCE_RC — read $SCRATCH/compliance.err; rc 2 means a checker raised (its cells are in the JSON with status ERROR), anything else means the engine did not run: render (–) and say why." ;;
+esac
 ```
 
 `--json` prints one object per failing or erroring (check × repo) cell: `status`
@@ -319,7 +325,11 @@ copy of the register (REG-01) is an item like any other: the copy goes, the
 register lives in the fleet's checkout. An `ERROR` cell is `unverified`, the
 checker broke, which is a finding about the engine, not about this repo, and
 never a proposed item. A repo outside any fleet says so in one line and audits
-against the baseline only.
+against the baseline only. `COMPLIANCE_NO_FLEET_MAP` is one line in the lane:
+the machine is missing the fleet's register clone (clone it into the fleet
+folder as `.fleet/`). Re-run with `--no-fleet`, auditing the repo alone against
+the baseline, only after the person confirms the repo is standalone, such as a
+template clone that has not joined a fleet; never add the flag on your own.
 
 **After the accepted items are written, file the confirmed control findings**
 through [finding-tickets.md](finding-tickets.md), on the `issues` connection's

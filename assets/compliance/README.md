@@ -6,7 +6,7 @@ halves:
 | Half | Where | Holds |
 | -- | -- | -- |
 | baseline | this directory, shipped with the plugin | controls and checks any repo on this workflow is held to; generic rationale only |
-| overlay | the fleet's register checkout (FLEET.md `register:`, default `.fleet/`) | the fleet's incident history, `applies_to: [GROUP, …]` narrowings, any controls or checks of its own, and a `checkers.py` holding the checkers that know its repos by name. It may NOT name a repo in a check: `reference:` and `known_violations` are retired and rejected at load |
+| overlay | the fleet's register checkout, `.fleet/`, which also holds `FLEET.md` | the fleet's incident history, `applies_to: [GROUP, …]` narrowings, any controls or checks of its own, and a `checkers.py` holding the checkers that know its repos by name. It may NOT name a repo in a check: `reference:` and `known_violations` are retired and rejected at load |
 
 Merged by id, overlay fields winning, once the overlay is reviewed: committed
 and pushed to the register's `origin/main`. An overlay short of that only adds
@@ -21,13 +21,18 @@ Explicit per-capability repo lists are not a thing: they are a copy of what
 detection answers, and copies go stale.
 
 A mapped register that is not cloned is an error, never a baseline-only run: the
-audit would report a fleet that got greener because its overlay was missing.
-Outside a fleet only the baseline applies and the family is the current repo.
-Results are never stored: a stored result is a copy, and copies drift.
-`scripts/consistency.py` writes the fleet's human table into the register
-checkout, never here. Beside it goes the one piece of history no run can derive:
-`FIRST_SEEN.json`, the date each open failure was first seen. The table measures
-each failure's age from it against the severity `deadlines:` in `CONTROLS.yaml`.
+audit would report a fleet that got greener because its overlay was missing. The
+register is `.fleet/`, which also holds `FLEET.md`, and a map there may name no
+other `register:`. Outside a fleet only the baseline applies and the family is
+the current repo, except that a repo whose `AGENTS.md` carries the vendored
+`## Fleet` section and finds no map stops with rc 4 (`NO_FLEET_MAP`): it is a
+fleet repo on a machine missing its register. `--no-fleet` audits such a repo
+alone on purpose, for one that is confirmed standalone. Results are never
+stored: a stored result is a copy, and copies drift. `scripts/consistency.py`
+writes the fleet's human table into the register checkout, never here. Beside it
+goes the one piece of history no run can derive: `FIRST_SEEN.json`, the date
+each open failure was first seen. The table measures each failure's age from it
+against the severity `deadlines:` in `CONTROLS.yaml`.
 
 The audit reads this register, and the engine that checks it, at the plugin
 checkout's origin/main rather than the branch it sits on, so both come from one

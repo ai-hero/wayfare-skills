@@ -233,17 +233,20 @@ skill posts. What still needs judgment runs on demand, not on every commit.
   folder. The fleet root is the nearest folder holding `.fleet/FLEET.md` that is
   not itself named `.fleet`, holds no `HERO.md`, and is outside any git work
   tree. Three functions (`hero_fleet_map` and the two Python `fleet_map()`s)
-  return the path, treat an unreadable map as an error, and hold a transitional
+  return the path, treat an unreadable map, or a symlinked `.fleet` or map
+  (git reviews a link's target string, not its content), as an error, and
+  hold a transitional
   fallback to a legacy top-level `FLEET.md` until every operator has moved.
   Because the map now arrives through register PRs, the audit treats it as
   register content: a map in `.fleet/` may name no register but `.fleet/`, and
   a map that differs from the fetched `origin/main` makes the register
   UNREVIEWED. Because `register-repo` is written inside the checkout it vouches
-  for, each machine pins its register outside every repo, in
-  `${XDG_CONFIG_HOME:-~/.config}/wayfare/registers`. A row with no checkout on
-  this machine is `NOT_CLONED`, informational; `sync` offers to clone it only
-  to `FLEET_ROOT/NAME`, never to an absolute row, and drops a row only for a
-  retired repo. A repo that declares a fleet in its `AGENTS.md` and finds no
+  for, each machine pins its register by host, owner and name outside every
+  repo, in `${XDG_CONFIG_HOME:-~/.config}/wayfare/registers`. A row with no
+  checkout on this machine is `NOT_CLONED`, informational; `sync` offers to
+  clone it only to `FLEET_ROOT/NAME`, from the host and owner the pin names
+  rather than the map's `org:`, never to an absolute row, and drops a row only
+  for a retired repo. A repo that declares a fleet in its `AGENTS.md` and finds no
   map stops the audit; any other repo warns and runs baseline-only.
 - Consequences: only the "unversioned" half of the earlier decision is
   reversed. The plain-folder rule is unchanged and still tested on the folder

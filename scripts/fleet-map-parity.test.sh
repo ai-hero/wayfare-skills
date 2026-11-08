@@ -91,6 +91,10 @@ D="$WORK/dir"; mkdir -p "$D/.fleet/FLEET.md"; printf '## Fleet\n' > "$D/FLEET.md
 agree "a .fleet/FLEET.md directory, legacy present" "$D" "error -"
 D="$WORK/dangling"; mkdir -p "$D/.fleet"; ln -s "$D/.fleet/nowhere" "$D/.fleet/FLEET.md"; printf '## Fleet\n' > "$D/FLEET.md"
 agree "a dangling .fleet/FLEET.md link, legacy present" "$D" "error -"
+D="$WORK/reallink"; mkdir -p "$D/.fleet"; printf '## Fleet\n' > "$WORK/other.md"; ln -s "$WORK/other.md" "$D/.fleet/FLEET.md"
+agree "a .fleet/FLEET.md symlink to a readable map" "$D" "error -"
+D="$WORK/linkedreg"; mkdir -p "$D" "$WORK/realreg"; printf '## Fleet\n' > "$WORK/realreg/FLEET.md"; ln -s "$WORK/realreg" "$D/.fleet"
+agree "a symlinked .fleet/" "$D" "error -"
 D="$WORK/unreadable"; mkdir -p "$D/.fleet"; printf '## Fleet\n' > "$D/.fleet/FLEET.md"; chmod 000 "$D/.fleet/FLEET.md"
 if [ ! -r "$D/.fleet/FLEET.md" ]; then
   agree "an unreadable .fleet/FLEET.md" "$D" "error -"

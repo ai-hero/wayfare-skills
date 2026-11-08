@@ -45,13 +45,21 @@ does not load, and `--fail-on` exits 3, exactly as for an edited
 checkout it vouches for, so a cloned fork of the register carrying its own map
 could name itself. Each machine therefore pins the register it trusts in
 `${XDG_CONFIG_HOME:-~/.config}/wayfare/registers`, outside every repo: one line
-per fleet, the fleet root's absolute physical path, whitespace, `OWNER/NAME`,
-with `#` starting a comment (`hero_register_pin` and `audit.py`'s
-`pinned_register()` read it). An `origin` or `register-repo:` that disagrees
-with the pin makes the register UNREVIEWED. A missing pin prints a warning with
-the one command that writes it, and does not fail yet; it becomes required, an
-unpinned register reading UNREVIEWED, in the same release that removes the
-legacy top-level fallback below.
+per fleet, the fleet root's absolute physical path, whitespace, the register as
+`HOST/OWNER/NAME` (lowercase, no `.git`, so `git@github.com:acme/reg.git` and
+`https://github.com/acme/reg` are both `github.com/acme/reg`; a local-path
+register is `file` followed by its absolute path), with `#` starting a comment.
+A two-part `OWNER/NAME`, the first spelling, reads as `github.com/OWNER/NAME`.
+`hero_register_pin` and `audit.py`'s `pinned_register()` read it. An `origin`
+whose host, owner or name differs from the pin, or a `register-repo:` that
+differs from its owner and name, makes the register UNREVIEWED. A missing pin
+prints a warning with the register's observed `origin` and a pin command whose
+`HOST/OWNER/NAME` is a placeholder you fill in once you have confirmed it is
+your fleet's register; nothing from the map or the remote is pasted into the
+command. It does not fail yet; it becomes required, an unpinned register reading
+UNREVIEWED, in the same release that removes the legacy top-level fallback
+below. The pin is also where `sync` takes the host and owner it clones from,
+never the map's `org:`.
 
 ### A new machine
 
@@ -60,7 +68,7 @@ legacy top-level fallback below.
    (`git clone git@github.com:acme-inc/fleet-register.git .fleet`). The map is
    now at `.fleet/FLEET.md`.
 3. Pin the register on this machine, from the fleet folder:
-   `mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/wayfare" && printf '%s %s\n' "$(pwd -P)" acme-inc/fleet-register >> "${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"`.
+   `mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/wayfare" && printf '%s %s\n' "$(pwd -P)" github.com/acme-inc/fleet-register >> "${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"`.
 4. Run `wayfare:wayfare-sync-fleet` from the fleet folder. It lists the rows not
    cloned here and offers to clone each one, and offers the pin if step 3 was
    skipped.
@@ -186,10 +194,11 @@ Rules:
 
 | Function (`scripts/hero-lib.sh`) | Returns |
 | -- | -- |
-| `hero_fleet_map DIR` | the map's path for fleet folder `DIR`: `DIR/.fleet/FLEET.md`, or the legacy `DIR/FLEET.md` with a stderr note (once per shell) while the first is absent; rc 1 when neither exists or `DIR` is itself named `.fleet`, rc 2 when `.fleet/FLEET.md` exists but is not a readable file |
+| `hero_fleet_map DIR` | the map's path for fleet folder `DIR`: `DIR/.fleet/FLEET.md`, or the legacy `DIR/FLEET.md` with a stderr note (once per shell) while the first is absent; rc 1 when neither exists or `DIR` is itself named `.fleet`, rc 2 when `.fleet/FLEET.md` exists but is not a readable regular file, or either `.fleet` or `.fleet/FLEET.md` is a symlink (git reviews a link's target string, not what it points at) |
 | `hero_fleet_root [START]` | nearest ancestor of `START` (default `$PWD`) with a map (`hero_fleet_map`) and no `HERO.md` beside `.fleet/`, outside any git work tree (`.git` on the folder or an ancestor other than `$HOME`); a committed map is passed over, a walk from inside `.fleet/` (a git checkout or not) lands on its parent, and rc 2 means the nearest trusted folder's map is unreadable |
 | `hero_at_fleet_root [DIR]` | true when `DIR` (default `$PWD`) has a map, no `HERO.md`, and sits outside any git work tree: a fleet folder, not a repo; rc 2 for an unreadable map |
-| `hero_register_pin FLEET_ROOT` | the register `OWNER/NAME` this machine pins for the fleet, or rc 1 |
+| `hero_register_pin FLEET_ROOT` | the register `HOST/OWNER/NAME` this machine pins for the fleet (a two-part pin as `github.com/…`), or rc 1 |
+| `hero_fleet_step0 [DIR]` | Step 0's one form, `hero_fleet_step0 \|\| exit 1`: prints `FLEET_ROOT` at a fleet folder, nothing in a repo, and `FLEET_MAP_BROKEN` with rc 2 for an unreadable map |
 | `hero_fleet_field KEY [FLEET_ROOT]` | a `## Fleet` value |
 | `hero_fleet_repo_field NAME KEY [FLEET_ROOT]` | a value from `### NAME` under `## Repos` |
 | `hero_fleet_repos [FLEET_ROOT]` | `NAME<TAB>ABSOLUTE_PATH<TAB>GROUP<TAB>PORT` per trusted row, one parse; untrusted rows go to stderr and the function returns 3 |

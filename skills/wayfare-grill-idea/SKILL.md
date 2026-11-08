@@ -243,7 +243,7 @@ HERO_LIB="$WAYFARE_ROOT/scripts/hero-lib.sh"
 
 ROOT=$(hero_root)
 cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
-hero_at_fleet_root && echo "FLEET_ROOT"
+hero_fleet_step0 || exit 1
 
 # The store is a git-ignored folder of markdown work-items — your private plate
 # for THIS repo. hero_work_store creates it, excludes it via .git/info/exclude

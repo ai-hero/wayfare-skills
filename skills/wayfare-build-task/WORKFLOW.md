@@ -176,7 +176,7 @@ HERO_LIB="$WAYFARE_ROOT/scripts/hero-lib.sh"
 ROOT=$(hero_root)
 cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
 hero_check_staleness
-hero_at_fleet_root && echo "FLEET_ROOT" || true
+hero_fleet_step0 || exit 1
 # Mail from a sibling repo (docs/MESSAGES.md), and deploy probes whose runs
 # outlasted wayfare-ship-pr Step 7e's wait cap. Both are counts,
 # not work: this run neither triages nor waits on them. A run that prints

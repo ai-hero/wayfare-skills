@@ -295,15 +295,19 @@ check "fleet-root: a walk from inside the register passes it over and lands on t
   "$F" "$(hero_fleet_root "$F/.fleet/sub" 2>/dev/null)"
 rm -rf "$F/.fleet/.git" "$F/.fleet/sub" "$TMP/clone"
 
-# A top-level FLEET.md is never read: alone it is no map, silently; beside
+# A top-level FLEET.md is never read. Alone it is rc 2 naming the move, so a
+# folder still on that layout stops instead of running a repo procedure; beside
 # .fleet/FLEET.md it is named once per shell for deletion.
 LG="$TMP/legacy"; mkdir -p "$LG/repo"; LG="$(cd "$LG" && pwd -P)"
 printf '## Fleet\n\n- name: old\n' > "$LG/FLEET.md"
-hero_fleet_map "$LG" >/dev/null 2>&1; check "fleet-map: a top-level FLEET.md alone is no map" "1" "$?"
-hero_fleet_root "$LG/repo" >/dev/null 2>&1; check "fleet-root: a top-level FLEET.md alone is no fleet" "1" "$?"
-hero_at_fleet_root "$LG"; check "at-fleet-root: a top-level FLEET.md alone is not a fleet root" "1" "$?"
-check "fleet-map: a top-level FLEET.md alone prints nothing" \
-  "" "$(hero_fleet_map "$LG" 2>&1 >/dev/null)"
+hero_fleet_map "$LG" >/dev/null 2>&1; check "fleet-map: a top-level FLEET.md alone is rc 2, not no map" "2" "$?"
+hero_fleet_root "$LG/repo" >/dev/null 2>&1; check "fleet-root: a top-level FLEET.md alone is rc 2" "2" "$?"
+hero_at_fleet_root "$LG" 2>/dev/null; check "at-fleet-root: a top-level FLEET.md alone is rc 2" "2" "$?"
+check "fleet-step0: a top-level FLEET.md alone prints FLEET_MAP_BROKEN and is rc 2" \
+  "1|2" "$(out=$(hero_fleet_step0 "$LG" 2>/dev/null); rc=$?; printf '%s|%s' "$(printf '%s\n' "$out" | grep -c '^FLEET_MAP_BROKEN')" "$rc")"
+check "fleet-map: the error names the move" \
+  "1" "$(hero_fleet_map "$LG" 2>&1 >/dev/null | grep -c "$LG/FLEET.md is no longer read; move it into the register as $LG/.fleet/FLEET.md")"
+check "fleet-map: the file is never printed as the map" "" "$(hero_fleet_map "$LG" 2>/dev/null)"
 mkdir -p "$LG/.fleet"; printf '## Fleet\n\n- name: new\n' > "$LG/.fleet/FLEET.md"
 hero_at_fleet_root "$LG"; check "at-fleet-root: .fleet/FLEET.md beside a leftover copy is" "0" "$?"
 check "fleet-map: a silent probe does not use up the note" "" "${HERO_FLEET_NOTED:-}"
@@ -395,6 +399,28 @@ mkdir -p "$TMP/sp ace"
 check "require-pin: a root with whitespace is told it cannot be pinned" \
   "1" "$(XDG_CONFIG_HOME="$PX" hero_require_register_pin "$TMP/sp ace" 2>&1 >/dev/null | grep -c "cannot be pinned")"
 rmdir "$TMP/sp ace"
+# A folder name is untrusted: the hint's command must not run what it carries.
+EVIL="$TMP/f'\$(touch\${IFS}$TMP/PWNED)'x"; mkdir -p "$EVIL"
+HINT=$(XDG_CONFIG_HOME="$PX" hero_require_register_pin "$EVIL" 2>&1 >/dev/null | sed -n 's/.*origin (\(git -C .* remote get-url origin\)).*/\1/p')
+(cd "$TMP" && eval "$HINT" >/dev/null 2>&1)
+check "require-pin: a quote in the root does not break out of the hint" "no" "$([ -e "$TMP/PWNED" ] && echo yes || echo no)"
+check "require-pin: the hint still names the register" "1" "$(printf '%s' "$HINT" | grep -c 'remote get-url origin')"
+rm -rf "$EVIL" "$TMP/PWNED"
+cp "$PX/wayfare/registers" "$TMP/pins.bak"; chmod 000 "$PX/wayfare/registers"
+if [ ! -r "$PX/wayfare/registers" ]; then
+  check "require-pin: an unreadable pin file is named, not reported as no pin" \
+    "1|0" "$(err=$(XDG_CONFIG_HOME="$PX" hero_require_register_pin "$F" 2>&1 >/dev/null); printf '%s|%s' "$(printf '%s\n' "$err" | grep -c 'cannot read the pin file')" "$(printf '%s\n' "$err" | grep -c 'add this line')")"
+fi
+chmod 600 "$PX/wayfare/registers"
+# The lookup is by physical path, and by the whole path, never a prefix.
+ln -s "$F" "$TMP/flink"
+check "register-pin: a symlinked root finds the physical root's pin" \
+  "gitlab.com/acme/fleet-register" "$(XDG_CONFIG_HOME="$PX" hero_register_pin "$TMP/flink")"
+printf '%s-other github.com/acme/fleet-register\n' "$F" > "$PX/wayfare/registers"
+XDG_CONFIG_HOME="$PX" hero_register_pin "$F" >/dev/null; check "register-pin: a sibling's pin is not a prefix match" "1" "$?"
+printf '%s github.com/acme/fleet-register\n' "$TMP/flink" > "$PX/wayfare/registers"
+XDG_CONFIG_HOME="$PX" hero_register_pin "$F" >/dev/null; check "register-pin: a pin written through a symlink does not pin" "1" "$?"
+rm -f "$TMP/flink" "$TMP/pins.bak"
 rm -rf "$PX"
 
 # The walk covers ancestors, not just the folder holding .fleet/.

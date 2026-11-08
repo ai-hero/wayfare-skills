@@ -51,9 +51,12 @@ fi
 > Each bash block below runs in a fresh shell, so re-source `hero-lib.sh` at the
 > top of any block that calls a `hero_*` function.
 
-`MAP_UNREADABLE` → **stop.** `.fleet/FLEET.md` exists but is not a readable file
-(the error above names it). Report it and stop: never fall back to a top-level
-copy or bootstrap a new map over a broken register.
+`MAP_UNREADABLE` → **stop.** `.fleet/FLEET.md` exists but is not a readable
+file, or the folder holds only a top-level `FLEET.md` (the error above names
+which). Report it and stop: never read a top-level copy or bootstrap a new map
+over either. For a top-level copy, point at the standard's *Moving from a
+top-level FLEET.md*: it moves into the register by a register PR, keeping its
+rows.
 
 `NO_FLEET` with `NO_REGISTER` → **stop.** The map lives in the register repo, so
 there is nowhere to write it yet. Tell the person to clone the fleet's register
@@ -123,17 +126,19 @@ changes, including ports and missing `HERO.md`, to the skill that owns them.
 5. Show the whole file, confirm, write `CAND/.fleet/FLEET.md`. Then offer the
    register pin (the `UNPINNED` step above, with `CAND` as the root), run
    `"$SCAN" "$CAND" --review` and show it. A fresh registry that already reports
-   collisions is telling the truth on day one.
+   collisions is telling the truth on day one. Declined, the review exits 2:
+   quote the pin line its error names and stop there.
 
 **Converge: FLEET.md exists.**
 
 1. Run `"$SCAN" "$FLEET_ROOT" --review`. Exit 0 with no output: say so and stop.
-   Otherwise, one proposal per finding:
+   Exit 2: quote its error and stop; unpinned, that error is the pin line to add
+   (offer the `UNPINNED` step). Otherwise, one proposal per finding:
 
    | Finding | Proposal |
    | -- | -- |
    | `BAD_ROW` | the row could not be trusted (the detail says why: a bad name, a dashed or non-numeric value, a duplicate, a relative path outside the fleet). Fix or drop it, and never guess a replacement |
-   | `NOT_CLONED` | normal for a shared map: this machine has no checkout. Offer to clone it **only to `FLEET_ROOT/NAME`**, and only when the row's path resolves there; a row with any other `path:` is reported, never offered: fix the row first. Take the clone source's host and owner from **this machine's pin** (`PIN=HOST/OWNER/NAME` from Step 0 gives `git@HOST:OWNER/NAME.git`), never from the map's `org:`, which a merged map change could point at a look-alike org. Show the full URL in the confirmation. With `UNPINNED`, or a `file…` pin, offer no clone: pin first. **Never propose dropping the row** on this finding alone: drop it only when the person says the repo is retired |
+   | `NOT_CLONED` | normal for a shared map: this machine has no checkout. Offer to clone it **only to `FLEET_ROOT/NAME`**, and only when the row's path resolves there; a row with any other `path:` is reported, never offered: fix the row first. Take the clone source's host and owner from **this machine's pin** (`PIN=HOST/OWNER/NAME` from Step 0 gives `git@HOST:OWNER/NAME.git`), never from the map's `org:`, which a merged map change could point at a look-alike org. Show the full URL in the confirmation. With a `file…` pin, offer no clone. **Never propose dropping the row** on this finding alone: drop it only when the person says the repo is retired |
    | `ABSENT_OUTSIDE` | an absolute or `~/` row whose folder does not exist. Report it and **never offer a clone or any write there**: the map is shared content, and an absolute path is a place someone else named, such as a skills or shell-config folder. The person installs it themselves, or fixes the row |
    | `MOVED` | the repo is checked out under another folder name. Propose fixing the row's `path` to where it is (or renaming the folder), never a second clone |
    | `DANGLING_LINK` | the row's path is a symlink to nothing. Ask where the checkout went; fix the link or the row. Never clone through the link |

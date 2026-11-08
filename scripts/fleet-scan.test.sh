@@ -237,7 +237,7 @@ pin "$LG"
 LGERR=$("$SCAN" "$LG" --review 2>&1 >/dev/null); LGRC=$?
 check "review: a top-level FLEET.md alone exits 2" "2" "$LGRC"
 check "review: the refusal says the top-level map is no longer read" \
-  "1" "$(printf '%s\n' "$LGERR" | grep -c 'a top-level FLEET.md is no longer read, so move it into the register')"
+  "1" "$(printf '%s\n' "$LGERR" | grep -c "$LG/FLEET.md is no longer read; move it into the register")"
 mkdir -p "$LG/.fleet"; printf '# Fleet\n\n## Fleet\n\n- name: t\n' > "$LG/.fleet/FLEET.md"
 LGERR=$("$SCAN" "$LG" --review 2>&1 >/dev/null); LGRC=$?
 check "review: .fleet/FLEET.md beside a leftover copy reviews" "0" "$LGRC"

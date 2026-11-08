@@ -57,7 +57,13 @@ check "WAYFARE_FLEET_ROOT overrides" "$CLONE" "$(WAYFARE_FLEET_ROOT="$CLONE" roo
 cp "$FLEET/.fleet/FLEET.md" "$FLEET/FLEET.md"
 check "a leftover top-level copy beside .fleet/FLEET.md changes nothing" "$FLEET" "$(root_from "$CLONE")"
 rm "$FLEET/.fleet/FLEET.md"
-check "a top-level FLEET.md alone is no fleet" "" "$(root_from "$FLEET")"
+check "a top-level FLEET.md alone resolves no root" "" "$(root_from "$FLEET")"
+ERR=$(cd "$FLEET" && "$UV" run --quiet --no-project --with-requirements "$FLEET_PY" python -I -c '
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("fleet", sys.argv[1])
+spec.loader.exec_module(importlib.util.module_from_spec(spec))
+' "$FLEET_PY" 2>&1 >/dev/null)
+check "a top-level FLEET.md alone stops the import naming the move" "1" "$(printf '%s\n' "$ERR" | grep -c 'is no longer read; move it into the register')"
 
 rm "$FLEET/FLEET.md"
 check "clone alone resolves no fleet" "" "$(root_from "$CLONE")"

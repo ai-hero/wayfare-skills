@@ -57,9 +57,9 @@ _NOTED = set()
 def fleet_map(d, quiet=False):
     """The map's path for fleet folder d, or None; FleetMapError when it is
     there but unreadable. Mirrors audit.py's fleet_map and hero-lib.sh's
-    hero_fleet_map: a top-level FLEET.md is never read, only named in a note
-    when it sits beside .fleet/FLEET.md. A folder named .fleet is the register
-    and never a fleet folder."""
+    hero_fleet_map: a top-level FLEET.md is never read. Alone it raises
+    FleetMapError naming the move; beside .fleet/FLEET.md it is named in a
+    note. A folder named .fleet is the register and never a fleet folder."""
     if os.path.basename(os.path.normpath(d)) == ".fleet":
         return None
     new, legacy = os.path.join(d, ".fleet", "FLEET.md"), os.path.join(d, "FLEET.md")
@@ -73,6 +73,9 @@ def fleet_map(d, quiet=False):
             _NOTED.add(("ignoring", legacy))
             print(f"ingest/fleet.py: ignoring {legacy}; the map is {new}, so delete the old copy", file=sys.stderr)
         return new
+    if os.path.isfile(legacy):
+        raise FleetMapError(f"{legacy} is no longer read; move it into the register as {new} "
+                            "(docs/FLEET-MD.md, Moving from a top-level FLEET.md)")
     return None
 
 

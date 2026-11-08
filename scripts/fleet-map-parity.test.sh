@@ -84,7 +84,7 @@ agree() { # NAME DIR EXPECTED
 D="$WORK/new"; mkdir -p "$D/.fleet"; printf '## Fleet\n' > "$D/.fleet/FLEET.md"
 agree "new only" "$D" "new -"
 D="$WORK/legacy"; mkdir -p "$D"; printf '## Fleet\n' > "$D/FLEET.md"
-agree "a top-level FLEET.md alone is no map" "$D" "none -"
+agree "a top-level FLEET.md alone is an error, never no map" "$D" "error -"
 D="$WORK/both"; mkdir -p "$D/.fleet"; printf '## Fleet\n' > "$D/.fleet/FLEET.md"; printf '## Fleet\n' > "$D/FLEET.md"
 agree "both" "$D" "new ignoring"
 D="$WORK/empty"; mkdir -p "$D/.fleet"

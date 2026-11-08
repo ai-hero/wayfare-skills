@@ -620,10 +620,12 @@ hero_in_git_worktree() { # DIR
 # exists but is not a readable regular file (a directory, a symlink, no read
 # permission) or DIR/.fleet is a symlink, which is an error and never "no map":
 # reporting no fleet would hide a broken register. A top-level DIR/FLEET.md is
-# the layout before the map moved into the register and is never read: alone it
-# is no map, and beside .fleet/FLEET.md it earns a stderr note to delete it. The
-# Python fleet_map()s in scripts/audit.py and analysis/ingest/fleet.py hold the
-# same rules.
+# the layout before the map moved into the register and is never read. Alone it
+# is rc 2 naming the move, never "no map": a folder still on that layout would
+# otherwise run every skill's repo procedure and an audit with no overlay.
+# Beside .fleet/FLEET.md it earns a stderr note to delete it. The Python
+# fleet_map()s in scripts/audit.py and analysis/ingest/fleet.py hold the same
+# rules.
 #
 # A folder named .fleet is the register, never a fleet folder: without that, a
 # walk from inside a register that is not a git checkout takes the register
@@ -655,6 +657,10 @@ hero_fleet_map() { # DIR
       HERO_FLEET_NOTED=1
     fi
     printf '%s' "$new"; return 0
+  fi
+  if [ -f "$old" ]; then
+    echo "hero_fleet_map: $old is no longer read; move it into the register as $new (docs/FLEET-MD.md, Moving from a top-level FLEET.md)" >&2
+    return 2
   fi
   return 1
 }
@@ -720,7 +726,7 @@ hero_fleet_step0() { # [DIR]
   hero_at_fleet_root "${1:-$PWD}"
   case $? in
     0) echo "FLEET_ROOT" ;;
-    2) echo "FLEET_MAP_BROKEN: the fleet map here is unreadable (error above). STOP: report it; do not run this repo procedure in the fleet folder"
+    2) echo "FLEET_MAP_BROKEN: the fleet map here is unreadable or not yet moved into .fleet/ (error above). STOP: report it; do not run this repo procedure in the fleet folder"
        return 2 ;;
   esac
   return 0
@@ -748,7 +754,9 @@ hero_register_pin() { # FLEET_ROOT
 # hero_register_pin, required: prints the pin, or names on stderr the exact
 # line to add to the pin file and returns 1. The line carries a HOST/OWNER/NAME
 # placeholder, never the register's origin or the map's register-repo: either
-# could be a fork's, and pasting it in would let the fork pin itself.
+# could be a fork's, and pasting it in would let the fork pin itself. This
+# checks only that a pin exists; whether it matches the register's origin is
+# audit.py's check, the one that decides whether checkers.py runs.
 hero_require_register_pin() { # FLEET_ROOT
   local root file
   hero_register_pin "$1" && return 0
@@ -759,8 +767,14 @@ hero_require_register_pin() { # FLEET_ROOT
       echo "hero_require_register_pin: this machine pins no register for $root, and a path with whitespace cannot be pinned; move the fleet folder to a path without it" >&2
       return 1 ;;
   esac
+  if [ -e "$file" ] && [ ! -r "$file" ]; then
+    echo "hero_require_register_pin: cannot read the pin file $file; fix its permissions" >&2
+    return 1
+  fi
+  # %q, not quotes around $root: a folder name is not ours to trust, and a
+  # quote in it would run whatever follows when the command is pasted.
   {
-    echo "hero_require_register_pin: this machine pins no register for $root. Read the register's origin (git -C '$root/.fleet' remote get-url origin), confirm it is your fleet's register and not a fork, then add this line to $file with HOST/OWNER/NAME replaced by that origin (lowercase, no .git):"
+    echo "hero_require_register_pin: this machine pins no register for $root. Read the register's origin ($(printf 'git -C %q remote get-url origin' "$root/.fleet")), confirm it is your fleet's register and not a fork, then add this line to $file with HOST/OWNER/NAME replaced by that origin (lowercase, no .git):"
     echo "  $root HOST/OWNER/NAME"
   } >&2
   return 1

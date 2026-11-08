@@ -54,9 +54,10 @@
 #   0  --list ran; or --review found nothing beyond NOT_CLONED
 #   1  --review found at least one other finding
 #   2  usage error; or, for --review, no .fleet/FLEET.md at the root (or one
-#      that is not a readable file), a HERO.md in the root, a root inside a
-#      git work tree (a repo that committed a map is not a fleet), or a root
-#      this machine pins no register for (the error names the line to add)
+#      that is not a readable file, or only a top-level FLEET.md), a HERO.md
+#      in the root, a root inside a git work tree, or a root this machine pins
+#      no register for (the error names the line to add; a pin is not checked
+#      against the register's origin here, the audit does that)
 
 set -uo pipefail
 
@@ -67,7 +68,7 @@ HERO_LIB="$(cd "$(dirname "$0")" && pwd)/hero-lib.sh"
 # The end line tracks the header block above. Add a line up there and this
 # range silently truncates `--help` mid-sentence — no error, and the Exit
 # codes section is what falls off first.
-usage() { sed -n '5,59p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '5,60p' "$0" | sed 's/^# \{0,1\}//'; }
 
 MODE=list
 ROOT=""
@@ -102,14 +103,7 @@ fi
 # reaches the reader; the later reads route stderr into $BAD or /dev/null.
 hero_fleet_map "$ROOT" >/dev/null; rc=$?
 [ "$rc" != 2 ] || exit 2
-if [ "$rc" != 0 ]; then
-  if [ -f "$ROOT/FLEET.md" ]; then
-    echo "fleet-scan: no fleet map in $ROOT; a top-level FLEET.md is no longer read, so move it into the register as $ROOT/.fleet/FLEET.md (docs/FLEET-MD.md)" >&2
-  else
-    echo "fleet-scan: no fleet map in $ROOT; clone the register into $ROOT/.fleet so .fleet/FLEET.md exists, or run wayfare:wayfare-sync-fleet to create it" >&2
-  fi
-  exit 2
-fi
+[ "$rc" = 0 ] || { echo "fleet-scan: no fleet map in $ROOT; clone the register into $ROOT/.fleet so .fleet/FLEET.md exists, or run wayfare:wayfare-sync-fleet to create it" >&2; exit 2; }
 [ ! -f "$ROOT/HERO.md" ] || { echo "fleet-scan: $ROOT holds HERO.md beside its fleet map, which is a repo, not a fleet" >&2; exit 2; }
 hero_at_fleet_root "$ROOT" 2>/dev/null || { echo "fleet-scan: $ROOT is inside a git work tree, so its map is a clone's content, not a fleet map" >&2; exit 2; }
 hero_require_register_pin "$ROOT" >/dev/null || exit 2

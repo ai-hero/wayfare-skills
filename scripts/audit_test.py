@@ -1150,20 +1150,22 @@ class Configured(unittest.TestCase):
             self.assertIsNone(audit.fleet_root(clone), "a committed top-level FLEET.md is not a fleet")
 
     def test_a_top_level_map_is_never_read(self):
-        """Alone it is no map; beside .fleet/FLEET.md it is named, once, for
-        deletion and never read."""
+        """Alone it is an error naming the move, never no map: no map would
+        audit baseline-only and read greener. Beside .fleet/FLEET.md it is
+        named, once, for deletion and never read."""
         audit._NOTED.clear()
         write(self.root, "FLEET.md", "## Fleet\n- name: old\n")
         (self.root / "repo").mkdir()
-        with contextlib.redirect_stderr(io.StringIO()) as err:
-            self.assertIsNone(audit.fleet_map(self.root))
-            self.assertIsNone(audit.fleet_root(self.root / "repo"))
-        self.assertEqual(err.getvalue(), "", "a top-level map alone is silently no map")
+        for call in (lambda: audit.fleet_map(self.root), lambda: audit.fleet_root(self.root / "repo")):
+            with self.assertRaises(audit.FleetMapError) as cm:
+                call()
+            self.assertIn("is no longer read; move it into the register as", str(cm.exception))
         write(self.root, ".fleet/FLEET.md", "## Fleet\n- name: new\n")
         with contextlib.redirect_stderr(io.StringIO()) as err:
             self.assertEqual(audit.read_fleet(self.root)[0]["name"], "new")
             audit.read_fleet(self.root)
         self.assertEqual(err.getvalue().count(f"ignoring {self.root / 'FLEET.md'}"), 1, err.getvalue())
+
     def test_an_empty_register_is_no_fleet(self):
         (self.root / ".fleet").mkdir()
         (self.root / "repo").mkdir()
@@ -1336,7 +1338,9 @@ class Configured(unittest.TestCase):
                  ("mismatch", f"{self.root} {local[:-len('register')]}other\n", False, "this machine pins"),
                  # The same OWNER/NAME on a host, against a local-path origin.
                  ("other host, two-part", f"{self.root} fx/register\n", False, "this machine pins github.com/fx/register"),
-                 ("other host", f"{self.root} gitlab.com/fx/register\n", False, "this machine pins gitlab.com/fx/register"))
+                 ("other host", f"{self.root} gitlab.com/fx/register\n", False, "this machine pins gitlab.com/fx/register"),
+                 ("another root", f"/elsewhere {local}\n", False, "this machine pins no register for"),
+                 ("sibling prefix", f"{self.root}-other {local}\n", False, "this machine pins no register for"))
         for label, text, want_reviewed, want_text in cases:
             pins.unlink(missing_ok=True)
             if text is not None:
@@ -1353,6 +1357,19 @@ class Configured(unittest.TestCase):
                 self.assertIn(f"origin is {local}", err.getvalue())
             if label == "match":
                 self.assertNotIn("not pinned", err.getvalue())
+
+    def test_a_root_with_whitespace_is_told_it_cannot_be_pinned(self):
+        root = self.root / "my fleet"
+        root.mkdir()
+        fleet_fixture(root, "## Fleet\n- name: fx\n")
+        review_register(root, pin=False)
+        audit._REGISTER_READ.clear()
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            audit.configure(root, load_overlay=False)
+            _src, reviewed, note = audit.register_source()
+        self.assertFalse(reviewed)
+        self.assertIn("cannot be pinned", note)
+        self.assertNotIn("HOST/OWNER/NAME", err.getvalue(), "no line that could never match")
 
     def test_the_pin_command_carries_nothing_from_the_map(self):
         """A quote in register-repo once broke out of the printed printf."""

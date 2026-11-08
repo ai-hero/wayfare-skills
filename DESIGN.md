@@ -305,13 +305,17 @@ skill posts. What still needs judgment runs on demand, not on every commit.
   `FLEET.md` and let a machine with no register pin only warn, both until every
   operator had moved. Every operator has moved.
 - Decision: `hero_fleet_map` and the two Python `fleet_map()`s read only
-  `.fleet/FLEET.md`. A top-level `FLEET.md` alone is no map; beside
-  `.fleet/FLEET.md` it earns a one-line note to delete it and is never read. A
+  `.fleet/FLEET.md`. A top-level `FLEET.md` alone is an error naming the move,
+  not "no map", so a folder still on that layout stops rather than running a
+  repo procedure or an audit without its overlay; beside `.fleet/FLEET.md` it
+  earns a one-line note to delete it and is never read. A
   fleet root with no line in `${XDG_CONFIG_HOME:-~/.config}/wayfare/registers`
   is refused: `fleet-scan.sh --review` exits 2 and the audit reads the register
   UNREVIEWED, and both print the exact line to add, `ROOT HOST/OWNER/NAME`, with
   the register's identity left as a placeholder rather than copied from the map
-  or the remote, either of which could be a fork's.
+  or the remote, either of which could be a fork's. `fleet-scan` checks only
+  that a pin exists; the audit, which decides whether `checkers.py` runs, also
+  checks it against the register's `origin`.
 - Consequences: the gap the earlier decision accepted is closed: a cloned fork
   of the register carrying its own map no longer vouches for itself on an
   unpinned machine, because its `checkers.py` does not load there. A machine

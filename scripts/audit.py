@@ -162,8 +162,10 @@ _NOTED = set()   # leftover-copy notes already printed, once per process
 def fleet_map(d, quiet=False):
     """The map's path for fleet folder d, or None; FleetMapError when it is
     there but unreadable. A top-level FLEET.md is the layout before the map
-    moved into the register and is never read: alone it is no map, and beside
-    .fleet/FLEET.md it earns a stderr note to delete it. hero_fleet_map
+    moved into the register and is never read. Alone it raises FleetMapError
+    naming the move, never "no map": a folder still on that layout would
+    otherwise audit baseline-only and read greener for the overlay it dropped.
+    Beside .fleet/FLEET.md it earns a stderr note to delete it. hero_fleet_map
     (scripts/hero-lib.sh) and analysis/ingest/fleet.py's fleet_map() hold the
     same rules.
 
@@ -187,6 +189,9 @@ def fleet_map(d, quiet=False):
             _NOTED.add(("ignoring", legacy))
             print(f"fleet_map: ignoring {legacy}; the map is {new}, so delete the old copy", file=sys.stderr)
         return new
+    if legacy.is_file():
+        raise FleetMapError(f"{legacy} is no longer read; move it into the register as {new} "
+                            "(docs/FLEET-MD.md, Moving from a top-level FLEET.md)")
     return None
 
 
@@ -523,7 +528,12 @@ def _resolve_register(reg):
             problems.append(f"origin is {got} but FLEET.md register-repo names {REGISTER_REPO}")
         pin = pinned_register(ROOT)
         seen = remote_identity(url)
-        if pin is None:
+        if pin is None and re.search(r"\s", str(ROOT)):
+            problems.append(f"this machine pins no register for {ROOT}, and a path with whitespace cannot "
+                            "be pinned; move the fleet folder to a path without it")
+        elif pin is None and os.path.exists(pin_file()) and not os.access(pin_file(), os.R_OK):
+            problems.append(f"cannot read the pin file {pin_file()}; fix its permissions")
+        elif pin is None:
             # Nothing from the map or the remote reaches the command: either
             # could be a fork's, and a quote in it would break out of the line.
             shown = seen if re.fullmatch(r"[a-z0-9.-]+(/[a-z0-9._-]+)+", seen) else "(not shown: unexpected characters)"

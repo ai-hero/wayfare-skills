@@ -26,9 +26,25 @@ repo.
 **Who can steer it.** `setup.yaml` names commands that run on every developer's
 machine, as that developer. Whoever can merge to the register can therefore run
 code on those machines, the same people who can already change `checkers.py`.
-The skill shows each group's commands and asks before it runs them, and the
-register's review is the real gate. Like the map, the file is read from the
-working tree of `.fleet/`, so a local edit takes effect on that machine at once.
+The register's review is the gate, and the script enforces it:
+
+- It reads `setup.yaml` from `refs/remotes/origin/main` of the register checkout
+  `.fleet/`, fetched that run, by the full ref name, because a local branch or
+  tag called `origin/main` would win over the short name. **Never the working
+  tree**: unlike the map, a local edit to `setup.yaml` does nothing until it is
+  merged and fetched, so a branch checked out to review a register PR cannot
+  choose what gets installed.
+- It runs only when the checkout's `origin` is the register this machine pins
+  (`${XDG_CONFIG_HOME:-~/.config}/wayfare/registers`,
+  [FLEET-MD.md](./FLEET-MD.md)), compared with the same normaliser as the audit.
+  A fork or a look-alike remote is refused, and so is an unpinned register.
+- It refuses a `setup.yaml` that is a symlink, which git would review as the
+  link while the commands came from wherever it points.
+
+`--file` reads a working-tree file instead, for someone editing the file or a
+test. `plan`, `check` and `verify` accept it, and `apply` refuses it unless
+`--unreviewed` is passed too. The skill never passes either. On top of the gate,
+the skill shows each group's commands and asks before running them.
 
 ## Bootstrap: before wayfare is on the machine
 
@@ -89,7 +105,7 @@ A **step** is a mapping with exactly one key, its kind:
 | `marketplace` | list of `name`, `source` | `claude plugin marketplace list` has `name` | `claude plugin marketplace add SOURCE` |
 | `plugin` | list of `NAME@MARKETPLACE` | `claude plugin list` has it | `claude plugin install ID` |
 | `mcp` | one server (below) | `claude mcp get NAME` exits 0 | `claude mcp add --scope user …` |
-| `person` | `title`, `why`, optional `run`, `check`, `terminal` | `check` exits 0, or the person confirmed it | never; the skill stops and shows it |
+| `person` | `title`, `why`, `check`, optional `run`, `terminal` | `check` exits 0, or the person confirmed it | never; the skill stops and shows it |
 
 Rules the validator enforces, each because getting it wrong would install
 something other than what the file says:
@@ -99,14 +115,26 @@ something other than what the file says:
    would drop the whole step.
 2. **Values are typed.** A git value is a string, so `pull.rebase: "false"` is
    quoted; YAML reads a bare `false` as a boolean.
-3. **`shell` and `path` files live under `~/`**, with no `..`.
-4. **A `plugin` names a marketplace an earlier `marketplace` step declared.**
-5. **A stdio `mcp` server run through `npx`, `bunx`, `pnpx` or `uvx` names an
-   exact version** (`@playwright/mcp@0.0.83`, never bare or `@latest`). Those
-   launchers fetch the package each run with the person's credentials in reach,
-   and an unpinned one skips the cooldown on new releases.
-6. **A `person` step whose `why` is `secret` runs in a separate terminal**
-   (`terminal: separate`).
+3. **`shell` and `path` write only shell startup files**: `~/.zshrc`,
+   `~/.zprofile`, `~/.zshenv`, `~/.bashrc`, `~/.bash_profile` or `~/.profile`.
+   Anything else under `~/`, such as `~/.ssh/authorized_keys`, is refused.
+4. **A `path` entry is `$HOME/…` or an absolute path**, of letters, digits and
+   `._@+-` only. It is written inside double quotes, where `"`, `` ` ``, `$(` or
+   `\` would run as shell at every login, and where a leading `~` is not
+   expanded, so it would name a folder literally called `~`.
+5. **A `plugin` names a marketplace an earlier `marketplace` step declared.**
+6. **A stdio `mcp` server run through `npx`, `bunx`, `pnpx` or `uvx` names exact
+   versions**: a full `MAJOR.MINOR.PATCH`, with an optional prerelease or build
+   suffix (`@playwright/mcp@0.0.83`, `pkg==1.2.3`), never bare, `@latest`, `@1`
+   or `@1.x`, which npm reads as ranges. Every value of `--package`, `-p`,
+   `--from` and `--with` is checked, and the first positional argument when none
+   of those is given. Those launchers fetch the package each run with the
+   person's credentials in reach, and an unpinned one skips the cooldown on new
+   releases.
+7. **A `person` step has a `check`**, so it can read as done; without one every
+   later `apply` would stop at it again. One whose `why` is `secret` runs in a
+   separate terminal (`terminal: separate`).
+8. **An http header's `prefix`** is letters, digits, spaces and `._-` only.
 
 `why` is one of `password`, `browser`, `secret`, `gui` or `choice` (a value only
 the person can give, such as their commit email). `path` entries are also put on
@@ -156,12 +184,18 @@ a pass means, for the report.
 ## The script
 
 ```bash
-uv run scripts/fleet-setup.py --file .fleet/setup.yaml validate
-uv run scripts/fleet-setup.py --file .fleet/setup.yaml plan [--json]
-uv run scripts/fleet-setup.py --file .fleet/setup.yaml check [--json]
-uv run scripts/fleet-setup.py --file .fleet/setup.yaml apply --group NAME [--confirmed ID]...
-uv run scripts/fleet-setup.py --file .fleet/setup.yaml verify [--json]
+uv run scripts/fleet-setup.py --fleet FLEET_ROOT validate
+uv run scripts/fleet-setup.py --fleet FLEET_ROOT plan [--json]
+uv run scripts/fleet-setup.py --fleet FLEET_ROOT check [--json]
+uv run scripts/fleet-setup.py --fleet FLEET_ROOT apply --group NAME [--confirmed ID]...
+uv run scripts/fleet-setup.py --fleet FLEET_ROOT verify [--json]
+uv run scripts/fleet-setup.py --file setup.yaml validate          # an edit, before its PR
+uv run scripts/fleet-setup.py archive --kind local|memory ARCHIVE
 ```
+
+`--fleet` defaults to the current folder. Every command but `archive` goes
+through the gate above first; a refusal prints `GATE CODE: why` and exits 3, and
+a register with no `setup.yaml` on `origin/main` exits 4 (`NO_SETUP_YAML`).
 
 `plan` lists every entry in file order with an id (`GROUP.N`), its status
 (`present`, `missing`, `person`) and the command it would run. `check` is the
@@ -172,5 +206,11 @@ Neither changes anything.
 person step still open (exit 10), printing the step and the command. Once the
 person has done it, run `apply` again with `--confirmed ID`; everything already
 present is skipped, so a rerun is safe. A failing command stops the group with
-exit 1 and quotes the last lines of its output. Invalid files and wrong
-platforms exit 2.
+exit 1 and quotes the last lines of its output, and says when a command timed
+out or could not start. Invalid files and wrong platforms exit 2.
+
+`archive` checks an archive from an old machine before anything is unpacked: a
+`local` one may hold only `NAME/.plans/…`, `NAME/.env` and a top-level
+`FLEET.md`; a `memory` one only `.claude/projects/PROJECT/memory/…`. Both hold
+only plain files and folders, with relative names and no `..`. Any other member
+is printed as `REFUSED` and the command exits 1.

@@ -6,26 +6,37 @@
 # Copyright (c) 2026 A.I. Hero, Inc.
 # All Rights Reserved.
 
-"""Machine setup for a fleet, from the register's .fleet/setup.yaml.
+"""Machine setup for a fleet, from the register's setup.yaml.
 
-    uv run scripts/fleet-setup.py [--file F] validate
-    uv run scripts/fleet-setup.py [--file F] plan [--json] [--confirmed ID]...
-    uv run scripts/fleet-setup.py [--file F] check [--json]
-    uv run scripts/fleet-setup.py [--file F] apply --group G [--confirmed ID]...
-    uv run scripts/fleet-setup.py [--file F] verify [--json]
+    uv run scripts/fleet-setup.py [--fleet DIR] validate
+    uv run scripts/fleet-setup.py [--fleet DIR] plan [--json] [--confirmed ID]...
+    uv run scripts/fleet-setup.py [--fleet DIR] check [--json]
+    uv run scripts/fleet-setup.py [--fleet DIR] apply --group G [--confirmed ID]...
+    uv run scripts/fleet-setup.py [--fleet DIR] verify [--json]
+    uv run scripts/fleet-setup.py --file F [--unreviewed] COMMAND ...
+    uv run scripts/fleet-setup.py archive --kind local|memory ARCHIVE
 
-F defaults to ./.fleet/setup.yaml. The schema is docs/SETUP-YAML.md.
+DIR is the fleet root (default: the current folder). The file is read from the
+register checkout DIR/.fleet as it stands on refs/remotes/origin/main, fetched
+this run, and only when that checkout's origin is the register this machine
+pins. --file reads a working-tree file instead, for a person or a test; apply
+refuses it without --unreviewed. The schema is docs/SETUP-YAML.md.
 
 plan, check and verify change nothing. apply runs one group's missing steps in
 file order and stops at the first person step that is still open; run it again
 with --confirmed ID once the person has done that step. Every step checks
-before it acts, so a second apply runs nothing.
+before it acts, so a second apply runs nothing. archive checks that an archive
+from an old machine holds only the files fleet setup restores.
 
-Exit: 0 done, 1 something missing or failed, 2 invalid file or usage,
-10 apply stopped at a person step.
+Exit: 0 done, 1 something missing or failed (or an archive refused), 2 invalid
+file or usage, 3 the review gate refused the file, 4 the register has no
+setup.yaml, 10 apply stopped at a person step.
 """
 
 import argparse
+import contextlib
+import importlib.util
+import io
 import json
 import os
 import pathlib
@@ -35,6 +46,8 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tarfile
+import tempfile
 
 import yaml
 
@@ -49,10 +62,20 @@ ENV_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 GIT_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9-]*(\.[A-Za-z0-9-]+)+$")
 PLUGIN_RE = re.compile(r"^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$")
 HEADER_RE = re.compile(r"^[A-Za-z0-9-]+$")
+PREFIX_RE = re.compile(r"^[A-Za-z0-9 ._-]*$")
+# Written inside double quotes in an rc file, so anything the shell expands
+# there ($(, `, ", \) would run at every login. A leading ~ is not expanded
+# inside quotes, so the entry would name a folder literally called ~.
+PATH_ENTRY_RE = re.compile(r"^(\$HOME|/[A-Za-z0-9._@+-]+)(/[A-Za-z0-9._@+-]+)*$")
+RC_FILES = ("~/.zshrc", "~/.zprofile", "~/.zshenv", "~/.bashrc", "~/.bash_profile", "~/.profile")
 # A launcher fetches the package at run time with the person's credentials in
-# reach, so an unpinned one installs whatever was published a minute ago.
+# reach, so an unpinned one installs whatever was published a minute ago. npm
+# reads `pkg@1` and `pkg@1.x` as ranges, so only a full MAJOR.MINOR.PATCH pins.
 LAUNCHERS = {"npx", "bunx", "pnpx", "uvx"}
-PINNED_RE = re.compile(r"^(@?[^@=\s]+)(@|==)\d[\w.+-]*$")
+PKG_FLAGS = ("--package", "-p", "--from", "--with")
+PINNED_RE = re.compile(r"^@?[A-Za-z0-9][A-Za-z0-9._/-]*(@|==)\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$")
+REVIEWED_REF = "refs/remotes/origin/main"
+HERE = pathlib.Path(__file__).resolve().parent
 
 
 class Invalid(Exception):
@@ -99,11 +122,30 @@ def _str_list(errs, where, v, pattern=None):
         _str(errs, f"{where}[{i}]", item, pattern)
 
 
-def _home_file(errs, where, v):
-    if not _str(errs, where, v):
-        return
-    if not v.startswith("~/") or ".." in pathlib.PurePosixPath(v).parts:
-        errs.add(where, f"{v!r} must be a file under ~/ with no '..'")
+def _rc_file(errs, where, v):
+    if _str(errs, where, v) and v not in RC_FILES:
+        errs.add(where, f"{v!r} is not a shell startup file (expected one of: {', '.join(RC_FILES)})")
+
+
+def launcher_packages(args):
+    """The package-bearing arguments of an npx/uvx-style launcher: every value
+    of --package, -p, --from and --with, and the first positional argument
+    when none of those is given (with one, that argument is a command)."""
+    pkgs, named, positional, i = [], False, [], 0
+    while i < len(args):
+        a = args[i]
+        flag, eq, val = a.partition("=")
+        if flag in PKG_FLAGS:
+            named = True
+            if eq:
+                pkgs.append(val)
+            else:
+                pkgs.append(args[i + 1] if i + 1 < len(args) else "")
+                i += 1
+        elif not a.startswith("-"):
+            positional.append(a)
+        i += 1
+    return pkgs if named else positional[:1]
 
 
 def _check_mcp(errs, where, m):
@@ -122,10 +164,11 @@ def _check_mcp(errs, where, m):
             args = m.get("args", [])
             if args:
                 _str_list(errs, f"{where}.args", args)
-            if m["command"] in LAUNCHERS and isinstance(args, list):
-                pkgs = [a for a in args if isinstance(a, str) and not a.startswith("-")]
-                if not pkgs or not PINNED_RE.match(pkgs[0]) or pkgs[0].endswith("@latest"):
-                    errs.add(f"{where}.args", f"{m['command']} must run an exact version (pkg@1.2.3), got {pkgs[:1]}")
+            if m["command"] in LAUNCHERS and isinstance(args, list) and all(isinstance(a, str) for a in args):
+                pkgs = launcher_packages(args)
+                bad = [p for p in pkgs if not PINNED_RE.match(p)] or ([] if pkgs else ["(none)"])
+                if bad:
+                    errs.add(f"{where}.args", f"{m['command']} must run exact versions (pkg@1.2.3), got {bad}")
         secrets = m.get("secrets", [])
         if secrets:
             _str_list(errs, f"{where}.secrets", secrets, ENV_RE)
@@ -144,8 +187,8 @@ def _check_mcp(errs, where, m):
                 if _keys(errs, w, s, ("header", "env"), ("prefix",)):
                     _str(errs, f"{w}.header", s.get("header"), HEADER_RE)
                     _str(errs, f"{w}.env", s.get("env"), ENV_RE)
-                    if "prefix" in s and not isinstance(s["prefix"], str):
-                        errs.add(f"{w}.prefix", "expected a string")
+                    if "prefix" in s and (not isinstance(s["prefix"], str) or not PREFIX_RE.match(s["prefix"])):
+                        errs.add(f"{w}.prefix", f"{s['prefix']!r} must match {PREFIX_RE.pattern}")
     else:
         errs.add(f"{where}.transport", f"expected stdio or http, got {t!r}")
 
@@ -178,8 +221,12 @@ def _check_step(errs, where, step, marketplaces):
     elif kind in ("shell", "path"):
         field = "lines" if kind == "shell" else "entries"
         if _keys(errs, w, body, ("file", field)):
-            _home_file(errs, f"{w}.file", body.get("file"))
-            _str_list(errs, f"{w}.{field}", body.get(field))
+            _rc_file(errs, f"{w}.file", body.get("file"))
+            _str_list(errs, f"{w}.{field}", body.get(field), PATH_ENTRY_RE if kind == "path" else None)
+            if kind == "shell" and isinstance(body.get("lines"), list):
+                for i, ln in enumerate(body["lines"]):
+                    if isinstance(ln, str) and "\n" in ln:
+                        errs.add(f"{w}.lines[{i}]", "one line per entry")
     elif kind == "marketplace":
         if not isinstance(body, list) or not body:
             errs.add(w, "expected a non-empty list of {name, source}")
@@ -198,7 +245,9 @@ def _check_step(errs, where, step, marketplaces):
     elif kind == "mcp":
         _check_mcp(errs, w, body)
     elif kind == "person":
-        if _keys(errs, w, body, ("title", "why"), ("run", "check", "terminal")):
+        # check is required: without one the step can never read as done, so
+        # every later apply stops at it again.
+        if _keys(errs, w, body, ("title", "why", "check"), ("run", "terminal")):
             _str(errs, f"{w}.title", body.get("title"))
             if body.get("why") not in PERSON_WHY:
                 errs.add(f"{w}.why", f"expected one of {', '.join(PERSON_WHY)}, got {body.get('why')!r}")
@@ -271,16 +320,112 @@ def validate(doc):
     return doc
 
 
-def load(path):
-    try:
-        text = pathlib.Path(path).read_text()
-    except OSError as e:
-        raise Invalid([f"{path}: cannot read ({e.strerror})"])
+def parse(text, where):
     try:
         doc = yaml.safe_load(text)
     except yaml.YAMLError as e:
-        raise Invalid([f"{path}: not YAML: {e}"])
+        raise Invalid([f"{where}: not YAML: {e}"])
     return validate(doc)
+
+
+class Gate(Exception):
+    """The review gate refused the file: CODE and why."""
+
+    def __init__(self, code, detail, rc=3):
+        super().__init__(f"{code}: {detail}")
+        self.code, self.detail, self.rc = code, detail, rc
+
+
+def load_file(path):
+    """A working-tree file named by --file. A symlink is refused: what was
+    reviewed would be the link, and what runs is whatever it points at."""
+    p = pathlib.Path(path)
+    if p.is_symlink():
+        raise Gate("SYMLINK", f"{path} is a symlink")
+    try:
+        return p.read_text(), str(path)
+    except (OSError, UnicodeDecodeError) as e:
+        raise Invalid([f"{path}: cannot read ({getattr(e, 'strerror', None) or e})"])
+
+
+def audit_module():
+    """scripts/audit.py, for remote_identity() and pinned_register(): one
+    normaliser, so this gate and the audit cannot disagree on which register a
+    pin names. Importing it binds the module from the cwd and prints notes, so
+    the import runs from an empty folder with its stderr dropped."""
+    spec = importlib.util.spec_from_file_location("wayfare_audit", HERE / "audit.py")
+    mod = importlib.util.module_from_spec(spec)
+    with tempfile.TemporaryDirectory() as d, contextlib.chdir(d), \
+            contextlib.redirect_stderr(io.StringIO()):
+        spec.loader.exec_module(mod)
+    return mod
+
+
+def git_env():
+    # Under a hook or in a linked worktree these point git at another
+    # repository, and every command below would read that one instead.
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
+                        "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX")}
+    env.update(GIT_TERMINAL_PROMPT="0", GIT_SSH_COMMAND="ssh -o BatchMode=yes")
+    return env
+
+
+def git(repo, *args, timeout=120):
+    try:
+        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
+                           env=git_env(), timeout=timeout, stdin=subprocess.DEVNULL)
+    except subprocess.TimeoutExpired:
+        return 124, "", f"timed out after {timeout}s"
+    except OSError as e:
+        return 127, "", str(e)
+    return r.returncode, r.stdout, r.stderr.strip()
+
+
+def load_reviewed(fleet):
+    """setup.yaml as it stands on the pinned register's origin/main, fetched
+    now. The full ref name, because a local branch or tag called origin/main
+    wins over the remote-tracking ref when the short name is resolved. The
+    working tree is never read: a branch checked out to review a register PR,
+    or an unpushed edit, would otherwise choose what this machine installs."""
+    root = pathlib.Path(fleet).resolve()
+    reg = root / ".fleet"
+    if not (reg / ".git").exists():
+        raise Gate("NO_REGISTER", f"{reg} is not a git checkout")
+    audit = audit_module()
+    pin = audit.pinned_register(root)
+    if pin is None:
+        raise Gate("NO_PIN", f"this machine pins no register for {root} ({audit.pin_file()})")
+    rc, url, err = git(reg, "remote", "get-url", "origin")
+    if rc:
+        raise Gate("NO_ORIGIN", f"{reg} has no origin remote")
+    seen = audit.remote_identity(url)
+    if seen != pin:
+        raise Gate("PIN_MISMATCH", f"origin is {seen}, but this machine pins {pin}")
+    rc, _, err = git(reg, "fetch", "-q", "origin", f"+refs/heads/main:{REVIEWED_REF}")
+    if rc:
+        raise Gate("NO_FETCH", f"fetching origin main failed: {err}")
+    rc, tree, err = git(reg, "ls-tree", REVIEWED_REF, "--", "setup.yaml")
+    if rc:
+        raise Gate("NO_FETCH", f"{REVIEWED_REF} does not resolve: {err}")
+    if not tree.strip():
+        raise Gate("NO_SETUP_YAML", f"origin/main of {seen} has no setup.yaml", rc=4)
+    mode = tree.split()[0]
+    if mode == "120000":
+        raise Gate("SYMLINK", "setup.yaml on origin/main is a symlink")
+    if mode not in ("100644", "100755"):
+        raise Gate("NOT_A_FILE", f"setup.yaml on origin/main has mode {mode}")
+    rc, text, err = git(reg, "show", f"{REVIEWED_REF}:setup.yaml")
+    if rc:
+        raise Gate("NO_FETCH", f"cannot read setup.yaml from {REVIEWED_REF}: {err}")
+    _, sha, _ = git(reg, "rev-parse", "--short", REVIEWED_REF)
+    local = reg / "setup.yaml"
+    try:
+        if local.is_symlink() or local.read_text() != text:
+            print(f"note: {local} differs from origin/main; the reviewed copy is used", file=sys.stderr)
+    except OSError:
+        pass
+    return text, f"{seen} setup.yaml @ origin/main {sha.strip()}"
 
 
 def home():
@@ -288,9 +433,12 @@ def home():
 
 
 def expand(p):
-    p = p.replace("$HOME", str(home()))
-    if p == "~" or p.startswith("~/"):
-        p = str(home()) + p[1:]
+    """An rc file (~/...) or a PATH entry ($HOME/... or absolute) as a real
+    path. Validation has already limited both to those two prefixes."""
+    if p.startswith("~/"):
+        return str(home()) + p[1:]
+    if p == "$HOME" or p.startswith("$HOME/"):
+        return str(home()) + p[len("$HOME"):]
     return p
 
 
@@ -305,7 +453,9 @@ def mcp_command(m):
         cmd += ["--transport", "http", m["name"], m["url"]]
         parts = [shlex.join(cmd)]
         for s in secrets:
-            parts.append(f'--header "{s["header"]}: {s.get("prefix", "")}${s["env"]}"')
+            # The quoted literal and the variable are adjacent words, so the
+            # shell joins them; only the variable is expanded.
+            parts.append(f'--header {shlex.quote(s["header"] + ": " + s.get("prefix", ""))}"${s["env"]}"')
         return " ".join(parts)
     # The name goes before -e: -e takes every value after it, so a name placed
     # later is read as another environment entry.
@@ -321,7 +471,7 @@ def secret_script(m):
     and never holds one: read -rs keeps the value off the screen and out of
     shell history, and unset drops it once claude has stored it."""
     names = [s if isinstance(s, str) else s["env"] for s in m["secrets"]]
-    lines = [f"claude mcp get {m['name']} >/dev/null 2>&1 || {{"]
+    lines = [f"claude mcp get {shlex.quote(m['name'])} >/dev/null 2>&1 || {{"]
     for n in names:
         lines.append(f"  printf '%s: ' {n}; read -rs {n}; echo")
     lines.append("  " + mcp_command(m))
@@ -342,9 +492,11 @@ class Machine:
         return shutil.which(cmd, path=self.env["PATH"])
 
     def run(self, argv, quiet=True, timeout=120):
+        """(result, why): result is None when the command did not run, and why
+        then says whether it was missing, timed out, or failed to start."""
         exe = self.which(argv[0]) if not argv[0].startswith("/") else argv[0]
         if not exe:
-            return None
+            return None, f"{argv[0]} not found"
         try:
             # Output is discarded, not captured: `claude mcp get` prints a
             # server's environment, secret values included.
@@ -352,13 +504,19 @@ class Machine:
                                stdout=subprocess.DEVNULL if quiet else subprocess.PIPE,
                                stderr=subprocess.DEVNULL if quiet else subprocess.STDOUT,
                                stdin=subprocess.DEVNULL, text=True)
-        except (OSError, subprocess.TimeoutExpired):
-            return None
-        return r
+        except subprocess.TimeoutExpired:
+            return None, f"{argv[0]} timed out after {timeout}s"
+        except OSError as e:
+            return None, f"{argv[0]} could not start: {e.strerror or e}"
+        return r, ""
+
+    def ok(self, argv, **kw):
+        r, _ = self.run(argv, **kw)
+        return bool(r and r.returncode == 0)
 
     def lines(self, key, argv):
         if key not in self.cache:
-            r = self.run(argv, quiet=False)
+            r, _ = self.run(argv, quiet=False)
             self.cache[key] = r.stdout.splitlines() if r and r.returncode == 0 else None
         return self.cache[key]
 
@@ -386,16 +544,14 @@ class Machine:
         return pid in self.claude_json("plg", ["claude", "plugin", "list", "--json"], "id")
 
     def mcp_has(self, name):
-        r = self.run(["claude", "mcp", "get", name], timeout=60)
-        return bool(r and r.returncode == 0)
+        return self.ok(["claude", "mcp", "get", name], timeout=60)
 
     def git_has(self, key, value):
-        r = self.run(["git", "config", "--global", "--get", key], quiet=False)
+        r, _ = self.run(["git", "config", "--global", "--get", key], quiet=False)
         return bool(r and r.returncode == 0 and r.stdout.strip() == value)
 
     def shell_ok(self, cmd):
-        r = self.run(["/bin/bash", "-c", cmd], timeout=120)
-        return bool(r and r.returncode == 0)
+        return self.ok(["/bin/bash", "-c", cmd], timeout=120)
 
     def forget(self):
         self.cache.clear()
@@ -492,9 +648,7 @@ def status(m, kind, item, confirmed, eid):
     if kind == "mcp":
         return m.mcp_has(item["name"])
     if kind == "person":
-        if eid in confirmed:
-            return True
-        return bool(item.get("check")) and m.shell_ok(item["check"])
+        return eid in confirmed or m.shell_ok(item["check"])
     raise AssertionError(kind)
 
 
@@ -602,7 +756,7 @@ def run_verify(doc):
     return out
 
 
-def apply_group(doc, path, group, confirmed):
+def apply_group(doc, group, confirmed):
     if platform_now() != doc["platform"]:
         print(f"apply: this file is for {doc['platform']}, and this machine is {platform_now()}", file=sys.stderr)
         return 2
@@ -637,10 +791,10 @@ def apply_group(doc, path, group, confirmed):
             argv = ["/bin/bash", "-c", item["run"]]
         else:
             argv = shlex.split(command)
-        r = m.run(argv, quiet=False, timeout=1800)
+        r, why = m.run(argv, quiet=False, timeout=1800)
         m.forget()
         if r is None or r.returncode != 0:
-            print(f"FAILED {eid}: {label}" + ("" if r else f" ({argv[0]} not found)"))
+            print(f"FAILED {eid}: {label}" + (f" ({why})" if why else f" (exit {r.returncode})"))
             if r is not None:
                 for ln in (r.stdout or "").splitlines()[-20:]:
                     print(f"  | {ln}")
@@ -652,11 +806,58 @@ def apply_group(doc, path, group, confirmed):
     return 0
 
 
+# What an old machine's archives may hold. Anything else (a LaunchAgent, a
+# Claude hook, a link out of the folder) would land in ~ or a checkout, and
+# run there, if the archive were unpacked whole.
+ARCHIVE_KINDS = {
+    "local": (re.compile(r"^(FLEET\.md|[A-Za-z0-9_][A-Za-z0-9._-]*/\.env|[A-Za-z0-9_][A-Za-z0-9._-]*/\.plans(/.+)?)$"),
+              re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]*$")),
+    "memory": (re.compile(r"^\.claude/projects/[^/]+/memory(/.+)?$"),
+               re.compile(r"^\.claude(/projects(/[^/]+)?)?$")),
+}
+
+
+def check_archive(path, kind):
+    """The members of `path` that fleet setup would not restore, each with why.
+    Only regular files and folders, with relative names and no `..`."""
+    member, parent = ARCHIVE_KINDS[kind]
+    bad = []
+    try:
+        with tarfile.open(path, "r:*") as t:
+            members = t.getmembers()
+    except (OSError, tarfile.TarError) as e:
+        return [f"{path}: not a readable archive ({e})"]
+    for m in members:
+        name = m.name[2:] if m.name.startswith("./") else m.name
+        name = name.rstrip("/")
+        parts = pathlib.PurePosixPath(name).parts
+        if not name or name.startswith("/") or ".." in parts or "\\" in name:
+            bad.append(f"{m.name}: not a plain relative path")
+        elif not (m.isfile() or m.isdir()):
+            bad.append(f"{m.name}: not a regular file or folder")
+        elif m.mode & 0o6000:
+            bad.append(f"{m.name}: setuid or setgid")
+        elif m.isdir() and parent.match(name):
+            continue
+        elif not member.match(name):
+            bad.append(f"{m.name}: not something fleet setup restores")
+        elif name.endswith("/.env") and not m.isfile():
+            bad.append(f"{m.name}: .env is not a file")
+    return bad
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--file", default=".fleet/setup.yaml")
+    src = ap.add_mutually_exclusive_group()
+    src.add_argument("--fleet", default=".", help="the fleet root (default: here)")
+    src.add_argument("--file", help="a working-tree setup.yaml, read without the review gate")
+    ap.add_argument("--unreviewed", action="store_true",
+                    help="let apply run a --file that has not been through the register's review")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("validate")
+    p = sub.add_parser("archive")
+    p.add_argument("--kind", choices=sorted(ARCHIVE_KINDS), required=True)
+    p.add_argument("path")
     for name in ("plan", "check", "verify"):
         p = sub.add_parser(name)
         p.add_argument("--json", action="store_true")
@@ -667,18 +868,31 @@ def main(argv=None):
     p.add_argument("--confirmed", action="append", default=[])
     a = ap.parse_args(argv)
 
+    if a.cmd == "archive":
+        bad = check_archive(a.path, a.kind)
+        for b in bad:
+            print(f"REFUSED {b}")
+        print(f"{a.path}: {'refused' if bad else 'ok'} ({a.kind})")
+        return 1 if bad else 0
+    if a.cmd == "apply" and a.file and not a.unreviewed:
+        print("apply: --file runs a file nobody reviewed; pass --unreviewed as well to mean it", file=sys.stderr)
+        return 2
     try:
-        doc = load(a.file)
+        text, source = load_file(a.file) if a.file else load_reviewed(a.fleet)
+        doc = parse(text, source)
+    except Gate as e:
+        print(f"GATE {e.code}: {e.detail}", file=sys.stderr)
+        return e.rc
     except Invalid as e:
         for line in e.args[0]:
             print(f"invalid: {line}", file=sys.stderr)
         return 2
 
     if a.cmd == "validate":
-        print(f"{a.file}: valid (version {doc['version']}, {len(doc['groups'])} groups)")
+        print(f"{source}: valid (version {doc['version']}, {len(doc['groups'])} groups)")
         return 0
     if a.cmd == "plan":
-        plan = build_plan(doc, a.file, a.confirmed)
+        plan = build_plan(doc, source, a.confirmed)
         print(json.dumps(plan, indent=2)) if a.json else print_plan(plan)
         return 0
     if a.cmd == "verify":
@@ -690,7 +904,7 @@ def main(argv=None):
                 print(f"{'ok  ' if v['ok'] else 'FAIL'} {v['name']}: {v['run']}  (passes: {v['passes']})")
         return 0 if all(v["ok"] for v in res) else 1
     if a.cmd == "check":
-        plan = build_plan(doc, a.file)
+        plan = build_plan(doc, source)
         res = run_verify(doc)
         c = summary(plan)
         if a.json:
@@ -702,7 +916,7 @@ def main(argv=None):
                 print(f"{'ok  ' if v['ok'] else 'FAIL'} {v['name']}: {v['run']}")
         bad = c["required_open"] or not all(v["ok"] for v in res) or not plan["platform_ok"]
         return 1 if bad else 0
-    return apply_group(doc, a.file, a.group, a.confirmed)
+    return apply_group(doc, a.group, a.confirmed)
 
 
 if __name__ == "__main__":

@@ -34,34 +34,30 @@ procedure in [SKILL.md](SKILL.md) in each one.
 ```bash
 FLEET_ROOT=$(pwd -P)
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
-SETUP="$FLEET_ROOT/.fleet/setup.yaml"
 command -v uv >/dev/null || echo "NO_UV"
-[ -f "$SETUP" ] || echo "NO_SETUP_YAML"
-uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --file "$SETUP" validate
-PIN=$(hero_register_pin "$FLEET_ROOT") || echo "NO_PIN"
-ORIGIN=$(git -C "$FLEET_ROOT/.fleet" remote get-url origin 2>/dev/null | sed -E 's#^ssh://##; s#^[a-z]+://##; s#^[^@/]*@##; s#^([^/:]+):[0-9]+/#\1/#; s#^([^/:]+):#\1/#; s#/+$##; s#\.git$##' | tr '[:upper:]' '[:lower:]')
-[ -n "$PIN" ] && [ "$ORIGIN" != "$PIN" ] && echo "PIN_MISMATCH $ORIGIN $PIN"
-git -C "$FLEET_ROOT/.fleet" fetch -q origin main 2>/dev/null || echo "NO_FETCH"
-git -C "$FLEET_ROOT/.fleet" cat-file -e origin/main:setup.yaml 2>/dev/null \
-  && git -C "$FLEET_ROOT/.fleet" diff --quiet origin/main -- setup.yaml \
-  || echo "UNREVIEWED_SETUP"
+uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --fleet "$FLEET_ROOT" validate
 ```
 
-- `NO_PIN`, `PIN_MISMATCH`, `NO_FETCH` or `UNREVIEWED_SETUP`: stop before Step 2
-  and say which. `setup.yaml` is a list of commands this skill runs on the
-  person's machine, so it runs only from the pinned register, and only as it
-  stands on that register's `origin/main`. A branch checked out to review a
-  register PR, an unpushed edit, or a cloned fork would otherwise choose what
-  gets installed. For `NO_PIN`, show the pin command from `docs/FLEET-MD.md`'s
-  new machine steps.
+The script reads `setup.yaml` only from the register as it stands on
+`refs/remotes/origin/main`, fetched this run, and only when the register's
+`origin` is the one this machine pins. It never reads the working tree, so a
+branch checked out to review a register PR, an unpushed edit, or a cloned fork
+cannot choose what gets installed. Never pass `--file` or `--unreviewed` from
+this skill. Read what it printed, in this order:
 
 - `NO_UV`: the script runs through `uv`. Tell the person to run
   `brew install uv`, then start again.
 
-- `NO_SETUP_YAML`: the register has no machine setup yet. Say so, point at
-  `docs/SETUP-YAML.md` and `assets/fleet/setup.example.yaml` in the plugin, and
-  go on to Step 4. Writing the file is a register PR, never this skill's.
+- `GATE NO_SETUP_YAML` (exit 4): the register has no machine setup yet. Say so,
+  point at `docs/SETUP-YAML.md` and `assets/fleet/setup.example.yaml` in the
+  plugin, and go straight to Step 4: the repos and the restore do not need it.
+  Writing the file is a register PR, never this skill's.
+
+- Any other `GATE` line (exit 3): stop and quote it. `NO_PIN` means this machine
+  has not pinned the register: show the pin step from
+  `wayfare:wayfare-sync-fleet` (its `UNPINNED` case) and run nothing.
+  `PIN_MISMATCH`, `NO_ORIGIN`, `NO_FETCH`, `SYMLINK` and `NOT_A_FILE` are
+  findings for the person; never work around one.
 
 - A validation error (exit 2): quote every `invalid:` line and stop. A typo in
   the register must not silently drop a step, so never run a partial plan.
@@ -69,7 +65,7 @@ git -C "$FLEET_ROOT/.fleet" cat-file -e origin/main:setup.yaml 2>/dev/null \
 ### Step 2: Show the plan
 
 ```bash
-uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --file "$SETUP" plan
+uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --fleet "$FLEET_ROOT" plan
 ```
 
 Show the person the plan as printed: the notes, each group with its `[ok]`,
@@ -81,7 +77,7 @@ Show the person the plan as printed: the notes, each group with its `[ok]`,
 `--check` in each cloned repo the person picks. Report and stop.
 
 ```bash
-uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --file "$SETUP" check
+uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --fleet "$FLEET_ROOT" check
 ```
 
 ### Step 3: Walk the groups
@@ -99,7 +95,7 @@ Take the groups in plan order. For each one:
 4. Run the group:
 
    ```bash
-   uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --file "$SETUP" apply --group GROUP CONFIRMED_FLAGS
+   uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --fleet "$FLEET_ROOT" apply --group GROUP CONFIRMED_FLAGS
    ```
 
    `CONFIRMED_FLAGS` is one `--confirmed ID` per person step the person has done
@@ -126,23 +122,29 @@ new entry, the script already has it; anything you run yourself does not.
 
 ### Step 4: Offer the repos
 
+Clones follow `wayfare:wayfare-sync-fleet`'s rules: its *Step 0: Load* (the pin,
+`UNPINNED`, `ORG_MISMATCH`) and the findings table under *Converge FLEET.md with
+the folder* (`NOT_CLONED`, `ABSENT_OUTSIDE`). Read them there and apply them
+unchanged. Run its Step 0 block from the fleet root, then:
+
 ```bash
-hero_fleet_repos "$FLEET_ROOT"
 "$WAYFARE_ROOT/scripts/fleet-scan.sh" "$FLEET_ROOT" --review
-hero_fleet_field org "$FLEET_ROOT"
 ```
 
-Show the rows as a table of name, group and path, marking each `NOT_CLONED` one.
-Ask which to clone: names, a group name, or `all`, which means every row whose
-group is not `none`. Never assume `all`, and never include a `none` row the
-person did not name. Clone each chosen row to its path:
+In short, and only as that skill says:
+
+- Offer only `NOT_CLONED` rows whose path is `FLEET_ROOT/NAME`. Ask which to
+  clone: names, a group name, or `all`, which means every such row whose group
+  is not `none`. Never assume `all`.
+- Build each URL from this machine's pin (`PIN=HOST/OWNER/NAME` gives
+  `git@HOST:OWNER/NAME.git` for the register's owner), never from the map's
+  `org:`, and show every URL in full before cloning.
+- With `UNPINNED`, a `file…` pin, or `ORG_MISMATCH`, offer no clone.
+- Report `ABSENT_OUTSIDE` rows and never clone them or write there.
 
 ```bash
-gh repo clone ORG/NAME ABSOLUTE_REPO_PATH
+git clone git@HOST:OWNER/NAME.git "$FLEET_ROOT/NAME"
 ```
-
-If `org` is `none` or unset, ask for the row's owner. Skip a row whose path
-already holds a checkout.
 
 ### Step 5: Restore local-only files
 
@@ -160,14 +162,29 @@ If there is, the person runs this on the old machine, from its fleet root:
 
 Tell them: **`fleet-local.tgz` holds live secrets, unencrypted.** Send both
 files directly between the machines, such as by AirDrop, never through a synced
-folder, a chat or a repo. Then, on this machine:
+folder, a chat or a repo.
+
+Ask the person where each archive is. If one is in `~/Downloads`, show its full
+path and ask before using it; never pick an archive up without asking. Then
+check each one before anything is unpacked:
 
 ```bash
-for f in fleet-local.tgz claude-memory.tgz; do
-  [ -f ~/"$f" ] || { [ -f ~/Downloads/"$f" ] && mv ~/Downloads/"$f" ~/; }
-  [ -f ~/"$f" ] && chmod 600 ~/"$f"
-done
-[ -f ~/claude-memory.tgz ] && tar xzkf ~/claude-memory.tgz -C ~
+chmod 600 LOCAL_ARCHIVE MEMORY_ARCHIVE
+uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" archive --kind local LOCAL_ARCHIVE
+uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" archive --kind memory MEMORY_ARCHIVE
+```
+
+An archive with any `REFUSED` line is not unpacked at all: quote the lines and
+stop this step. The check allows only `NAME/.plans/…`, `NAME/.env` and a
+top-level `FLEET.md` in the local archive, and only
+`.claude/projects/PROJECT/memory/…` in the memory one, as plain files and
+folders. Anything else, such as a Claude hook or a LaunchAgent, would run once
+unpacked into `~`.
+
+Unpack the memory archive into `~`, naming the one folder it may write:
+
+```bash
+tar xzkf MEMORY_ARCHIVE -C ~ .claude/projects
 ```
 
 `tar -k` keeps any file already there, so a rerun cannot overwrite newer work.
@@ -180,7 +197,7 @@ first; without them, `git add -A` commits the plans. A `.env` git would not
 ignore is left behind rather than restored.
 
 ```bash
-(umask 077; mkdir -p ~/fleet-restore && tar xzf ~/fleet-local.tgz -C ~/fleet-restore)
+(umask 077; mkdir -p ~/fleet-restore && tar xzf LOCAL_ARCHIVE -C ~/fleet-restore)
 cd "$FLEET_ROOT"
 for repo in */; do
   repo=${repo%/}
@@ -202,20 +219,12 @@ done
 
 Report every `NOT RESTORED` line: that repo needs a `.gitignore` entry before
 its `.env` comes across. Never print, open or list the values of a restored
-file.
+file. The archive's `FLEET.md`, if any, is not restored: the map comes from the
+register.
 
-Once every repo the person wants is cloned, ask them to delete the archives,
-here:
-
-```bash
-rm -rf ~/fleet-restore ~/fleet-local.tgz ~/claude-memory.tgz
-```
-
-and on the old machine:
-
-```bash
-rm -f ~/fleet-local.tgz ~/claude-memory.tgz
-```
+Once every repo the person wants is cloned, ask them to delete the archives and
+`~/fleet-restore` on this machine, naming the paths they gave, and the archives
+on the old machine.
 
 ### Step 6: Set up each repo
 
@@ -226,7 +235,7 @@ so it does not fan out to subagents. Collect each repo's summary for the report.
 ### Step 7: Verify and report
 
 ```bash
-uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --file "$SETUP" verify
+uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --fleet "$FLEET_ROOT" verify
 for f in ~/fleet-local.tgz ~/claude-memory.tgz ~/fleet-restore ~/Downloads/fleet-local.tgz ~/Downloads/claude-memory.tgz; do
   [ -e "$f" ] && echo "SECRETS ARCHIVE STILL PRESENT: $f"
 done

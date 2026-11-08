@@ -271,10 +271,16 @@ skill posts. What still needs judgment runs on demand, not on every commit.
   unknown keys and wrong types. Per-repo setup stays in each repo's `HERO.md`.
   `scripts/fleet-setup.py`, run through `uv` with inline metadata, validates
   the file, prints the plan, and with `apply` runs one group's missing steps,
-  checking each first and stopping at the first open person step.
-  `wayfare-setup-dev` gets a fleet mode at the fleet root (its `WORKFLOW.md`):
-  walk the groups, clone the repos the person picks, restore `.plans/` and
-  `.env` from an old machine, then the per-repo procedure in each.
+  checking each first and stopping at the first open person step. The script
+  reads the file only from the register's `refs/remotes/origin/main`, fetched
+  that run, and only when the register's `origin` matches this machine's pin,
+  compared with `audit.py`'s own `remote_identity()`; a symlinked `setup.yaml`
+  is refused. `--file` reads a working-tree copy, and `apply` refuses it
+  without `--unreviewed`. `wayfare-setup-dev` gets a fleet mode at the fleet
+  root (its `WORKFLOW.md`): walk the groups, clone the repos the person picks
+  under `wayfare-sync-fleet`'s clone rules, restore `.plans/` and `.env` from
+  an old machine after the script has checked each archive's members, then
+  the per-repo procedure in each.
 - Consequences: the script, not the agent, runs the commands, so a rerun is safe
   by construction and the commands are the file's, not a paraphrase. A secret is
   declared by its variable name only; a server that needs one becomes a person
@@ -282,7 +288,11 @@ skill posts. What still needs judgment runs on demand, not on every commit.
   or the script's output, and verify checks report exit status alone. The file
   runs commands on every developer's machine, so whoever can merge to the
   register can run code there: the same people who can change `checkers.py`,
-  with the skill asking before each group as the second gate. Bootstrap (tools,
+  with the skill asking before each group as the second gate. Unlike the map,
+  a local edit to `setup.yaml` does nothing until it is merged and fetched, so
+  editing it means a register PR or `--file --unreviewed`. What the file may
+  write is narrowed to what setup needs: shell startup files only, PATH
+  entries with no shell syntax, exact package versions. Bootstrap (tools,
   Homebrew, `gh`, `uv`, Claude Code, wayfare, the register clone) stays a manual
   list in the schema doc, because the skill cannot install itself. Only
   `macos-arm64` is a platform so far.

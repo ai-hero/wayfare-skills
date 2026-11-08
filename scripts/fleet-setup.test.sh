@@ -96,7 +96,7 @@ EOF
 chmod +x "$BIN"/*
 
 fs() { # args... ; runs the script as the skill does, against the fakes
-  env -i HOME="$H" PATH="$BIN:/usr/bin:/bin" TMPDIR="$T" \
+  env -i HOME="$H" XDG_CONFIG_HOME="$H/.config" PATH="$BIN:/usr/bin:/bin" TMPDIR="$T" \
     UV_CACHE_DIR="$UV_CACHE" UV_PYTHON="$UV_PY" GIT_CONFIG_NOSYSTEM=1 \
     FLEET_SETUP_PLATFORM="${PLAT:-macos-arm64}" CONTEXT7_API_KEY="$CANARY" \
     "$UV" run --quiet "$SCRIPT" "$@" 2>&1
@@ -168,14 +168,45 @@ bad "wrong type: list" 2 "expected a non-empty list, got str" "$(step 'brew: jus
 bad "wrong type: git value" 2 "expected a string, got bool False; quote it" "$(step '{git: {pull.rebase: false}}')"
 bad "wrong type: optional" 2 "optional: expected true or false" "$(printf '%s\ngroups:\n  - {name: g, title: G, optional: "yes", ask: q, steps: [{brew: [a]}]}\n' "$BASE")"
 bad "optional group needs ask" 2 "needs the question to ask" "$(printf '%s\ngroups:\n  - {name: g, title: G, optional: true, steps: [{brew: [a]}]}\n' "$BASE")"
-bad "unpinned npx" 2 "must run an exact version" "$(step '{mcp: {name: p, transport: stdio, command: npx, args: [-y, "@playwright/mcp"]}}')"
-bad "npx at latest" 2 "must run an exact version" "$(step '{mcp: {name: p, transport: stdio, command: npx, args: [-y, "@playwright/mcp@latest"]}}')"
+bad "unpinned npx" 2 "must run exact versions" "$(step '{mcp: {name: p, transport: stdio, command: npx, args: [-y, "@playwright/mcp"]}}')"
+bad "npx at latest" 2 "must run exact versions" "$(step '{mcp: {name: p, transport: stdio, command: npx, args: [-y, "@playwright/mcp@latest"]}}')"
 bad "secret value is not a field" 2 "unknown key 'env'" "$(step '{mcp: {name: p, transport: stdio, command: node, env: {K: v}}}')"
 bad "secret name shape" 2 "is not a valid value" "$(step '{mcp: {name: p, transport: stdio, command: node, secrets: ["sk-abc"]}}')"
-bad "secret person step in session" 2 "runs in a separate terminal" "$(step '{person: {title: t, why: secret}}')"
+bad "secret person step in session" 2 "runs in a separate terminal" "$(step '{person: {title: t, why: secret, check: "true"}}')"
+bad "person step without a check" 2 "person: missing required key 'check'" "$(step '{person: {title: t, why: gui}}')"
+# The YAML goes through a variable: bash brace-expands a `{a, b}` written
+# inside a command substitution's argument, and the step would arrive split.
+pin() { y="{mcp: {name: p, transport: stdio, command: $3, args: $4}}"; bad "pin: $1" "$2" "must run exact versions" "$(step "$y")"; }
+pin "major only" 2 npx '[-y, "foo@1"]'
+pin "x range" 2 npx '[-y, "foo@1.x"]'
+pin "two parts" 2 npx '[-y, "foo@1.2"]'
+pin "--package=latest" 2 npx '[-y, "--package=evil@latest", "evil"]'
+pin "--package unpinned beside a pinned positional" 2 npx '[-y, "--package=evil@latest", "ok@1.2.3"]'
+pin "-p unpinned" 2 npx '[-y, "-p", "evil", "evil"]'
+pin "uvx --from unpinned" 2 uvx '["--from", "evil", "evil"]'
+pin "uvx --with unpinned beside a pinned package" 2 uvx '["--with", "extra", "tool==1.2.3"]'
+ok_step() { printf '%s\n' "$(step "$2")" > "$T/ok.yaml"; out=$(fs --file "$T/ok.yaml" validate); check "accepted: $1" 0 $?; }
+ok_step "npx exact" '{mcp: {name: p, transport: stdio, command: npx, args: [-y, "@scope/pkg@1.2.3"]}}'
+ok_step "npx prerelease" '{mcp: {name: p, transport: stdio, command: npx, args: [-y, "pkg@1.2.3-beta.1"]}}'
+ok_step "npx -p pinned, command after" '{mcp: {name: p, transport: stdio, command: npx, args: [-y, "-p", "pkg@1.2.3", "pkg-cli"]}}'
+ok_step "uvx --from pinned" '{mcp: {name: p, transport: stdio, command: uvx, args: ["--from", "pkg==1.2.3", "cmd"]}}'
+# The literal ~ is what the validator must refuse.
+# shellcheck disable=SC2088
+for e in '$HOME/bin"; touch /tmp/x; "' '$(id)' '`id`' '~/.local/bin' 'relative/bin' '/opt/a\\b' '$HOME/a b'; do
+  y="{path: {file: ~/.zshrc, entries: ['$e']}}"
+  bad "path entry rejected: $e" 2 "is not a valid value" "$(step "$y")"
+done
+ok_step "path entry absolute" '{path: {file: ~/.zprofile, entries: [/opt/homebrew/bin]}}'
+# The literal ~ is what the validator must refuse.
+# shellcheck disable=SC2088
+for f in '~/.ssh/authorized_keys' '~/' '/etc/zshrc' '~/Library/LaunchAgents/x.plist'; do
+  y="{shell: {file: '$f', lines: [x]}}"
+  bad "rc file rejected: $f" 2 "is not a shell startup file" "$(step "$y")"
+done
+bad "two lines in one shell entry" 2 "one line per entry" "$(step '{shell: {file: ~/.zshrc, lines: ["a\nb"]}}')"
+bad "header prefix with shell" 2 "prefix" "$(step '{mcp: {name: v, transport: http, url: "https://x", secrets: [{header: Authorization, env: T, prefix: "$(id) "}]}}')"
 bad "plugin before its marketplace" 2 "marketplace 'm' is not declared" "$(step 'plugin: [p@m]')"
 bad "plugin before a later marketplace" 2 "marketplace 'm' is not declared" "$(printf '%s\ngroups:\n  - {name: g, title: G, steps: [{plugin: [p@m]}, {marketplace: [{name: m, source: o/m}]}]}\n' "$BASE")"
-bad "rc file outside home" 2 "must be a file under ~/" "$(step '{shell: {file: /etc/zshrc, lines: [x]}}')"
 bad "http server over plain http" 2 "must be https://" "$(step '{mcp: {name: v, transport: http, url: "http://x"}}')"
 bad "platform" 2 "platform: expected one of" "$(step 'brew: [a]' | sed 's/macos-arm64/windows-x64/')"
 bad "not yaml" 2 "not YAML" "version: [1"
@@ -215,7 +246,7 @@ has "server name before -e" "claude mcp add --scope user context7 -e" "$out"
 has "secret read without echo" "read -rs CONTEXT7_API_KEY" "$out"
 has "secret unset after" "unset CONTEXT7_API_KEY" "$out"
 printf 'context7\n' > "$ST/mcp"
-all="$(fs --file "$GOOD" plan)$(fs --file "$GOOD" plan --json)$(fs --file "$GOOD" check --json)$(fs --file "$GOOD" verify)$(fs --file "$GOOD" apply --group claude)"
+all="$(fs --file "$GOOD" plan)$(fs --file "$GOOD" plan --json)$(fs --file "$GOOD" check --json)$(fs --file "$GOOD" verify)$(fs --file "$GOOD" --unreviewed apply --group claude)"
 lacks "secret value never printed (plan, check, verify, apply)" "$CANARY" "$all"
 : > "$ST/mcp"; : > "$ST/mkt"; : > "$ST/plg"; : > "$LOG"
 
@@ -230,7 +261,7 @@ has "verify reports fail" "FAIL fails" "$out"
 
 # ── apply: order, person stop, idempotency ──────────────────────────
 printf 'no newline at end' > "$H/.zshrc"
-out=$(fs --file "$GOOD" apply --group first); rc=$?
+out=$(fs --file "$GOOD" --unreviewed apply --group first); rc=$?
 check "apply stops at the open person step" 10 "$rc"
 has "names the step to confirm" "then: apply --group first --confirmed first.10" "$out"
 check "steps after the person step did not run" "" "$(grep 'after-person' "$LOG")"
@@ -241,24 +272,24 @@ export PATH=\"\$HOME/.local/bin:\$PATH\"" "$(cat "$H/.zshrc")"
 check "git set in the fake HOME" "false" "$(HOME="$H" GIT_CONFIG_NOSYSTEM=1 git config --global --get pull.rebase)"
 check "installer ran once, and its command is found on the declared PATH entry" 1 "$(wc -l < "$H/installer-ran" | tr -d ' ')"
 rm "$H/.local/bin/fakecmd"
-out=$(fs --file "$GOOD" apply --group first); rc=$?
+out=$(fs --file "$GOOD" --unreviewed apply --group first); rc=$?
 check "installer reruns while its command is absent" "10 2" "$rc $(wc -l < "$H/installer-ran" | tr -d ' ')"
 : > "$LOG"
-out=$(fs --file "$GOOD" apply --group first --confirmed first.10); rc=$?
+out=$(fs --file "$GOOD" --unreviewed apply --group first --confirmed first.10); rc=$?
 check "confirmed person step continues" 0 "$rc"
 check "only the step after the person step installs" "brew install after-person" "$(grep -E ' install' "$LOG")"
 : > "$LOG"
 cp "$H/.zshrc" "$T/zshrc.before"
-out=$(fs --file "$GOOD" apply --group first --confirmed first.10); rc=$?
+out=$(fs --file "$GOOD" --unreviewed apply --group first --confirmed first.10); rc=$?
 check "second apply exits 0" 0 "$rc"
 check "second apply installs nothing" "" "$(grep -E ' install|marketplace add|mcp add' "$LOG")"
 check "second apply leaves the rc file alone" "$(cat "$T/zshrc.before")" "$(cat "$H/.zshrc")"
 touch "$H/opened"; rm -f "$H/.zshrc"
-out=$(fs --file "$GOOD" apply --group first); rc=$?
+out=$(fs --file "$GOOD" --unreviewed apply --group first); rc=$?
 check "a passing check closes a person step" 0 "$rc"
 check "rc file created when absent" 3 "$(wc -l < "$H/.zshrc" | tr -d ' ')"
 
-out=$(fs --file "$GOOD" apply --group claude); rc=$?
+out=$(fs --file "$GOOD" --unreviewed apply --group claude); rc=$?
 check "claude group stops at the secret step" 10 "$rc"
 check "marketplace, plugin and plain mcp added in order" "plugin marketplace add anthropics/claude-plugins-official
 plugin install tool@claude-plugins-official
@@ -269,20 +300,156 @@ check "the script never runs the secret step" "" "$(grep context7 "$ST/mcp-adds"
 
 : > "$LOG"
 echo terraform >> "$ST/formula"
-out=$(fs --file "$GOOD" apply --group extras); rc=$?
+out=$(fs --file "$GOOD" --unreviewed apply --group extras); rc=$?
 has "a tap formula is found by its short name" "[ok]     extras.2" "$out"
 check "optional group applies only when named" "0 brew install yq" "$rc $(grep ' install' "$LOG")"
-out=$(fs --file "$GOOD" apply --group nope); check "unknown group" 2 $?
-out=$(PLAT=linux-x86_64 fs --file "$GOOD" apply --group extras); rc=$?
+out=$(fs --file "$GOOD" --unreviewed apply --group nope); check "unknown group" 2 $?
+out=$(PLAT=linux-x86_64 fs --file "$GOOD" --unreviewed apply --group extras); rc=$?
 check "wrong platform refuses apply" 2 "$rc"
 has "wrong platform says so" "this machine is linux-x86_64" "$out"
 
 printf '%s\ngroups:\n  - {name: g, title: G, steps: [{brew: [broken]}, {brew: [later]}]}\n' "$BASE" > "$T/fail.yaml"
 : > "$LOG"
-out=$(fs --file "$T/fail.yaml" apply --group g); rc=$?
+out=$(fs --file "$T/fail.yaml" --unreviewed apply --group g); rc=$?
 check "a failing step stops apply" 1 "$rc"
 has "failure quotes the error" "| Error: no formula broken" "$out"
 check "nothing after a failure runs" "" "$(grep later "$LOG")"
+
+# ── secrets in a header prefix stay literal ─────────────────────────
+printf '%s\ngroups:\n  - {name: g, title: G, steps: [{mcp: {name: v, transport: http, url: "https://x.example/mcp", secrets: [{header: Authorization, env: V_TOKEN, prefix: "Bearer "}]}}]}\n' "$BASE" > "$T/hdr.yaml"
+out=$(fs --file "$T/hdr.yaml" plan)
+has "header literal quoted, variable expanded" "--header 'Authorization: Bearer '\"\$V_TOKEN\"" "$out"
+
+# ── a command that cannot start is reported as such ─────────────────
+cp "$BIN/brew" "$T/brew.stub"
+printf '\001\002not a program' > "$BIN/brew"; chmod +x "$BIN/brew"
+out=$(fs --file "$T/fail.yaml" --unreviewed apply --group g); rc=$?
+check "a command that cannot start fails apply" 1 "$rc"
+has "names why it did not run" "brew could not start: Exec format error" "$out"
+lacks "not reported as missing" "not found" "$out"
+cp "$T/brew.stub" "$BIN/brew"
+
+# ── --file: explicit, never a symlink, and apply needs --unreviewed ─
+out=$(fs --file "$GOOD" apply --group extras); rc=$?
+check "apply refuses --file without --unreviewed" 2 "$rc"
+has "says why" "pass --unreviewed" "$out"
+ln -s "$GOOD" "$T/link.yaml"
+out=$(fs --file "$T/link.yaml" validate); rc=$?
+check "a symlinked --file is refused" "3" "$rc"
+has "names the symlink" "GATE SYMLINK" "$out"
+
+# ── the review gate: origin/main of the pinned register, fetched ────
+G="$T/gate"; F="$G/fleet"; R="$G/remote/register.git"
+mkdir -p "$F" "$G/remote" "$H/.config/wayfare"
+g() { HOME="$H" GIT_CONFIG_NOSYSTEM=1 git -c user.name=t -c user.email=t@example.com \
+  -c commit.gpgsign=false -c tag.gpgsign=false -c init.defaultBranch=main "$@"; }
+commit_setup() { # dir sed-expr message
+  sed "$2" "$GOOD" > "$1/setup.yaml"
+  g -C "$1" add -A && g -C "$1" commit -qm "$3"
+}
+g init -q --bare "$R"
+g clone -q "$R" "$F/.fleet" 2>/dev/null
+printf '# Fleet\n\n## Fleet\n\n- name: t\n' > "$F/.fleet/FLEET.md"
+commit_setup "$F/.fleet" 's/^//' init
+g -C "$F/.fleet" push -q origin HEAD:main
+PINS="$H/.config/wayfare/registers"
+printf '%s %s\n' "$F" "file$R" > "$PINS"
+gate() { fs --fleet "$F" "$@"; }
+
+out=$(gate validate); rc=$?
+check "the pinned register's origin/main validates" 0 "$rc"
+has "names where it was read" "setup.yaml @ origin/main" "$out"
+out=$(gate apply --group extras); check "reviewed apply runs without --unreviewed" 0 $?
+
+sed -i.bak 's/yq, /dirty-evil, /' "$F/.fleet/setup.yaml"
+out=$(gate plan); rc=$?
+check "plan with a dirty working tree" 0 "$rc"
+lacks "a dirty working tree is never read" "dirty-evil" "$out"
+has "reads the reviewed copy" "brew yq" "$out"
+has "says the working tree differs" "differs from origin/main" "$out"
+g -C "$F/.fleet" checkout -q -- setup.yaml
+
+g -C "$F/.fleet" checkout -q -b review
+commit_setup "$F/.fleet" 's/yq, /branch-evil, /' branch
+g -C "$F/.fleet" branch origin/main HEAD
+out=$(gate plan)
+lacks "a local branch named origin/main is not read" "branch-evil" "$out"
+commit_setup "$F/.fleet" 's/yq, /tag-evil, /' tag
+g -C "$F/.fleet" tag origin/main HEAD
+out=$(gate plan)
+lacks "a tag named origin/main is not read" "tag-evil" "$out"
+has "the remote-tracking ref is" "brew yq" "$out"
+g -C "$F/.fleet" update-ref refs/remotes/origin/main HEAD
+out=$(gate plan)
+lacks "a hand-moved origin/main is fetched over" "tag-evil" "$out"
+
+printf '%s %s\n' "$F" "github.com/acme/register" > "$PINS"
+out=$(gate plan); rc=$?
+check "pin mismatch refuses" 3 "$rc"
+has "pin mismatch says both" "GATE PIN_MISMATCH: origin is file" "$out"
+printf '%s %s\n' "$F" "acme/register" > "$PINS"
+out=$(gate validate); check "a two-part pin is github.com, so a local origin mismatches" 3 $?
+: > "$PINS"
+out=$(gate validate); rc=$?
+check "no pin refuses" 3 "$rc"
+has "says no pin" "GATE NO_PIN" "$out"
+printf '%s %s\n' "$F" "file$G/missing" > "$PINS"
+g -C "$F/.fleet" remote set-url origin "$G/missing.git"
+out=$(gate validate); rc=$?
+check "a failed fetch refuses" 3 "$rc"
+has "says the fetch failed" "GATE NO_FETCH" "$out"
+g -C "$F/.fleet" remote set-url origin "$R"
+printf '%s %s\n' "$F" "file$R" > "$PINS"
+
+g clone -q "$R" "$G/work"
+cp "$GOOD" "$G/work/other.yaml"; rm "$G/work/setup.yaml"; ln -s other.yaml "$G/work/setup.yaml"
+g -C "$G/work" add -A && g -C "$G/work" commit -qm link && g -C "$G/work" push -q origin HEAD:main
+out=$(gate validate); rc=$?
+check "a committed symlink is refused" 3 "$rc"
+has "names it" "GATE SYMLINK" "$out"
+g -C "$G/work" rm -q setup.yaml && g -C "$G/work" commit -qm gone && g -C "$G/work" push -q origin HEAD:main
+out=$(gate validate); rc=$?
+check "no setup.yaml on origin/main" 4 "$rc"
+has "says so" "GATE NO_SETUP_YAML" "$out"
+
+# ── archives from an old machine ────────────────────────────────────
+mkarch() { # out spec... ; spec is NAME:TYPE, TYPE f file, d folder, l symlink, s setuid file
+  "$UV" run --quiet --no-project --python "$UV_PY" python - "$@" <<'PY'
+import io, sys, tarfile
+with tarfile.open(sys.argv[1], "w:gz") as t:
+    for spec in sys.argv[2:]:
+        name, kind = spec.rsplit(":", 1)
+        i = tarfile.TarInfo(name)
+        if kind == "d":
+            i.type, i.mode = tarfile.DIRTYPE, 0o755
+            t.addfile(i)
+        elif kind == "l":
+            i.type, i.linkname = tarfile.SYMTYPE, "/etc/passwd"
+            t.addfile(i)
+        else:
+            i.mode = 0o4755 if kind == "s" else 0o600
+            i.size = 2
+            t.addfile(i, io.BytesIO(b"x\n"))
+PY
+}
+arch() { # name kind expected-rc needle spec...
+  local n=$1 k=$2 want=$3 needle=$4; shift 4
+  mkarch "$T/a.tgz" "$@"
+  out=$(fs archive --kind "$k" "$T/a.tgz"); rc=$?
+  check "archive $n" "$want" "$rc"
+  has "archive $n: message" "$needle" "$out"
+}
+arch "local, expected members" local 0 "ok (local)" "web/:d" "web/.plans/:d" "web/.plans/a.md:f" "web/.env:f" "FLEET.md:f"
+arch "local with a LaunchAgent" local 1 "REFUSED Library/LaunchAgents/x.plist" "web/.env:f" "Library/LaunchAgents/x.plist:f"
+arch "local with a link" local 1 "not a regular file" "web/.plans/x:l"
+arch "local escaping the folder" local 1 "not a plain relative path" "../web/.env:f"
+arch "local with an absolute name" local 1 "not a plain relative path" "/web/.env:f"
+arch "local with another dotfile" local 1 "not something fleet setup restores" "web/.envrc:f"
+arch "setuid" local 1 "setuid" "web/.plans/run:s"
+arch "memory, expected members" memory 0 "ok (memory)" ".claude/:d" ".claude/projects/:d" ".claude/projects/-u-x/:d" ".claude/projects/-u-x/memory/:d" ".claude/projects/-u-x/memory/MEMORY.md:f"
+arch "memory with a settings hook" memory 1 "REFUSED .claude/settings.json" ".claude/projects/-u-x/memory/MEMORY.md:f" ".claude/settings.json:f"
+arch "memory escaping memory/" memory 1 "not a plain relative path" ".claude/projects/-u-x/memory/../../../settings.json:f"
+arch "memory with a project file" memory 1 "not something fleet setup restores" ".claude/projects/-u-x/session.jsonl:f"
 
 echo "fleet-setup.test.sh: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

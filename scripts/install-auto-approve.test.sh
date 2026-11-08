@@ -135,17 +135,18 @@ check "missing source: rc" "3" "$rc"
 # These four break in the ~25 CONSUMING repos, not here, so nothing in this
 # repo's normal feedback loop would ever show them.
 CALLEE="$HERE/../.github/workflows/auto-approve.yaml"
+yaml_py() { uv run --quiet --no-project --with-requirements "$HERE/check_docs.py" python "$@"; }
 
 # A caller may name a secret only if the callee declares it under
 # on.workflow_call.secrets. Naming an undeclared one makes GitHub reject the
 # CALLER's workflow file outright, in the other repo.
-caller_secrets=$(python3 -c "
+caller_secrets=$(yaml_py -c "
 import yaml,sys
 d=yaml.safe_load(open('$SOURCE'))
 j=list(d['jobs'].values())[0]
 print(','.join(sorted((j.get('secrets') or {}).keys())))
 ")
-callee_secrets=$(python3 -c "
+callee_secrets=$(yaml_py -c "
 import yaml,sys
 d=yaml.safe_load(open('$CALLEE'))
 wc=(d[True] if True in d else d['on'])['workflow_call']
@@ -160,7 +161,7 @@ check "contract: caller secrets declared by callee" "$caller_secrets" \
 # allowed 'checks: none'"). No step runs, no verdict posts, and nothing
 # changes on their side. Passing here is necessary, not sufficient: consumers must
 # also have VENDORED the new caller before the callee change merges.
-missing_perms=$(python3 -c "
+missing_perms=$(yaml_py -c "
 import yaml
 c=yaml.safe_load(open('$SOURCE')); e=yaml.safe_load(open('$CALLEE'))
 cp=list(c['jobs'].values())[0].get('permissions') or {}
@@ -189,7 +190,7 @@ check "contract: caller tracks main" "main" "$caller_ref"
 # self-review comment does exactly that while also carrying the marker the
 # prior-review gate accepts, one comment both fired the run and satisfied the
 # gate meant to stop auto-approve being the only review.
-trigger_if=$(python3 -c "
+trigger_if=$(yaml_py -c "
 import yaml
 print(yaml.safe_load(open('$CALLEE'))['jobs']['claude-approve']['if'])
 ")

@@ -12,6 +12,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LINT="$HERE/pr_text_lint.py"
 LEFT="$HERE/diff_leftovers.py"
+UV="$(command -v uv)" || { echo "pr-text-checks.test.sh: uv missing (https://docs.astral.sh/uv/)"; exit 1; }
 
 PASS=0
 FAIL=0
@@ -37,14 +38,14 @@ kinds() { sed -E 's/^pr_text_lint: ([a-z]+):.*/\1/' | sort -u | tr '\n' ' ' | se
 # A crash or a usage error (exit 2) must not read as "no findings".
 lint() {
   local out rc
-  out=$(python3 "$LINT" "$@" --body-file "$TMP/body.md" 2>&1); rc=$?
+  out=$("$UV" run --quiet "$LINT" "$@" --body-file "$TMP/body.md" 2>&1); rc=$?
   if [ "$rc" -gt 1 ]; then echo "exit $rc"; else printf '%s\n' "$out" | kinds; fi
 }
 
 body "## Summary\n\nAdds the thing.\n\n$FOOT"
 check "clean pr" "" "$(lint --kind pr --title 'feat: add the thing')"
 check "clean comment" "" "$(lint --kind comment)"
-check "body on stdin" "" "$(python3 "$LINT" --kind comment --body-file - < "$TMP/body.md" | kinds)"
+check "body on stdin" "" "$("$UV" run --quiet "$LINT" --kind comment --body-file - < "$TMP/body.md" | kinds)"
 check "title over 70" "title" "$(lint --kind pr --title "feat: $(printf 'x%.0s' {1..70})")"
 check "pr with no title" "title" "$(lint --kind pr)"
 
@@ -127,7 +128,7 @@ check "a commit with a Co-Authored-By trailer" "" "$(lint --kind commit)"
 # The lint runs in consumer repos, which may lack pyyaml; check_docs.py
 # (whose prose rules it imports) must not need yaml at import time.
 body "ok\n\n$FOOT"
-check "runs without pyyaml" "0" "$(python3 -c "
+check "runs without pyyaml" "0" "$("$UV" run --quiet --no-project python -c "
 import runpy, sys
 sys.modules['yaml'] = None
 sys.argv = ['pr_text_lint.py', '--kind', 'comment', '--body-file', '$TMP/body.md']
@@ -159,7 +160,7 @@ FILL = {
     "{1-3 sentence summary}": "Solid change.", "{most important issue}": "Null case",
     "{second most important}": "Naming", "{positive observations}": "Good tests",
 }
-BLOCK = re.compile(r"(\w+)=\$\(cat <<'EOF'\n(.*?)\nEOF\n\)\n(.*?)pr_text_lint\.py\" --kind (\S+)"
+BLOCK = re.compile(r"(\w+)=\$\(cat <<'EOF'\n(.*?)\nEOF\n\)\n(.*?)pr_text_lint\.py\"? --kind (\S+)"
                    r"(?: --title \"([^\"]*)\")?", re.S)
 
 def fill(text):
@@ -171,7 +172,7 @@ def fill(text):
                      for ln in text.split("\n"))
 
 def run(kind, title, text):
-    args = ["python3", lint, "--kind", kind, "--body-file", "-"]
+    args = ["uv", "run", "--quiet", lint, "--kind", kind, "--body-file", "-"]
     if title is not None:
         args += ["--title", title]
     return subprocess.run(args, input=text + "\n", capture_output=True, text=True)
@@ -193,7 +194,7 @@ for skill in ("wayfare-push-pr", "wayfare-review-pr", "wayfare-respond-pr"):
 if seen < 10:
     print(f"found only {seen} templates; the extraction regex has drifted")
 PY
-check "every skill template passes once filled" "" "$(python3 "$TMP/templates.py" "$HERE/.." "$LINT")"
+check "every skill template passes once filled" "" "$("$UV" run --quiet --no-project python "$TMP/templates.py" "$HERE/.." "$LINT")"
 
 # respond-pr posts only the quoted part of HERO.md's trigger field, which
 # init writes as `"@greptile review" comment` or with backticks. Run the
@@ -236,7 +237,7 @@ printf 'old\n// TODO: pre-existing debt\n' > "$R/a.js" # leftovers: ok
 git -C "$R" add -A && git -C "$R" commit -q -m init
 left() {
   local out rc
-  out=$(cd "$R" && python3 "$LEFT" "$@" 2>&1); rc=$?
+  out=$(cd "$R" && "$UV" run --quiet "$LEFT" "$@" 2>&1); rc=$?
   if [ "$rc" -gt 1 ]; then echo "exit $rc"; return; fi
   printf '%s\n' "$out" | sed -E 's/^.+:[0-9]+: ([a-z]+).*/\1/' | sort -u | tr '\n' ' ' | sed 's/^ //; s/ $//'
 }
@@ -270,18 +271,18 @@ git -C "$R" commit -q -m wip
 
 printf 'x\n' > "$R/a b.js"; git -C "$R" add "a b.js"; git -C "$R" commit -q -m space
 printf 'console.log(1)\n' >> "$R/a b.js" # leftovers: ok
-check "a path with a space keeps its name" "a b.js:2" "$(cd "$R" && python3 "$LEFT" | cut -d: -f1,2)"
+check "a path with a space keeps its name" "a b.js:2" "$(cd "$R" && "$UV" run --quiet "$LEFT" | cut -d: -f1,2)"
 git -C "$R" checkout -q -- "a b.js"
 
 printf 'x\n' > "$R/na$(printf '\xc3\xa9').js"; git -C "$R" add -A; git -C "$R" commit -q -m accent
 printf 'console.log(1)\n' >> "$R/na$(printf '\xc3\xa9').js" # leftovers: ok
-check "a non-ASCII path is not quoted" "na$(printf '\xc3\xa9').js:2" "$(cd "$R" && python3 "$LEFT" | cut -d: -f1,2)"
+check "a non-ASCII path is not quoted" "na$(printf '\xc3\xa9').js:2" "$(cd "$R" && "$UV" run --quiet "$LEFT" | cut -d: -f1,2)"
 git -C "$R" checkout -q -- .
 
 printf '++ looks like a header\nconsole.log(2)\n' >> "$R/a.js" # leftovers: ok
 check "an added line starting ++ is content" "debug" "$(left)"
-check "diff.noprefix does not break parsing" "debug" "$(cd "$R" && git config diff.noprefix true; python3 "$LEFT" | sed -E 's/^.+:[0-9]+: ([a-z]+).*/\1/'; git config --unset diff.noprefix)"
-check "diff.mnemonicPrefix does not break parsing" "debug" "$(cd "$R" && git config diff.mnemonicPrefix true; python3 "$LEFT" | sed -E 's/^.+:[0-9]+: ([a-z]+).*/\1/'; git config --unset diff.mnemonicPrefix)"
+check "diff.noprefix does not break parsing" "debug" "$(cd "$R" && git config diff.noprefix true; "$UV" run --quiet "$LEFT" | sed -E 's/^.+:[0-9]+: ([a-z]+).*/\1/'; git config --unset diff.noprefix)"
+check "diff.mnemonicPrefix does not break parsing" "debug" "$(cd "$R" && git config diff.mnemonicPrefix true; "$UV" run --quiet "$LEFT" | sed -E 's/^.+:[0-9]+: ([a-z]+).*/\1/'; git config --unset diff.mnemonicPrefix)"
 git -C "$R" checkout -q -- a.js
 
 printf 'ok\n\xff\xfe bad bytes\ndebugger\n' >> "$R/a.js" # leftovers: ok
@@ -292,11 +293,14 @@ check "an untracked binary file is skipped" "" "$(left)"
 rm "$R/blob.bin"
 
 mkdir -p "$R/sub"; printf 'debugger\n' > "$R/top.js" # leftovers: ok
-check "untracked files outside cwd are seen" "debug" "$( (cd "$R/sub" && python3 "$LEFT") | sed -E 's/^.+:[0-9]+: ([a-z]+).*/\1/' | sort -u)"
+check "untracked files outside cwd are seen" "debug" "$( (cd "$R/sub" && "$UV" run --quiet "$LEFT") | sed -E 's/^.+:[0-9]+: ([a-z]+).*/\1/' | sort -u)"
+# Skills run the script from the plugin checkout and name the repo with --cwd.
+check "--cwd scans that repo, not the cwd's" "debug" "$( (cd "$TMP" && "$UV" run --quiet "$LEFT" --cwd "$R/sub") | sed -E 's/^.+:[0-9]+: ([a-z]+).*/\1/' | sort -u)"
+check "an unusable --cwd exits 2" "2" "$( (cd "$R" && "$UV" run --quiet "$LEFT" --cwd "$R/nope" >/dev/null 2>&1); echo $?)"
 rm "$R/top.js"
 
 printf 'debugger\n' > "$R/locked.js"; chmod 000 "$R/locked.js" # leftovers: ok
-check "an unreadable untracked file does not crash" "0" "$( (cd "$R" && python3 "$LEFT" >/dev/null 2>&1); echo $?)"
+check "an unreadable untracked file does not crash" "0" "$( (cd "$R" && "$UV" run --quiet "$LEFT" >/dev/null 2>&1); echo $?)"
 chmod 600 "$R/locked.js"; rm "$R/locked.js"
 
 git -C "$R" checkout -q -b feat
@@ -309,12 +313,12 @@ git -C "$R" checkout -q -- a.js
 printf 'debugger\n' > "$R/u.js" # leftovers: ok
 check "--base reads untracked files" "debug" "$(left --base main)"
 rm "$R/u.js"
-check "an unknown base exits 2" "2" "$( (cd "$R" && python3 "$LEFT" --base nope >/dev/null 2>&1); echo $?)"
+check "an unknown base exits 2" "2" "$( (cd "$R" && "$UV" run --quiet "$LEFT" --base nope >/dev/null 2>&1); echo $?)"
 
 E="$TMP/empty"
 git init -q -b main "$E"
 printf 'debugger\n' > "$E/x.js"; printf 'console.log(1)\n' > "$E/y.js"; git -C "$E" add y.js # leftovers: ok
-check "a repo with no commits" "y.js x.js" "$(cd "$E" && python3 "$LEFT" | cut -d: -f1 | tr '\n' ' ' | sed 's/ $//')"
+check "a repo with no commits" "y.js x.js" "$(cd "$E" && "$UV" run --quiet "$LEFT" | cut -d: -f1 | tr '\n' ' ' | sed 's/ $//')"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -242,6 +242,11 @@ git clone https://github.com/ai-hero/wayfare-skills.git ~/.claude/plugins/wayfar
 
 Skills are immediately available in any Claude Code session. No restart needed.
 
+The skills run their Python scripts through [uv](https://docs.astral.sh/uv/)
+(`brew install uv`), never a bare `python3`: each script declares its
+dependencies inline, and `uv run` installs them in a cached environment of its
+own. Without uv, the PR, review and compliance steps fail at the first lint.
+
 The plugin is **wayfare**, so its skills are invoked as
 `wayfare:wayfare-sync-plan` and the like. The clone target is `wayfare-skills`,
 which is the default path in every skill's `WAYFARE_ROOT` line

@@ -11,6 +11,7 @@
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 FLEET_PY="$REPO/analysis/ingest/fleet.py"
+UV="$(command -v uv)" || { echo "ingest-fleet: uv missing (https://docs.astral.sh/uv/)"; exit 1; }
 
 PASS=0
 FAIL=0
@@ -28,7 +29,7 @@ trap 'rm -rf "$WORK"' EXIT
 WORK="$(cd "$WORK" && pwd -P)"
 
 root_from() { # DIR -> the ROOT fleet.py resolves when imported from DIR
-  (cd "$1" && python3 -I -c '
+  (cd "$1" && "$UV" run --quiet --no-project --with-requirements "$FLEET_PY" python -I -c '
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location("fleet", sys.argv[1])
 m = importlib.util.module_from_spec(spec)
@@ -75,7 +76,7 @@ check "from a plain .fleet/sub lands on the fleet folder" "$PLAIN" "$(root_from 
 # legacy copy.
 rm "$PLAIN/.fleet/FLEET.md"; mkdir "$PLAIN/.fleet/FLEET.md"; printf '## Fleet\n' > "$PLAIN/FLEET.md"
 check "an unreadable .fleet/FLEET.md resolves no root" "" "$(root_from "$PLAIN")"
-ERR=$(cd "$PLAIN" && python3 -I -c '
+ERR=$(cd "$PLAIN" && "$UV" run --quiet --no-project --with-requirements "$FLEET_PY" python -I -c '
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location("fleet", sys.argv[1])
 spec.loader.exec_module(importlib.util.module_from_spec(spec))

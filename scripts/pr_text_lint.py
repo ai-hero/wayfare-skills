@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = []
+# ///
 # Copyright (c) 2026 A.I. Hero, Inc.
 # All Rights Reserved.
 

@@ -207,7 +207,7 @@ parent session prints it once.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-python3 "$WAYFARE_ROOT/scripts/security_audit_upstream.py" status --summary
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/security_audit_upstream.py status --summary)
 ```
 
 Any output that is not `UPSTREAM_CURRENT`, `UPSTREAM_BEHIND` or
@@ -295,13 +295,19 @@ Run the engine for this repo alone, as it sits:
 # stdout is JSON only; the engine's summary and any failure go to stderr, so
 # a non-zero exit is recorded in a variable rather than printed into the
 # stream a parser is about to read.
+# The engine prints its `register:` line only once it has run, so an rc 2
+# without it is uv failing to start (no Python 3.12, a failed install), never
+# a checker that raised.
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-"$WAYFARE_ROOT/scripts/audit.py" \
-  --repo . --no-snapshot --json > "$SCRATCH/compliance.jsonl" 2> "$SCRATCH/compliance.err"; COMPLIANCE_RC=$?
+CALLER_DIR=$(pwd)
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/audit.py --cwd "$CALLER_DIR" \
+  --repo . --no-snapshot --json) > "$SCRATCH/compliance.jsonl" 2> "$SCRATCH/compliance.err"; COMPLIANCE_RC=$?
+[ "$COMPLIANCE_RC" = 2 ] && ! grep -q '^register: ' "$SCRATCH/compliance.err" && COMPLIANCE_RC=not-run
 case "$COMPLIANCE_RC" in
   0) ;;
   4) echo "COMPLIANCE_NO_FLEET_MAP: this repo declares a fleet but no .fleet/FLEET.md was found above it; the engine did not run" ;;
-  *) echo "COMPLIANCE_AUDIT_RC=$COMPLIANCE_RC — read $SCRATCH/compliance.err; rc 2 means a checker raised (its cells are in the JSON with status ERROR), anything else means the engine did not run: render (–) and say why." ;;
+  2) echo "COMPLIANCE_AUDIT_RC=2 — a checker raised; its cells are in the JSON with status ERROR" ;;
+  *) echo "COMPLIANCE_AUDIT_RC=$COMPLIANCE_RC — the engine did not run: read $SCRATCH/compliance.err, render (–) and say why." ;;
 esac
 ```
 
@@ -337,15 +343,18 @@ compliance route. The run above reads the checkout as it sits, so it proposes
 candidates. Confirm them at merged state before filing:
 
 ```bash
-"$WAYFARE_ROOT/scripts/audit.py" \
-  --repo . --json > "$SCRATCH/compliance-main.jsonl" 2> "$SCRATCH/compliance-main.err"; COMPLIANCE_MAIN_RC=$?
+CALLER_DIR=$(pwd)
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/audit.py --cwd "$CALLER_DIR" \
+  --repo . --json) > "$SCRATCH/compliance-main.jsonl" 2> "$SCRATCH/compliance-main.err"; COMPLIANCE_MAIN_RC=$?
+[ "$COMPLIANCE_MAIN_RC" = 2 ] && ! grep -q '^register: ' "$SCRATCH/compliance-main.err" && COMPLIANCE_MAIN_RC=not-run
 ```
 
 That run snapshots `origin/main`, the engine's default. Read its rc the way the
-first call's is read: rc 0, or rc 2 (a checker raised), files the `FAIL` cells
-and lists every `ERROR` cell as `unverified`, never filed and never cleared; any
-other rc means the engine did not run, so file nothing and report
-`Tracker: FAILED (engine at origin/main: REASON)` with the zero count tuple.
+first call's is read: rc 0, or rc 2 (a checker raised, with the `register:` line
+present), files the `FAIL` cells and lists every `ERROR` cell as `unverified`,
+never filed and never cleared; any other rc means the engine did not run, so
+file nothing and report `Tracker: FAILED (engine at origin/main: REASON)` with
+the zero count tuple.
 
 File only the checks that are `FAIL` there, one ticket per **check** (the items
 above stay one per control), and write each ticket back onto the item for its

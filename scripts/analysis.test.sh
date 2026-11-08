@@ -13,4 +13,4 @@ cd "$(dirname "$0")/.." || exit 1
 # from a Claude Code session, it would point PLUGIN at the installed plugin,
 # not this checkout, and the WAYFARE_ROOT below would be ignored.
 unset CLAUDE_PLUGIN_ROOT
-WAYFARE_ROOT="$(pwd)" python3 -m unittest scripts/analysis_test.py
+WAYFARE_ROOT="$(pwd)" uv run --quiet scripts/analysis_test.py

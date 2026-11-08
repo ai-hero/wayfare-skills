@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pyyaml==6.0.3"]
+# ///
 # Copyright (c) 2026 A.I. Hero, Inc.
 # All Rights Reserved.
 
@@ -25,6 +29,7 @@ Usage:
     scripts/audit.py --control CI-01        # one specific check
     scripts/audit.py --md                   # markdown table
     scripts/audit.py --fail-on high         # non-zero exit for CI
+    scripts/audit.py --cwd DIR --repo .     # this repo, as if run from DIR
 
 Where things live: the ENGINE and a generic BASELINE register ship with
 the wayfare plugin (this file, assets/compliance/), and run from the plugin
@@ -80,7 +85,7 @@ import tempfile
 try:
     import yaml
 except ImportError:
-    sys.exit("pyyaml required: pip install pyyaml")
+    sys.exit("pyyaml required: run through uv (`uv run scripts/audit.py`), which installs it from the inline metadata")
 
 HERE = pathlib.Path(__file__).resolve().parent.parent   # the wayfare plugin
 BASELINE = HERE / "assets" / "compliance"               # generic register, public
@@ -3206,6 +3211,20 @@ def engine_note():
     return _ENGINE_NOTE
 
 
+def _without_cwd(argv):
+    """argv minus --cwd: main() has already moved there and the child inherits
+    it, and an origin/main engine older than the flag would reject it."""
+    out, skip = [], False
+    for x in argv:
+        if skip:
+            skip = False
+        elif x == "--cwd":
+            skip = True
+        elif not x.startswith("--cwd="):
+            out.append(x)
+    return out
+
+
 def run_at_origin(script):
     """Re-run `scripts/<script>` from the plugin checkout's origin/main as a
     child process and return its exit code, or None when this process should
@@ -3233,7 +3252,7 @@ def run_at_origin(script):
             _ENGINE_NOTE = f"working tree {HERE} ({note}; register and checkers may be stale)"
             return None
         print(f"engine: {_PLUGIN_REMOTE}/{_PLUGIN_BRANCH} @ {sha}, not the invoked tree {HERE}", file=sys.stderr)
-        rc = subprocess.run([sys.executable, str(tmp / "scripts" / script), *sys.argv[1:]],
+        rc = subprocess.run([sys.executable, str(tmp / "scripts" / script), *_without_cwd(sys.argv[1:])],
                             env={**os.environ, _ENGINE_MARKER: note}).returncode
         return rc if rc >= 0 else 128 - rc
     finally:
@@ -4233,10 +4252,17 @@ def main():
     ap.add_argument("--no-snapshot", action="store_true",
                     help="audit the checkouts as they sit, whatever branch or dirt they carry")
     ap.add_argument("--fleet", default="", help="the fleet root (default: found by walking up from cwd)")
+    ap.add_argument("--cwd", default="", help="run as if started in this directory: the fleet walk, "
+                    "the lone repo and `--repo .` all start there")
     ap.add_argument("--no-fleet", action="store_true",
                     help="audit the current repo alone against the baseline, even when it declares a fleet")
     ap.add_argument("--json", action="store_true", help="one JSON object per failing (check x repo) cell, for skills")
     a = ap.parse_args()
+    if a.cwd:
+        try:
+            os.chdir(a.cwd)
+        except OSError as e:
+            sys.exit(f"--cwd {a.cwd}: {e.strerror}")
 
     rc = run_at_origin("audit.py")
     if rc is not None:

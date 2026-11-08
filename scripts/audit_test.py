@@ -1,7 +1,11 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pyyaml==6.0.3"]
+# ///
 # Copyright (c) 2026 A.I. Hero, Inc.
 # All Rights Reserved.
 
-"""Tables for audit.py's parsers. Run: python3 -m unittest scripts/audit_test.py
+"""Tables for audit.py's parsers. Run: uv run scripts/audit_test.py
 
 Each parser here has the failure mode the Justfile names for the hook tests:
 matching nothing is indistinguishable from a clean input, so a regression
@@ -1173,6 +1177,19 @@ class Configured(unittest.TestCase):
                            capture_output=True, text=True, env=CLEAN_ENV)
         self.assertFalse(marker.exists(), "the clone's .fleet/checkers.py executed")
         self.assertIn("inside a git work tree", p.stderr)
+
+    def test_cwd_flag_starts_the_walk_there(self):
+        clone = git_repo(self.root, "clone")
+        marker = self.root / "ran"
+        fleet_fixture(clone, "## Fleet\n- name: fx\n", checkers=f"open({str(marker)!r}, 'w').close()\n")
+        p = subprocess.run([sys.executable, str(HERE / "audit.py"), "--cwd", str(clone)], cwd=str(self.root),
+                           capture_output=True, text=True, env=CLEAN_ENV)
+        self.assertFalse(marker.exists(), "the clone's .fleet/checkers.py executed")
+        self.assertIn("inside a git work tree", p.stderr)
+
+    def test_the_origin_engine_is_not_passed_cwd(self):
+        self.assertEqual(audit._without_cwd(["--cwd", "/x", "--md", "--cwd=/y", "--repo", "."]),
+                         ["--md", "--repo", "."])
 
     def test_import_runs_no_checkers_until_configured(self):
         marker = self.root / "ran"

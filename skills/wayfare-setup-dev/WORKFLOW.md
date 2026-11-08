@@ -39,7 +39,7 @@ back to the fleet root first.
 FLEET_ROOT=$(pwd -P)
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 command -v uv >/dev/null || echo "NO_UV"
-uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --fleet "$FLEET_ROOT" validate
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/fleet-setup.py --fleet "$FLEET_ROOT" validate)
 ```
 
 The script reads `setup.yaml` only from the register as it stands on
@@ -71,7 +71,7 @@ this skill. Read what it printed, in this order:
 ```bash
 FLEET_ROOT=$(pwd -P)
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --fleet "$FLEET_ROOT" plan
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/fleet-setup.py --fleet "$FLEET_ROOT" plan)
 ```
 
 Show the person the plan as printed: the notes, each group with its `[ok]`,
@@ -87,7 +87,7 @@ after the person saw this plan is refused rather than run unseen.
 ```bash
 FLEET_ROOT=$(pwd -P)
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --fleet "$FLEET_ROOT" check
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/fleet-setup.py --fleet "$FLEET_ROOT" check)
 ```
 
 ### Step 3: Walk the groups
@@ -107,7 +107,7 @@ Take the groups in plan order. For each one:
    ```bash
    FLEET_ROOT=$(pwd -P)
    WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-   uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --fleet "$FLEET_ROOT" apply --group GROUP --at SHA CONFIRMED_FLAGS
+   (cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/fleet-setup.py --fleet "$FLEET_ROOT" apply --group GROUP --at SHA CONFIRMED_FLAGS)
    ```
 
    `SHA` is from Step 2's `reviewed:` line. `CONFIRMED_FLAGS` is one
@@ -183,15 +183,16 @@ Tell them: **`fleet-local.tgz` holds live secrets, unencrypted.** Send both
 files directly between the machines, such as by AirDrop, never through a synced
 folder, a chat or a repo.
 
-Ask the person where each archive is. If one is in `~/Downloads`, show its full
-path and ask before using it; never pick an archive up without asking. Then
-check each one, without unpacking anything:
+Ask the person where each archive is, as an absolute path: the script runs from
+the plugin checkout, so a relative one resolves there. If one is in
+`~/Downloads`, show its full path and ask before using it; never pick an archive
+up without asking. Then check each one, without unpacking anything:
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 chmod 600 LOCAL_ARCHIVE MEMORY_ARCHIVE
-uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" archive --kind local LOCAL_ARCHIVE
-uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" archive --kind memory MEMORY_ARCHIVE
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/fleet-setup.py archive --kind local LOCAL_ARCHIVE)
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/fleet-setup.py archive --kind memory MEMORY_ARCHIVE)
 ```
 
 An archive with any `REFUSED` line is not unpacked at all: quote the lines and
@@ -209,7 +210,7 @@ overwrite newer work. Unpack the memory archive into `~`:
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" archive --kind memory --extract ~ MEMORY_ARCHIVE
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/fleet-setup.py archive --kind memory --extract ~ MEMORY_ARCHIVE)
 ```
 
 Memory folders are named after the project's full path, so they match only when
@@ -223,7 +224,7 @@ ignore is left behind rather than restored.
 ```bash
 FLEET_ROOT=$(pwd -P)
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" archive --kind local --extract ~/fleet-restore LOCAL_ARCHIVE || exit 1
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/fleet-setup.py archive --kind local --extract ~/fleet-restore LOCAL_ARCHIVE) || exit 1
 cd "$FLEET_ROOT"
 for repo in */; do
   repo=${repo%/}
@@ -263,7 +264,7 @@ so it does not fan out to subagents. Collect each repo's summary for the report.
 ```bash
 FLEET_ROOT=$(pwd -P)
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --fleet "$FLEET_ROOT" verify
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/fleet-setup.py --fleet "$FLEET_ROOT" verify)
 for f in ~/fleet-local.tgz ~/claude-memory.tgz ~/fleet-restore ~/Downloads/fleet-local.tgz ~/Downloads/claude-memory.tgz; do
   [ -e "$f" ] && echo "SECRETS ARCHIVE STILL PRESENT: $f"
 done

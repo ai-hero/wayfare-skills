@@ -1,3 +1,7 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = []
+# ///
 # Copyright (c) 2026 A.I. Hero, Inc.
 # All Rights Reserved.
 

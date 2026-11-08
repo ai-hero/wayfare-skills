@@ -3,7 +3,7 @@ name: wayfare-audit-compliance
 # prettier-ignore
 description: "Audit this repo against the compliance baseline, or audit the fleet at merged state. Report register defects, regenerate CONSISTENCY.md, and draft template backports. Use to check compliance without a full roadmap sync."
 argument-hint: ""
-compatibility: "Requires the complete Wayfare plugin, git, and Python 3; fleet mode also requires sibling checkouts and FLEET.md."
+compatibility: "Requires the complete Wayfare plugin, git, and uv; fleet mode also requires sibling checkouts and FLEET.md."
 ---
 
 # Audit the repo, or the fleet, against the compliance register

@@ -2,7 +2,7 @@
 name: wayfare-push-pr
 description: "Test the work, commit it, push it, and open a draft PR with a CI report. Use when work is ready to check or share. Use test or commit mode to stop before publishing."
 argument-hint: "[recalibrate | test [MODIFIER...] | commit | ready | target-branch]"
-compatibility: "Requires the complete Wayfare plugin, git, GitHub CLI, network access for publishing, and the repository configuration described by HERO.md."
+compatibility: "Requires the complete Wayfare plugin, git, uv, GitHub CLI, network access for publishing, and the repository configuration described by HERO.md."
 ---
 
 # Push a pull request

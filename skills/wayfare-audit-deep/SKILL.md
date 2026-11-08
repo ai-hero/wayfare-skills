@@ -3,7 +3,7 @@ name: wayfare-audit-deep
 # prettier-ignore
 description: "Run the vendored Cloudflare security audit on one repo, with a stated budget and source-only by default. Use when a person explicitly asks for a deep security audit or a pen test of a repo, and only then. Not for a security question, a PR review, or dependency and image scanning."
 argument-hint: "[REPO_PATH]"
-compatibility: "Requires the complete Wayfare plugin, git, Python 3, Node.js for the audit's validators, a client that can delegate to subagents, and GitHub CLI with network access for the upstream check."
+compatibility: "Requires the complete Wayfare plugin, git, uv, Node.js for the audit's validators, a client that can delegate to subagents, and GitHub CLI with network access for the upstream check."
 # A person starts this by name. No agent, and no text in an audited repo, can.
 disable-model-invocation: true
 ---
@@ -61,8 +61,15 @@ WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfar
 . "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
 hero_fleet_step0 || exit 1
 case "$(pwd -P)/" in "$(cd -P "$TARGET" && pwd)"/*) echo "SESSION_INSIDE_TARGET" ;; esac
-python3 "$WAYFARE_ROOT/scripts/security_audit_upstream.py" verify --upstream; echo "VERIFY_RC=$?"
-python3 "$WAYFARE_ROOT/scripts/security_audit_upstream.py" status --summary
+VERIFY_OUT=$( (cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/security_audit_upstream.py verify --upstream) 2>&1 ); VERIFY_RC=$?
+printf '%s\n' "$VERIFY_OUT"
+case "$VERIFY_RC" in
+  0|1) ;;
+  2) grep -q '^UPSTREAM_NOT_CHECKED ' <<<"$VERIFY_OUT" || VERIFY_RC=not-run ;;
+  *) VERIFY_RC=not-run ;;
+esac
+echo "VERIFY_RC=$VERIFY_RC"
+(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/security_audit_upstream.py status --summary)
 ```
 
 - `FLEET_ROOT` printed: never fan out. Continue only with the one repo the
@@ -73,8 +80,12 @@ python3 "$WAYFARE_ROOT/scripts/security_audit_upstream.py" status --summary
 - `VERIFY_RC=1`: stop and report its lines. A copy that differs from its
   manifest or its pinned commit is not the audit anyone reviewed.
 - `VERIFY_RC=2`: the tree matches its manifest, and the comparison with upstream
-  was `not checked`. Tell the person in Step 1. Any other output from either
-  command reads `not checked` too, never as a pass.
+  was `not checked` (the script's `UPSTREAM_NOT_CHECKED` line). Tell the person
+  in Step 1. Any other output from either command reads `not checked` too, never
+  as a pass.
+- `VERIFY_RC=not-run`: the check never ran (uv could not start it, or it failed
+  reading the tree), so the copy is unverified. Stop and report its lines, as
+  for `VERIFY_RC=1`.
 - Carry the `status` line into Step 4 as written. `UPSTREAM_BEHIND` does not
   stop a run, and the person should hear it before they spend the budget.
   `UPSTREAM_NOT_CHECKED` is reported as `not checked`, never as current.
@@ -180,12 +191,15 @@ finding and asks for a ticket:
    first, because a priority can start a deadline.
 
 2. Derive the ticket key. Upstream fingerprints allow characters a ticket key
-   does not, so hash the fingerprint. `-I` stops Python importing a module from
-   the current directory. The key is stable only when the run read the prior
-   runs, so search by title too:
+   does not, so hash the fingerprint. Hash it with `shasum`, not Python: `uv`
+   and `python3` can pick their interpreter from the current directory (a
+   committed `.venv`, a `.python-version` path), which runs whatever that folder
+   planted. Keep it SHA-256 of the UTF-8 fingerprint: earlier keys were made
+   that way. The key is stable only when the run read the prior runs, so search
+   by title too:
 
    ```bash
-   python3 -I -c 'import hashlib,sys; print("DEEP-" + hashlib.sha256(sys.argv[1].encode()).hexdigest()[:12].upper())' "$FINGERPRINT"
+   echo "DEEP-$(printf '%s' "$FINGERPRINT" | shasum -a 256 | cut -c1-12 | tr a-f A-F)"
    ```
 
 3. Follow the rest of [finding-tickets.md](../../references/finding-tickets.md),
@@ -194,8 +208,8 @@ finding and asks for a ticket:
 ## Gotchas
 
 - `refresh` and the pin belong to the wayfare-skills repo, not to a run. To take
-  an upstream change, run `scripts/security_audit_upstream.py status` and then
-  `refresh` in a worktree of that repo, and open a PR. `status` lists the
+  an upstream change, run `uv run scripts/security_audit_upstream.py status` and
+  then `refresh` in a worktree of that repo, and open a PR. `status` lists the
   commits and files.
 - The age check in `refresh` reads a commit date the author's git client set. It
   stops an honest recent commit, and a backdated one passes it. The PR review is

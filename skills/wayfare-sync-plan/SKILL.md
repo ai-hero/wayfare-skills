@@ -3,7 +3,7 @@ name: wayfare-sync-plan
 # prettier-ignore
 description: "Refresh .plans against architecture, design, hardening, stale prose, compliance, dependency PRs, unmerged work, and goals. Propose items and goals. Write only what the user confirms. Use to refresh the roadmap."
 argument-hint: "[CONTEXT | ideas]"
-compatibility: "Requires the complete Wayfare plugin, git, and the optional issue, design, security, and fleet tools configured by HERO.md."
+compatibility: "Requires the complete Wayfare plugin, git, uv, and the optional issue, design, security, and fleet tools configured by HERO.md."
 ---
 
 # Converge the roadmap with the world

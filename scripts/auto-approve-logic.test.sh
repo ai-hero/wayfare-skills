@@ -61,7 +61,7 @@ done
 # 21,000 characters. Over the cap, every caller's run fails at startup with
 # zero jobs and no error text, and actionlint does not catch it.
 check "expression length: no run: with \${{ }} reaches 21,000 characters" "" \
-  "$(python3 -c '
+  "$(uv run --quiet --no-project --with-requirements "$HERE/check_docs.py" python -c '
 import sys, yaml
 for job in yaml.safe_load(open(sys.argv[1]))["jobs"].values():
     for step in job.get("steps", []):

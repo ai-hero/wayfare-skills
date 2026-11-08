@@ -2,7 +2,7 @@
 name: wayfare-respond-pr
 description: "Address actionable PR review comments. Check the fixes and resolve the corresponding conversations. Use when a reviewer or review bot leaves feedback on your pull request."
 argument-hint: "[pr-number | recalibrate]"
-compatibility: "Requires the complete Wayfare plugin, git, GitHub CLI, network access, and write access to the pull request branch."
+compatibility: "Requires the complete Wayfare plugin, git, uv, GitHub CLI, network access, and write access to the pull request branch."
 ---
 
 # Respond to pull-request feedback

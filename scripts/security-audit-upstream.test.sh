@@ -11,7 +11,10 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
-PY="$(command -v python3)"
+# No skip when uv is missing: a suite that skips prints the same as one that
+# passed.
+UV="$(command -v uv)" || { echo "security-audit-upstream.test.sh: uv missing (https://docs.astral.sh/uv/)"; exit 1; }
+PY="$("$UV" python find '>=3.12')" || { echo "security-audit-upstream.test.sh: uv finds no python >= 3.12"; exit 1; }
 
 PASS=0
 FAIL=0
@@ -79,7 +82,7 @@ fixture() { # -> path to a fresh copy of the script and vendored tree
 }
 run() { # DIR ARGS... -> sets OUT and RC; the fake gh comes first on PATH
   local d="$1"; shift
-  OUT=$(PATH="$FAKEBIN:/usr/bin:/bin" "$PY" "$d/scripts/security_audit_upstream.py" "$@" 2>&1)
+  OUT=$(PATH="$FAKEBIN:/usr/bin:/bin" "$UV" run --quiet --python "$PY" "$d/scripts/security_audit_upstream.py" "$@" 2>&1)
   RC=$?
 }
 tree_hash() { # DIR -> one hash over the whole vendored directory
@@ -420,7 +423,7 @@ check "API failure: rc" "2" "$RC"
 check_contains "API failure: tag" "$OUT" "UPSTREAM_NOT_CHECKED"
 mv "$WORK/gh-down" "$WORK/gh-up"
 
-OUT=$(PATH="$EMPTYBIN" "$PY" "$d/scripts/security_audit_upstream.py" status 2>&1)
+OUT=$(PATH="$EMPTYBIN" "$UV" run --quiet --python "$PY" "$d/scripts/security_audit_upstream.py" status 2>&1)
 RC=$?
 check "no gh: rc" "2" "$RC"
 check_contains "no gh: tag" "$OUT" "UPSTREAM_NOT_CHECKED"

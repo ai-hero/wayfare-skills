@@ -1,3 +1,7 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = []
+# ///
 """The fleet, read from FLEET.md, and each repo's generic role (GLOSSARY.md).
 
 Generic across installations, on purpose (this file is committed to the

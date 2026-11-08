@@ -30,8 +30,8 @@ FIXTURE = tempfile.mkdtemp()
 atexit.register(shutil.rmtree, FIXTURE, True)
 FLEET_DIR = os.path.join(FIXTURE, "fleet")
 GROUPS = {"tmpl": "template", "app1": "apps", "fresh": "apps", "gone": "apps", "infra1": "infra"}
-os.makedirs(FLEET_DIR)
-with open(os.path.join(FLEET_DIR, "FLEET.md"), "w") as f:
+os.makedirs(os.path.join(FLEET_DIR, ".fleet"))
+with open(os.path.join(FLEET_DIR, ".fleet", "FLEET.md"), "w") as f:
     f.write("# Fleet\n\n## Fleet\n\n## Repos\n\n")
     for repo, group in GROUPS.items():
         os.makedirs(os.path.join(FLEET_DIR, repo))

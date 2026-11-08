@@ -801,7 +801,7 @@ for f in "$SKILLS_DIR"/*/SKILL.md; do
   SKILL_DIR=$(dirname "$f")
   SKILL_CONTENT=$(find "$SKILL_DIR" -maxdepth 1 -type f \( -name 'SKILL.md' -o -name 'WORKFLOW.md' \) -exec cat {} +)
   grep -qE 'HERO\.md|hero_field|hero_md_field' <<< "$SKILL_CONTENT" || continue
-  grep -qE 'hero_at_fleet_root|hero_fleet_root' <<< "$SKILL_CONTENT" && continue
+  grep -qE 'hero_fleet_step0|hero_at_fleet_root|hero_fleet_root' <<< "$SKILL_CONTENT" && continue
   FLEET_GATE_ERRORS=$((FLEET_GATE_ERRORS + 1))
   error "reads HERO.md but never tests for the fleet root" \
     "${f#"$PLUGIN_ROOT/"}" "" \
@@ -810,15 +810,17 @@ done
 [[ $FLEET_GATE_ERRORS -eq 0 ]] && pass "every skill that reads HERO.md tests for the fleet root"
 
 # The inline two-file test misses hero-lib.sh's work-tree rule, so a clone that
-# commits FLEET.md reads as a fleet to it and as a repo to the lib.
+# commits a map reads as a fleet to it and as a repo to the lib.
 INLINE_FLEET_ERRORS=0
 while IFS= read -r f; do
-  hits=$(grep -nE -- '-f "\\?\$(PWD|ROOT)/FLEET\.md" \] && \[ ! -f' "$f" || true)
+  # `hero_at_fleet_root && echo` reads rc 2 (an unreadable map) as "a repo"
+  # and runs the repo procedure in the fleet folder; hero_fleet_step0 stops.
+  hits=$(grep -nE -- '-f "\\?\$(PWD|ROOT)/(\.fleet/)?FLEET\.md" \] && \[ ! -f|hero_at_fleet_root +&&' "$f" || true)
   [ -z "$hits" ] && continue
   INLINE_FLEET_ERRORS=$((INLINE_FLEET_ERRORS + 1))
-  error "inline fleet-root test instead of hero_at_fleet_root" \
+  error "inline fleet-root test instead of hero_fleet_step0" \
     "${f#"$PLUGIN_ROOT/"}" "$(printf '%s' "$hits" | head -1 | cut -d: -f1)" \
-    "Source hero-lib.sh with the sanctioned WAYFARE_ROOT line and call hero_at_fleet_root"
+    "Source hero-lib.sh with the sanctioned WAYFARE_ROOT line and use Step 0's one form: hero_fleet_step0 || exit 1"
 done < <(find "$SKILLS_DIR" "$PLUGIN_ROOT/references" "$PLUGIN_ROOT/scripts/new-skill.sh" -type f 2>/dev/null)
 [[ $INLINE_FLEET_ERRORS -eq 0 ]] && pass "no inline fleet-root test in skills/, references/ or new-skill.sh"
 

@@ -176,7 +176,7 @@ HERO_LIB="$WAYFARE_ROOT/scripts/hero-lib.sh"
 ROOT=$(hero_root)
 cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
 hero_check_staleness
-hero_at_fleet_root && echo "FLEET_ROOT" || true
+hero_fleet_step0 || exit 1
 # Mail from a sibling repo (docs/MESSAGES.md), and deploy probes whose runs
 # outlasted wayfare-ship-pr Step 7e's wait cap. Both are counts,
 # not work: this run neither triages nor waits on them. A run that prints
@@ -821,10 +821,10 @@ complete without it, not whether it sits under `source`.
 **The never-admissible paths are a hard stop, whatever argues for them**: the
 item body, your own reading of what the change implicates, a failing test,
 anything. Anything under `.github/` or `.claude/` (nested copies included:
-`apps/web/.github/` is one), `HERO.md`, `FLEET.md`, and any file governing
-authentication, authorization or secrets. They widen what a later run may do
-without anyone authorizing it, so a change that needs one stops and reports
-instead of editing it.
+`apps/web/.github/` is one), `HERO.md`, `FLEET.md` (`.fleet/FLEET.md` too), and
+any file governing authentication, authorization or secrets. They widen what a
+later run may do without anyone authorizing it, so a change that needs one stops
+and reports instead of editing it.
 
 Three cases, gated by what each one actually costs:
 

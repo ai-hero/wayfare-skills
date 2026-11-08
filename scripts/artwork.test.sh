@@ -123,7 +123,7 @@ if [ ! -x "$PYTHON" ]; then
 fi
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-touch "$TMP/FLEET.md"
+mkdir -p "$TMP/.fleet"; touch "$TMP/.fleet/FLEET.md"
 DS_FONTS="${WAYFARE_FLEET_ROOT:-$HOME/workspaces/aihero}/aihero-design-system-design/fonts"
 WAYFARE_FLEET_ROOT="$TMP" "$PYTHON" - "$ROOT/publishing" "$ROOT/analysis/report" "$TMP" "$DS_FONTS" <<'PY'
 import os

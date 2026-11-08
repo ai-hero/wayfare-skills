@@ -183,13 +183,15 @@ sibling. That rule is what makes the rest of this predictable: a change made in
 a repo whose own agent did not make it lands in no PR, is reviewed by nobody,
 and turns up as a dirty working tree someone else has to explain.
 
-A folder of sibling checkouts is a **fleet**, mapped by a `FLEET.md` at its top
-([docs/FLEET-MD.md](./docs/FLEET-MD.md)). The map is local and unversioned. Work
-crosses a repo line in exactly three ways:
+A folder of sibling checkouts is a **fleet**, mapped by `FLEET.md`, which lives
+in the fleet's register repo cloned at `.fleet/`
+([docs/FLEET-MD.md](./docs/FLEET-MD.md)). The map is versioned there, so a new
+machine gets it by cloning the register. Work crosses a repo line in exactly
+three ways:
 
 ```mermaid
 flowchart LR
-  subgraph FLEET["the fleet folder · FLEET.md maps it"]
+  subgraph FLEET["the fleet folder · .fleet/FLEET.md maps it"]
     A["<b>repo A</b><br/>wayfare runs here"]
     B["<b>repo B</b><br/>a sibling checkout"]
     DS["<b>design system</b><br/>a sibling checkout"]
@@ -534,8 +536,8 @@ procedures:
 | Command | What it does |
 | -- | -- |
 | `wayfare:wayfare-grill-idea` | Brainstorm + grill an idea one question at a time into shared understanding and dependency-aware work-items |
-| `wayfare:wayfare-sync-fleet` | Create + converge `FLEET.md`, the local, unversioned map of the repos checked out beside each other (group, port). Scans the folder and proposes rows, writing only what you confirm. Every repo skill run from the fleet root fans out to the repos you pick (see `docs/FLEET-MD.md`) |
-| `wayfare:wayfare-review-fleet` | Report drift between `FLEET.md` and the checkouts beside it: repos missing from the map, rows with no checkout, port collisions. Writes nothing |
+| `wayfare:wayfare-sync-fleet` | Create + converge `.fleet/FLEET.md`, the fleet's map of its repos (group, port), kept in the register repo. Scans the folder, proposes rows and offers to clone rows not cloned here, writing only what you confirm and committing nothing: the change is yours to PR in the register. Every repo skill run from the fleet root fans out to the repos you pick (see `docs/FLEET-MD.md`) |
+| `wayfare:wayfare-review-fleet` | Report drift between `FLEET.md` and the checkouts beside it: rows not cloned here (informational), folders that are not checkouts, port collisions. Writes nothing |
 | `wayfare:wayfare-check-audit-claim` | Check a compliance tool's claim against what the auditor was told and against the systems, before it is reported. Calls named read tools only, and can compare the tool's tests, the register checks and the tickets. Writes nothing |
 | `wayfare:wayfare-audit-deep` | Run Cloudflare's security audit on one repo, on a person's explicit request: a wrapper over an MIT-licensed copy pinned and hash-checked under `assets/security-audit/`. Started by name. Needs a budget, is source-only by default, keeps run output outside every checkout, and files no ticket. Does not replace `wayfare-audit-security`'s dependency and image scanning |
 | `wayfare:wayfare-write-handoff` | Distill the current conversation into one self-contained work-item for a downstream agent (optionally filed to the tracker, or to **another repo** with `--repo OWNER/NAME`) |
@@ -739,11 +741,15 @@ MIT, built by [AI Hero](https://aihero.studio).
 `scripts/audit.py` computes (check × repo) results live, from a register in two
 halves: the generic **baseline** in `assets/compliance/`, shipped here, and your
 fleet's private **overlay** (incident history and checks of its own) in the
-register checkout FLEET.md names (`register: .fleet/`). No check names a repo:
-which repos pass is the audit's output, computed per run, never a field in the
-rule. Inside a fleet the family is FLEET.md's rows whose group is not `none`;
-anywhere else, the current repo alone against the baseline. The engine and the
-baseline run from the plugin checkout's origin/main, not its working tree;
+register checkout FLEET.md names (`register: .fleet/`, the same checkout that
+holds `FLEET.md`). No check names a repo: which repos pass is the audit's
+output, computed per run, never a field in the rule. Inside a fleet the family
+is FLEET.md's rows whose group is not `none`; anywhere else, the current repo
+alone against the baseline, with a stderr warning that the fleet's overlay is
+not applied. A repo whose `AGENTS.md` carries the vendored `## Fleet` section
+stops instead, because it is a fleet repo on a machine missing its register;
+`--no-fleet` runs it alone on purpose. The engine and the baseline run from the
+plugin checkout's origin/main, not its working tree;
 `HERO_SKILLS_PLUGIN=<checkout>` runs the invoked engine against that checkout's
 assets instead, to test unmerged work. `scripts/consistency.py` writes the
 fleet's human table into that checkout. `wayfare-sync-plan` runs the audit as

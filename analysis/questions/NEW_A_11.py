@@ -5,7 +5,7 @@ requirements (vs just describing the group in general terms).
 """
 import os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from ingest.fleet import ROOT
+from ingest.fleet import FLEET_MAP
 
 RQ_ID = "NEW-A-11"
 QUESTION = "Does the fleet map say what each repo role must contain (pre-commit, CI workflows, etc)?"
@@ -14,7 +14,7 @@ ARTIFACT_WORDS = re.compile(r"pre-commit|workflow|CI|\.gitignore|dependabot|Dock
 
 
 def answer(con=None):
-    text = open(os.path.join(ROOT, "FLEET.md")).read()
+    text = open(FLEET_MAP).read()
     m = re.search(r"## Groups\n(.*?)(\n## |\Z)", text, re.S)
     if not m:
         return [{"note": "no ## Groups section in FLEET.md"}]

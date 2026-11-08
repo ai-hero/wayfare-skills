@@ -31,7 +31,7 @@ Read every step before the first tool call.
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 . "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
-hero_at_fleet_root && echo "FLEET_ROOT" || true
+hero_fleet_step0 || exit 1
 ```
 
 If `FLEET_ROOT` printed, stay in this session and do not fan out. A claim

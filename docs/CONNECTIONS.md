@@ -248,8 +248,8 @@ Four of the six kinds are other repositories. When there is a fleet
 - at: design-system   # the FLEET.md row; the path is the map's business
 ```
 
-The map is local and unversioned, and paths differ per machine; a row name is
-the same in every clone, which is what lets the connection live in a versioned
+Checkout paths differ per machine, while a row name is the same in every clone
+and in the shared map, which is what lets the connection live in a versioned
 file. Resolve it with `hero_connection_repo`, never by hand: it tries the fleet
 map first (through `hero_fleet_repos`, the one parse that applies the trust
 rules) and falls back to a path for a repo with no fleet around it. A path is

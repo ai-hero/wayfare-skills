@@ -1,8 +1,9 @@
 ## Fleet
 
 This repo is one checkout in a fleet: sibling repos in the folder above it,
-mapped by that folder's `FLEET.md` (`wayfare:wayfare-sync-fleet`). The map is
-local and unversioned, so clone this repo beside the others and run
+mapped by `FLEET.md` in the fleet's register checkout, `.fleet/FLEET.md`
+(`wayfare:wayfare-sync-fleet`). Clone the register into the fleet folder as
+`.fleet/`, clone this repo beside the others, and run
 `wayfare:wayfare-review-fleet`. The host port this dev stack publishes is
 claimed in that map, not chosen here: take the next free port there first, then
 set it in every place this repo names it (compose defaults, health checks). Any

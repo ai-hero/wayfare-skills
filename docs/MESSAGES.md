@@ -40,9 +40,9 @@ right for what it describes: *"copying a file into a sibling checkout's
 That is an argument about **teammates**, and it still holds, work handed to
 another repo's *people* goes through `handoff --repo` and a tracker issue.
 
-This channel is for **agents on one machine**, addressed by the local
-`FLEET.md`, and being invisible to teammates and dying with the checkout is the
-point, not the flaw. The two lanes divide on who the reader is:
+This channel is for **agents on one machine**, addressed by the fleet's
+`FLEET.md` rows, and being invisible to teammates and dying with the checkout is
+the point, not the flaw. The two lanes divide on who the reader is:
 
 | The reader is | Use | Lives |
 | -- | -- | -- |
@@ -375,7 +375,8 @@ One `msg_id` **per recipient**, correlation has to be pairwise or a reply cannot
 be attributed, plus one `group:` shared by all of them. Each recipient learns it
 is one of N (`part: 2 of 3`, `peers:`), which is what tells it that answering
 alone unblocks nobody, and therefore how cheap declining is. Peers are named
-because they are rows in the same local fleet; nothing leaves the machine.
+because they are rows in the same fleet map, checked out on this machine;
+nothing leaves the machine.
 
 The sender lists all N in `awaiting:` and resumes when the last one is settled.
 Two rules that are easy to get backwards:

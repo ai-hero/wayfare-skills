@@ -429,7 +429,7 @@ between turns:
    those live, and leave the tree consistent. What stays out is unrelated
    work — a refactor you noticed in passing, another task's bug — and,
    whatever the change implicates, the never-admissible paths: anything
-   under `.github/` or `.claude/`, `HERO.md`, `FLEET.md`, and any file
+   under `.github/` or `.claude/`, `HERO.md`, `FLEET.md` (`.fleet/FLEET.md` too), and any file
    governing authentication, authorization or secrets. Nested copies count:
    `apps/web/.github/workflows/` is `.github/`, because a subproject's
    workflows ship the same way the root's do. Those paths are a
@@ -741,7 +741,7 @@ between turns:
    changed. Do not change behavior, and do not reach into code the diff
    did not touch. The never-admissible paths are a hard stop, whatever a
    cleanup suggests: anything under `.github/` or `.claude/` (nested
-   copies included), `HERO.md`, `FLEET.md`, and any file governing
+   copies included), `HERO.md`, `FLEET.md` (`.fleet/FLEET.md` too), and any file governing
    authentication, authorization or secrets. A reuse that would need one
    is reported, never made. If nothing needs changing, change nothing.
    Launch the review angles as fresh read-only subagents, never forks.
@@ -820,7 +820,7 @@ between turns:
    message names the defect and the tasks it sits between. The
    never-admissible paths are a hard stop here too, whatever the failure
    implicates: anything under `.github/` or `.claude/` (nested copies
-   included — `apps/web/.github/` is one), `HERO.md`, `FLEET.md`, and any
+   included — `apps/web/.github/` is one), `HERO.md`, `FLEET.md` (`.fleet/FLEET.md` too), and any
    file governing authentication, authorization or secrets. A cause that
    sits in one of those is reported, never edited.
 
@@ -1105,11 +1105,11 @@ is the ordinary case here, and it is correct that it waits.
 
 **Never admissible, whatever DoD line is quoted** (`hero_path_forbidden`, which
 covers nested copies too, since a subproject's `.github/` ships the same way): a
-path under `.github/`, a path under `.claude/`, `HERO.md`, `FLEET.md`, or any
-file governing authentication, authorization, or secrets. The last clause is the
-one the helper cannot check, so it stays a judgment and stays listed. These go
-back to a person as a follow-up goal every time, and no criterion above can
-override it.
+path under `.github/`, a path under `.claude/`, `HERO.md`, `FLEET.md`
+(`.fleet/FLEET.md` too), or any file governing authentication, authorization, or
+secrets. The last clause is the one the helper cannot check, so it stays a
+judgment and stays listed. These go back to a person as a follow-up goal every
+time, and no criterion above can override it.
 
 The reason is that criterion 4 constrains the *section*, not the capability. A
 goal's permissions are five named gates; they say nothing about what the merged

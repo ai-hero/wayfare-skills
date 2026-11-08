@@ -21,8 +21,8 @@ sys.path[:0] = [HERE, os.path.dirname(HERE), os.path.dirname(os.path.dirname(HER
 from cube.db import connect as _connect  # noqa: E402
 from record import BOOK, adoption, changeset_facts, rows, week_of  # noqa: E402
 from ingest.fleet import ALLIED, APP, APP_NO_FEATURES, CATEGORIES, OUT_OF_SCOPE, category_of  # noqa: E402
+from ingest.fleet import FLEET_MAP, ROOT as FLEET  # noqa: E402
 
-FLEET = os.path.expanduser(os.environ.get("WAYFARE_FLEET_ROOT", "~/workspaces/aihero"))
 PLUGIN = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 MIRRORS = os.path.join(PLUGIN, ".analysis", "data", "mirrors")
 LATEST = "2026-10-01"
@@ -172,7 +172,7 @@ MAP_EVENTS = [
 
 def fleet_rows():
     rows_, name = {}, None
-    for line in open(os.path.join(FLEET, "FLEET.md")):
+    for line in open(FLEET_MAP):
         m = re.match(r"### (\S+)", line)
         if m:
             name = m.group(1)
@@ -226,7 +226,7 @@ def q_fleet_map_accuracy(con):
     weekly_fleet = [sum(1 for r in study if first[r] <= week_end(w)) for w in WEEKS]
     return {"rows": out, "counts": counts, "order": order, "misclass": misclass, "n_rows": len(mp),
             "n_dirs": len(dirs), "weekly_fleet": weekly_fleet, "map_mtime": datetime.fromtimestamp(
-                os.path.getmtime(os.path.join(FLEET, "FLEET.md"))).date().isoformat(),
+                os.path.getmtime(FLEET_MAP)).date().isoformat(),
             "study_rows": sum(1 for r in study if r in mp), "study_n": len(study)}
 
 

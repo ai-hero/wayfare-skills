@@ -7,6 +7,7 @@ Each parser here has the failure mode the Justfile names for the hook tests:
 matching nothing is indistinguishable from a clean input, so a regression
 reads as a fleet that got better."""
 
+import atexit
 import contextlib
 import datetime
 import importlib.util
@@ -31,6 +32,11 @@ CLEAN_ENV = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
 # Without the override, every audit.py / consistency.py subprocess below runs
 # `git fetch` in the developer's real plugin checkout.
 CLEAN_ENV["HERO_SKILLS_PLUGIN"] = str(HERE.parent)
+# The register pin file is per machine; the tests write their own and must
+# never read, or be passed by, the developer's real one.
+XDG = tempfile.mkdtemp(prefix="audit-test-xdg-")
+atexit.register(shutil.rmtree, XDG, True)
+os.environ["XDG_CONFIG_HOME"] = CLEAN_ENV["XDG_CONFIG_HOME"] = XDG
 spec.loader.exec_module(audit)
 
 
@@ -925,12 +931,12 @@ class AppliesTo(unittest.TestCase):
 
 
 def fleet_fixture(root, fleet_md, overlay=None, checkers=None):
-    """A fleet folder: FLEET.md, a `.fleet/` register with the given overlay
-    text (or an empty one), and repos named by the caller. The register has no
-    .git, so it is unreviewed until review_register() commits and pushes it."""
-    write(root, "FLEET.md", fleet_md)
+    """A fleet folder: a `.fleet/` register holding FLEET.md and the given
+    overlay text (or an empty one), and repos named by the caller. The register
+    has no .git, so it is unreviewed until review_register() commits and pushes
+    it."""
+    write(root, ".fleet/FLEET.md", fleet_md)
     reg = root / ".fleet"
-    reg.mkdir(exist_ok=True)
     if overlay is not None:
         write(root, ".fleet/CHECKS.yaml", overlay)
     if checkers is not None:
@@ -945,6 +951,9 @@ def review_register(root, remote=True, name="fx/register"):
     checks read MANUAL and checkers.py is not loaded. `name=None` pushes to
     fx/register but writes no register-repo key."""
     reg = root / ".fleet"
+    if remote and name:
+        fleet = reg / "FLEET.md"
+        fleet.write_text(fleet.read_text().replace("## Fleet\n", f"## Fleet\n- register-repo: {name}\n", 1))
     git(reg, "init", "-q", "-b", "main")
     git(reg, "config", "user.email", "t@example.com")
     git(reg, "config", "user.name", "t")
@@ -952,9 +961,6 @@ def review_register(root, remote=True, name="fx/register"):
     git(reg, "commit", "-q", "--allow-empty", "-m", "register")
     if remote:
         bare = root / "fx" / "register.git"
-        if name:
-            fleet = root / "FLEET.md"
-            fleet.write_text(fleet.read_text().replace("## Fleet\n", f"## Fleet\n- register-repo: {name}\n", 1))
         # -b main: with no init.defaultBranch (CI's runner) the bare HEAD names
         # master, and a clone of it checks out nothing.
         git(root, "init", "-q", "--bare", "-b", "main", str(bare))
@@ -968,13 +974,13 @@ class Configured(unittest.TestCase):
     """configure() binds every module global from FLEET.md; each test rebinds
     from a fixture and tearDown restores what the import-time call found."""
     def setUp(self):
-        self.saved = (audit.ROOT, audit.FAMILY, audit.REGISTER, audit.TEMPLATE,
+        self.saved = (audit.ROOT, audit.FAMILY, audit.REGISTER, audit.TEMPLATE, audit.MAP,
                       dict(audit.REPO_DIR), {k: set(v) for k, v in audit.GROUP_REPOS.items()})
         self.tmp = tempfile.TemporaryDirectory()
         self.root = pathlib.Path(self.tmp.name).resolve()
 
     def tearDown(self):
-        audit.ROOT, audit.FAMILY, audit.REGISTER, audit.TEMPLATE, dirs, groups = self.saved
+        audit.ROOT, audit.FAMILY, audit.REGISTER, audit.TEMPLATE, audit.MAP, dirs, groups = self.saved
         audit.REPO_DIR.clear(); audit.REPO_DIR.update(dirs)
         audit.GROUP_REPOS.clear(); audit.GROUP_REPOS.update(groups)
         audit._OVERLAY_LOADED.clear()
@@ -1102,14 +1108,14 @@ class Configured(unittest.TestCase):
         inner.mkdir(parents=True)
         self.assertEqual(audit.fleet_root(inner), self.root)
         write(self.root, "HERO.md", "# HERO\n")
-        self.assertIsNone(audit.fleet_root(inner), "FLEET.md beside HERO.md is a repo, not a fleet")
+        self.assertIsNone(audit.fleet_root(inner), "a fleet map beside HERO.md is a repo, not a fleet")
 
     def test_fleet_root_passes_over_a_git_work_tree(self):
         git_repo(self.root, "clone")
         clone = self.root / "clone"
         fleet_fixture(clone, "## Fleet\n- name: fx\n")
         with contextlib.redirect_stderr(io.StringIO()) as err:
-            self.assertIsNone(audit.fleet_root(clone), "a committed FLEET.md is not a fleet")
+            self.assertIsNone(audit.fleet_root(clone), "a committed .fleet/FLEET.md is not a fleet")
         self.assertIn("inside a git work tree", err.getvalue())
 
     def test_fleet_root_ignores_a_git_register(self):
@@ -1118,6 +1124,46 @@ class Configured(unittest.TestCase):
         sub = self.root / "repo"
         sub.mkdir()
         self.assertEqual(audit.fleet_root(sub), self.root)
+
+    def test_fleet_root_from_inside_the_register_lands_on_its_parent(self):
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n")
+        git(self.root / ".fleet", "init", "-q")
+        sub = self.root / ".fleet" / "sub"
+        sub.mkdir()
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(audit.fleet_root(sub), self.root)
+
+    def test_fleet_root_passes_over_a_committed_legacy_map(self):
+        clone = git_repo(self.root, "clone")
+        write(clone, "FLEET.md", "## Fleet\n- name: fx\n")
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertIsNone(audit.fleet_root(clone), "a committed top-level FLEET.md is not a fleet")
+
+    def test_legacy_map_is_read_with_a_note_until_the_register_has_one(self):
+        """Delete with the fallback in fleet_map()."""
+        audit._NOTED.clear()
+        write(self.root, "FLEET.md", "## Fleet\n- name: old\n")
+        (self.root / "repo").mkdir()
+        self.assertEqual(audit.fleet_root(self.root / "repo"), self.root)
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(audit.read_fleet(self.root)[0]["name"], "old")
+        self.assertIn(f"move it into the register as {self.root / '.fleet' / 'FLEET.md'}", err.getvalue())
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            audit.read_fleet(self.root)
+        self.assertEqual(err.getvalue(), "", "the legacy note prints once per process")
+        write(self.root, ".fleet/FLEET.md", "## Fleet\n- name: new\n")
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(audit.read_fleet(self.root)[0]["name"], "new")
+        self.assertIn(f"ignoring {self.root / 'FLEET.md'}", err.getvalue())
+        (self.root / "FLEET.md").unlink()
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            audit.read_fleet(self.root)
+        self.assertEqual(err.getvalue(), "")
+
+    def test_an_empty_register_is_no_fleet(self):
+        (self.root / ".fleet").mkdir()
+        (self.root / "repo").mkdir()
+        self.assertIsNone(audit.fleet_root(self.root / "repo"))
 
     def test_audit_in_a_clone_runs_no_committed_checkers(self):
         clone = git_repo(self.root, "clone")
@@ -1144,7 +1190,7 @@ class Configured(unittest.TestCase):
         docs = clone / "docs"
         fleet_fixture(docs, "## Fleet\n- name: fx\n")
         with contextlib.redirect_stderr(io.StringIO()):
-            self.assertIsNone(audit.fleet_root(docs), "a FLEET.md in a clone's subfolder is not a fleet")
+            self.assertIsNone(audit.fleet_root(docs), "a map in a clone's subfolder is not a fleet")
 
     def test_audit_in_a_clone_subfolder_runs_no_committed_checkers(self):
         clone = git_repo(self.root, "clone")
@@ -1179,40 +1225,284 @@ class Configured(unittest.TestCase):
             self.assertIsNone(audit.fleet_root(clone), "a clone below a dotfiles $HOME is still passed over")
 
     def test_tilde_user_row_is_relative_as_in_the_shell(self):
-        write(self.root, "FLEET.md", "## Fleet\n- name: fx\n## Repos\n### u\n- path: ~nobody/x\n- group: apps\n")
-        (self.root / ".fleet").mkdir()
+        write(self.root, ".fleet/FLEET.md", "## Fleet\n- name: fx\n## Repos\n### u\n- path: ~nobody/x\n- group: apps\n")
         (self.root / "~nobody" / "x").mkdir(parents=True)
         audit.configure(self.root)
         self.assertEqual(audit.REPO_DIR["u"], self.root / "~nobody" / "x")
 
     def test_missing_register_is_an_error(self):
+        """Reachable only with the legacy top-level map: a map inside .fleet/
+        names no other register (the next test)."""
         write(self.root, "FLEET.md", "## Fleet\n- name: fx\n- register: .flet/\n## Repos\n### a\n- group: apps\n")
         (self.root / "a").mkdir()
-        with self.assertRaises(SystemExit) as cm:
+        with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(io.StringIO()):
             audit.configure(self.root)
         self.assertIn("register checkout missing", str(cm.exception))
 
+    def test_a_map_in_the_register_cannot_redirect_the_register(self):
+        """The attack: a register PR sets `register:` to a sibling whose main
+        its author controls, with a matching register-repo. The sibling's
+        checkers.py must never run, whether the map edit is committed or not."""
+        marker = self.root / "ran"
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n## Repos\n### a\n- group: apps\n")
+        review_register(self.root)
+        evil = git_repo(self.root, "evil")
+        write(evil, "checkers.py", f"open({str(marker)!r}, 'w').close()\n")
+        write(evil, "CHECKS.yaml", "checks: []\n")
+        git(evil, "add", "-A")
+        git(evil, "commit", "-q", "-m", "evil")
+        bare = self.root / "fx" / "evil.git"
+        git(self.root, "init", "-q", "--bare", "-b", "main", str(bare))
+        git(evil, "remote", "add", "origin", str(bare))
+        git(evil, "push", "-q", "origin", "HEAD:main")
+        fleet = self.root / ".fleet" / "FLEET.md"
+        fleet.write_text(fleet.read_text().replace("- register-repo: fx/register", "- register-repo: fx/evil\n- register: evil/"))
+        for committed in (False, True):
+            if committed:
+                git(self.root / ".fleet", "commit", "-qam", "redirect")
+            with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(io.StringIO()):
+                audit.configure(self.root)
+            self.assertIn("must be .fleet/", str(cm.exception))
+            self.assertFalse(marker.exists(), "the sibling's checkers.py executed")
+
+    def test_an_unreviewed_map_makes_the_register_unreviewed(self):
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n")
+        reg = review_register(self.root)
+        with contextlib.redirect_stderr(io.StringIO()):
+            audit.configure(self.root, load_overlay=False)
+            self.assertTrue(audit.register_source()[1], "a clean, pushed map is reviewed")
+        fleet = reg / "FLEET.md"
+        fleet.write_text(fleet.read_text() + "\n### b\n- group: apps\n")
+        for state in ("dirty", "unpushed"):
+            if state == "unpushed":
+                git(reg, "commit", "-qam", "add b")
+            audit._REGISTER_READ.clear()
+            with contextlib.redirect_stderr(io.StringIO()):
+                audit.configure(self.root, load_overlay=False)
+                _src, reviewed, note = audit.register_source()
+            self.assertFalse(reviewed, f"a {state} map reads as reviewed")
+            self.assertIn("FLEET.md differs from origin/main", note)
+        # A linked .fleet/ would leave the map's folder and the register's
+        # resolved path unequal, skipping the review: it is refused instead.
+        moved = self.root / "realreg"
+        reg.rename(moved)
+        reg.symlink_to(moved)
+        audit._REGISTER_READ.clear()
+        with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(io.StringIO()):
+            audit.configure(self.root, load_overlay=False)
+        self.assertIn("is a symlink", str(cm.exception))
+
+    def test_an_untracked_map_is_not_reviewed(self):
+        """git diff ignores untracked files, so a map the register never
+        committed would compare clean against origin/main."""
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n")
+        reg = review_register(self.root)
+        git(reg, "rm", "-q", "--cached", "FLEET.md")
+        git(reg, "commit", "-qm", "untrack the map")
+        git(reg, "push", "-q", "origin", "main")
+        with contextlib.redirect_stderr(io.StringIO()):
+            audit.configure(self.root, load_overlay=False)
+            _src, reviewed, note = audit.register_source()
+        self.assertFalse(reviewed, note)
+        self.assertIn("FLEET.md differs from origin/main", note)
+
+    def test_remote_identity(self):
+        """ssh and https spell one repo; another host or a local path with the
+        same OWNER/NAME is a different repo."""
+        same = ("git@github.com:Fx/Register.git", "https://github.com/fx/register",
+                "ssh://git@github.com:22/fx/register.git", "https://user@github.com/fx/register/")
+        self.assertEqual({audit.remote_identity(u) for u in same}, {"github.com/fx/register"})
+        self.assertEqual(audit.remote_identity("git@gitlab.com:fx/register.git"), "gitlab.com/fx/register")
+        self.assertEqual(audit.remote_identity("/tmp/x/fx/register.git"), "file/tmp/x/fx/register")
+        self.assertEqual(audit.remote_identity("file:///tmp/x/fx/register"), "file/tmp/x/fx/register")
+
+    def test_register_pin(self):
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n")
+        review_register(self.root)
+        local = audit.remote_identity(str(self.root / "fx" / "register.git"))
+        pins = pathlib.Path(os.environ["XDG_CONFIG_HOME"]) / "wayfare" / "registers"
+        pins.parent.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(lambda: pins.unlink(missing_ok=True))
+        cases = (("absent", None, True, "is not pinned"),
+                 ("match", f"# a comment\n{self.root} {local}\n", True, ""),
+                 ("mismatch", f"{self.root} {local[:-len('register')]}other\n", False, "this machine pins"),
+                 # The same OWNER/NAME on a host, against a local-path origin.
+                 ("other host, two-part", f"{self.root} fx/register\n", False, "this machine pins github.com/fx/register"),
+                 ("other host", f"{self.root} gitlab.com/fx/register\n", False, "this machine pins gitlab.com/fx/register"))
+        for label, text, want_reviewed, want_text in cases:
+            pins.unlink(missing_ok=True)
+            if text is not None:
+                pins.write_text(text)
+            audit._REGISTER_READ.clear()
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                audit.configure(self.root, load_overlay=False)
+                _src, reviewed, note = audit.register_source()
+            self.assertEqual(reviewed, want_reviewed, f"{label}: {note}")
+            self.assertIn(want_text, err.getvalue() + note, label)
+            if label == "absent":
+                self.assertIn("HOST/OWNER/NAME >>", err.getvalue(), "the command carries a placeholder")
+                self.assertIn(f"origin is {local}", err.getvalue())
+            if label == "match":
+                self.assertNotIn("not pinned", err.getvalue())
+
+    def test_the_pin_command_carries_nothing_from_the_map(self):
+        """A quote in register-repo once broke out of the printed printf."""
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n")
+        review_register(self.root, name="fx/reg'; touch pwned; echo '")
+        audit._REGISTER_READ.clear()
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            audit.configure(self.root, load_overlay=False)
+            audit.register_source()
+        self.assertIn("not pinned", err.getvalue())
+        self.assertNotIn("pwned", err.getvalue())
+        self.assertNotIn("reg'", err.getvalue())
+
+    def test_an_origin_with_odd_characters_is_not_shown(self):
+        """The observed origin is printed only when it is a plain slug; the
+        remote is as untrusted as the map."""
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n")
+        reg = review_register(self.root)
+        odd = self.root / "fx" / "reg'x $(touch pwned).git"
+        git(self.root, "clone", "-q", "--bare", str(self.root / "fx" / "register.git"), str(odd))
+        git(reg, "remote", "set-url", "origin", str(odd))
+        audit._REGISTER_READ.clear()
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            audit.configure(self.root, load_overlay=False)
+            audit.register_source()
+        self.assertIn("not shown: unexpected characters", err.getvalue())
+        self.assertNotIn("pwned", err.getvalue())
+
     def test_register_must_stay_inside(self):
-        write(self.root, "FLEET.md", "## Fleet\n- name: fx\n- register: ../elsewhere\n")
+        write(self.root, ".fleet/FLEET.md", "## Fleet\n- name: fx\n- register: ../elsewhere\n")
         with self.assertRaises(SystemExit) as cm:
             audit.configure(self.root)
         self.assertIn("outside the fleet", str(cm.exception))
 
     def test_explicit_fleet_without_fleet_md(self):
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as cm:
             audit.configure(self.root)
+        self.assertIn("clone the register", str(cm.exception))
 
     def test_lone_repo(self):
         r = git_repo(self.root, "solo")
         cwd = os.getcwd()
         try:
             os.chdir(r)
-            audit.configure(None)
+            with contextlib.redirect_stderr(io.StringIO()):
+                audit.configure(None)
         finally:
             os.chdir(cwd)
         self.assertIsNone(audit.REGISTER)
         self.assertEqual(audit.FAMILY, ("solo",))
         self.assertEqual(audit.REPO_DIR["solo"], r.resolve())
+
+    def test_lone_repo_warns_that_the_run_is_baseline_only(self):
+        """A fleet machine missing its register must not read as a clean
+        baseline-only audit with nothing said."""
+        r = git_repo(self.root, "solo")
+        cwd = os.getcwd()
+        try:
+            os.chdir(r)
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                audit.configure(None)
+        finally:
+            os.chdir(cwd)
+        self.assertIsNone(audit.REGISTER, "still runs, baseline only")
+        self.assertIn("baseline only", err.getvalue())
+        self.assertIn("register overlay and its checks are not applied", err.getvalue())
+        self.assertIn(".fleet/", err.getvalue())
+
+    def test_lone_repo_warning_is_gated_on_load_overlay(self):
+        """The import-time call passes load_overlay=False and must stay
+        silent, or every import prints the warning a second time."""
+        r = git_repo(self.root, "solo")
+        cwd = os.getcwd()
+        try:
+            os.chdir(r)
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                audit.configure(None, load_overlay=False)
+        finally:
+            os.chdir(cwd)
+        self.assertEqual(err.getvalue(), "")
+
+    def test_a_repo_that_declares_a_fleet_fails_closed_without_a_map(self):
+        r = git_repo(self.root, "member")
+        write(r, "AGENTS.md", "# A\n\n## Fleet\n\nThis repo is one checkout in a fleet.\n")
+        cwd = os.getcwd()
+        try:
+            os.chdir(r)
+            with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(io.StringIO()) as stop:
+                audit.configure(None)
+            with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()) as quiet:
+                audit.configure(None, no_fleet_flag=False)
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                audit.configure(None, no_fleet=True)
+        finally:
+            os.chdir(cwd)
+        self.assertEqual(cm.exception.code, audit.EXIT_NO_FLEET_MAP)
+        self.assertIn(".fleet/FLEET.md", stop.getvalue())
+        self.assertIn("--no-fleet", stop.getvalue())
+        self.assertNotIn("--no-fleet", quiet.getvalue(), "consistency.py has no --no-fleet to suggest")
+        self.assertEqual(audit.FAMILY, ("member",), "--no-fleet audits the repo alone")
+        self.assertEqual(err.getvalue(), "", "--no-fleet is the operator's word, not a finding")
+
+    def test_fleet_member_cli_exits_non_zero_without_a_map_and_runs_with_no_fleet(self):
+        r = git_repo(self.root, "member")
+        write(r, "AGENTS.md", "# A\n\n## Fleet\n\ntext\n")
+        base = [sys.executable, str(HERE / "audit.py"), "--no-snapshot", "--json"]
+        p = subprocess.run(base, cwd=str(r), capture_output=True, text=True, env=CLEAN_ENV)
+        self.assertEqual(p.returncode, audit.EXIT_NO_FLEET_MAP, p.stderr)
+        self.assertIn("NO_FLEET_MAP", p.stderr)
+        self.assertIn(".fleet/FLEET.md", p.stderr)
+        p = subprocess.run(base + ["--no-fleet"], cwd=str(r), capture_output=True, text=True, env=CLEAN_ENV)
+        self.assertEqual(p.returncode, 0, p.stderr)
+
+    def test_an_unreadable_map_is_an_error_not_a_fallback(self):
+        write(self.root, "FLEET.md", "## Fleet\n- name: old\n")
+        (self.root / "repo").mkdir()
+        reg = self.root / ".fleet"
+        reg.mkdir()
+        real = write(self.root, "elsewhere.md", "## Fleet\n- name: elsewhere\n")
+        # A link to a readable map is refused too: git reviews the link's
+        # target string, so its content would arrive unreviewed.
+        for label, make, why in (("directory", lambda m: m.mkdir(), "not a readable file"),
+                                 ("dangling link", lambda m: m.symlink_to(reg / "nowhere"), "is a symlink"),
+                                 ("link to a readable map", lambda m: m.symlink_to(real), "is a symlink")):
+            m = reg / "FLEET.md"
+            make(m)
+            with self.assertRaises(audit.FleetMapError, msg=label):
+                audit.fleet_map(self.root)
+            with self.assertRaises(audit.FleetMapError, msg=label):
+                audit.fleet_root(self.root / "repo")
+            with self.assertRaises(SystemExit, msg=label) as cm, contextlib.redirect_stderr(io.StringIO()):
+                audit.configure(self.root)
+            self.assertIn(why, str(cm.exception))
+            m.rmdir() if m.is_dir() and not m.is_symlink() else m.unlink()
+
+    def test_an_unreadable_map_inside_a_clone_is_passed_over(self):
+        clone = git_repo(self.root, "clone")
+        (clone / ".fleet" / "FLEET.md").mkdir(parents=True)
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertIsNone(audit.fleet_root(clone), "a clone cannot break the walk")
+
+    def test_a_folder_named_fleet_is_never_the_root(self):
+        """A register that is not a git checkout: the walk from inside it lands
+        on its parent, never on the register."""
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n")
+        sub = self.root / ".fleet" / "sub"
+        sub.mkdir()
+        self.assertIsNone(audit.fleet_map(self.root / ".fleet"))
+        self.assertEqual(audit.fleet_root(self.root / ".fleet"), self.root)
+        self.assertEqual(audit.fleet_root(sub), self.root)
+
+    def test_lone_repo_cli_warns_and_still_runs(self):
+        """With no register there is no overlay to name or read, and the run
+        still finishes: this plugin's CI and lone repos audit this way."""
+        r = git_repo(self.root, "solo")
+        p = subprocess.run([sys.executable, str(HERE / "audit.py"), "--no-snapshot", "--json"], cwd=str(r),
+                           capture_output=True, text=True, env=CLEAN_ENV)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("baseline only", p.stderr)
 
 
 class Register(unittest.TestCase):
@@ -1622,10 +1912,10 @@ class Consistency(unittest.TestCase):
 
         Run from INSIDE the lonely repo with no --fleet, so fleet_root() walks
         up and finds nothing. Passing `--fleet <that repo>` instead dies in
-        audit.configure's own argument validation ("no FLEET.md there"), which
+        audit.configure's own argument validation ("no fleet map there"), which
         is a different refusal: delete consistency.py's guard entirely and that
-        version still goes green, because the assertion matched the word
-        "FLEET.md" in an unrelated message."""
+        version still goes green, because the assertion matched a word in an
+        unrelated message."""
         with tempfile.TemporaryDirectory() as d:
             root = pathlib.Path(d).resolve()
             git_repo(root, "lonely")

@@ -64,7 +64,7 @@ but its suite only runs where that venv exists (see Testing).
 | `assets/compliance/` → engine | Not installed anywhere. The engine reads the baseline in place and merges the fleet's overlay over it by id. |
 | `assets/security-audit/` → the repo | Third-party bytes under a hash manifest, outside `skills/` so no host loads them as a skill. Nothing here edits them, and every formatter, scanner and doc check is excluded from the path. `wayfare-audit-deep` reads them by path and restates none of them. `vendored-pin.yaml` compares the tree with upstream on a PR that touches it, and a person approves that PR. |
 | `.github/workflows/auto-approve.yaml` → consumers | Executed *in place* by ~25 repos via `uses: …@main`. Not copied; resolved at trigger time. A consumer's caller is also held to the vendored `caller.yaml` when `@auto-approve` runs. Any workflow a PR touches whose `uses:` (as YAML resolves it, at the base or the head) calls this one must be byte-identical to `assets/auto-approve/caller.yaml` at `main`, and deleting it, or moving it where it no longer runs, always fails. That is CI-20, keyed on content rather than the audit's one path. A change to `auto-approve.yaml`, the vendored `caller.yaml`, the hooks and what they source, or the plugin manifests needs a person: `.github/auto-approve-human-review.txt` lists them, and the workflow reads it from `main`. |
-| `FLEET.md` → the audit | A folder is never a fleet root (`fleet_root()`, `hero_fleet_root`) when it or an ancestor other than `$HOME` holds `.git`: `FLEET.md` is the operator's unversioned map, and a cloned one would make the audit execute the clone's `.fleet/checkers.py`. Tested on the `FLEET.md` folder, never the register. |
+| `FLEET.md` → the audit | The map is `.fleet/FLEET.md`, and the fleet root is the folder holding `.fleet/`, never inside a git work tree and never beside `HERO.md`, so a map committed in a cloned repo cannot make the audit run that clone's `.fleet/checkers.py`. The rules, who can steer the audit through the map, and how the map and the per-machine pin are reviewed are in [docs/FLEET-MD.md](./docs/FLEET-MD.md); the decision is in *The fleet map moves into the register repo* below. |
 | register → the audit | The overlay (`CONTROLS.yaml`, `CHECKS.yaml`, `checkers.py`) is read from a commit of the register checkout: `origin/main`, freshly fetched, else HEAD; only a register with no `.git` is read from its working tree. The engine trusts the operator's branch protection to make `origin/main` reviewed and does not check it. Anything short of a clean, pushed, fetched `origin/main` is unreviewed: the header's `register:` line says why, the overlay's changes to baseline records are dropped, its own checks read MANUAL, `checkers.py` is not loaded, and `--fail-on` exits 3. |
 | repo → sibling repo | A skill reaches a sibling through a message, a new file in the sibling's `.plans/inbox/` and the only write allowed there; never by editing its code or config. |
 | audits → `issues` tracker | A confirmed finding (judged against the default branch as merged) is filed as one ticket through the `issues` connection, linked both ways with its `.plans/` item, and closed only on evidence (`references/finding-tickets.md`). Candidates stay local. |
@@ -77,8 +77,9 @@ The `auto-approve` rows are the ones that surprise people.
 installer. A change to the second reaches every repo on merge.
 
 Three places carry wayfare's state in a consuming repo, and each has one owner:
-`HERO.md` (one repo's config), `FLEET.md` (the local, unversioned map of the
-sibling checkouts), and `.plans/` (the roadmap store, whose schema
+`HERO.md` (one repo's config), `FLEET.md` (the fleet's map of the sibling
+checkouts, kept in the register repo at `.fleet/FLEET.md`), and `.plans/` (the
+roadmap store, whose schema
 `docs/PLAN.md` defines). A verb scoped to the wrong one writes the wrong file.
 
 ## Invariants
@@ -218,3 +219,42 @@ skill posts. What still needs judgment runs on demand, not on every commit.
   `vendored-pin.yaml` compares with upstream, only on a PR that touches the tree.
   A repo nobody syncs hears nothing, which is accepted: the wrapper checks again
   at the start of every run. The wrapper is user-only, so no agent can start it.
+
+### 2026-11-07: The fleet map moves into the register repo, at .fleet/FLEET.md
+
+- Context: `FLEET.md` was a local, unversioned file at the top of the fleet
+  folder. Moving to a new machine meant copying it by hand, which loses its
+  history and lets two machines' maps drift with nothing to reconcile them. The
+  decision that a cloned repo's map is never trusted (a folder inside a git
+  work tree is never a fleet root) had also declared the map the operator's
+  unversioned file, and called that a two-way door.
+- Decision: the canonical map is `.fleet/FLEET.md` in the register repo, and
+  every reader finds it there directly; nothing is placed at the top of the
+  folder. The fleet root is the nearest folder holding `.fleet/FLEET.md` that is
+  not itself named `.fleet`, holds no `HERO.md`, and is outside any git work
+  tree. Three functions (`hero_fleet_map` and the two Python `fleet_map()`s)
+  return the path, treat an unreadable map, or a symlinked `.fleet` or map
+  (git reviews a link's target string, not its content), as an error, and
+  hold a transitional
+  fallback to a legacy top-level `FLEET.md` until every operator has moved.
+  Because the map now arrives through register PRs, the audit treats it as
+  register content: a map in `.fleet/` may name no register but `.fleet/`, and
+  a map that differs from the fetched `origin/main` makes the register
+  UNREVIEWED. Because `register-repo` is written inside the checkout it vouches
+  for, each machine pins its register by host, owner and name outside every
+  repo, in `${XDG_CONFIG_HOME:-~/.config}/wayfare/registers`. A row with no
+  checkout on this machine is `NOT_CLONED`, informational; `sync` offers to
+  clone it only to `FLEET_ROOT/NAME`, from the host and owner the pin names
+  rather than the map's `org:`, never to an absolute row, and drops a row only
+  for a retired repo. A repo that declares a fleet in its `AGENTS.md` and finds no
+  map stops the audit; any other repo warns and runs baseline-only.
+- Consequences: only the "unversioned" half of the earlier decision is
+  reversed. The plain-folder rule is unchanged and still tested on the folder
+  holding `.fleet/`, so a cloned repo that commits its own `.fleet/FLEET.md` is
+  passed over exactly as a committed top-level one was. A port claim made with
+  `sync` works for fan-out at once but leaves the audit's register UNREVIEWED
+  until it is merged and pulled. Accepted gap: until the pin is required (with
+  the removal of the legacy fallback), a machine with no pin only warns, so a
+  cloned fork of the register carrying its own map still vouches for itself
+  there. The vendored `## Fleet` section changed, so every consumer's copy
+  drifts until it is re-vendored.

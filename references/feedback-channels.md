@@ -277,7 +277,7 @@ FROM_ROW=$(hero_fleet_repos | awk -F'\t' -v r="$ROOT" '$2 == r { print $1 }')
 
 **Never call `hero_work_store` on the destination.** That function is not
 read-only: it creates `.plans/` and edits `.git/info/exclude` in whatever root
-it is handed, and this path came from a local map, not from a decision to
+it is handed, and this path came from the fleet map, not from a decision to
 initialise that repo. `hero_msg_deposit` refuses to create the mailbox for the
 same reason. A sibling with no `.plans/inbox/` cannot receive a deposit: report
 it and use the packet path rather than standing a store up in someone else's

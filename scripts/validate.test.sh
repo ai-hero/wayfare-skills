@@ -223,12 +223,22 @@ run_validate "$d"
 check "inline fleet test in references/: rc" "1" "$RC"
 check_contains "inline fleet test in references/: reported" "$OUT" "inline fleet-root test"
 
+d=$(fixture fleet-step0-old-form)
+printf '\n```bash\nhero_at_fleet_root && echo "FLEET_ROOT" || true\n```\n' >> "$d/references/zz.md"
+run_validate "$d"
+check_contains "the rc-2-blind Step 0 form: reported" "$OUT" "inline fleet-root test"
+
+d=$(fixture inline-fleet-test-register-path)
+printf '\n```bash\n[ -f "$PWD/.fleet/FLEET.md" ] && [ ! -f "$PWD/HERO.md" ] && echo "FLEET_ROOT" || true\n```\n' >> "$d/references/zz.md"
+run_validate "$d"
+check_contains "inline fleet test on .fleet/FLEET.md: reported" "$OUT" "inline fleet-root test"
+
 d=$(fixture new-skill-scaffold)
 cp "$ROOT_REPO/scripts/new-skill.sh" "$d/scripts/new-skill.sh"
 "$d/scripts/new-skill.sh" zzscaffold "Scaffold fixture for validate.test.sh. Use when testing the scaffold." > /dev/null
 run_validate "$d"
 check "scaffolded skill passes validate: rc" "0" "$RC"
-check_contains "scaffold calls the lib" "$(cat "$d/skills/zzscaffold/SKILL.md")" 'hero_at_fleet_root && echo "FLEET_ROOT" || true'
+check_contains "scaffold calls the lib" "$(cat "$d/skills/zzscaffold/SKILL.md")" 'hero_fleet_step0 || exit 1'
 fleet_link=$(grep -oE '\]\([^)]*FLEET-MD\.md\)' "$d/skills/zzscaffold/SKILL.md" | head -1 | sed -e 's/^](//' -e 's/)$//')
 check "scaffold links FLEET-MD.md" "../../docs/FLEET-MD.md" "$fleet_link"
 check "scaffold FLEET-MD link resolves" "yes" "$([ -f "$d/skills/zzscaffold/$fleet_link" ] && echo yes || echo no)"

@@ -31,11 +31,15 @@ the wayfare plugin (this file, assets/compliance/), and run from the plugin
 checkout's origin/main, not from whatever branch it sits on (see below); the
 fleet's own OVERLAY — its
 incident history and any checks of its own — lives in the
-fleet folder's register checkout, named by FLEET.md's `register:` key
-(default .fleet/). The two are merged by id, overlay winning. Run inside a
-fleet (any checkout below a FLEET.md) and the family is FLEET.md's rows
-whose group is not `none`; run anywhere else and the family is the current
-repo alone, baseline only. --fleet PATH names the fleet root explicitly.
+fleet folder's register checkout, .fleet/, which also holds FLEET.md. The two
+are merged by id, overlay winning. Run inside a fleet (any checkout below a
+folder holding .fleet/FLEET.md) and the family is FLEET.md's rows whose group
+is not `none`. Anywhere else the family is the current repo alone, baseline
+only, with a warning on stderr; a repo whose AGENTS.md carries the `## Fleet`
+section stops instead with exit 4, since it is a fleet repo on a machine
+missing its register, unless --no-fleet asks for the baseline-only run. --fleet PATH names
+the fleet root explicitly. The register is pinned per machine in
+${XDG_CONFIG_HOME:-~/.config}/wayfare/registers (see pinned_register()).
 
 Each repo is audited at --ref (default origin/main) in a detached worktree,
 not at whatever branch the checkout sits on; --no-snapshot audits the
@@ -86,6 +90,7 @@ BASELINE = HERE / "assets" / "compliance"               # generic register, publ
 ROOT = None
 REGISTER = None
 REGISTER_REPO = None
+MAP = None          # the map configure() read: <root>/.fleet/FLEET.md, or the legacy top-level file
 TEMPLATE = None
 REPO_DIR = {}
 _OVERLAY_LOADED = set()
@@ -140,16 +145,70 @@ def in_git_worktree(d):
     return any((p / ".git").exists() for p in (d, *d.parents) if p != home)
 
 
+class FleetMapError(Exception):
+    """.fleet/FLEET.md exists but cannot be read as a file: a directory, a
+    dangling link, no read permission. Never "no map": falling back to the
+    legacy copy or to a baseline-only run would hide a broken register."""
+
+
+_NOTED = set()   # legacy/ignoring notes already printed, once per process
+
+
+def fleet_map(d, quiet=False):
+    """The map's path for fleet folder d, or None; FleetMapError when it is
+    there but unreadable. The top-level FLEET.md is the layout before the map
+    moved into the register; it is read only while .fleet/FLEET.md is absent,
+    with a stderr note. hero_fleet_map (scripts/hero-lib.sh) and
+    analysis/ingest/fleet.py's fleet_map() hold the same rules, so retiring the
+    fallback is those three functions.
+
+    A folder named .fleet is the register, never a fleet folder: without this,
+    a walk from inside a register that is not a git checkout would take the
+    register itself as the root."""
+    d = pathlib.Path(d)
+    if d.name == ".fleet":
+        return None
+    new, legacy = d / ".fleet" / "FLEET.md", d / "FLEET.md"
+    # Refused, not followed: git reviews a link's target string, never what it
+    # points at, and a linked .fleet/ puts the register outside the folder the
+    # review checks. Same rule in hero_fleet_map and ingest's fleet_map.
+    if (d / ".fleet").is_symlink() or new.is_symlink():
+        raise FleetMapError(f"{d / '.fleet'} or its FLEET.md is a symlink; the register must be a real "
+                            "checkout holding a real file")
+    if new.exists():
+        if not new.is_file() or not os.access(new, os.R_OK):
+            raise FleetMapError(f"{new} exists but is not a readable file; fix the register checkout "
+                                "(the legacy top-level FLEET.md is not read while it is there)")
+        if legacy.is_file() and not quiet and ("ignoring", legacy) not in _NOTED:
+            _NOTED.add(("ignoring", legacy))
+            print(f"fleet_map: ignoring {legacy}; the map is {new}, so delete the old copy", file=sys.stderr)
+        return new
+    if legacy.is_file():
+        if not quiet and ("legacy", legacy) not in _NOTED:
+            _NOTED.add(("legacy", legacy))
+            print(f"fleet_map: reading legacy {legacy}; move it into the register as {new}", file=sys.stderr)
+        return legacy
+    return None
+
+
 def fleet_root(start=None):
-    """The nearest ancestor holding FLEET.md that is neither beside a HERO.md
-    nor inside a git work tree, or None: a committed FLEET.md is a clone's
-    content, and its register would run the clone's checkers.py. Tests the
-    FLEET.md folder, never the register, which is the real fleet's own
-    checkout."""
+    """The nearest ancestor holding a fleet map (fleet_map) that is neither
+    beside a HERO.md nor inside a git work tree, or None: a committed map is a
+    clone's content, and its register would run the clone's checkers.py. Tests
+    the folder holding .fleet/, never .fleet/ itself, so a walk from inside the
+    register, a git checkout or not, lands on its parent. Raises FleetMapError
+    for an unreadable map only in a folder that passes those tests, so a clone
+    cannot break the walk by committing a .fleet/FLEET.md directory."""
     d = pathlib.Path(start or os.getcwd()).resolve()
     while True:
-        if (d / "FLEET.md").is_file() and not (d / "HERO.md").is_file():
+        try:
+            found, err = fleet_map(d, quiet=True), None
+        except FleetMapError as e:
+            found, err = True, e
+        if found and not (d / "HERO.md").is_file():
             if not in_git_worktree(d):
+                if err:
+                    raise err
                 return d
             print(f"fleet_root: passing over {d}; a folder inside a git work tree is never a fleet root", file=sys.stderr)
         if d.parent == d:
@@ -164,9 +223,15 @@ def read_fleet(root):
     fields, repos, sec, cur, fence = {}, [], None, None, False
     seen = set()
     try:
-        text = (root / "FLEET.md").read_text()
+        path = fleet_map(root)
+    except FleetMapError as e:
+        sys.exit(str(e))
+    if path is None:
+        sys.exit(f"{root}: no fleet map at {root / '.fleet' / 'FLEET.md'}")
+    try:
+        text = path.read_text()
     except (OSError, UnicodeDecodeError) as e:
-        sys.exit(f"{root / 'FLEET.md'}: cannot read: {e}")
+        sys.exit(f"{path}: cannot read: {e}")
     for line in text.splitlines():
         if line.startswith("```"):
             fence = not fence
@@ -206,7 +271,81 @@ def read_fleet(root):
     return fields, repos
 
 
-def configure(root=None, load_overlay=True):
+def declares_fleet(repo):
+    """Whether repo's instructions carry the vendored `## Fleet` section, its
+    own statement that it lives in a fleet. Such a repo with no map in reach is
+    a machine missing its register, not a lone repo."""
+    doc = repo / "AGENTS.md" if (repo / "AGENTS.md").is_file() else repo / "CLAUDE.md"
+    try:
+        return doc.is_file() and _fleet_section(doc.read_text()) is not None
+    except (OSError, UnicodeDecodeError):
+        return False
+
+
+EXIT_NO_FLEET_MAP = 4   # a repo that declares a fleet found no map; the compliance stage keys on it
+
+
+def remote_identity(url):
+    """HOST/OWNER/NAME for a git remote URL, lowercased with no `.git`, so the
+    ssh (`git@host:o/n`, `ssh://git@host:22/o/n`) and https forms of one repo
+    are equal and the same OWNER/NAME on another host is not. A local path or
+    file:// URL is `file` followed by its absolute path."""
+    u = url.strip().rstrip("/")
+    if u.lower().endswith(".git"):
+        u = u[:-4]
+    m = re.match(r"^[a-z][a-z0-9+.-]*://(?:[^@/]*@)?([^/:]+)(?::\d+)?/(.+)$", u, re.I)
+    if m and not u.lower().startswith("file://"):
+        host, path = m.groups()
+    else:
+        m = re.match(r"^(?:[^@/]+@)?([^/:]+):(?!/)(.+)$", u)
+        if not m:
+            local = u[len("file://"):] if u.lower().startswith("file://") else u
+            return ("file" + os.path.abspath(local)).lower()
+        host, path = m.groups()
+    return f"{host}/{path.strip('/')}".lower()
+
+
+def _pin_value(v):
+    """A pin's register: HOST/OWNER/NAME, or the earlier two-part OWNER/NAME,
+    read as github.com/OWNER/NAME so pins written before the host was part of
+    it keep working."""
+    v = v.strip().rstrip("/").lower()
+    if v.endswith(".git"):
+        v = v[:-4]
+    return f"github.com/{v}" if v.count("/") == 1 and not v.startswith("file") else v
+
+
+def pinned_register(root):
+    """HOST/OWNER/NAME pinned for fleet root `root` in the per-machine pin
+    file, or None. The pin is the one statement of which register to trust
+    that the register cannot write: the map names register-repo from inside
+    the checkout it vouches for, so a fork carrying its own map would vouch for
+    itself. The host is part of it, so the same OWNER/NAME on another host or a
+    local path does not match.
+
+    The file is ${XDG_CONFIG_HOME:-~/.config}/wayfare/registers, one line per
+    fleet: the fleet root's absolute physical path, whitespace, the register
+    as remote_identity() spells it. `#` starts a comment. A path with
+    whitespace in it cannot be pinned. hero_register_pin reads it the same
+    way."""
+    try:
+        lines = pathlib.Path(pin_file()).read_text().splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+    want = str(pathlib.Path(root).resolve())
+    for line in lines:
+        parts = line.split("#", 1)[0].split()
+        if len(parts) == 2 and parts[0] == want:
+            return _pin_value(parts[1])
+    return None
+
+
+def pin_file():
+    base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(base, "wayfare", "registers")
+
+
+def configure(root=None, load_overlay=True, no_fleet=False, no_fleet_flag=True):
     """Bind ROOT, FAMILY, REGISTER, TEMPLATE and REPO_DIR — from FLEET.md when
     inside a fleet, else from the current repo alone. Called by main() and by
     consistency.py; the import-time call below makes the module usable from
@@ -214,25 +353,53 @@ def configure(root=None, load_overlay=True):
 
     The import-time call passes load_overlay=False: it runs in whatever engine
     was invoked, before run_at_origin() decides which engine runs, so loading
-    the register's checkers.py there executes fleet code under a stale engine."""
-    global ROOT, FAMILY, REGISTER, REGISTER_REPO, TEMPLATE
-    if root:
-        root = pathlib.Path(root).resolve()
-        if not (root / "FLEET.md").is_file():
-            sys.exit(f"--fleet {root}: no FLEET.md there")
-    else:
-        root = fleet_root()
+    the register's checkers.py there executes fleet code under a stale engine.
+    no_fleet_flag=False is for a caller with no --no-fleet to suggest."""
+    global ROOT, FAMILY, REGISTER, REGISTER_REPO, TEMPLATE, MAP
+    try:
+        if no_fleet:
+            root = None
+        elif root:
+            root = pathlib.Path(root).resolve()
+            if fleet_map(root, quiet=True) is None:
+                sys.exit(f"--fleet {root}: no fleet map there; clone the register into {root / '.fleet'} "
+                         "so .fleet/FLEET.md exists")
+        else:
+            root = fleet_root()
+    except FleetMapError as e:
+        sys.exit(str(e))
     REPO_DIR.clear()
     GROUP_REPOS.clear()
+    MAP = None
     if root is None:
         rc, top = sh(pathlib.Path.cwd(), "git rev-parse --show-toplevel")
         repo = pathlib.Path(top.strip()) if rc == 0 and top.strip() else pathlib.Path.cwd()
+        # A repo that says it lives in a fleet, with no map in reach, is a
+        # machine missing its register: baseline-only would read greener, every
+        # overlay check absent. A repo that says nothing is a lone repo, which
+        # audits baseline-only on purpose, with a warning. --no-fleet is the
+        # explicit way to run a fleet repo alone (this plugin's own checkout
+        # carries the section).
+        if load_overlay and not no_fleet:
+            if declares_fleet(repo):
+                print(f"audit: NO_FLEET_MAP: {repo.name} declares a fleet (its instructions carry the "
+                      "`## Fleet` section) but no fleet map was found walking up from here. Clone the "
+                      "fleet's register repo into the fleet folder as .fleet/ so .fleet/FLEET.md exists "
+                      "(docs/FLEET-MD.md)"
+                      + (", or, if this repo is standalone, pass --no-fleet to audit it alone against "
+                         "the baseline." if no_fleet_flag else "."), file=sys.stderr)
+                sys.exit(EXIT_NO_FLEET_MAP)
+            print("audit: no fleet map found walking up from here (.fleet/FLEET.md), so this run is "
+                  "baseline only: the fleet's register overlay and its checks are not applied. "
+                  "Inside a fleet, clone the fleet's register repo into the fleet folder as .fleet/ "
+                  "(docs/FLEET-MD.md).", file=sys.stderr)
         ROOT, FAMILY, REGISTER, TEMPLATE = repo.parent, (repo.name,), None, None
         REGISTER_REPO = None
         REPO_DIR[repo.name] = repo
         return
     fields, repos = read_fleet(root)
     ROOT = root
+    MAP = fleet_map(root, quiet=True)
     reg = fields.get("register") or ".fleet/"
     REGISTER = (root / reg.rstrip("/")).resolve()
     REGISTER_REPO = (fields.get("register-repo") or "").strip().lower() or None
@@ -240,6 +407,13 @@ def configure(root=None, load_overlay=True):
     # escaping value would make consistency.py write outside it.
     if root not in REGISTER.parents:
         sys.exit(f"FLEET.md register: {reg} resolves outside the fleet ({REGISTER})")
+    # A map inside the register names the register only as itself. Anything
+    # else lets a register PR point `register:` at a sibling whose main its
+    # author controls, plus a matching register-repo, and the audit would
+    # import that sibling's checkers.py as reviewed.
+    if MAP.parent.name == ".fleet" and REGISTER != (root / ".fleet").resolve():
+        sys.exit(f"FLEET.md register: {reg} must be .fleet/ — the map lives in {root / '.fleet'}, "
+                 "which is the register; delete the key or set it to .fleet/")
     # A mapped-but-missing register is the one state that must not run: the
     # audit would proceed baseline-only and report a fleet that got greener
     # because its overlay — every check the fleet added on top of the five in
@@ -253,7 +427,9 @@ def configure(root=None, load_overlay=True):
             continue
         raw = row["path"] or row["name"]
         # Only `~` and `~/…` expand, as in hero_fleet_repos: `~user/x` stays a
-        # relative path there, so it must here.
+        # relative path there, so it must here. An absolute row is shared
+        # content now (the map is merged through register PRs), trusted here
+        # because this only reads it; nothing clones or writes to it.
         written_absolute = raw == "~" or raw.startswith(("/", "~/"))
         if written_absolute:
             raw = os.path.expanduser(raw) if raw[0] == "~" else raw
@@ -352,6 +528,25 @@ def _resolve_register(reg):
             problems.append(f"FLEET.md names no register-repo, so origin {got} is unverified")
         elif got != REGISTER_REPO:
             problems.append(f"origin is {got} but FLEET.md register-repo names {REGISTER_REPO}")
+        pin = pinned_register(ROOT)
+        seen = remote_identity(url)
+        if pin is None:
+            # Nothing from the map or the remote reaches the command: either
+            # could be a fork's, and a quote in it would break out of the line.
+            shown = seen if re.fullmatch(r"[a-z0-9.-]+(/[a-z0-9._-]+)+", seen) else "(not shown: unexpected characters)"
+            print(f"audit: WARNING: the register for {ROOT} is not pinned, so a fork of it carrying its "
+                  f"own map could vouch for itself. This register's origin is {shown}. Confirm that is "
+                  "your fleet's register, not a fork, then pin it once on this machine, writing its "
+                  "HOST/OWNER/NAME in place of the placeholder:\n"
+                  f"  mkdir -p {shlex.quote(os.path.dirname(pin_file()))} && printf '%s %s\\n' "
+                  f"{shlex.quote(str(ROOT))} HOST/OWNER/NAME >> {shlex.quote(pin_file())}\n"
+                  "An unpinned register will read UNREVIEWED once the legacy top-level FLEET.md fallback "
+                  "is removed (docs/FLEET-MD.md).", file=sys.stderr)
+        else:
+            if seen != pin:
+                problems.append(f"origin is {seen} but this machine pins {pin} ({pin_file()})")
+            if REGISTER_REPO is not None and REGISTER_REPO != "/".join(pin.split("/")[-2:]):
+                problems.append(f"FLEET.md register-repo names {REGISTER_REPO} but this machine pins {pin}")
         # The explicit refspec updates the ref whatever remote.origin.fetch says,
         # and a failed fetch is unreviewed: the ref is a local file anyone can
         # rewrite, and only a fetch puts the remote's main back in it.
@@ -376,6 +571,14 @@ def _resolve_register(reg):
         rc, ahead = sh(reg, f"git rev-list --count {ref}..HEAD -- {files}")
         if rc or ahead != "0":
             problems.append(f"{ahead or '?'} unpushed commit(s) touch the register")
+    # The map decides the family and the register, and it is read from the
+    # working tree, so it is reviewed only when that tree matches the reviewed
+    # ref byte for byte: dirty, unpushed and behind all count.
+    if MAP is not None and MAP.parent.resolve() == reg.resolve():
+        if not ref:
+            problems.append("FLEET.md cannot be compared with a reviewed origin/main")
+        elif sh(reg, f"git cat-file -e {ref}:FLEET.md")[0] or sh(reg, f"git diff --quiet {ref} -- FLEET.md")[0]:
+            problems.append("FLEET.md differs from origin/main (uncommitted, unpushed or not pulled)")
     dest = pathlib.Path(tempfile.mkdtemp(prefix="audit-register-"))
     atexit.register(shutil.rmtree, dest, True)
     if sha:
@@ -3765,8 +3968,10 @@ def _register_file(base, name, shown=None):
 def _register_pair(name):
     """(baseline doc, overlay doc, reviewed) for one register file."""
     src, reviewed, note = register_source()
+    if src is None:
+        return _register_file(BASELINE, name), {}, reviewed
     shown = f"{REGISTER / name} ({note.split('  ')[0]})"
-    over = _register_file(src, name, shown) if src else {}
+    over = _register_file(src, name, shown)
     return _register_file(BASELINE, name), over, reviewed
 
 
@@ -4028,13 +4233,17 @@ def main():
     ap.add_argument("--no-snapshot", action="store_true",
                     help="audit the checkouts as they sit, whatever branch or dirt they carry")
     ap.add_argument("--fleet", default="", help="the fleet root (default: found by walking up from cwd)")
+    ap.add_argument("--no-fleet", action="store_true",
+                    help="audit the current repo alone against the baseline, even when it declares a fleet")
     ap.add_argument("--json", action="store_true", help="one JSON object per failing (check x repo) cell, for skills")
     a = ap.parse_args()
 
     rc = run_at_origin("audit.py")
     if rc is not None:
         sys.exit(rc)
-    configure(a.fleet or None)
+    if a.no_fleet and a.fleet:
+        sys.exit("--no-fleet and --fleet contradict each other")
+    configure(a.fleet or None, no_fleet=a.no_fleet)
     # --repo is a FLEET.md ROW NAME inside a fleet. `.` (or a path) resolves the
     # checkout it names to its row, so a skill can say "this repo" without
     # knowing the row — a basename is not the row when a row carries `path:`.

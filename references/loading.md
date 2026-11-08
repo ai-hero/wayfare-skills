@@ -21,7 +21,7 @@ HERO_LIB="$WAYFARE_ROOT/scripts/hero-lib.sh"
 . "$HERO_LIB" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT — export WAYFARE_ROOT as the plugin root"; exit 1; }
 
 ROOT=$(hero_root)
-hero_at_fleet_root && echo "FLEET_ROOT"
+hero_fleet_step0 || exit 1
 # What this repo is attached to, one row per declared connection
 # (docs/CONNECTIONS.md). Printed before any stage acts on one: a `type: none`
 # row and a kind with no row at all mean different things, and a run that

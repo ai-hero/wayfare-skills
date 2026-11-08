@@ -1,7 +1,7 @@
 ---
 name: wayfare-setup-dev
 # prettier-ignore
-description: "Check local tools and credentials against HERO.md. Guide a developer through git config, CLI authentication, and missing dependencies. Never change shared files. Use on a fresh machine or clone, or when a tool or login is missing."
+description: "Check local tools and credentials against HERO.md, or set up a whole machine from the fleet's .fleet/setup.yaml when run at the fleet root. Guide git config, CLI sign-ins and missing dependencies. Never change shared files. Use on a fresh machine or clone, or when a tool or login is missing."
 argument-hint: "[--check | recalibrate]"
 compatibility: "Requires the complete Wayfare plugin and access to the developer machine whose local tools and credentials are being checked."
 disable-model-invocation: true
@@ -11,6 +11,11 @@ disable-model-invocation: true
 
 Guide one developer through local setup using the team's `HERO.md`
 configuration. Keep developer-specific setup out of repository commits.
+
+Run at a fleet root, it sets up the whole machine instead: the fleet's
+`.fleet/setup.yaml`, the repos the person picks, their local-only files from an
+old machine, then this procedure in each repo. Read [WORKFLOW.md](WORKFLOW.md)
+in full before doing anything at a fleet root.
 
 ## Arguments
 
@@ -22,7 +27,11 @@ configuration. Keep developer-specific setup out of repository commits.
 
 ## Prerequisites
 
-`HERO.md` must exist. If it doesn't, tell the user:
+At a fleet root, wayfare must already be installed and the register cloned as
+`.fleet/`; on a clean machine that is the bootstrap in
+[docs/SETUP-YAML.md](../../docs/SETUP-YAML.md), done by a person.
+
+In a repo, `HERO.md` must exist. If it doesn't, tell the user:
 
 ```
 No HERO.md found. Run wayfare:wayfare-init-repo first to configure the project.
@@ -65,8 +74,8 @@ WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfar
 hero_fleet_step0 || exit 1
 ```
 
-If the command prints `FLEET_ROOT`, stop this repo procedure. Follow **At the
-fleet root** in `docs/FLEET-MD.md`.
+If the command prints `FLEET_ROOT`, stop this repo procedure. Read
+[WORKFLOW.md](WORKFLOW.md) in full and follow it instead.
 
 Parse the `## Developer Setup` section for required tools, recommended tools,
 and MCP servers. Also read other sections for implicit requirements (e.g., CI
@@ -243,9 +252,10 @@ Do not also print `wayfare:wayfare-build-task`. Follow
 
 ## Key Principles
 
-- **Never modify shared files.** This skill only touches local git config and
-  suggests installs. It never writes to HERO.md, CLAUDE.md, or any committed
-  file.
+- **Never modify shared files.** In a repo, this skill only touches local git
+  config and suggests installs. At a fleet root it installs what
+  `.fleet/setup.yaml` names, after asking. It never writes to HERO.md,
+  CLAUDE.md, `setup.yaml`, or any committed file.
 - **Always ask before changing config.** Git identity, signing keys, and auth
   are personal. Confirm before setting any of them.
 - **Platform-aware.** Detect macOS vs Linux and suggest the right install
@@ -259,6 +269,6 @@ Do not also print `wayfare:wayfare-build-task`. Follow
 ## Examples
 
 ```
-wayfare:wayfare-setup-dev          # Full guided setup
+wayfare:wayfare-setup-dev          # Full guided setup (the whole machine at a fleet root)
 wayfare:wayfare-setup-dev --check  # Just verify, don't change anything
 ```

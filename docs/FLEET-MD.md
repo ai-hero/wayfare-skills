@@ -19,6 +19,10 @@ machine gets it by cloning, and every change to it has history and review like
 the register's other files. It is never the source of truth for anything a repo
 itself needs: a fact a repo depends on lives in that repo's `HERO.md`.
 
+Beside the map, the register holds the compliance overlay (`CONTROLS.yaml`,
+`CHECKS.yaml`, `checkers.py`, rule 1 below) and **`setup.yaml`**, the machine
+setup every developer in the fleet gets ([SETUP-YAML.md](./SETUP-YAML.md)).
+
 Because the map is shared, it names the fleet, not your machine. A row whose
 checkout you never cloned is normal: `review` reports it as `NOT_CLONED`, for
 information, and `sync` offers to clone it to `FLEET_ROOT/NAME`, never anywhere
@@ -69,9 +73,12 @@ never the map's `org:`.
    now at `.fleet/FLEET.md`.
 3. Pin the register on this machine, from the fleet folder:
    `mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/wayfare" && printf '%s %s\n' "$(pwd -P)" github.com/acme-inc/fleet-register >> "${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"`.
-4. Run `wayfare:wayfare-sync-fleet` from the fleet folder. It lists the rows not
-   cloned here and offers to clone each one, and offers the pin if step 3 was
-   skipped.
+4. Run `wayfare:wayfare-setup-dev` from the fleet folder. It sets the machine up
+   from `.fleet/setup.yaml`, offers to clone the rows not cloned here, and
+   restores their local-only files from an old machine. On a machine without
+   wayfare yet, the bootstrap in [SETUP-YAML.md](./SETUP-YAML.md) comes first.
+   `wayfare:wayfare-sync-fleet` also offers the clones, without the setup, and
+   offers the pin if step 3 was skipped.
 
 ### Moving from a top-level FLEET.md
 
@@ -300,10 +307,13 @@ against it either fails late or, worse, half-works.
 5. **Relay every report, per repo.** The user sees one summary block per repo,
    what happened, what stopped, what needs them.
 
-Two exceptions. `wayfare-init-repo` at the fleet root scaffolds *into* the
+Three exceptions. `wayfare-init-repo` at the fleet root scaffolds *into* the
 folder (`FLEET_ROOT/NAME`) and then runs `wayfare-sync-fleet` to add the row.
-That is the natural place to create a project. `fleet` itself is the only skill
-whose subject is the folder rather than a repo.
+That is the natural place to create a project. `wayfare-setup-dev` at the fleet
+root sets up the machine from `.fleet/setup.yaml`, then runs its per-repo
+procedure in each repo the person picks, in this session, because its gates ask
+the person (its `WORKFLOW.md`). `fleet` itself is the only skill whose subject
+is the folder rather than a repo.
 
 ## Anti-patterns
 

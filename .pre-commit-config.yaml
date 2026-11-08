@@ -165,10 +165,14 @@ repos:
         # plus the CLAUDE.md symlink, which pre-commit already filters out and
         # semgrep treats as a fatal scanning root.
         exclude: ^analysis/
+        # --error fails the hook on a rule timeout as well as a finding, and
+        # scripts/audit.py is large enough that a rule runs past semgrep's 5s
+        # default: a clean scan then reads as a failure.
         args:
           - --config=auto
           - --error
           - --skip-unknown-extensions
+          - --timeout=30
 
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: 91ab4bf57e58b32adf1a122681f6ebe164d081c8  # frozen: v4.4.0

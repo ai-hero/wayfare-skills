@@ -59,7 +59,11 @@ is the fleet's.
   `# /// script` block, and is invoked as `uv run path/to/script.py`. Never fix
   a missing import by installing into the system or Homebrew Python: that passes
   on the machine it was installed on and fails on the next, which is how
-  `audit.test.sh` broke on Homebrew's python3.15.
+  `audit.test.sh` broke on Homebrew's python3.15. A skill runs a script as
+  `(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/x.py ...)`, any
+  repo path passed as an argument: `uv` started in a consumer repo runs that
+  repo's `.venv` or `.python-version` interpreter and reads its `[tool.uv]`.
+  `scripts/uv-cwd.test.sh` holds every skill call to that form.
 
 - **This file follows [docs/AGENTS-MD.md](./docs/AGENTS-MD.md)**, and
   `scripts/check-agents-md.sh` gates it on commit.

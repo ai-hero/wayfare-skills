@@ -147,7 +147,8 @@ prints to standard output and removes the temporary worktrees it creates.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-uv run "$WAYFARE_ROOT/scripts/audit.py" --md
+CALLER_DIR=$(pwd)
+(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/audit.py --cwd "$CALLER_DIR" --md)
 ```
 
 Carry the `register:` line that `audit.py` prints into the report. If it says

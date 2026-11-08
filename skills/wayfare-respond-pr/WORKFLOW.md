@@ -332,7 +332,7 @@ fix: address PR review feedback
 EOF
 )
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-uv run "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind commit --body-file - <<<"$MSG" || exit 1
+(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/pr_text_lint.py --kind commit --body-file -) <<<"$MSG" || exit 1
 git commit -m "$MSG"
 ```
 
@@ -360,7 +360,7 @@ Fixed: FIX_DESCRIPTION
 EOF
 )
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-uv run "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind inline --body-file - <<<"$REPLY" || exit 1
+(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/pr_text_lint.py --kind inline --body-file -) <<<"$REPLY" || exit 1
 gh api repos/{owner}/{repo}/pulls/$PR_NUMBER/comments \
   -f body="$REPLY" \
   -F in_reply_to=$COMMENT_ID
@@ -383,7 +383,7 @@ ANSWER_OR_RATIONALE
 EOF
 )
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-uv run "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind inline --body-file - <<<"$REPLY" || exit 1
+(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/pr_text_lint.py --kind inline --body-file -) <<<"$REPLY" || exit 1
 gh api repos/{owner}/{repo}/pulls/$PR_NUMBER/comments \
   -f body="$REPLY" \
   -F in_reply_to=$COMMENT_ID
@@ -448,7 +448,7 @@ EOF
 
 # Substitute the placeholders, drop empty sections, then post.
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-uv run "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind comment --body-file - <<<"$COMMENT_BODY" || exit 1
+(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/pr_text_lint.py --kind comment --body-file -) <<<"$COMMENT_BODY" || exit 1
 # If the post fails (network, gh auth), surface the rendered body so
 # the user can paste it manually — do NOT swallow the error and
 # pretend the comment was posted.
@@ -505,7 +505,7 @@ EOF
 # The exact text that gets posted. A finding means fix the text and
 # re-run, never post around it.
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-uv run "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind pr-edit --title "NEW_TITLE_UNDER_70_CHARS" --body-file - <<<"$BODY" || exit 1
+(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/pr_text_lint.py --kind pr-edit --title "NEW_TITLE_UNDER_70_CHARS" --body-file -) <<<"$BODY" || exit 1
 gh pr edit $PR_NUMBER --title "NEW_TITLE_UNDER_70_CHARS" --body "$BODY"
 ```
 
@@ -626,7 +626,7 @@ Trigger depends on the configured method:
   TRIGGER=$(hero_field trigger)
   TEXT=$(printf '%s' "$TRIGGER" | sed -nE 's/^[`"]([^`"]+)[`"].*/\1/p')
   [ -n "$TEXT" ] || { echo "HERO.md trigger '$TRIGGER' quotes no comment text; ask the user what to post"; exit 1; }
-  uv run "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind inline --body-file - <<<"$TEXT" || exit 1
+  (cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/pr_text_lint.py --kind inline --body-file -) <<<"$TEXT" || exit 1
   gh pr comment $PR_NUMBER --body "$TEXT"
   ```
 

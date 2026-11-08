@@ -10,6 +10,7 @@
 
     diff_leftovers.py                 # working tree and untracked vs HEAD
     diff_leftovers.py --base main     # the same, vs the merge base with main
+    diff_leftovers.py --cwd DIR       # scan the repo DIR is in, not the cwd's
 
 Exit 0 when clean, 1 and `file:line: finding` per hit, 2 when git cannot
 answer (not a repo, an unknown base). Only added lines are read, so debt that
@@ -28,6 +29,7 @@ that fires on every command-line tool gets switched off.
 """
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -122,7 +124,14 @@ def scan(base):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", help="diff against the merge base of this ref and HEAD")
+    ap.add_argument("--cwd", help="run as if started in this directory")
     args = ap.parse_args()
+    if args.cwd:
+        try:
+            os.chdir(args.cwd)
+        except OSError as e:
+            print(f"diff_leftovers: --cwd {args.cwd}: {e.strerror}", file=sys.stderr)
+            return 2
     hits = []
     try:
         for path, n, text in scan(args.base):

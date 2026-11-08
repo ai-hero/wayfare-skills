@@ -21,14 +21,17 @@ fleet there is no template and no backport; say so.
 the family audit:
 
 1. Run the engine for the whole family, at merged state:
-   `uv run scripts/audit.py --md` (it snapshots each repo at `origin/main`; pass
-   `--no-snapshot` only when the user asks to audit the checkouts as they sit).
-   Print the table.
-2. Regenerate the fleet's table: `uv run scripts/consistency.py` writes
-   `CONSISTENCY.md` into the register checkout, with `FIRST_SEEN.json` beside
-   it: the date each open failure was first seen, which the table's ages and
-   deadlines count from. It is a git repo; propose one commit of both files and
-   make it on the user's word.
+   `(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/audit.py --fleet "$FLEET_ROOT" --md)`
+   (it snapshots each repo at `origin/main`; pass `--no-snapshot` only when the
+   user asks to audit the checkouts as they sit). Print the table. Run it from
+   the plugin checkout, never from the fleet: `uv` started in a folder runs any
+   `.venv` or `.python-version` interpreter it finds there.
+2. Regenerate the fleet's table:
+   `(cd "$WAYFARE_ROOT" && uv run --no-config --quiet scripts/consistency.py --fleet "$FLEET_ROOT")`
+   writes `CONSISTENCY.md` into the register checkout, with `FIRST_SEEN.json`
+   beside it: the date each open failure was first seen, which the table's ages
+   and deadlines count from. It is a git repo; propose one commit of both files
+   and make it on the user's word.
 3. Read the register's `reference:` rows against the results: every check where
    the reference repo itself fails is a **register defect** (the reference is
    wrong, or the repo regressed). Report it first; it is the one finding nobody

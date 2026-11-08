@@ -32,7 +32,7 @@ lint:
 
 # Structured data parses.
 typecheck:
-    @uv run --quiet --no-project --with pyyaml==6.0.3 python -c "\
+    @uv run --quiet --no-project --with-requirements scripts/check_docs.py python -c "\
     import json, sys, yaml; \
     from pathlib import Path; \
     skip=('.git/', 'assets/security-audit/'); \

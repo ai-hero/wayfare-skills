@@ -160,7 +160,7 @@ FILL = {
     "{1-3 sentence summary}": "Solid change.", "{most important issue}": "Null case",
     "{second most important}": "Naming", "{positive observations}": "Good tests",
 }
-BLOCK = re.compile(r"(\w+)=\$\(cat <<'EOF'\n(.*?)\nEOF\n\)\n(.*?)pr_text_lint\.py\" --kind (\S+)"
+BLOCK = re.compile(r"(\w+)=\$\(cat <<'EOF'\n(.*?)\nEOF\n\)\n(.*?)pr_text_lint\.py\"? --kind (\S+)"
                    r"(?: --title \"([^\"]*)\")?", re.S)
 
 def fill(text):
@@ -294,6 +294,9 @@ rm "$R/blob.bin"
 
 mkdir -p "$R/sub"; printf 'debugger\n' > "$R/top.js" # leftovers: ok
 check "untracked files outside cwd are seen" "debug" "$( (cd "$R/sub" && "$UV" run --quiet "$LEFT") | sed -E 's/^.+:[0-9]+: ([a-z]+).*/\1/' | sort -u)"
+# Skills run the script from the plugin checkout and name the repo with --cwd.
+check "--cwd scans that repo, not the cwd's" "debug" "$( (cd "$TMP" && "$UV" run --quiet "$LEFT" --cwd "$R/sub") | sed -E 's/^.+:[0-9]+: ([a-z]+).*/\1/' | sort -u)"
+check "an unusable --cwd exits 2" "2" "$( (cd "$R" && "$UV" run --quiet "$LEFT" --cwd "$R/nope" >/dev/null 2>&1); echo $?)"
 rm "$R/top.js"
 
 printf 'debugger\n' > "$R/locked.js"; chmod 000 "$R/locked.js" # leftovers: ok

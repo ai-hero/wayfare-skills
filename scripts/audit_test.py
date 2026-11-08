@@ -1178,6 +1178,19 @@ class Configured(unittest.TestCase):
         self.assertFalse(marker.exists(), "the clone's .fleet/checkers.py executed")
         self.assertIn("inside a git work tree", p.stderr)
 
+    def test_cwd_flag_starts_the_walk_there(self):
+        clone = git_repo(self.root, "clone")
+        marker = self.root / "ran"
+        fleet_fixture(clone, "## Fleet\n- name: fx\n", checkers=f"open({str(marker)!r}, 'w').close()\n")
+        p = subprocess.run([sys.executable, str(HERE / "audit.py"), "--cwd", str(clone)], cwd=str(self.root),
+                           capture_output=True, text=True, env=CLEAN_ENV)
+        self.assertFalse(marker.exists(), "the clone's .fleet/checkers.py executed")
+        self.assertIn("inside a git work tree", p.stderr)
+
+    def test_the_origin_engine_is_not_passed_cwd(self):
+        self.assertEqual(audit._without_cwd(["--cwd", "/x", "--md", "--cwd=/y", "--repo", "."]),
+                         ["--md", "--repo", "."])
+
     def test_import_runs_no_checkers_until_configured(self):
         marker = self.root / "ran"
         fleet_fixture(self.root, "## Fleet\n- name: fx\n", checkers=f"open({str(marker)!r}, 'w').close()\n")

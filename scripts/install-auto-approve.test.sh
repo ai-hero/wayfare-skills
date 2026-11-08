@@ -135,7 +135,7 @@ check "missing source: rc" "3" "$rc"
 # These four break in the ~25 CONSUMING repos, not here, so nothing in this
 # repo's normal feedback loop would ever show them.
 CALLEE="$HERE/../.github/workflows/auto-approve.yaml"
-yaml_py() { uv run --quiet --no-project --with pyyaml==6.0.3 python "$@"; }
+yaml_py() { uv run --quiet --no-project --with-requirements "$HERE/check_docs.py" python "$@"; }
 
 # A caller may name a secret only if the callee declares it under
 # on.workflow_call.secrets. Naming an undeclared one makes GitHub reject the

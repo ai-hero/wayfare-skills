@@ -275,8 +275,7 @@ check "fleet-root: defaults to PWD" \
 
 # A map inside a git work tree is a clone's content: its register would run
 # the clone's checkers.py. The folder holding .fleet/ is tested, never .fleet/
-# itself, so the register being its own git checkout still resolves. Both
-# spellings are checked: the legacy top-level FLEET.md is still read.
+# itself, so the register being its own git checkout still resolves.
 mkdir -p "$TMP/clone/sub" "$TMP/clone/.fleet"; git init -q "$TMP/clone" 2>/dev/null
 printf '## Repos\n' > "$TMP/clone/.fleet/FLEET.md"
 CLONE="$(cd "$TMP/clone" && pwd -P)"
@@ -285,8 +284,8 @@ check "fleet-root: the pass-over is named on stderr" \
   "1" "$(hero_fleet_root "$CLONE/sub" 2>&1 >/dev/null | grep -c "inside a git work tree")"
 hero_at_fleet_root "$CLONE"; check "at-fleet-root: a git work tree is not" "1" "$?"
 rm -rf "$CLONE/.fleet"; printf '## Repos\n' > "$CLONE/FLEET.md"
-hero_fleet_root "$CLONE/sub" >/dev/null 2>&1; check "fleet-root: a committed legacy FLEET.md in a git work tree is never the fleet" "1" "$?"
-hero_at_fleet_root "$CLONE"; check "at-fleet-root: a git work tree with a legacy FLEET.md is not" "1" "$?"
+hero_fleet_root "$CLONE/sub" >/dev/null 2>&1; check "fleet-root: a committed top-level FLEET.md in a git work tree is never the fleet" "1" "$?"
+hero_at_fleet_root "$CLONE"; check "at-fleet-root: a git work tree with a top-level FLEET.md is not" "1" "$?"
 git init -q "$F/.fleet" 2>/dev/null
 check "fleet-root: a git-checkout .fleet/ does not stop a plain folder resolving" \
   "$F" "$(hero_fleet_root "$F/web/deep" 2>/dev/null)"
@@ -296,30 +295,35 @@ check "fleet-root: a walk from inside the register passes it over and lands on t
   "$F" "$(hero_fleet_root "$F/.fleet/sub" 2>/dev/null)"
 rm -rf "$F/.fleet/.git" "$F/.fleet/sub" "$TMP/clone"
 
-# The legacy top-level FLEET.md is read only while .fleet/FLEET.md is absent,
-# and says so; once both exist the register's copy wins. Delete these with the
-# fallback in hero_fleet_map.
+# A top-level FLEET.md is never read. Alone it is rc 2 naming the move, so a
+# folder still on that layout stops instead of running a repo procedure; beside
+# .fleet/FLEET.md it is named once per shell for deletion.
 LG="$TMP/legacy"; mkdir -p "$LG/repo"; LG="$(cd "$LG" && pwd -P)"
 printf '## Fleet\n\n- name: old\n' > "$LG/FLEET.md"
-check "fleet-map: a legacy top-level FLEET.md still resolves the fleet" \
-  "$LG" "$(hero_fleet_root "$LG/repo" 2>/dev/null)"
-hero_at_fleet_root "$LG"; check "at-fleet-root: a legacy top-level FLEET.md still counts" "0" "$?"
-check "fleet-map: a silent probe does not use up the note" "" "${HERO_FLEET_NOTED:-}"
-check "fleet-map: the legacy read is named on stderr with the move" \
-  "1" "$(hero_fleet_field name "$LG" 2>&1 >/dev/null | grep -c "move it into the register as $LG/.fleet/FLEET.md")"
-check "fleet-map: the note prints once per shell" \
-  "1" "$( (hero_fleet_map "$LG" >/dev/null; hero_fleet_field name "$LG" >/dev/null; hero_fleet_repos "$LG" >/dev/null) 2>&1 | grep -c "reading legacy")"
+hero_fleet_map "$LG" >/dev/null 2>&1; check "fleet-map: a top-level FLEET.md alone is rc 2, not no map" "2" "$?"
+hero_fleet_root "$LG/repo" >/dev/null 2>&1; check "fleet-root: a top-level FLEET.md alone is rc 2" "2" "$?"
+hero_at_fleet_root "$LG" 2>/dev/null; check "at-fleet-root: a top-level FLEET.md alone is rc 2" "2" "$?"
+check "fleet-step0: a top-level FLEET.md alone prints FLEET_MAP_BROKEN and is rc 2" \
+  "1|2" "$(out=$(hero_fleet_step0 "$LG" 2>/dev/null); rc=$?; printf '%s|%s' "$(printf '%s\n' "$out" | grep -c '^FLEET_MAP_BROKEN')" "$rc")"
+check "fleet-map: the error names the move" \
+  "1" "$(hero_fleet_map "$LG" 2>&1 >/dev/null | grep -c "$LG/FLEET.md is no longer read; move it into the register as $LG/.fleet/FLEET.md")"
+check "fleet-map: the file is never printed as the map" "" "$(hero_fleet_map "$LG" 2>/dev/null)"
 mkdir -p "$LG/.fleet"; printf '## Fleet\n\n- name: new\n' > "$LG/.fleet/FLEET.md"
-check "fleet-map: .fleet/FLEET.md wins over the legacy copy" \
+hero_at_fleet_root "$LG"; check "at-fleet-root: .fleet/FLEET.md beside a leftover copy is" "0" "$?"
+check "fleet-map: a silent probe does not use up the note" "" "${HERO_FLEET_NOTED:-}"
+check "fleet-map: .fleet/FLEET.md is read, never the leftover copy" \
   "new" "$(hero_fleet_field name "$LG" 2>/dev/null)"
-check "fleet-map: a leftover legacy copy is named as ignored" \
-  "1" "$(hero_fleet_field name "$LG" 2>&1 >/dev/null | grep -c "ignoring $LG/FLEET.md")"
+check "fleet-map: a leftover top-level copy is named for deletion" \
+  "1" "$(hero_fleet_field name "$LG" 2>&1 >/dev/null | grep -c "ignoring $LG/FLEET.md; the map is $LG/.fleet/FLEET.md, so delete the old copy")"
+check "fleet-map: the note prints once per shell" \
+  "1" "$( (hero_fleet_map "$LG" >/dev/null; hero_fleet_field name "$LG" >/dev/null; hero_fleet_repos "$LG" >/dev/null) 2>&1 | grep -c "ignoring")"
 rm "$LG/FLEET.md"
 check "fleet-map: no note once only .fleet/FLEET.md exists" \
   "" "$(hero_fleet_field name "$LG" 2>&1 >/dev/null)"
 
-# Present but unreadable is an error (rc 2), never the legacy copy and never
-# "no fleet". A clone committing such a map is still just passed over.
+# Present but unreadable is an error (rc 2), never "no fleet", even with a
+# top-level copy beside it. A clone committing such a map is still just
+# passed over.
 printf '## Fleet\n\n- name: old\n' > "$LG/FLEET.md"
 # A symlink is refused even when it points at a readable map: git reviews the
 # link's target string, not what it points at.
@@ -332,9 +336,9 @@ for kind in dir link reallink; do
     reallink) ln -s "$TMP/elsewhere-map.md" "$LG/.fleet/FLEET.md" ;;
   esac
   hero_fleet_map "$LG" >/dev/null 2>&1; check "fleet-map: a $kind map is rc 2" "2" "$?"
-  hero_fleet_root "$LG/repo" >/dev/null 2>&1; check "fleet-root: a $kind map is rc 2, not the legacy copy" "2" "$?"
+  hero_fleet_root "$LG/repo" >/dev/null 2>&1; check "fleet-root: a $kind map is rc 2, not the top-level copy" "2" "$?"
   hero_at_fleet_root "$LG" 2>/dev/null; check "at-fleet-root: a $kind map is rc 2" "2" "$?"
-  hero_fleet_field name "$LG" >/dev/null 2>&1; check "fleet-field: a $kind map fails, not the legacy copy" "2" "$?"
+  hero_fleet_field name "$LG" >/dev/null 2>&1; check "fleet-field: a $kind map fails, not the top-level copy" "2" "$?"
   hero_fleet_repos "$LG" >/dev/null 2>&1; check "repos: a $kind map is rc 2" "2" "$?"
 done
 check "fleet-step0: an unreadable map prints FLEET_MAP_BROKEN and is rc 2" \
@@ -385,6 +389,38 @@ check "register-pin: another host stays that host" \
   "gitlab.com/acme/fleet-register" "$(XDG_CONFIG_HOME="$PX" hero_register_pin "$F")"
 XDG_CONFIG_HOME="$PX" hero_register_pin "$TMP/nofleet" >/dev/null; check "register-pin: an unpinned root is rc 1" "1" "$?"
 XDG_CONFIG_HOME="$TMP/no-such-xdg" hero_register_pin "$F" >/dev/null; check "register-pin: no pin file is rc 1" "1" "$?"
+check "require-pin: a pinned root prints the pin" \
+  "gitlab.com/acme/fleet-register" "$(XDG_CONFIG_HOME="$PX" hero_require_register_pin "$F")"
+XDG_CONFIG_HOME="$PX" hero_require_register_pin "$TMP" >/dev/null 2>&1; check "require-pin: an unpinned root is rc 1" "1" "$?"
+TMPP="$(cd "$TMP" && pwd -P)"
+check "require-pin: the error names the file and the exact line to add" \
+  "1|1" "$(err=$(XDG_CONFIG_HOME="$PX" hero_require_register_pin "$TMP" 2>&1 >/dev/null); printf '%s|%s' "$(printf '%s\n' "$err" | grep -c "add this line to $PX/wayfare/registers")" "$(printf '%s\n' "$err" | grep -cx "  $TMPP HOST/OWNER/NAME")")"
+mkdir -p "$TMP/sp ace"
+check "require-pin: a root with whitespace is told it cannot be pinned" \
+  "1" "$(XDG_CONFIG_HOME="$PX" hero_require_register_pin "$TMP/sp ace" 2>&1 >/dev/null | grep -c "cannot be pinned")"
+rmdir "$TMP/sp ace"
+# A folder name is untrusted: the hint's command must not run what it carries.
+EVIL="$TMP/f'\$(touch\${IFS}$TMP/PWNED)'x"; mkdir -p "$EVIL"
+HINT=$(XDG_CONFIG_HOME="$PX" hero_require_register_pin "$EVIL" 2>&1 >/dev/null | sed -n 's/.*origin (\(git -C .* remote get-url origin\)).*/\1/p')
+(cd "$TMP" && eval "$HINT" >/dev/null 2>&1)
+check "require-pin: a quote in the root does not break out of the hint" "no" "$([ -e "$TMP/PWNED" ] && echo yes || echo no)"
+check "require-pin: the hint still names the register" "1" "$(printf '%s' "$HINT" | grep -c 'remote get-url origin')"
+rm -rf "$EVIL" "$TMP/PWNED"
+cp "$PX/wayfare/registers" "$TMP/pins.bak"; chmod 000 "$PX/wayfare/registers"
+if [ ! -r "$PX/wayfare/registers" ]; then
+  check "require-pin: an unreadable pin file is named, not reported as no pin" \
+    "1|0" "$(err=$(XDG_CONFIG_HOME="$PX" hero_require_register_pin "$F" 2>&1 >/dev/null); printf '%s|%s' "$(printf '%s\n' "$err" | grep -c 'cannot read the pin file')" "$(printf '%s\n' "$err" | grep -c 'add this line')")"
+fi
+chmod 600 "$PX/wayfare/registers"
+# The lookup is by physical path, and by the whole path, never a prefix.
+ln -s "$F" "$TMP/flink"
+check "register-pin: a symlinked root finds the physical root's pin" \
+  "gitlab.com/acme/fleet-register" "$(XDG_CONFIG_HOME="$PX" hero_register_pin "$TMP/flink")"
+printf '%s-other github.com/acme/fleet-register\n' "$F" > "$PX/wayfare/registers"
+XDG_CONFIG_HOME="$PX" hero_register_pin "$F" >/dev/null; check "register-pin: a sibling's pin is not a prefix match" "1" "$?"
+printf '%s github.com/acme/fleet-register\n' "$TMP/flink" > "$PX/wayfare/registers"
+XDG_CONFIG_HOME="$PX" hero_register_pin "$F" >/dev/null; check "register-pin: a pin written through a symlink does not pin" "1" "$?"
+rm -f "$TMP/flink" "$TMP/pins.bak"
 rm -rf "$PX"
 
 # The walk covers ancestors, not just the folder holding .fleet/.

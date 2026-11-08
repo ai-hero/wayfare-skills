@@ -32,7 +32,7 @@ SCAN="$(dirname "$HERO_LIB")/fleet-scan.sh"
 FLEET_ROOT=$(hero_fleet_root); rc=$?
 if [ "$rc" = 0 ]; then
   echo "FLEET_ROOT=$FLEET_ROOT"
-  hero_register_pin "$FLEET_ROOT" >/dev/null || echo "UNPINNED"
+  hero_require_register_pin "$FLEET_ROOT" >/dev/null || echo "UNPINNED"
   hero_fleet_repos "$FLEET_ROOT"
 elif [ "$rc" = 2 ]; then
   echo "MAP_UNREADABLE"
@@ -44,12 +44,14 @@ fi
 > Each bash block below runs in a fresh shell, so re-source `hero-lib.sh` at the
 > top of any block that calls a `hero_*` function.
 
-`MAP_UNREADABLE` → STOP. `.fleet/FLEET.md` exists but is not a readable file;
+`MAP_UNREADABLE` → STOP. `.fleet/FLEET.md` exists but is not a readable file, or
+the folder still holds only a top-level `FLEET.md`, which is no longer read;
 report the error above as the finding. It is never "no map".
 
-`UNPINNED` → report it beside the drift: this machine has no register pin, so a
-fork of the register could vouch for itself. `wayfare:wayfare-sync-fleet` writes
-the pin.
+`UNPINNED` → STOP. The pin is required, so the review below exits 2 without it.
+Quote the line the error above names (`FLEET_ROOT HOST/OWNER/NAME`, with the
+placeholder left for the person to fill from the register's `origin`) and offer
+`wayfare:wayfare-sync-fleet`, which writes the pin after confirming it.
 
 `NO_FLEET` → STOP. There is no map to review. Report that fact, say the map is
 read from `.fleet/FLEET.md` (a missing register clone is the usual cause), and

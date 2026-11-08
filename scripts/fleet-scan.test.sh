@@ -29,6 +29,11 @@ check() { # name expected actual
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 F="$(cd "$TMP" && pwd -P)/fleet"
+# Never the developer's real pin file.
+export XDG_CONFIG_HOME="$TMP/xdg"
+PINS="$XDG_CONFIG_HOME/wayfare/registers"
+mkdir -p "${PINS%/*}"
+pin() { printf '%s github.com/acme/fleet-register\n' "$1" >> "$PINS"; }
 
 mkrepo() { # name [compose-file [content]]
   mkdir -p "$F/$1/.git" "$F/$1/.plans/inbox"
@@ -178,6 +183,18 @@ cat > "$F/.fleet/FLEET.md" <<'EOM'
 - group: apps
 EOM
 
+# The register pin is required: an unpinned root is refused before any row is
+# read, and the error is the exact line to add.
+ERR=$("$SCAN" "$F" --review 2>&1 >/dev/null); RC=$?
+check "review: an unpinned fleet root exits 2" "2" "$RC"
+check "review: the unpinned error names the pin file and the line to add" \
+  "1|1" "$(printf '%s\n' "$ERR" | grep -c "add this line to $PINS")|$(printf '%s\n' "$ERR" | grep -cx "  $F HOST/OWNER/NAME")"
+check "review: an unpinned root prints no findings" "" "$("$SCAN" "$F" --review 2>/dev/null)"
+pin /elsewhere
+"$SCAN" "$F" --review >/dev/null 2>&1
+check "review: another root's pin does not pin this one" "2" "$?"
+pin "$F"
+
 OUT=$("$SCAN" "$F" --review); RC=$?
 check "review: findings exit 1" "1" "$RC"
 check "review: every finding, sorted" \
@@ -202,8 +219,7 @@ check "review: HERO.md beside .fleet/ exits 2" "2" "$?"
 rm "$F/HERO.md"
 
 # A map inside a git work tree is a clone's content, and the message must say
-# that rather than blame a HERO.md that is not there. Both spellings: the
-# legacy top-level FLEET.md is still read.
+# that rather than blame a HERO.md that is not there.
 WT="$TMP/wtfleet"; mkdir -p "$WT/.git" "$WT/.fleet"; printf '## Repos\n' > "$WT/.fleet/FLEET.md"
 WTERR=$("$SCAN" "$WT" --review 2>&1 >/dev/null); WTRC=$?
 check "review: a .fleet/FLEET.md inside a git work tree exits 2" "2" "$WTRC"
@@ -211,16 +227,22 @@ check "review: the work-tree refusal names the work tree, not HERO.md" \
   "1 0" "$(printf '%s\n' "$WTERR" | grep -c 'inside a git work tree') $(printf '%s\n' "$WTERR" | grep -c 'HERO.md')"
 rm -rf "$WT/.fleet"; printf '## Repos\n' > "$WT/FLEET.md"
 "$SCAN" "$WT" --review >/dev/null 2>&1
-check "review: a legacy FLEET.md inside a git work tree exits 2" "2" "$?"
+check "review: a top-level FLEET.md inside a git work tree exits 2" "2" "$?"
 rm -rf "$WT"
 
-# The legacy top-level FLEET.md is read while .fleet/FLEET.md is absent, and
-# --review says so. Delete with the fallback in hero_fleet_map.
-LG="$TMP/legacyfleet"; mkdir -p "$LG"; printf '# Fleet\n\n## Fleet\n\n- name: t\n' > "$LG/FLEET.md"
+# A top-level FLEET.md is never read: alone it is no map, and the refusal
+# names the move; beside .fleet/FLEET.md it is named for deletion.
+LG="$(cd "$TMP" && pwd -P)/legacyfleet"; mkdir -p "$LG"; printf '# Fleet\n\n## Fleet\n\n- name: t\n' > "$LG/FLEET.md"
+pin "$LG"
 LGERR=$("$SCAN" "$LG" --review 2>&1 >/dev/null); LGRC=$?
-check "review: a legacy top-level FLEET.md still reviews" "0" "$LGRC"
-check "review: the legacy read is named on stderr" \
-  "1" "$(printf '%s\n' "$LGERR" | grep -c 'move it into the register')"
+check "review: a top-level FLEET.md alone exits 2" "2" "$LGRC"
+check "review: the refusal says the top-level map is no longer read" \
+  "1" "$(printf '%s\n' "$LGERR" | grep -c "$LG/FLEET.md is no longer read; move it into the register")"
+mkdir -p "$LG/.fleet"; printf '# Fleet\n\n## Fleet\n\n- name: t\n' > "$LG/.fleet/FLEET.md"
+LGERR=$("$SCAN" "$LG" --review 2>&1 >/dev/null); LGRC=$?
+check "review: .fleet/FLEET.md beside a leftover copy reviews" "0" "$LGRC"
+check "review: the leftover copy is named once for deletion" \
+  "1" "$(printf '%s\n' "$LGERR" | grep -c "ignoring $LG/FLEET.md")"
 rm -rf "$LG"
 
 # The first sync: a FLEET.md with no rows yet claims nothing, so review has
@@ -338,7 +360,7 @@ check "review: run from inside a plain .fleet/ exits 2" "2" "$?"
 check "review: run from a plain .fleet/sub exits 2" "2" "$?"
 rm -rf "$F/.fleet/sub"
 
-# Present but unreadable is an error, never the legacy copy.
+# Present but unreadable is an error, even with a top-level copy beside it.
 UR="$TMP/unreadable"; mkdir -p "$UR/.fleet/FLEET.md"; printf '## Repos\n' > "$UR/FLEET.md"
 URERR=$("$SCAN" "$UR" --review 2>&1 >/dev/null); URRC=$?
 check "review: a .fleet/FLEET.md directory exits 2 and names the file" \
@@ -349,7 +371,7 @@ rm -rf "$UR"
 
 # Real checkouts: `git check-ignore` needs one. A `.plans/` in the user's
 # global excludes would hide PLANS_NOT_EXCLUDED here, so read no user config.
-export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null XDG_CONFIG_HOME="$TMP/xdg"
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
 G="$(cd "$TMP" && pwd -P)/inboxfleet"
 mkgit() { # name group-is-fleet(0|1) [plans: inbox|bare|none] [excluded: 0|1]
   git init -q "$G/$1" 2>/dev/null
@@ -369,7 +391,7 @@ mkgit parked     0 bare  1
 mkgit parkedleak 0 bare  0
 mkdir -p "$G/fakegit/.git" "$G/fakegit/.plans"
 touch "$G/fakegit/HERO.md"; printf '## Fleet\n' > "$G/fakegit/AGENTS.md"
-mkdir -p "$G/.fleet"
+mkdir -p "$G/.fleet"; pin "$G"
 cat > "$G/.fleet/FLEET.md" <<'EOM'
 ## Repos
 

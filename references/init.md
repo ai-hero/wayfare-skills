@@ -291,14 +291,14 @@ three states it is in: unset, `type: none`, or set.
 ```bash
 # reference — the template this repo was cloned from
 git log --reverse --format='%s' | head -3          # a template's initial commit often survives
-grep -n '^- template:' ../.fleet/FLEET.md ../FLEET.md 2>/dev/null   # the fleet names its template row (../FLEET.md: the legacy spelling)
+grep -n '^- template:' ../.fleet/FLEET.md 2>/dev/null   # the fleet names its template row
 
 # architecture — is the record here, or somewhere else?
 ls DESIGN.md docs/architecture* 2>/dev/null
 
 # infrastructure — IaC in this repo, or a sibling that holds it
 ls -d terraform infra deploy k8s helm charts 2>/dev/null
-grep -n '^### ' ../.fleet/FLEET.md ../FLEET.md 2>/dev/null | head -20
+grep -n '^### ' ../.fleet/FLEET.md 2>/dev/null | head -20
 ```
 
 **What to look for:**

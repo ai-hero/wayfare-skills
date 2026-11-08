@@ -95,7 +95,7 @@ BASELINE = HERE / "assets" / "compliance"               # generic register, publ
 ROOT = None
 REGISTER = None
 REGISTER_REPO = None
-MAP = None          # the map configure() read: <root>/.fleet/FLEET.md, or the legacy top-level file
+MAP = None          # the map configure() read: <root>/.fleet/FLEET.md
 TEMPLATE = None
 REPO_DIR = {}
 _OVERLAY_LOADED = set()
@@ -152,20 +152,22 @@ def in_git_worktree(d):
 
 class FleetMapError(Exception):
     """.fleet/FLEET.md exists but cannot be read as a file: a directory, a
-    dangling link, no read permission. Never "no map": falling back to the
-    legacy copy or to a baseline-only run would hide a broken register."""
+    dangling link, no read permission. Never "no map": a baseline-only run
+    would hide a broken register."""
 
 
-_NOTED = set()   # legacy/ignoring notes already printed, once per process
+_NOTED = set()   # leftover-copy notes already printed, once per process
 
 
 def fleet_map(d, quiet=False):
     """The map's path for fleet folder d, or None; FleetMapError when it is
-    there but unreadable. The top-level FLEET.md is the layout before the map
-    moved into the register; it is read only while .fleet/FLEET.md is absent,
-    with a stderr note. hero_fleet_map (scripts/hero-lib.sh) and
-    analysis/ingest/fleet.py's fleet_map() hold the same rules, so retiring the
-    fallback is those three functions.
+    there but unreadable. A top-level FLEET.md is the layout before the map
+    moved into the register and is never read. Alone it raises FleetMapError
+    naming the move, never "no map": a folder still on that layout would
+    otherwise audit baseline-only and read greener for the overlay it dropped.
+    Beside .fleet/FLEET.md it earns a stderr note to delete it. hero_fleet_map
+    (scripts/hero-lib.sh) and analysis/ingest/fleet.py's fleet_map() hold the
+    same rules.
 
     A folder named .fleet is the register, never a fleet folder: without this,
     a walk from inside a register that is not a git checkout would take the
@@ -182,17 +184,14 @@ def fleet_map(d, quiet=False):
                             "checkout holding a real file")
     if new.exists():
         if not new.is_file() or not os.access(new, os.R_OK):
-            raise FleetMapError(f"{new} exists but is not a readable file; fix the register checkout "
-                                "(the legacy top-level FLEET.md is not read while it is there)")
+            raise FleetMapError(f"{new} exists but is not a readable file; fix the register checkout")
         if legacy.is_file() and not quiet and ("ignoring", legacy) not in _NOTED:
             _NOTED.add(("ignoring", legacy))
             print(f"fleet_map: ignoring {legacy}; the map is {new}, so delete the old copy", file=sys.stderr)
         return new
     if legacy.is_file():
-        if not quiet and ("legacy", legacy) not in _NOTED:
-            _NOTED.add(("legacy", legacy))
-            print(f"fleet_map: reading legacy {legacy}; move it into the register as {new}", file=sys.stderr)
-        return legacy
+        raise FleetMapError(f"{legacy} is no longer read; move it into the register as {new} "
+                            "(docs/FLEET-MD.md, Moving from a top-level FLEET.md)")
     return None
 
 
@@ -412,19 +411,13 @@ def configure(root=None, load_overlay=True, no_fleet=False, no_fleet_flag=True):
     # escaping value would make consistency.py write outside it.
     if root not in REGISTER.parents:
         sys.exit(f"FLEET.md register: {reg} resolves outside the fleet ({REGISTER})")
-    # A map inside the register names the register only as itself. Anything
-    # else lets a register PR point `register:` at a sibling whose main its
-    # author controls, plus a matching register-repo, and the audit would
-    # import that sibling's checkers.py as reviewed.
-    if MAP.parent.name == ".fleet" and REGISTER != (root / ".fleet").resolve():
+    # The map lives in the register, so it names the register only as itself.
+    # Anything else lets a register PR point `register:` at a sibling whose
+    # main its author controls, plus a matching register-repo, and the audit
+    # would import that sibling's checkers.py as reviewed.
+    if REGISTER != (root / ".fleet").resolve():
         sys.exit(f"FLEET.md register: {reg} must be .fleet/ — the map lives in {root / '.fleet'}, "
                  "which is the register; delete the key or set it to .fleet/")
-    # A mapped-but-missing register is the one state that must not run: the
-    # audit would proceed baseline-only and report a fleet that got greener
-    # because its overlay — every check the fleet added on top of the five in
-    # the baseline — was simply not there.
-    if not REGISTER.is_dir():
-        sys.exit(f"register checkout missing: FLEET.md names `register: {reg}` but {REGISTER} does not exist — clone it or fix the key")
     TEMPLATE = fields.get("template") or None
     names = []
     for row in repos:
@@ -535,18 +528,24 @@ def _resolve_register(reg):
             problems.append(f"origin is {got} but FLEET.md register-repo names {REGISTER_REPO}")
         pin = pinned_register(ROOT)
         seen = remote_identity(url)
-        if pin is None:
+        if pin is None and re.search(r"\s", str(ROOT)):
+            problems.append(f"this machine pins no register for {ROOT}, and a path with whitespace cannot "
+                            "be pinned; move the fleet folder to a path without it")
+        elif pin is None and os.path.exists(pin_file()) and not os.access(pin_file(), os.R_OK):
+            problems.append(f"cannot read the pin file {pin_file()}; fix its permissions")
+        elif pin is None:
             # Nothing from the map or the remote reaches the command: either
             # could be a fork's, and a quote in it would break out of the line.
             shown = seen if re.fullmatch(r"[a-z0-9.-]+(/[a-z0-9._-]+)+", seen) else "(not shown: unexpected characters)"
-            print(f"audit: WARNING: the register for {ROOT} is not pinned, so a fork of it carrying its "
-                  f"own map could vouch for itself. This register's origin is {shown}. Confirm that is "
-                  "your fleet's register, not a fork, then pin it once on this machine, writing its "
-                  "HOST/OWNER/NAME in place of the placeholder:\n"
+            problems.append(f"this machine pins no register for {ROOT} ({pin_file()})")
+            print(f"audit: the register for {ROOT} is not pinned, so it reads UNREVIEWED: a fork of it "
+                  f"carrying its own map could vouch for itself. This register's origin is {shown}. "
+                  "Confirm that is your fleet's register, not a fork, then pin it once on this machine "
+                  f"by adding this line to {pin_file()}, with its HOST/OWNER/NAME in place of the "
+                  f"placeholder:\n  {ROOT} HOST/OWNER/NAME\nor run:\n"
                   f"  mkdir -p {shlex.quote(os.path.dirname(pin_file()))} && printf '%s %s\\n' "
-                  f"{shlex.quote(str(ROOT))} HOST/OWNER/NAME >> {shlex.quote(pin_file())}\n"
-                  "An unpinned register will read UNREVIEWED once the legacy top-level FLEET.md fallback "
-                  "is removed (docs/FLEET-MD.md).", file=sys.stderr)
+                  f"{shlex.quote(str(ROOT))} HOST/OWNER/NAME >> {shlex.quote(pin_file())}",
+                  file=sys.stderr)
         else:
             if seen != pin:
                 problems.append(f"origin is {seen} but this machine pins {pin} ({pin_file()})")

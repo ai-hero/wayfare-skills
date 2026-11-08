@@ -31,7 +31,8 @@ groups:                       # run in this order, steps in file order
       - installer:            # skipped when `check` is a command on PATH
           name: Claude Code
           check: claude
-          run: curl -fsSL https://claude.ai/install.sh | bash
+          # Not a GitHub Actions step: semgrep's gha rule keys on any `run:`.
+          run: curl -fsSL https://claude.ai/install.sh | bash  # nosemgrep: yaml.github-actions.security.gha-curl-pipe-shell.gha-curl-pipe-shell
 
   - name: dev-tools
     title: Container runtime and dev tools

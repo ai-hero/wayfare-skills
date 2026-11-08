@@ -157,7 +157,8 @@ In short, and only as that skill says:
   `HOST/OWNER/REGISTER` and a row `NAME` give `git@HOST:OWNER/NAME.git`. Never
   take the owner from the map's `org:`, and show every URL in full before
   cloning.
-- With `UNPINNED`, a `file…` pin, or `ORG_MISMATCH`, offer no clone.
+- With `UNPINNED`, a `file…` pin, or `ORG_MISMATCH`, offer no clone. Unpinned,
+  the review above exits 2 and names the pin line to add.
 - Report `ABSENT_OUTSIDE` rows and never clone them or write there.
 
 ```bash

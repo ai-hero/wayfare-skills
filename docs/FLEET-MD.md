@@ -56,14 +56,13 @@ register is `file` followed by its absolute path), with `#` starting a comment.
 A two-part `OWNER/NAME`, the first spelling, reads as `github.com/OWNER/NAME`.
 `hero_register_pin` and `audit.py`'s `pinned_register()` read it. An `origin`
 whose host, owner or name differs from the pin, or a `register-repo:` that
-differs from its owner and name, makes the register UNREVIEWED. A missing pin
-prints a warning with the register's observed `origin` and a pin command whose
-`HOST/OWNER/NAME` is a placeholder you fill in once you have confirmed it is
-your fleet's register; nothing from the map or the remote is pasted into the
-command. It does not fail yet; it becomes required, an unpinned register reading
-UNREVIEWED, in the same release that removes the legacy top-level fallback
-below. The pin is also where `sync` takes the host and owner it clones from,
-never the map's `org:`.
+differs from its owner and name, makes the register UNREVIEWED. **The pin is
+required.** With no line for the fleet root, the audit reads the register
+UNREVIEWED and `fleet-scan.sh --review` exits 2; both print the exact line to
+add, `ROOT HOST/OWNER/NAME`, with `HOST/OWNER/NAME` a placeholder you fill in
+once you have confirmed the register's `origin` is your fleet's register.
+Nothing from the map or the remote is pasted into it. The pin is also where
+`sync` takes the host and owner it clones from, never the map's `org:`.
 
 ### A new machine
 
@@ -82,17 +81,15 @@ never the map's `org:`.
 
 ### Moving from a top-level FLEET.md
 
-The map used to be a local `FLEET.md` at the top of the fleet folder. Copy it
-into the register (`cp FLEET.md .fleet/FLEET.md`), commit and PR it there, then
-delete the top-level copy. Until `.fleet/FLEET.md` exists, every reader still
-reads the top-level file, with a one-line stderr note naming the move; once both
-exist, `.fleet/FLEET.md` wins and the note names the leftover copy. Each note
-prints once per process. A `.fleet/FLEET.md` that exists but is not a readable
-file (a directory, a dangling link, no read permission) is an error, never a
-reason to read the old copy or to report no fleet. The fallback lives in three
-functions, `hero_fleet_map` in `scripts/hero-lib.sh` and the two Python
-`fleet_map()`s in `scripts/audit.py` and `analysis/ingest/fleet.py`, to delete
-once every operator has moved.
+The map used to be a local `FLEET.md` at the top of the fleet folder. It is no
+longer read: a folder holding only that file is not a fleet, and
+`fleet-scan.sh --review` says to move it. Copy it into the register
+(`cp FLEET.md .fleet/FLEET.md`), commit and PR it there, then delete the
+top-level copy. While both exist, `.fleet/FLEET.md` is read and a one-line
+stderr note, once per process, names the leftover copy to delete. A
+`.fleet/FLEET.md` that exists but is not a readable file (a directory, a
+dangling link, no read permission) is an error, never a reason to report no
+fleet.
 
 Three things it is for:
 
@@ -151,9 +148,7 @@ Rules:
    to; `template-port` is recorded for the operator. `register` names the
    checkout holding the fleet's compliance overlay. With the map in `.fleet/` it
    may only be `.fleet/` (the default), and any other value stops the engine
-   (see *Who can steer it*); a legacy top-level map may name another folder, and
-   a mapped register that is not cloned stops the engine rather than running
-   baseline-only. `register-repo` names that checkout's `origin` as
+   (see *Who can steer it*). `register-repo` names that checkout's `origin` as
    `OWNER/NAME`; it is how a fresh fleet folder knows what to clone, and the
    engine compares it to the checkout's `origin` URL. The register is reviewed
    the way code is: it has a private `origin` remote whose `main` takes changes
@@ -201,10 +196,11 @@ Rules:
 
 | Function (`scripts/hero-lib.sh`) | Returns |
 | -- | -- |
-| `hero_fleet_map DIR` | the map's path for fleet folder `DIR`: `DIR/.fleet/FLEET.md`, or the legacy `DIR/FLEET.md` with a stderr note (once per shell) while the first is absent; rc 1 when neither exists or `DIR` is itself named `.fleet`, rc 2 when `.fleet/FLEET.md` exists but is not a readable regular file, or either `.fleet` or `.fleet/FLEET.md` is a symlink (git reviews a link's target string, not what it points at) |
+| `hero_fleet_map DIR` | the map's path for fleet folder `DIR`: `DIR/.fleet/FLEET.md`, never a top-level `DIR/FLEET.md` (named once per shell for deletion when both exist); rc 1 when `.fleet/FLEET.md` does not exist or `DIR` is itself named `.fleet`, rc 2 when `.fleet/FLEET.md` exists but is not a readable regular file, or either `.fleet` or `.fleet/FLEET.md` is a symlink (git reviews a link's target string, not what it points at) |
 | `hero_fleet_root [START]` | nearest ancestor of `START` (default `$PWD`) with a map (`hero_fleet_map`) and no `HERO.md` beside `.fleet/`, outside any git work tree (`.git` on the folder or an ancestor other than `$HOME`); a committed map is passed over, a walk from inside `.fleet/` (a git checkout or not) lands on its parent, and rc 2 means the nearest trusted folder's map is unreadable |
 | `hero_at_fleet_root [DIR]` | true when `DIR` (default `$PWD`) has a map, no `HERO.md`, and sits outside any git work tree: a fleet folder, not a repo; rc 2 for an unreadable map |
 | `hero_register_pin FLEET_ROOT` | the register `HOST/OWNER/NAME` this machine pins for the fleet (a two-part pin as `github.com/…`), or rc 1 |
+| `hero_require_register_pin FLEET_ROOT` | `hero_register_pin`, or rc 1 with the pin file and the exact line to add on stderr |
 | `hero_fleet_step0 [DIR]` | Step 0's one form, `hero_fleet_step0 \|\| exit 1`: prints `FLEET_ROOT` at a fleet folder, nothing in a repo, and `FLEET_MAP_BROKEN` with rc 2 for an unreadable map |
 | `hero_fleet_field KEY [FLEET_ROOT]` | a `## Fleet` value |
 | `hero_fleet_repo_field NAME KEY [FLEET_ROOT]` | a value from `### NAME` under `## Repos` |

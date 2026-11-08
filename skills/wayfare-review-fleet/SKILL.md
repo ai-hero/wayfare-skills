@@ -47,9 +47,10 @@ fi
 `MAP_UNREADABLE` → STOP. `.fleet/FLEET.md` exists but is not a readable file;
 report the error above as the finding. It is never "no map".
 
-`UNPINNED` → report it beside the drift: this machine has no register pin, so a
-fork of the register could vouch for itself. `wayfare:wayfare-sync-fleet` writes
-the pin.
+`UNPINNED` → STOP. The pin is required, so the review below exits 2 without it.
+Quote the line its error names (`FLEET_ROOT HOST/OWNER/NAME`, with the
+placeholder left for the person to fill from the register's `origin`) and offer
+`wayfare:wayfare-sync-fleet`, which writes the pin after confirming it.
 
 `NO_FLEET` → STOP. There is no map to review. Report that fact, say the map is
 read from `.fleet/FLEET.md` (a missing register clone is the usual cause), and

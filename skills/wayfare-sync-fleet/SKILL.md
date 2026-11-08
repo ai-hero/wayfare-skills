@@ -70,10 +70,10 @@ guess writes a registry into someone's home directory.
 `UNPINNED` → offer to pin the register on this machine, after reading its
 `origin` and confirming it is the fleet's register
 (`git -C "$FLEET_ROOT/.fleet" remote get-url origin`). The pin lives outside the
-register, so a fork carrying its own map cannot vouch for itself; the audit
-warns while it is missing and will read the register UNREVIEWED once the legacy
-top-level fallback is removed. On confirmation, run, with `HOST/OWNER/NAME`
-typed from that `origin` (lowercase, no `.git`: `git@github.com:acme/reg.git` is
+register, so a fork carrying its own map cannot vouch for itself. It is
+required: without it the audit reads the register UNREVIEWED and
+`"$SCAN" … --review` exits 2. On confirmation, run, with `HOST/OWNER/NAME` typed
+from that `origin` (lowercase, no `.git`: `git@github.com:acme/reg.git` is
 `github.com/acme/reg`), never copied from the map:
 
 ```bash
@@ -90,10 +90,6 @@ A map whose `## Fleet` `org:` differs from the pinned OWNER is also a finding
 (`ORG_MISMATCH`): report both values and offer no clone until the person says
 which is right. A map change that moves `org:` is exactly what would send every
 new machine's clones to another owner.
-
-`MAP=` ending in a top-level `FLEET.md` (not `.fleet/FLEET.md`) is the legacy
-layout. Offer the move from the standard's *Moving from a top-level FLEET.md*
-before converging, and write the result to `.fleet/FLEET.md`.
 
 ## Converge FLEET.md with the folder
 

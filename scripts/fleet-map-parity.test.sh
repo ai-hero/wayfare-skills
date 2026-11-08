@@ -5,8 +5,8 @@
 
 # The fleet map's path is resolved by three functions that must agree:
 # hero_fleet_map (scripts/hero-lib.sh), fleet_map() in scripts/audit.py and
-# fleet_map() in analysis/ingest/fleet.py. A case where one reads the legacy
-# copy and another reports an error is a fleet that the skills, the audit and
+# fleet_map() in analysis/ingest/fleet.py. A case where one reads a top-level
+# FLEET.md and another reports no map is a fleet that the skills, the audit and
 # the analysis each see differently, with no message. Each case runs all three
 # on one fixture and compares what they found and which note they printed.
 
@@ -84,15 +84,15 @@ agree() { # NAME DIR EXPECTED
 D="$WORK/new"; mkdir -p "$D/.fleet"; printf '## Fleet\n' > "$D/.fleet/FLEET.md"
 agree "new only" "$D" "new -"
 D="$WORK/legacy"; mkdir -p "$D"; printf '## Fleet\n' > "$D/FLEET.md"
-agree "legacy only" "$D" "legacy legacy"
+agree "a top-level FLEET.md alone is no map" "$D" "none -"
 D="$WORK/both"; mkdir -p "$D/.fleet"; printf '## Fleet\n' > "$D/.fleet/FLEET.md"; printf '## Fleet\n' > "$D/FLEET.md"
 agree "both" "$D" "new ignoring"
 D="$WORK/empty"; mkdir -p "$D/.fleet"
 agree "an empty .fleet/" "$D" "none -"
 D="$WORK/dir"; mkdir -p "$D/.fleet/FLEET.md"; printf '## Fleet\n' > "$D/FLEET.md"
-agree "a .fleet/FLEET.md directory, legacy present" "$D" "error -"
+agree "a .fleet/FLEET.md directory, top-level copy present" "$D" "error -"
 D="$WORK/dangling"; mkdir -p "$D/.fleet"; ln -s "$D/.fleet/nowhere" "$D/.fleet/FLEET.md"; printf '## Fleet\n' > "$D/FLEET.md"
-agree "a dangling .fleet/FLEET.md link, legacy present" "$D" "error -"
+agree "a dangling .fleet/FLEET.md link, top-level copy present" "$D" "error -"
 D="$WORK/reallink"; mkdir -p "$D/.fleet"; printf '## Fleet\n' > "$WORK/other.md"; ln -s "$WORK/other.md" "$D/.fleet/FLEET.md"
 agree "a .fleet/FLEET.md symlink to a readable map" "$D" "error -"
 D="$WORK/linkedreg"; mkdir -p "$D" "$WORK/realreg"; printf '## Fleet\n' > "$WORK/realreg/FLEET.md"; ln -s "$WORK/realreg" "$D/.fleet"

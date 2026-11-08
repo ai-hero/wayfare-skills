@@ -618,12 +618,12 @@ hero_in_git_worktree() { # DIR
 
 # The map's path for fleet folder DIR. rc 0 found; 1 no map; 2 DIR/.fleet/FLEET.md
 # exists but is not a readable regular file (a directory, a symlink, no read
-# permission) or DIR/.fleet is a symlink, which is an error and never "no map": falling back to the
-# legacy copy or to no fleet would hide a broken register. The top-level
-# FLEET.md is the layout before the map moved into the register; it is read
-# only while .fleet/FLEET.md is absent, with a stderr note. The Python
-# fleet_map()s in scripts/audit.py and analysis/ingest/fleet.py hold the same
-# rules, so retiring the fallback is those three functions.
+# permission) or DIR/.fleet is a symlink, which is an error and never "no map":
+# reporting no fleet would hide a broken register. A top-level DIR/FLEET.md is
+# the layout before the map moved into the register and is never read: alone it
+# is no map, and beside .fleet/FLEET.md it earns a stderr note to delete it. The
+# Python fleet_map()s in scripts/audit.py and analysis/ingest/fleet.py hold the
+# same rules.
 #
 # A folder named .fleet is the register, never a fleet folder: without that, a
 # walk from inside a register that is not a git checkout takes the register
@@ -647,7 +647,7 @@ hero_fleet_map() { # DIR
   fi
   if [ -e "$new" ]; then
     if [ ! -f "$new" ] || [ ! -r "$new" ]; then
-      echo "hero_fleet_map: $new exists but is not a readable file; fix the register checkout (the legacy top-level FLEET.md is not read while it is there)" >&2
+      echo "hero_fleet_map: $new exists but is not a readable file; fix the register checkout" >&2
       return 2
     fi
     if [ -f "$old" ] && [ -z "${HERO_FLEET_NOTED:-}" ]; then
@@ -655,13 +655,6 @@ hero_fleet_map() { # DIR
       HERO_FLEET_NOTED=1
     fi
     printf '%s' "$new"; return 0
-  fi
-  if [ -f "$old" ]; then
-    if [ -z "${HERO_FLEET_NOTED:-}" ]; then
-      echo "hero_fleet_map: reading legacy $old; move it into the register as $new" >&2
-      HERO_FLEET_NOTED=1
-    fi
-    printf '%s' "$old"; return 0
   fi
   return 1
 }
@@ -750,6 +743,27 @@ hero_register_pin() { # FLEET_ROOT
   v=${v%/}; v=${v%.git}
   case "$v" in file*) ;; */*/*) ;; */*) v="github.com/$v" ;; esac
   printf '%s\n' "$v"
+}
+
+# hero_register_pin, required: prints the pin, or names on stderr the exact
+# line to add to the pin file and returns 1. The line carries a HOST/OWNER/NAME
+# placeholder, never the register's origin or the map's register-repo: either
+# could be a fork's, and pasting it in would let the fork pin itself.
+hero_require_register_pin() { # FLEET_ROOT
+  local root file
+  hero_register_pin "$1" && return 0
+  root=$(cd "$1" 2>/dev/null && pwd -P) || root=$1
+  file="${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"
+  case "$root" in
+    *[[:space:]]*)
+      echo "hero_require_register_pin: this machine pins no register for $root, and a path with whitespace cannot be pinned; move the fleet folder to a path without it" >&2
+      return 1 ;;
+  esac
+  {
+    echo "hero_require_register_pin: this machine pins no register for $root. Read the register's origin (git -C '$root/.fleet' remote get-url origin), confirm it is your fleet's register and not a fork, then add this line to $file with HOST/OWNER/NAME replaced by that origin (lowercase, no .git):"
+    echo "  $root HOST/OWNER/NAME"
+  } >&2
+  return 1
 }
 
 # A fleet-level `- key: value` from the `## Fleet` section.

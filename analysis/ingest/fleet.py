@@ -57,9 +57,9 @@ _NOTED = set()
 def fleet_map(d, quiet=False):
     """The map's path for fleet folder d, or None; FleetMapError when it is
     there but unreadable. Mirrors audit.py's fleet_map and hero-lib.sh's
-    hero_fleet_map, legacy fallback and notes included: the top-level FLEET.md
-    is read only while .fleet/FLEET.md is absent. A folder named .fleet is the
-    register and never a fleet folder. Retire the fallback in all three."""
+    hero_fleet_map: a top-level FLEET.md is never read, only named in a note
+    when it sits beside .fleet/FLEET.md. A folder named .fleet is the register
+    and never a fleet folder."""
     if os.path.basename(os.path.normpath(d)) == ".fleet":
         return None
     new, legacy = os.path.join(d, ".fleet", "FLEET.md"), os.path.join(d, "FLEET.md")
@@ -68,17 +68,11 @@ def fleet_map(d, quiet=False):
                             "a real checkout holding a real file")
     if os.path.lexists(new):
         if not os.path.isfile(new) or not os.access(new, os.R_OK):
-            raise FleetMapError(f"{new} exists but is not a readable file; fix the register checkout "
-                                "(the legacy top-level FLEET.md is not read while it is there)")
+            raise FleetMapError(f"{new} exists but is not a readable file; fix the register checkout")
         if os.path.isfile(legacy) and not quiet and ("ignoring", legacy) not in _NOTED:
             _NOTED.add(("ignoring", legacy))
             print(f"ingest/fleet.py: ignoring {legacy}; the map is {new}, so delete the old copy", file=sys.stderr)
         return new
-    if os.path.isfile(legacy):
-        if not quiet and ("legacy", legacy) not in _NOTED:
-            _NOTED.add(("legacy", legacy))
-            print(f"ingest/fleet.py: reading legacy {legacy}; move it into the register as {new}", file=sys.stderr)
-        return legacy
     return None
 
 

@@ -298,3 +298,23 @@ skill posts. What still needs judgment runs on demand, not on every commit.
   Homebrew, `gh`, `uv`, Claude Code, wayfare, the register clone) stays a manual
   list in the schema doc, because the skill cannot install itself. Only
   `macos-arm64` is a platform so far.
+
+### 2026-11-08: The register pin is required, and the top-level FLEET.md is no longer read
+
+- Context: the 2026-11-07 move into the register kept a fallback to a top-level
+  `FLEET.md` and let a machine with no register pin only warn, both until every
+  operator had moved. Every operator has moved.
+- Decision: `hero_fleet_map` and the two Python `fleet_map()`s read only
+  `.fleet/FLEET.md`. A top-level `FLEET.md` alone is no map; beside
+  `.fleet/FLEET.md` it earns a one-line note to delete it and is never read. A
+  fleet root with no line in `${XDG_CONFIG_HOME:-~/.config}/wayfare/registers`
+  is refused: `fleet-scan.sh --review` exits 2 and the audit reads the register
+  UNREVIEWED, and both print the exact line to add, `ROOT HOST/OWNER/NAME`, with
+  the register's identity left as a placeholder rather than copied from the map
+  or the remote, either of which could be a fork's.
+- Consequences: the gap the earlier decision accepted is closed: a cloned fork
+  of the register carrying its own map no longer vouches for itself on an
+  unpinned machine, because its `checkers.py` does not load there. A machine
+  that skipped the pin now gets no review and no reviewed overlay until it pins.
+  Fan-out (`hero_fleet_root`, Step 0) does not need the pin, so `sync` can still
+  find the fleet root to write the pin for.

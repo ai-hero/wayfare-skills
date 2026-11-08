@@ -91,11 +91,10 @@ is the fleet's.
   maps it ([docs/FLEET-MD.md](./docs/FLEET-MD.md)): the map lives in the
   register repo cloned at `.fleet/`, so read its path from `hero_fleet_map` (or
   one of the two Python `fleet_map()`s), never by spelling `FLEET.md` beside the
-  folder. Those three functions also hold the legacy top-level fallback, so
-  retiring it is those three. Every repo skill tests for the fleet in Step 0 and
-  fans out instead of running against the folder. New skills get the check from
-  `scripts/new-skill.sh`. An agent that needs something from a sibling sends a
-  message rather than reaching into that repo directly; see
+  folder. A top-level `FLEET.md` is never read. Every repo skill tests for the
+  fleet in Step 0 and fans out instead of running against the folder. New skills
+  get the check from `scripts/new-skill.sh`. An agent that needs something from
+  a sibling sends a message rather than reaching into that repo directly; see
   [docs/MESSAGES.md](./docs/MESSAGES.md).
 
 - **Work is concurrent, so rebase before you judge.** Other sessions and other

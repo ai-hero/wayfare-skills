@@ -4,9 +4,9 @@
 # All Rights Reserved.
 
 # analysis/ingest/fleet.py resolves ROOT at import, by the same rule as
-# hero_fleet_root and audit.py's fleet_root: a folder holding a map
-# (.fleet/FLEET.md, or the legacy top-level FLEET.md) inside a git work tree is
-# a clone's content and is passed over.
+# hero_fleet_root and audit.py's fleet_root: a folder holding .fleet/FLEET.md
+# inside a git work tree is a clone's content and is passed over, and a
+# top-level FLEET.md is never a map.
 
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -54,12 +54,10 @@ check "fleet folder outside any work tree resolves" "$FLEET" "$(root_from "$FLEE
 check "a walk from inside the register lands on the fleet folder" "$FLEET" "$(root_from "$FLEET/.fleet/sub")"
 check "WAYFARE_FLEET_ROOT overrides" "$CLONE" "$(WAYFARE_FLEET_ROOT="$CLONE" root_from "$CLONE")"
 
-# The legacy top-level FLEET.md, read until .fleet/FLEET.md exists; delete with
-# the fallback in fleet_map().
-mv "$FLEET/.fleet/FLEET.md" "$FLEET/FLEET.md"
-check "a legacy top-level FLEET.md still resolves" "$FLEET" "$(root_from "$CLONE")"
-git -C "$CLONE" mv .fleet/FLEET.md FLEET.md
-check "a clone committing a legacy FLEET.md is passed over too" "$FLEET" "$(root_from "$CLONE")"
+cp "$FLEET/.fleet/FLEET.md" "$FLEET/FLEET.md"
+check "a leftover top-level copy beside .fleet/FLEET.md changes nothing" "$FLEET" "$(root_from "$CLONE")"
+rm "$FLEET/.fleet/FLEET.md"
+check "a top-level FLEET.md alone is no fleet" "" "$(root_from "$FLEET")"
 
 rm "$FLEET/FLEET.md"
 check "clone alone resolves no fleet" "" "$(root_from "$CLONE")"
@@ -72,8 +70,8 @@ printf '# Fleet\n\n## Fleet\n' > "$PLAIN/.fleet/FLEET.md"
 check "from a plain .fleet/ lands on its parent" "$PLAIN" "$(root_from "$PLAIN/.fleet")"
 check "from a plain .fleet/sub lands on the fleet folder" "$PLAIN" "$(root_from "$PLAIN/.fleet/sub")"
 
-# Present but unreadable stops the import with the file named, never the
-# legacy copy.
+# Present but unreadable stops the import with the file named, even with a
+# top-level copy beside it.
 rm "$PLAIN/.fleet/FLEET.md"; mkdir "$PLAIN/.fleet/FLEET.md"; printf '## Fleet\n' > "$PLAIN/FLEET.md"
 check "an unreadable .fleet/FLEET.md resolves no root" "" "$(root_from "$PLAIN")"
 ERR=$(cd "$PLAIN" && "$UV" run --quiet --no-project --with-requirements "$FLEET_PY" python -I -c '

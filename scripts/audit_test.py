@@ -948,12 +948,13 @@ def fleet_fixture(root, fleet_md, overlay=None, checkers=None):
     return root
 
 
-def review_register(root, remote=True, name="fx/register"):
+def review_register(root, remote=True, name="fx/register", pin=True):
     """Commit the fixture's `.fleet/` and, with `remote`, push it to a bare
-    `origin` at `name` and record `register-repo: name` in FLEET.md: the
-    reviewed state. With `remote=False` it stays unreviewed: the overlay's own
-    checks read MANUAL and checkers.py is not loaded. `name=None` pushes to
-    fx/register but writes no register-repo key."""
+    `origin` at `name`, record `register-repo: name` in FLEET.md and, with
+    `pin`, pin that origin for `root` on this machine: the reviewed state.
+    With `remote=False` it stays unreviewed: the overlay's own checks read
+    MANUAL and checkers.py is not loaded. `name=None` pushes to fx/register but
+    writes no register-repo key."""
     reg = root / ".fleet"
     if remote and name:
         fleet = reg / "FLEET.md"
@@ -971,6 +972,11 @@ def review_register(root, remote=True, name="fx/register"):
         git(reg, "remote", "add", "origin", str(bare))
         git(reg, "push", "-q", "origin", "main")
         git(reg, "fetch", "-q", "origin")
+        if pin:
+            pins = pathlib.Path(audit.pin_file())
+            pins.parent.mkdir(parents=True, exist_ok=True)
+            with pins.open("a") as f:
+                f.write(f"{pathlib.Path(root).resolve()} {audit.remote_identity(str(bare))}\n")
     return reg
 
 
@@ -1143,27 +1149,21 @@ class Configured(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertIsNone(audit.fleet_root(clone), "a committed top-level FLEET.md is not a fleet")
 
-    def test_legacy_map_is_read_with_a_note_until_the_register_has_one(self):
-        """Delete with the fallback in fleet_map()."""
+    def test_a_top_level_map_is_never_read(self):
+        """Alone it is no map; beside .fleet/FLEET.md it is named, once, for
+        deletion and never read."""
         audit._NOTED.clear()
         write(self.root, "FLEET.md", "## Fleet\n- name: old\n")
         (self.root / "repo").mkdir()
-        self.assertEqual(audit.fleet_root(self.root / "repo"), self.root)
         with contextlib.redirect_stderr(io.StringIO()) as err:
-            self.assertEqual(audit.read_fleet(self.root)[0]["name"], "old")
-        self.assertIn(f"move it into the register as {self.root / '.fleet' / 'FLEET.md'}", err.getvalue())
-        with contextlib.redirect_stderr(io.StringIO()) as err:
-            audit.read_fleet(self.root)
-        self.assertEqual(err.getvalue(), "", "the legacy note prints once per process")
+            self.assertIsNone(audit.fleet_map(self.root))
+            self.assertIsNone(audit.fleet_root(self.root / "repo"))
+        self.assertEqual(err.getvalue(), "", "a top-level map alone is silently no map")
         write(self.root, ".fleet/FLEET.md", "## Fleet\n- name: new\n")
         with contextlib.redirect_stderr(io.StringIO()) as err:
             self.assertEqual(audit.read_fleet(self.root)[0]["name"], "new")
-        self.assertIn(f"ignoring {self.root / 'FLEET.md'}", err.getvalue())
-        (self.root / "FLEET.md").unlink()
-        with contextlib.redirect_stderr(io.StringIO()) as err:
             audit.read_fleet(self.root)
-        self.assertEqual(err.getvalue(), "")
-
+        self.assertEqual(err.getvalue().count(f"ignoring {self.root / 'FLEET.md'}"), 1, err.getvalue())
     def test_an_empty_register_is_no_fleet(self):
         (self.root / ".fleet").mkdir()
         (self.root / "repo").mkdir()
@@ -1247,15 +1247,6 @@ class Configured(unittest.TestCase):
         audit.configure(self.root)
         self.assertEqual(audit.REPO_DIR["u"], self.root / "~nobody" / "x")
 
-    def test_missing_register_is_an_error(self):
-        """Reachable only with the legacy top-level map: a map inside .fleet/
-        names no other register (the next test)."""
-        write(self.root, "FLEET.md", "## Fleet\n- name: fx\n- register: .flet/\n## Repos\n### a\n- group: apps\n")
-        (self.root / "a").mkdir()
-        with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(io.StringIO()):
-            audit.configure(self.root)
-        self.assertIn("register checkout missing", str(cm.exception))
-
     def test_a_map_in_the_register_cannot_redirect_the_register(self):
         """The attack: a register PR sets `register:` to a sibling whose main
         its author controls, with a matching register-repo. The sibling's
@@ -1335,12 +1326,12 @@ class Configured(unittest.TestCase):
 
     def test_register_pin(self):
         fleet_fixture(self.root, "## Fleet\n- name: fx\n")
-        review_register(self.root)
+        review_register(self.root, pin=False)
         local = audit.remote_identity(str(self.root / "fx" / "register.git"))
         pins = pathlib.Path(os.environ["XDG_CONFIG_HOME"]) / "wayfare" / "registers"
         pins.parent.mkdir(parents=True, exist_ok=True)
         self.addCleanup(lambda: pins.unlink(missing_ok=True))
-        cases = (("absent", None, True, "is not pinned"),
+        cases = (("absent", None, False, "this machine pins no register for"),
                  ("match", f"# a comment\n{self.root} {local}\n", True, ""),
                  ("mismatch", f"{self.root} {local[:-len('register')]}other\n", False, "this machine pins"),
                  # The same OWNER/NAME on a host, against a local-path origin.
@@ -1357,6 +1348,7 @@ class Configured(unittest.TestCase):
             self.assertEqual(reviewed, want_reviewed, f"{label}: {note}")
             self.assertIn(want_text, err.getvalue() + note, label)
             if label == "absent":
+                self.assertIn(f"\n  {self.root} HOST/OWNER/NAME\n", err.getvalue(), "the line to add, with a placeholder")
                 self.assertIn("HOST/OWNER/NAME >>", err.getvalue(), "the command carries a placeholder")
                 self.assertIn(f"origin is {local}", err.getvalue())
             if label == "match":
@@ -1365,7 +1357,7 @@ class Configured(unittest.TestCase):
     def test_the_pin_command_carries_nothing_from_the_map(self):
         """A quote in register-repo once broke out of the printed printf."""
         fleet_fixture(self.root, "## Fleet\n- name: fx\n")
-        review_register(self.root, name="fx/reg'; touch pwned; echo '")
+        review_register(self.root, name="fx/reg'; touch pwned; echo '", pin=False)
         audit._REGISTER_READ.clear()
         with contextlib.redirect_stderr(io.StringIO()) as err:
             audit.configure(self.root, load_overlay=False)
@@ -1378,7 +1370,7 @@ class Configured(unittest.TestCase):
         """The observed origin is printed only when it is a plain slug; the
         remote is as untrusted as the map."""
         fleet_fixture(self.root, "## Fleet\n- name: fx\n")
-        reg = review_register(self.root)
+        reg = review_register(self.root, pin=False)
         odd = self.root / "fx" / "reg'x $(touch pwned).git"
         git(self.root, "clone", "-q", "--bare", str(self.root / "fx" / "register.git"), str(odd))
         git(reg, "remote", "set-url", "origin", str(odd))
@@ -2144,6 +2136,8 @@ class ReviewedRegister(unittest.TestCase):
         self.addCleanup(setattr, audit, "REGISTER", saved)
         self.addCleanup(setattr, audit, "REGISTER_REPO", audit.REGISTER_REPO)
         audit.REGISTER_REPO = "fx/register"
+        self.addCleanup(setattr, audit, "ROOT", audit.ROOT)
+        audit.ROOT = self.root
         self.addCleanup(audit._REGISTER_READ.clear)
         with mock.patch.dict(audit.GROUP_REPOS, clear=True), contextlib.redirect_stderr(io.StringIO()):
             ctrl, _checks = audit.load_register()

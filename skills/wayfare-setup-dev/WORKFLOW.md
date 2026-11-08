@@ -29,6 +29,10 @@ procedure in [SKILL.md](SKILL.md) in each one.
 
 ## Instructions
 
+Every bash block runs in a fresh shell, from the fleet root, so each one sets
+`FLEET_ROOT` and `WAYFARE_ROOT` itself. After Step 6 has been in the repos, `cd`
+back to the fleet root first.
+
 ### Step 1: Find the setup file
 
 ```bash
@@ -65,18 +69,24 @@ this skill. Read what it printed, in this order:
 ### Step 2: Show the plan
 
 ```bash
+FLEET_ROOT=$(pwd -P)
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --fleet "$FLEET_ROOT" plan
 ```
 
 Show the person the plan as printed: the notes, each group with its `[ok]`,
 `[todo]` and `[person]` entries, and the summary line. If the platform line says
-`MISMATCH`, stop: the file is for another kind of machine.
+`MISMATCH`, stop: the file is for another kind of machine. Keep the sha on the
+`reviewed:` line as `SHA`: every `apply` passes it, so a register change merged
+after the person saw this plan is refused rather than run unseen.
 
 **With `--check`, change nothing.** Run `check` instead of `plan`, then Step 4's
 `--review` listing, Step 7's archive and exclude checks, and the per-repo
 `--check` in each cloned repo the person picks. Report and stop.
 
 ```bash
+FLEET_ROOT=$(pwd -P)
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --fleet "$FLEET_ROOT" check
 ```
 
@@ -95,12 +105,15 @@ Take the groups in plan order. For each one:
 4. Run the group:
 
    ```bash
-   uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --fleet "$FLEET_ROOT" apply --group GROUP CONFIRMED_FLAGS
+   FLEET_ROOT=$(pwd -P)
+   WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+   uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --fleet "$FLEET_ROOT" apply --group GROUP --at SHA CONFIRMED_FLAGS
    ```
 
-   `CONFIRMED_FLAGS` is one `--confirmed ID` per person step the person has done
-   in this run, empty at first. Allow a long timeout: a cask or an installer can
-   take minutes.
+   `SHA` is from Step 2's `reviewed:` line. `CONFIRMED_FLAGS` is one
+   `--confirmed ID` per person step the person has done in this run, empty at
+   first; an id names the step itself (`GROUP.KIND:KEY`), not its position.
+   Allow a long timeout: a cask or an installer can take minutes.
 
 5. Read the exit status:
 
@@ -109,7 +122,9 @@ Take the groups in plan order. For each one:
    | 0 | the group is done | next group |
    | 10 | stopped at a person step | show its title, what it needs and its command; wait for the person to say it is done; add `--confirmed ID` and run step 4 again |
    | 1 | a command failed | quote the `FAILED` line and the output under it; ask whether to retry, skip the group, or stop |
-   | 2 | wrong platform or unknown group | report it and stop |
+   | 2 | wrong platform, unknown group, invalid file, or a usage error such as a missing `--at` | report it and stop |
+   | 3 | the gate refused: `GATE MOVED` means origin/main changed since Step 2; any other `GATE` line is Step 1's | for `MOVED`, go back to Step 2 and show the new plan; otherwise stop as in Step 1 |
+   | 4 | `GATE NO_SETUP_YAML`: the file was removed from origin/main since Step 1 | report it and go to Step 4 |
 
 For a person step whose `why` is `choice` (a value such as the commit name and
 email), ask the person for the value, show the command with it filled in, and
@@ -128,6 +143,8 @@ the folder* (`NOT_CLONED`, `ABSENT_OUTSIDE`). Read them there and apply them
 unchanged. Run its Step 0 block from the fleet root, then:
 
 ```bash
+FLEET_ROOT=$(pwd -P)
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 "$WAYFARE_ROOT/scripts/fleet-scan.sh" "$FLEET_ROOT" --review
 ```
 
@@ -136,13 +153,15 @@ In short, and only as that skill says:
 - Offer only `NOT_CLONED` rows whose path is `FLEET_ROOT/NAME`. Ask which to
   clone: names, a group name, or `all`, which means every such row whose group
   is not `none`. Never assume `all`.
-- Build each URL from this machine's pin (`PIN=HOST/OWNER/NAME` gives
-  `git@HOST:OWNER/NAME.git` for the register's owner), never from the map's
-  `org:`, and show every URL in full before cloning.
+- Build each URL from the pin's host and owner and the row's own name: a pin
+  `HOST/OWNER/REGISTER` and a row `NAME` give `git@HOST:OWNER/NAME.git`. Never
+  take the owner from the map's `org:`, and show every URL in full before
+  cloning.
 - With `UNPINNED`, a `file…` pin, or `ORG_MISMATCH`, offer no clone.
 - Report `ABSENT_OUTSIDE` rows and never clone them or write there.
 
 ```bash
+FLEET_ROOT=$(pwd -P)
 git clone git@HOST:OWNER/NAME.git "$FLEET_ROOT/NAME"
 ```
 
@@ -166,9 +185,10 @@ folder, a chat or a repo.
 
 Ask the person where each archive is. If one is in `~/Downloads`, show its full
 path and ask before using it; never pick an archive up without asking. Then
-check each one before anything is unpacked:
+check each one, without unpacking anything:
 
 ```bash
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 chmod 600 LOCAL_ARCHIVE MEMORY_ARCHIVE
 uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" archive --kind local LOCAL_ARCHIVE
 uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" archive --kind memory MEMORY_ARCHIVE
@@ -178,16 +198,20 @@ An archive with any `REFUSED` line is not unpacked at all: quote the lines and
 stop this step. The check allows only `NAME/.plans/…`, `NAME/.env` and a
 top-level `FLEET.md` in the local archive, and only
 `.claude/projects/PROJECT/memory/…` in the memory one, as plain files and
-folders. Anything else, such as a Claude hook or a LaunchAgent, would run once
-unpacked into `~`.
+folders, and refuses an archive with unreadable data after its last member.
+Anything else, such as a Claude hook or a LaunchAgent, would run once unpacked
+into `~`.
 
-Unpack the memory archive into `~`, naming the one folder it may write:
+**Unpack only with the script's `--extract`, never with `tar`.** It extracts
+from the same parse it checked, so another tar reader cannot find members the
+check never saw, and it keeps any file already there, so a rerun cannot
+overwrite newer work. Unpack the memory archive into `~`:
 
 ```bash
-tar xzkf MEMORY_ARCHIVE -C ~ .claude/projects
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" archive --kind memory --extract ~ MEMORY_ARCHIVE
 ```
 
-`tar -k` keeps any file already there, so a rerun cannot overwrite newer work.
 Memory folders are named after the project's full path, so they match only when
 the username and the fleet root path are the same on both machines; say so.
 
@@ -197,7 +221,9 @@ first; without them, `git add -A` commits the plans. A `.env` git would not
 ignore is left behind rather than restored.
 
 ```bash
-(umask 077; mkdir -p ~/fleet-restore && tar xzf LOCAL_ARCHIVE -C ~/fleet-restore)
+FLEET_ROOT=$(pwd -P)
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" archive --kind local --extract ~/fleet-restore LOCAL_ARCHIVE || exit 1
 cd "$FLEET_ROOT"
 for repo in */; do
   repo=${repo%/}
@@ -235,6 +261,8 @@ so it does not fan out to subagents. Collect each repo's summary for the report.
 ### Step 7: Verify and report
 
 ```bash
+FLEET_ROOT=$(pwd -P)
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 uv run "$WAYFARE_ROOT/scripts/fleet-setup.py" --fleet "$FLEET_ROOT" verify
 for f in ~/fleet-local.tgz ~/claude-memory.tgz ~/fleet-restore ~/Downloads/fleet-local.tgz ~/Downloads/claude-memory.tgz; do
   [ -e "$f" ] && echo "SECRETS ARCHIVE STILL PRESENT: $f"

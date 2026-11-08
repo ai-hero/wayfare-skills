@@ -274,13 +274,15 @@ skill posts. What still needs judgment runs on demand, not on every commit.
   checking each first and stopping at the first open person step. The script
   reads the file only from the register's `refs/remotes/origin/main`, fetched
   that run, and only when the register's `origin` matches this machine's pin,
-  compared with `audit.py`'s own `remote_identity()`; a symlinked `setup.yaml`
-  is refused. `--file` reads a working-tree copy, and `apply` refuses it
-  without `--unreviewed`. `wayfare-setup-dev` gets a fleet mode at the fleet
+  compared with `audit.py`'s own `remote_identity()`, with replace objects off;
+  a symlinked `setup.yaml` is refused. `apply` takes the commit `plan` showed
+  (`--at`) and refuses when origin/main has moved. `--file` reads a
+  working-tree copy, and every command that runs anything from it needs
+  `--unreviewed`. `wayfare-setup-dev` gets a fleet mode at the fleet
   root (its `WORKFLOW.md`): walk the groups, clone the repos the person picks
   under `wayfare-sync-fleet`'s clone rules, restore `.plans/` and `.env` from
-  an old machine after the script has checked each archive's members, then
-  the per-repo procedure in each.
+  an old machine through the script, which checks each archive's members and
+  extracts from that same parse, then the per-repo procedure in each.
 - Consequences: the script, not the agent, runs the commands, so a rerun is safe
   by construction and the commands are the file's, not a paraphrase. A secret is
   declared by its variable name only; a server that needs one becomes a person

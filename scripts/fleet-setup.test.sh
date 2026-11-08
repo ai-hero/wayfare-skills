@@ -98,7 +98,7 @@ chmod +x "$BIN"/*
 fs() { # args... ; runs the script as the skill does, against the fakes
   env -i HOME="$H" XDG_CONFIG_HOME="$H/.config" PATH="$BIN:/usr/bin:/bin" TMPDIR="$T" \
     UV_CACHE_DIR="$UV_CACHE" UV_PYTHON="$UV_PY" GIT_CONFIG_NOSYSTEM=1 \
-    FLEET_SETUP_PLATFORM="${PLAT:-macos-arm64}" CONTEXT7_API_KEY="$CANARY" \
+    FLEET_SETUP_PLATFORM="${PLAT:-macos-arm64}" CONTEXT7_API_KEY="$CANARY" ${FS_ENV:-} \
     "$UV" run --quiet "$SCRIPT" "$@" 2>&1
 }
 
@@ -214,25 +214,25 @@ bad "not yaml" 2 "not YAML" "version: [1"
 # ── plan: order, statuses, presence with a fake PATH ────────────────
 printf 'just\n' > "$ST/formula"
 : > "$ST/cask"
-out=$(fs --file "$GOOD" plan); rc=$?
+out=$(fs --file "$GOOD" --unreviewed plan); rc=$?
 check "plan exits 0" 0 "$rc"
 order=$(printf '%s\n' "$out" | grep -oE '^== [a-z-]+' | tr '\n' ' ')
 check "groups in file order" "== first == claude == extras " "$order"
-ids=$(printf '%s\n' "$out" | grep -oE 'first\.[0-9]+' | tr '\n' ' ')
-check "steps numbered in file order" "first.1 first.2 first.3 first.4 first.5 first.6 first.7 first.8 first.9 first.10 first.11 " "$ids"
-has "present formula is ok" "[ok]     first.1        brew just" "$out"
-has "absent formula is todo" "[todo]   first.2        brew go" "$out"
-has "installer absent is todo" "[todo]   first.5" "$out"
-has "person step open" "[person] first.10" "$out"
+ids=$(printf '%s\n' "$out" | grep -oE 'first\.[a-z]+:[^ ]+' | tr '\n' ' ')
+check "steps listed in file order" "first.brew:just first.brew:go first.cask:orbstack first.pipx:pre-commit first.installer:fakecmd first.git:pull.rebase first.shell:fdf7b6a7 first.shell:5a00e7c4 first.path:a8e155da first.person:894bc4e0 first.brew:after-person " "$ids"
+has "present formula is ok" "[ok]     first.brew:just " "$out"
+has "absent formula is todo" "[todo]   first.brew:go " "$out"
+has "installer absent is todo" "[todo]   first.installer:fakecmd" "$out"
+has "person step open" "[person] first.person:894bc4e0" "$out"
 has "optional group flagged" "== extras (optional): Extras" "$out"
 has "optional group's question" "ask: Install the extras?" "$out"
 has "group note shown" "note: a licence note" "$out"
 has "summary" "optional groups: extras" "$out"
 printf '#!/bin/sh\n' > "$BIN/fakecmd"; chmod +x "$BIN/fakecmd"
-out=$(fs --file "$GOOD" plan)
-has "installer present when its command is on PATH" "[ok]     first.5" "$out"
+out=$(fs --file "$GOOD" --unreviewed plan)
+has "installer present when its command is on PATH" "[ok]     first.installer:fakecmd" "$out"
 rm "$BIN/fakecmd"
-json=$(fs --file "$GOOD" plan --json)
+json=$(fs --file "$GOOD" --unreviewed plan --json)
 check "json: statuses in order" "present missing missing missing missing missing missing missing missing person missing" \
   "$(printf '%s' "$json" | "$UV_PY" -c 'import json,sys; print(" ".join(s["status"] for s in json.load(sys.stdin)["groups"][0]["steps"]))')"
 check "json: secret mcp is a person step in a separate terminal" "person separate secret" \
@@ -246,15 +246,15 @@ has "server name before -e" "claude mcp add --scope user context7 -e" "$out"
 has "secret read without echo" "read -rs CONTEXT7_API_KEY" "$out"
 has "secret unset after" "unset CONTEXT7_API_KEY" "$out"
 printf 'context7\n' > "$ST/mcp"
-all="$(fs --file "$GOOD" plan)$(fs --file "$GOOD" plan --json)$(fs --file "$GOOD" check --json)$(fs --file "$GOOD" verify)$(fs --file "$GOOD" --unreviewed apply --group claude)"
+all="$(fs --file "$GOOD" --unreviewed plan)$(fs --file "$GOOD" --unreviewed plan --json)$(fs --file "$GOOD" --unreviewed check --json)$(fs --file "$GOOD" --unreviewed verify)$(fs --file "$GOOD" --unreviewed apply --group claude)"
 lacks "secret value never printed (plan, check, verify, apply)" "$CANARY" "$all"
 : > "$ST/mcp"; : > "$ST/mkt"; : > "$ST/plg"; : > "$LOG"
 
-out=$(fs --file "$GOOD" check); check "check exits 1 while a required step is open" 1 $?
+out=$(fs --file "$GOOD" --unreviewed check); check "check exits 1 while a required step is open" 1 $?
 check "check changed nothing" "" "$(grep -E ' install|marketplace add|mcp add' "$LOG")"
 
 # ── verify ───────────────────────────────────────────────────────────
-out=$(fs --file "$GOOD" verify); rc=$?
+out=$(fs --file "$GOOD" --unreviewed verify); rc=$?
 check "verify exits 1 when a check fails" 1 "$rc"
 has "verify reports pass" "ok   echoes the key" "$out"
 has "verify reports fail" "FAIL fails" "$out"
@@ -263,7 +263,7 @@ has "verify reports fail" "FAIL fails" "$out"
 printf 'no newline at end' > "$H/.zshrc"
 out=$(fs --file "$GOOD" --unreviewed apply --group first); rc=$?
 check "apply stops at the open person step" 10 "$rc"
-has "names the step to confirm" "then: apply --group first --confirmed first.10" "$out"
+has "names the step to confirm" "then: apply --group first --confirmed first.person:894bc4e0" "$out"
 check "steps after the person step did not run" "" "$(grep 'after-person' "$LOG")"
 check "rc lines appended once, after a newline" "no newline at end
 alias k=kubectl
@@ -275,12 +275,12 @@ rm "$H/.local/bin/fakecmd"
 out=$(fs --file "$GOOD" --unreviewed apply --group first); rc=$?
 check "installer reruns while its command is absent" "10 2" "$rc $(wc -l < "$H/installer-ran" | tr -d ' ')"
 : > "$LOG"
-out=$(fs --file "$GOOD" --unreviewed apply --group first --confirmed first.10); rc=$?
+out=$(fs --file "$GOOD" --unreviewed apply --group first --confirmed first.person:894bc4e0); rc=$?
 check "confirmed person step continues" 0 "$rc"
 check "only the step after the person step installs" "brew install after-person" "$(grep -E ' install' "$LOG")"
 : > "$LOG"
 cp "$H/.zshrc" "$T/zshrc.before"
-out=$(fs --file "$GOOD" --unreviewed apply --group first --confirmed first.10); rc=$?
+out=$(fs --file "$GOOD" --unreviewed apply --group first --confirmed first.person:894bc4e0); rc=$?
 check "second apply exits 0" 0 "$rc"
 check "second apply installs nothing" "" "$(grep -E ' install|marketplace add|mcp add' "$LOG")"
 check "second apply leaves the rc file alone" "$(cat "$T/zshrc.before")" "$(cat "$H/.zshrc")"
@@ -301,7 +301,7 @@ check "the script never runs the secret step" "" "$(grep context7 "$ST/mcp-adds"
 : > "$LOG"
 echo terraform >> "$ST/formula"
 out=$(fs --file "$GOOD" --unreviewed apply --group extras); rc=$?
-has "a tap formula is found by its short name" "[ok]     extras.2" "$out"
+has "a tap formula is found by its short name" "[ok]     extras.brew:hashicorp/tap/terraform" "$out"
 check "optional group applies only when named" "0 brew install yq" "$rc $(grep ' install' "$LOG")"
 out=$(fs --file "$GOOD" --unreviewed apply --group nope); check "unknown group" 2 $?
 out=$(PLAT=linux-x86_64 fs --file "$GOOD" --unreviewed apply --group extras); rc=$?
@@ -317,7 +317,7 @@ check "nothing after a failure runs" "" "$(grep later "$LOG")"
 
 # ── secrets in a header prefix stay literal ─────────────────────────
 printf '%s\ngroups:\n  - {name: g, title: G, steps: [{mcp: {name: v, transport: http, url: "https://x.example/mcp", secrets: [{header: Authorization, env: V_TOKEN, prefix: "Bearer "}]}}]}\n' "$BASE" > "$T/hdr.yaml"
-out=$(fs --file "$T/hdr.yaml" plan)
+out=$(fs --file "$T/hdr.yaml" --unreviewed plan)
 has "header literal quoted, variable expanded" "--header 'Authorization: Bearer '\"\$V_TOKEN\"" "$out"
 
 # ── a command that cannot start is reported as such ─────────────────
@@ -359,7 +359,10 @@ gate() { fs --fleet "$F" "$@"; }
 out=$(gate validate); rc=$?
 check "the pinned register's origin/main validates" 0 "$rc"
 has "names where it was read" "setup.yaml @ origin/main" "$out"
-out=$(gate apply --group extras); check "reviewed apply runs without --unreviewed" 0 $?
+out=$(gate apply --group extras); check "reviewed apply needs --at" 2 $?
+SHA=$(gate plan | sed -n 's/^reviewed: \([0-9a-f]*\) .*/\1/p')
+out=$(gate plan); has "plan prints the sha it read" "reviewed: $SHA" "$out"
+out=$(gate apply --group extras --at "${SHA:0:12}"); check "reviewed apply at the planned sha runs without --unreviewed" 0 $?
 
 sed -i.bak 's/yq, /dirty-evil, /' "$F/.fleet/setup.yaml"
 out=$(gate plan); rc=$?
@@ -412,24 +415,58 @@ out=$(gate validate); rc=$?
 check "no setup.yaml on origin/main" 4 "$rc"
 has "says so" "GATE NO_SETUP_YAML" "$out"
 
+# replace refs: a fetched refs/replace/* must not change what the gate reads
+g -C "$G/work" checkout -q -- . 2>/dev/null
+cp "$GOOD" "$G/work/setup.yaml"; rm -f "$G/work/other.yaml"
+g -C "$G/work" add -A && g -C "$G/work" commit -qm back && g -C "$G/work" push -q origin HEAD:main
+g -C "$F/.fleet" fetch -q origin "+refs/heads/main:refs/remotes/origin/main"
+EVIL=$(sed 's/yq, /replace-evil, /' "$GOOD" | g -C "$F/.fleet" hash-object -w --stdin)
+g -C "$F/.fleet" replace "$(g -C "$F/.fleet" rev-parse refs/remotes/origin/main:setup.yaml)" "$EVIL"
+out=$(gate plan); rc=$?
+check "plan with a replace ref" 0 "$rc"
+lacks "a refs/replace object is not read" "replace-evil" "$out"
+has "the reviewed blob is" "brew yq" "$out"
+
+# inherited GIT_* config cannot repoint the register's origin past the pin
+out=$(FS_ENV="GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=url.$G/elsewhere.git.insteadOf GIT_CONFIG_VALUE_0=$R" gate validate); rc=$?
+check "inherited GIT_CONFIG_* is dropped" 0 "$rc"
+
+# apply --at: a merge after plan is refused
+SHA=$(gate plan | sed -n 's/^reviewed: \([0-9a-f]*\) .*/\1/p')
+sed -i.bak 's/yq, /merged-later, /' "$G/work/setup.yaml"
+g -C "$G/work" commit -qam later && g -C "$G/work" push -q origin HEAD:main
+out=$(gate apply --group extras --at "${SHA:0:12}"); rc=$?
+check "apply refuses when origin/main moved since plan" 3 "$rc"
+has "says it moved" "GATE MOVED" "$out"
+check "and installed nothing" "" "$(grep merged-later "$LOG")"
+
 # ── archives from an old machine ────────────────────────────────────
-mkarch() { # out spec... ; spec is NAME:TYPE, TYPE f file, d folder, l symlink, s setuid file
+mkarch() { # out spec... ; spec is NAME:TYPE, TYPE f file, d folder, l symlink,
+  # h hardlink to the first member, s setuid file; the spec JUNK is 512 bytes of
+  # garbage where a header should be
   "$UV" run --quiet --no-project --python "$UV_PY" python - "$@" <<'PY'
-import io, sys, tarfile
-with tarfile.open(sys.argv[1], "w:gz") as t:
-    for spec in sys.argv[2:]:
-        name, kind = spec.rsplit(":", 1)
-        i = tarfile.TarInfo(name)
-        if kind == "d":
-            i.type, i.mode = tarfile.DIRTYPE, 0o755
-            t.addfile(i)
-        elif kind == "l":
-            i.type, i.linkname = tarfile.SYMTYPE, "/etc/passwd"
-            t.addfile(i)
-        else:
-            i.mode = 0o4755 if kind == "s" else 0o600
-            i.size = 2
-            t.addfile(i, io.BytesIO(b"x\n"))
+import gzip, sys, tarfile
+out, first, buf = sys.argv[1], None, b""
+for spec in sys.argv[2:]:
+    if spec == "JUNK":
+        buf += b"\xff" * 512
+        continue
+    name, kind = spec.rsplit(":", 1)
+    i = tarfile.TarInfo(name)
+    data = b""
+    if kind == "d":
+        i.type, i.mode = tarfile.DIRTYPE, 0o755
+    elif kind == "l":
+        i.type, i.linkname = tarfile.SYMTYPE, "/etc/passwd"
+    elif kind == "h":
+        i.type, i.linkname = tarfile.LNKTYPE, first
+    else:
+        i.mode = 0o4755 if kind == "s" else 0o600
+        data = b'{"hooks": "x"}\n'
+        i.size = len(data)
+    first = first or name
+    buf += i.tobuf(tarfile.GNU_FORMAT) + data + b"\0" * (-len(data) % 512)
+open(out, "wb").write(gzip.compress(buf + b"\0" * 1024))
 PY
 }
 arch() { # name kind expected-rc needle spec...
@@ -450,6 +487,55 @@ arch "memory, expected members" memory 0 "ok (memory)" ".claude/:d" ".claude/pro
 arch "memory with a settings hook" memory 1 "REFUSED .claude/settings.json" ".claude/projects/-u-x/memory/MEMORY.md:f" ".claude/settings.json:f"
 arch "memory escaping memory/" memory 1 "not a plain relative path" ".claude/projects/-u-x/memory/../../../settings.json:f"
 arch "memory with a project file" memory 1 "not something fleet setup restores" ".claude/projects/-u-x/session.jsonl:f"
+
+# ── archives: one parser checks and extracts ────────────────────────
+MEM=".claude/projects/-u-x/memory/MEMORY.md"
+arch "a damaged header hiding a hardlink" memory 1 "unreadable data after byte" "$MEM:f" JUNK ".claude/settings.json:h"
+arch "a hardlink member" memory 1 "not a regular file or folder" "$MEM:f" ".claude/projects/-u-x/memory/b.md:h"
+arch "a symlink member" memory 1 "not a regular file or folder" ".claude/projects/-u-x/memory/b.md:l"
+arch "a .plans symlink" local 1 "web/.plans: not a regular file or folder" "web/.plans:l"
+mkarch "$T/poc.tgz" "$MEM:f" JUNK ".claude/settings.json:h"
+out=$(fs archive --kind memory --extract "$T/poc-home" "$T/poc.tgz"); rc=$?
+check "a refused archive extracts nothing" "1 no no" "$rc $([ -e "$T/poc-home/.claude/settings.json" ] && echo yes || echo no) $([ -e "$T/poc-home/$MEM" ] && echo yes || echo no)"
+mkarch "$T/la.tgz" "web/.env:f" "Library/LaunchAgents/x.plist:f"
+out=$(fs archive --kind local --extract "$T/la" "$T/la.tgz"); rc=$?
+check "a refused member stops the whole extract" "1 0" "$rc $(find "$T/la" -type f 2>/dev/null | wc -l | tr -d ' ')"
+mkarch "$T/mem.tgz" ".claude/:d" ".claude/projects/:d" ".claude/projects/-u-x/:d" ".claude/projects/-u-x/memory/:d" "$MEM:f" ".claude/projects/-u-x/memory/b.md:f"
+mkdir -p "$T/xh/.claude/projects/-u-x/memory"; printf 'newer\n' > "$T/xh/.claude/projects/-u-x/memory/b.md"
+out=$(fs archive --kind memory --extract "$T/xh" "$T/mem.tgz"); rc=$?
+check "extract exits 0" 0 "$rc"
+has "extract says what it did" "unpacked 1 files into $T/xh, kept 1 already there" "$out"
+check "extract wrote the checked member" '{"hooks": "x"}' "$(cat "$T/xh/$MEM")"
+check "extract never overwrites" "newer" "$(cat "$T/xh/.claude/projects/-u-x/memory/b.md")"
+out=$(fs archive --kind memory --extract "$T/xh" "$T/mem.tgz")
+has "a second extract keeps both" "unpacked 0 files into $T/xh, kept 2 already there" "$out"
+mkdir -p "$T/xl" "$T/outside"; ln -s "$T/outside" "$T/xl/.claude"
+out=$(fs archive --kind memory --extract "$T/xl" "$T/mem.tgz"); rc=$?
+check "a symlink already in DEST cannot carry a member out" "1 0" "$rc $(find "$T/outside" -type f | wc -l | tr -d ' ')"
+
+# ── --file runs nothing without --unreviewed ────────────────────────
+printf '%s\ngroups:\n  - {name: g, title: G, steps: [{person: {title: t, why: gui, check: "touch $HOME/check-ran"}}]}\nverify:\n  - {name: v, run: "touch $HOME/verify-ran", passes: p}\n' "$BASE" > "$T/runs.yaml"
+for c in plan check verify; do
+  out=$(fs --file "$T/runs.yaml" "$c"); rc=$?
+  check "$c refuses --file without --unreviewed" 2 "$rc"
+done
+check "and ran none of its commands" "no no" "$([ -e "$H/check-ran" ] && echo yes || echo no) $([ -e "$H/verify-ran" ] && echo yes || echo no)"
+out=$(fs --file "$T/runs.yaml" validate); check "validate --file runs nothing and needs no flag" "0 no" "$? $([ -e "$H/check-ran" ] && echo yes || echo no)"
+
+# ── step ids survive edits ──────────────────────────────────────────
+awk '/- brew: \[just, go\]/ { print "      - brew: [inserted]" } 1' "$GOOD" > "$T/edited.yaml"
+out=$(fs --file "$T/edited.yaml" --unreviewed plan)
+has "an inserted step does not move a person step's id" " first.person:894bc4e0 " "$out"
+has "the inserted step is listed" " first.brew:inserted " "$out"
+printf '%s\ngroups:\n  - {name: g, title: G, steps: [{brew: [a]}, {brew: [a]}]}\n' "$BASE" > "$T/dup.yaml"
+out=$(fs --file "$T/dup.yaml" validate); rc=$?
+check "the same step twice in a group is invalid" 2 "$rc"
+has "names the duplicate" "g.brew:a: the same step twice" "$out"
+
+# ── uvx -w ──────────────────────────────────────────────────────────
+pin "uvx -w unpinned" 2 uvx '["-w", "extra", "tool==1.2.3"]'
+pin "uvx -wVALUE unpinned" 2 uvx '["-wextra", "tool==1.2.3"]'
+ok_step "uvx -wVALUE pinned" '{mcp: {name: p, transport: stdio, command: uvx, args: ["-wextra==1.2.3", "tool==1.2.3"]}}'
 
 echo "fleet-setup.test.sh: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

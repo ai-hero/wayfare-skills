@@ -34,17 +34,28 @@ The register's review is the gate, and the script enforces it:
   tree**: unlike the map, a local edit to `setup.yaml` does nothing until it is
   merged and fetched, so a branch checked out to review a register PR cannot
   choose what gets installed.
+
 - It runs only when the checkout's `origin` is the register this machine pins
   (`${XDG_CONFIG_HOME:-~/.config}/wayfare/registers`,
   [FLEET-MD.md](./FLEET-MD.md)), compared with the same normaliser as the audit.
   A fork or a look-alike remote is refused, and so is an unpinned register.
+
 - It refuses a `setup.yaml` that is a symlink, which git would review as the
   link while the commands came from wherever it points.
 
+- It reads with `GIT_NO_REPLACE_OBJECTS=1` and no inherited `GIT_*`, so a
+  fetched `refs/replace/*` cannot swap the blob behind the reviewed commit.
+
+- `plan` prints the commit it read, and `apply` takes it back as `--at SHA`. If
+  origin/main has moved by the time `apply` fetches, it refuses, so nothing runs
+  that the person was not shown.
+
 `--file` reads a working-tree file instead, for someone editing the file or a
-test. `plan`, `check` and `verify` accept it, and `apply` refuses it unless
-`--unreviewed` is passed too. The skill never passes either. On top of the gate,
-the skill shows each group's commands and asks before running them.
+test. Only `validate` runs nothing from the file. `plan`, `check` and `verify`
+run its person-step checks and `verify` commands, and `apply` runs its installs,
+so all four refuse `--file` unless `--unreviewed` is passed too. The skill never
+passes either. On top of the gate, the skill shows each group's commands and
+asks before running them.
 
 ## Bootstrap: before wayfare is on the machine
 
@@ -187,30 +198,41 @@ a pass means, for the report.
 uv run scripts/fleet-setup.py --fleet FLEET_ROOT validate
 uv run scripts/fleet-setup.py --fleet FLEET_ROOT plan [--json]
 uv run scripts/fleet-setup.py --fleet FLEET_ROOT check [--json]
-uv run scripts/fleet-setup.py --fleet FLEET_ROOT apply --group NAME [--confirmed ID]...
+uv run scripts/fleet-setup.py --fleet FLEET_ROOT apply --group NAME --at SHA [--confirmed ID]...
 uv run scripts/fleet-setup.py --fleet FLEET_ROOT verify [--json]
 uv run scripts/fleet-setup.py --file setup.yaml validate          # an edit, before its PR
-uv run scripts/fleet-setup.py archive --kind local|memory ARCHIVE
+uv run scripts/fleet-setup.py --file setup.yaml --unreviewed plan # runs its checks
+uv run scripts/fleet-setup.py archive --kind local|memory ARCHIVE [--extract DEST]
 ```
 
 `--fleet` defaults to the current folder. Every command but `archive` goes
 through the gate above first; a refusal prints `GATE CODE: why` and exits 3, and
 a register with no `setup.yaml` on `origin/main` exits 4 (`NO_SETUP_YAML`).
 
-`plan` lists every entry in file order with an id (`GROUP.N`), its status
-(`present`, `missing`, `person`) and the command it would run. `check` is the
-plan plus `verify`, and exits 1 while a required step is open or a check fails.
-Neither changes anything.
+`plan` prints the reviewed commit and lists every entry in file order with an
+id, its status (`present`, `missing`, `person`) and the command it would run.
+The id is `GROUP.KIND:KEY`, where the key is what the entry is (a formula, a
+server name, a git key, or a short hash of a shell line or a person step's title
+and check), so an edit that adds a step does not move another's id, and the same
+step twice in one group is invalid. `check` is the plan plus `verify`, and exits
+1 while a required step is open or a check fails. Neither installs anything;
+both run the file's check commands.
 
-`apply` runs one group's missing entries in file order and stops at the first
-person step still open (exit 10), printing the step and the command. Once the
-person has done it, run `apply` again with `--confirmed ID`; everything already
-present is skipped, so a rerun is safe. A failing command stops the group with
-exit 1 and quotes the last lines of its output, and says when a command timed
-out or could not start. Invalid files and wrong platforms exit 2.
+`apply` needs `--at SHA` from `plan` (exit 3, `GATE MOVED`, when origin/main has
+moved since). It runs one group's missing entries in file order and stops at the
+first person step still open (exit 10), printing the step and the command. Once
+the person has done it, run `apply` again with `--confirmed ID`; everything
+already present is skipped, so a rerun is safe. A failing command stops the
+group with exit 1 and quotes the last lines of its output, and says when a
+command timed out or could not start. Invalid files, wrong platforms and usage
+errors exit 2.
 
 `archive` checks an archive from an old machine before anything is unpacked: a
 `local` one may hold only `NAME/.plans/…`, `NAME/.env` and a top-level
 `FLEET.md`; a `memory` one only `.claude/projects/PROJECT/memory/…`. Both hold
 only plain files and folders, with relative names and no `..`. Any other member
-is printed as `REFUSED` and the command exits 1.
+is printed as `REFUSED` and the command exits 1, and so is an archive with
+unreadable data after its last member: another tar reader could find members
+there that this one never checked. With `--extract DEST`, an archive that passes
+is unpacked from that same parse, with Python's `data` filter, and a file
+already at its path is kept, never overwritten. Never unpack one with `tar`.

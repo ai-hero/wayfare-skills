@@ -1,6 +1,6 @@
 #!/usr/bin/env -S uv run --script
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12"
 # dependencies = ["pyyaml==6.0.3"]
 # ///
 # Copyright (c) 2026 A.I. Hero, Inc.
@@ -11,22 +11,28 @@
     uv run scripts/fleet-setup.py [--fleet DIR] validate
     uv run scripts/fleet-setup.py [--fleet DIR] plan [--json] [--confirmed ID]...
     uv run scripts/fleet-setup.py [--fleet DIR] check [--json]
-    uv run scripts/fleet-setup.py [--fleet DIR] apply --group G [--confirmed ID]...
+    uv run scripts/fleet-setup.py [--fleet DIR] apply --group G --at SHA [--confirmed ID]...
     uv run scripts/fleet-setup.py [--fleet DIR] verify [--json]
-    uv run scripts/fleet-setup.py --file F [--unreviewed] COMMAND ...
-    uv run scripts/fleet-setup.py archive --kind local|memory ARCHIVE
+    uv run scripts/fleet-setup.py --file F validate
+    uv run scripts/fleet-setup.py --file F --unreviewed COMMAND ...
+    uv run scripts/fleet-setup.py archive --kind local|memory ARCHIVE [--extract DEST]
 
 DIR is the fleet root (default: the current folder). The file is read from the
 register checkout DIR/.fleet as it stands on refs/remotes/origin/main, fetched
 this run, and only when that checkout's origin is the register this machine
-pins. --file reads a working-tree file instead, for a person or a test; apply
-refuses it without --unreviewed. The schema is docs/SETUP-YAML.md.
+pins. --file reads a working-tree file instead, for a person or a test; every
+command but validate refuses it without --unreviewed, because plan, check and
+verify run the file's person-step checks and verify commands. The schema is
+docs/SETUP-YAML.md.
 
-plan, check and verify change nothing. apply runs one group's missing steps in
-file order and stops at the first person step that is still open; run it again
-with --confirmed ID once the person has done that step. Every step checks
-before it acts, so a second apply runs nothing. archive checks that an archive
-from an old machine holds only the files fleet setup restores.
+plan, check and verify install nothing, but they do run those check commands.
+plan prints the origin/main sha it read; apply --at SHA refuses (exit 3) when a
+fetch finds origin/main has moved since, so nothing runs that the person has
+not seen. apply runs one group's missing steps in file order and stops at the
+first person step that is still open; run it again with --confirmed ID once the
+person has done that step. Every step checks before it acts, so a second apply
+runs nothing. archive checks that an archive from an old machine holds only the
+files fleet setup restores, and with --extract unpacks exactly those.
 
 Exit: 0 done, 1 something missing or failed (or an archive refused), 2 invalid
 file or usage, 3 the review gate refused the file, 4 the register has no
@@ -37,6 +43,8 @@ import argparse
 import contextlib
 import importlib.util
 import io
+import gzip
+import hashlib
 import json
 import os
 import pathlib
@@ -72,7 +80,7 @@ RC_FILES = ("~/.zshrc", "~/.zprofile", "~/.zshenv", "~/.bashrc", "~/.bash_profil
 # reach, so an unpinned one installs whatever was published a minute ago. npm
 # reads `pkg@1` and `pkg@1.x` as ranges, so only a full MAJOR.MINOR.PATCH pins.
 LAUNCHERS = {"npx", "bunx", "pnpx", "uvx"}
-PKG_FLAGS = ("--package", "-p", "--from", "--with")
+PKG_FLAGS = ("--package", "-p", "--from", "--with", "-w")
 PINNED_RE = re.compile(r"^@?[A-Za-z0-9][A-Za-z0-9._/-]*(@|==)\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$")
 REVIEWED_REF = "refs/remotes/origin/main"
 HERE = pathlib.Path(__file__).resolve().parent
@@ -129,12 +137,15 @@ def _rc_file(errs, where, v):
 
 def launcher_packages(args):
     """The package-bearing arguments of an npx/uvx-style launcher: every value
-    of --package, -p, --from and --with, and the first positional argument
-    when none of those is given (with one, that argument is a command)."""
+    of --package, -p, --from, --with and -w (attached, as in -wPKG, or not),
+    and the first positional argument when none of those is given (with one,
+    that argument is a command)."""
     pkgs, named, positional, i = [], False, [], 0
     while i < len(args):
         a = args[i]
         flag, eq, val = a.partition("=")
+        if not eq and a[:2] in ("-p", "-w") and len(a) > 2:
+            flag, eq, val = a[:2], "=", a[2:]
         if flag in PKG_FLAGS:
             named = True
             if eq:
@@ -325,7 +336,15 @@ def parse(text, where):
         doc = yaml.safe_load(text)
     except yaml.YAMLError as e:
         raise Invalid([f"{where}: not YAML: {e}"])
-    return validate(doc)
+    validate(doc)
+    seen, dup = set(), []
+    for _, eid, _, _ in entries(doc):
+        if eid in seen:
+            dup.append(f"{eid}: the same step twice in one group")
+        seen.add(eid)
+    if dup:
+        raise Invalid(dup)
+    return doc
 
 
 class Gate(Exception):
@@ -343,7 +362,7 @@ def load_file(path):
     if p.is_symlink():
         raise Gate("SYMLINK", f"{path} is a symlink")
     try:
-        return p.read_text(), str(path)
+        return p.read_text(), str(path), None
     except (OSError, UnicodeDecodeError) as e:
         raise Invalid([f"{path}: cannot read ({getattr(e, 'strerror', None) or e})"])
 
@@ -362,12 +381,13 @@ def audit_module():
 
 
 def git_env():
-    # Under a hook or in a linked worktree these point git at another
-    # repository, and every command below would read that one instead.
-    env = {k: v for k, v in os.environ.items()
-           if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
-                        "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX")}
-    env.update(GIT_TERMINAL_PROMPT="0", GIT_SSH_COMMAND="ssh -o BatchMode=yes")
+    # Inherited GIT_* can point git at another repository (a hook, a linked
+    # worktree) or at other objects. A refs/replace/* ref swaps the blob the
+    # gate reads while rev-parse still names the reviewed commit, so
+    # replacements are off.
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    env.update(GIT_TERMINAL_PROMPT="0", GIT_SSH_COMMAND="ssh -o BatchMode=yes",
+               GIT_NO_REPLACE_OBJECTS="1")
     return env
 
 
@@ -418,14 +438,15 @@ def load_reviewed(fleet):
     rc, text, err = git(reg, "show", f"{REVIEWED_REF}:setup.yaml")
     if rc:
         raise Gate("NO_FETCH", f"cannot read setup.yaml from {REVIEWED_REF}: {err}")
-    _, sha, _ = git(reg, "rev-parse", "--short", REVIEWED_REF)
+    _, sha, _ = git(reg, "rev-parse", "--verify", f"{REVIEWED_REF}^{{commit}}")
+    sha = sha.strip()
     local = reg / "setup.yaml"
     try:
         if local.is_symlink() or local.read_text() != text:
             print(f"note: {local} differs from origin/main; the reviewed copy is used", file=sys.stderr)
     except OSError:
         pass
-    return text, f"{seen} setup.yaml @ origin/main {sha.strip()}"
+    return text, f"{seen} setup.yaml @ origin/main {sha[:12]}", sha
 
 
 def home():
@@ -572,10 +593,31 @@ def append_line(path, line):
         f.write(line + "\n")
 
 
+def _short(*parts):
+    return hashlib.sha256("\0".join(parts).encode()).hexdigest()[:8]
+
+
+def entry_key(kind, item):
+    """What an entry is, not where it sits: an edit that inserts a step above
+    one must not move its id, or a --confirmed given for one person step
+    would close another."""
+    if kind in ("brew", "cask", "pipx", "plugin"):
+        return item
+    if kind in ("marketplace", "mcp", "installer"):
+        return item["name"] if kind != "installer" else item["check"]
+    if kind == "git":
+        return item[0]
+    if kind in ("shell", "path"):
+        return _short(*item)
+    if kind == "person":
+        return _short(item["title"], item["check"])
+    raise AssertionError(kind)
+
+
 def entries(doc):
-    """The plan: one entry per thing to install or set, in file order."""
+    """The plan: one entry per thing to install or set, in file order, each
+    with the id GROUP.KIND:KEY."""
     for g in doc["groups"]:
-        n = 0
         for step in g["steps"]:
             (kind, body), = step.items()
             items = []
@@ -592,8 +634,7 @@ def entries(doc):
             else:
                 items = [(kind, body)]
             for kind_, item in items:
-                n += 1
-                yield g, f"{g['name']}.{n}", kind_, item
+                yield g, f"{g['name']}.{kind_}:{entry_key(kind_, item)}", kind_, item
 
 
 def describe(kind, item):
@@ -703,6 +744,8 @@ MARK = {"present": "[ok]    ", "missing": "[todo]  ", "person": "[person]"}
 
 def print_plan(plan):
     print(f"fleet setup: {plan['file']} (version {plan['version']}, {plan['platform']})")
+    if plan.get("sha"):
+        print(f"reviewed: {plan['sha']} (pass apply --at {plan['sha'][:12]})")
     print(f"platform: {'ok' if plan['platform_ok'] else 'MISMATCH, this machine is ' + plan['platform_here']}")
     print(f"workspace: {plan['workspace']} -> {plan['workspace_path']}"
           f" ({'exists' if plan['workspace_exists'] else 'missing'})")
@@ -716,7 +759,7 @@ def print_plan(plan):
         for n in g["notes"]:
             print(f"   note: {n}")
         for s in g["steps"]:
-            print(f"  {MARK[s['status']]} {s['id']:<14} {s['label']}")
+            print(f"  {MARK[s['status']]} {s['id']:<32} {s['label']}")
             if s["status"] != "present" and s["command"]:
                 for ln in s["command"].splitlines():
                     print(f"             {ln}")
@@ -771,10 +814,10 @@ def apply_group(doc, group, confirmed):
             continue
         label, command, person = describe(kind, item)
         if status(m, kind, item, confirmed, eid):
-            print(f"[ok]     {eid:<14} {label}")
+            print(f"[ok]     {eid:<32} {label}")
             continue
         if person:
-            print(f"[person] {eid:<14} {label}")
+            print(f"[person] {eid:<32} {label}")
             print(f"STOPPED at {eid}: {person['title']}")
             print(f"needs: {person['why']}; run in {'a separate terminal' if person['terminal'] == 'separate' else 'this session'}")
             if command:
@@ -783,7 +826,7 @@ def apply_group(doc, group, confirmed):
                     print(f"  {ln}")
             print(f"then: apply --group {group} --confirmed {eid}")
             return 10
-        print(f"[run]    {eid:<14} {command.splitlines()[0]}")
+        print(f"[run]    {eid:<32} {command.splitlines()[0]}")
         if kind in ("shell", "path"):
             append_line(*item)
             continue
@@ -817,17 +860,38 @@ ARCHIVE_KINDS = {
 }
 
 
-def check_archive(path, kind):
-    """The members of `path` that fleet setup would not restore, each with why.
-    Only regular files and folders, with relative names and no `..`."""
+def read_archive(path):
+    """(TarFile, problems). Read once, into memory, by this parser only: the
+    check and the extraction must see the same members. Python's reader stops
+    quietly at a damaged header, where bsdtar skips it and reads on, so bytes
+    after the last member it parsed that are not zero padding mean members
+    one reader sees and the other does not, and the archive is refused."""
+    try:
+        raw = pathlib.Path(path).read_bytes()
+    except OSError as e:
+        return None, [f"{path}: cannot read ({e.strerror})"]
+    if raw[:2] == b"\x1f\x8b":
+        try:
+            raw = gzip.decompress(raw)
+        except (OSError, EOFError) as e:
+            return None, [f"{path}: damaged gzip stream ({e})"]
+    try:
+        t = tarfile.open(fileobj=io.BytesIO(raw), mode="r:")
+        t.getmembers()
+    except tarfile.TarError as e:
+        return None, [f"{path}: not a tar archive ({e})"]
+    if raw[t.offset:].strip(b"\0"):
+        return None, [f"{path}: unreadable data after byte {t.offset}, where the last member ends; "
+                      "another tar reader could find members there"]
+    return t, []
+
+
+def check_archive(t, kind):
+    """The members fleet setup would not restore, each with why. Only regular
+    files and folders, with relative names and no `..`."""
     member, parent = ARCHIVE_KINDS[kind]
     bad = []
-    try:
-        with tarfile.open(path, "r:*") as t:
-            members = t.getmembers()
-    except (OSError, tarfile.TarError) as e:
-        return [f"{path}: not a readable archive ({e})"]
-    for m in members:
+    for m in t.getmembers():
         name = m.name[2:] if m.name.startswith("./") else m.name
         name = name.rstrip("/")
         parts = pathlib.PurePosixPath(name).parts
@@ -841,9 +905,29 @@ def check_archive(path, kind):
             continue
         elif not member.match(name):
             bad.append(f"{m.name}: not something fleet setup restores")
-        elif name.endswith("/.env") and not m.isfile():
-            bad.append(f"{m.name}: .env is not a file")
     return bad
+
+
+def extract_archive(t, dest):
+    """Unpack every member of a checked archive under `dest`, keeping any file
+    already there. (extracted, kept, refused); `data` refuses a member whose
+    path would resolve outside `dest`, such as through a symlink already
+    there."""
+    dest = pathlib.Path(dest)
+    dest.mkdir(mode=0o700, parents=True, exist_ok=True)
+    done, kept, refused = 0, 0, []
+    for m in t.getmembers():
+        target = dest / m.name
+        if (m.isdir() and target.is_dir()) or (not m.isdir() and os.path.lexists(target)):
+            kept += not m.isdir()
+            continue
+        try:
+            t.extract(m, dest, filter="data")
+        except (tarfile.FilterError, OSError) as e:
+            refused.append(f"{m.name}: {e}")
+            continue
+        done += not m.isdir()
+    return done, kept, refused
 
 
 def main(argv=None):
@@ -857,6 +941,7 @@ def main(argv=None):
     sub.add_parser("validate")
     p = sub.add_parser("archive")
     p.add_argument("--kind", choices=sorted(ARCHIVE_KINDS), required=True)
+    p.add_argument("--extract", metavar="DEST", help="unpack the checked members under DEST")
     p.add_argument("path")
     for name in ("plan", "check", "verify"):
         p = sub.add_parser(name)
@@ -865,20 +950,40 @@ def main(argv=None):
             p.add_argument("--confirmed", action="append", default=[])
     p = sub.add_parser("apply")
     p.add_argument("--group", required=True)
+    p.add_argument("--at", metavar="SHA", help="the origin/main commit plan showed; required without --file")
     p.add_argument("--confirmed", action="append", default=[])
     a = ap.parse_args(argv)
 
     if a.cmd == "archive":
-        bad = check_archive(a.path, a.kind)
+        t, bad = read_archive(a.path)
+        bad = bad or check_archive(t, a.kind)
         for b in bad:
             print(f"REFUSED {b}")
-        print(f"{a.path}: {'refused' if bad else 'ok'} ({a.kind})")
-        return 1 if bad else 0
-    if a.cmd == "apply" and a.file and not a.unreviewed:
-        print("apply: --file runs a file nobody reviewed; pass --unreviewed as well to mean it", file=sys.stderr)
+        if bad:
+            print(f"{a.path}: refused ({a.kind}); nothing unpacked")
+            return 1
+        if a.extract:
+            done, kept, refused = extract_archive(t, a.extract)
+            for r in refused:
+                print(f"REFUSED {r}")
+            print(f"{a.path}: unpacked {done} files into {a.extract}, kept {kept} already there"
+                  f"{f', refused {len(refused)}' if refused else ''} ({a.kind})")
+            return 1 if refused else 0
+        else:
+            print(f"{a.path}: ok ({a.kind})")
+        return 0
+    if a.file and a.cmd != "validate" and not a.unreviewed:
+        print(f"{a.cmd}: --file runs commands from a file nobody reviewed (person-step checks, verify, "
+              "installs); pass --unreviewed as well to mean it", file=sys.stderr)
+        return 2
+    if a.cmd == "apply" and not a.file and not a.at:
+        print("apply: pass --at SHA, the origin/main commit plan printed", file=sys.stderr)
         return 2
     try:
-        text, source = load_file(a.file) if a.file else load_reviewed(a.fleet)
+        text, source, sha = load_file(a.file) if a.file else load_reviewed(a.fleet)
+        if a.cmd == "apply" and sha and not (len(a.at) >= 7 and sha.startswith(a.at.lower())):
+            raise Gate("MOVED", f"origin/main is now {sha[:12]}, not the {a.at} that plan showed; "
+                                "run plan again and show it")
         doc = parse(text, source)
     except Gate as e:
         print(f"GATE {e.code}: {e.detail}", file=sys.stderr)
@@ -893,6 +998,7 @@ def main(argv=None):
         return 0
     if a.cmd == "plan":
         plan = build_plan(doc, source, a.confirmed)
+        plan["sha"] = sha
         print(json.dumps(plan, indent=2)) if a.json else print_plan(plan)
         return 0
     if a.cmd == "verify":

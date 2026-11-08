@@ -5,10 +5,9 @@
 
 # Runs the compliance engine's Python tables so they gate with the shell
 # suites: both runners glob scripts/*.test.sh and neither knows about .py.
-# pyyaml is the engine's one dependency; a machine without it must fail
-# loudly here, not report the engine as passing because nothing ran.
+# No skip when uv is missing: a suite that skips prints the same as one that
+# passed.
 
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
-python3 -c 'import yaml' 2>/dev/null || { echo "audit.test.sh: pyyaml missing (pip install pyyaml)"; exit 1; }
-python3 -m unittest scripts/audit_test.py
+uv run --quiet scripts/audit_test.py

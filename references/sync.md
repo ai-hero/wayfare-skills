@@ -207,7 +207,7 @@ parent session prints it once.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-python3 "$WAYFARE_ROOT/scripts/security_audit_upstream.py" status --summary
+uv run "$WAYFARE_ROOT/scripts/security_audit_upstream.py" status --summary
 ```
 
 Any output that is not `UPSTREAM_CURRENT`, `UPSTREAM_BEHIND` or
@@ -296,7 +296,7 @@ Run the engine for this repo alone, as it sits:
 # a non-zero exit is recorded in a variable rather than printed into the
 # stream a parser is about to read.
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-"$WAYFARE_ROOT/scripts/audit.py" \
+uv run "$WAYFARE_ROOT/scripts/audit.py" \
   --repo . --no-snapshot --json > "$SCRATCH/compliance.jsonl" 2> "$SCRATCH/compliance.err"; COMPLIANCE_RC=$?
 case "$COMPLIANCE_RC" in
   0) ;;
@@ -337,7 +337,7 @@ compliance route. The run above reads the checkout as it sits, so it proposes
 candidates. Confirm them at merged state before filing:
 
 ```bash
-"$WAYFARE_ROOT/scripts/audit.py" \
+uv run "$WAYFARE_ROOT/scripts/audit.py" \
   --repo . --json > "$SCRATCH/compliance-main.jsonl" 2> "$SCRATCH/compliance-main.err"; COMPLIANCE_MAIN_RC=$?
 ```
 

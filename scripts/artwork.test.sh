@@ -4,7 +4,7 @@
 
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-python3 - "$ROOT/publishing" <<'PY'
+uv run --quiet --no-project python - "$ROOT/publishing" <<'PY'
 import re
 import sys
 import xml.etree.ElementTree as ET

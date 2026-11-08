@@ -885,10 +885,10 @@ WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfar
 . "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT — export WAYFARE_ROOT as the plugin root"; exit 1; }
 FIRST_ARG=$(printf '%s' "$ARGUMENTS" | awk '{print $1}')
 if [ "$FIRST_ARG" = "commit" ]; then
-  python3 "$WAYFARE_ROOT/scripts/diff_leftovers.py"
+  uv run "$WAYFARE_ROOT/scripts/diff_leftovers.py"
 else
   DEFAULT_BRANCH=$(hero_default_branch)
-  python3 "$WAYFARE_ROOT/scripts/diff_leftovers.py" --base "origin/$DEFAULT_BRANCH"
+  uv run "$WAYFARE_ROOT/scripts/diff_leftovers.py" --base "origin/$DEFAULT_BRANCH"
 fi
 ```
 
@@ -952,7 +952,7 @@ MSG=$(cat <<'EOF'
 EOF
 )
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind commit --body-file - <<<"$MSG" || exit 1
+uv run "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind commit --body-file - <<<"$MSG" || exit 1
 git commit -m "$MSG"
 ```
 
@@ -1127,7 +1127,7 @@ EOF
 # The exact text that gets posted. A finding means fix the text and
 # re-run, never post around it.
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind pr --title "$PR_TITLE" --body-file - <<<"$BODY" || exit 1
+uv run "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind pr --title "$PR_TITLE" --body-file - <<<"$BODY" || exit 1
 gh pr create $DRAFT_FLAG --base "$DEFAULT_BRANCH" --title "$PR_TITLE" --body "$BODY"
 ```
 

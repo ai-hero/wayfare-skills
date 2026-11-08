@@ -3,7 +3,7 @@ name: wayfare-check-audit-claim
 # prettier-ignore
 description: "Check a claim from a compliance tool against what the auditor was told and against independent evidence. Report it as a claim row. Read only. Use before reporting a test result, deadline, fix or task from a tool such as Vanta, or before filing a ticket from one, even when nobody asked for a check."
 argument-hint: "[CLAIM_OR_QUESTION] | compare"
-compatibility: "Requires the complete Wayfare plugin and a session with read access to the compliance tool. Network access is required. The sent document is local and the person supplies its path."
+compatibility: "Requires the complete Wayfare plugin, uv, and a session with read access to the compliance tool. Network access is required. The sent document is local and the person supplies its path."
 ---
 
 # Check audit claim: a compliance tool's output is a lead until it is checked
@@ -147,7 +147,7 @@ prints to standard output and removes the temporary worktrees it creates.
 
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-"$WAYFARE_ROOT/scripts/audit.py" --md
+uv run "$WAYFARE_ROOT/scripts/audit.py" --md
 ```
 
 Carry the `register:` line that `audit.py` prints into the report. If it says

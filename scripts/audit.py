@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pyyaml==6.0.3"]
+# ///
 # Copyright (c) 2026 A.I. Hero, Inc.
 # All Rights Reserved.
 
@@ -80,7 +84,7 @@ import tempfile
 try:
     import yaml
 except ImportError:
-    sys.exit("pyyaml required: pip install pyyaml")
+    sys.exit("pyyaml required: run through uv (`uv run scripts/audit.py`), which installs it from the inline metadata")
 
 HERE = pathlib.Path(__file__).resolve().parent.parent   # the wayfare plugin
 BASELINE = HERE / "assets" / "compliance"               # generic register, public

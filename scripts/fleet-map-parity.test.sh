@@ -14,7 +14,7 @@ set -uo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=/dev/null
 . "$REPO/scripts/hero-lib.sh" || { echo "cannot source hero-lib.sh"; exit 1; }
-python3 -c 'import yaml' 2>/dev/null || { echo "fleet-map-parity: pyyaml missing (pip install pyyaml)"; exit 1; }
+UV="$(command -v uv)" || { echo "fleet-map-parity: uv missing (https://docs.astral.sh/uv/)"; exit 1; }
 
 PASS=0
 FAIL=0
@@ -52,7 +52,9 @@ shell_says() { # DIR
 
 py_says() { # MODULE_PATH DIR
   local out err rc
-  err=$(cd "$WORK" && WAYFARE_FLEET_ROOT="$GOOD" python3 -I -c '
+  # The module's own inline metadata supplies its dependencies (pyyaml for
+  # audit.py), so this cannot pass on a set the module does not declare.
+  err=$(cd "$WORK" && WAYFARE_FLEET_ROOT="$GOOD" "$UV" run --quiet --no-project --with-requirements "$1" python -I -c '
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location("m", sys.argv[1])
 m = importlib.util.module_from_spec(spec)

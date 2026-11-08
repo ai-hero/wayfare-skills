@@ -54,6 +54,13 @@ is the fleet's.
 - **Read before edit.** Match the surrounding style; don't introduce new
   patterns.
 
+- **Python runs through `uv run`, never a bare `python3`.** Each script declares
+  `requires-python` and its exactly pinned dependencies in a PEP 723
+  `# /// script` block, and is invoked as `uv run path/to/script.py`. Never fix
+  a missing import by installing into the system or Homebrew Python: that passes
+  on the machine it was installed on and fails on the next, which is how
+  `audit.test.sh` broke on Homebrew's python3.15.
+
 - **This file follows [docs/AGENTS-MD.md](./docs/AGENTS-MD.md)**, and
   `scripts/check-agents-md.sh` gates it on commit.
 
@@ -135,7 +142,8 @@ is the fleet's.
 - **`assets/security-audit/` is the one asset nobody here authors, so never edit
   it.** `validate.sh` holds it to its hash manifest, and every formatter is
   excluded from it. An upstream fix is taken with
-  `scripts/security_audit_upstream.py refresh`, and a local fix does not exist.
+  `uv run scripts/security_audit_upstream.py refresh`, and a local fix does not
+  exist.
 
 - **`hooks/hooks.json` runs in every session of everyone with the plugin
   enabled**, in every repo they open. Its Stop hook gates itself to repos with a

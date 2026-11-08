@@ -3,7 +3,7 @@ name: wayfare-audit-deep
 # prettier-ignore
 description: "Run the vendored Cloudflare security audit on one repo, with a stated budget and source-only by default. Use when a person explicitly asks for a deep security audit or a pen test of a repo, and only then. Not for a security question, a PR review, or dependency and image scanning."
 argument-hint: "[REPO_PATH]"
-compatibility: "Requires the complete Wayfare plugin, git, Python 3, Node.js for the audit's validators, a client that can delegate to subagents, and GitHub CLI with network access for the upstream check."
+compatibility: "Requires the complete Wayfare plugin, git, uv, Node.js for the audit's validators, a client that can delegate to subagents, and GitHub CLI with network access for the upstream check."
 # A person starts this by name. No agent, and no text in an audited repo, can.
 disable-model-invocation: true
 ---
@@ -61,8 +61,8 @@ WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfar
 . "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
 hero_fleet_step0 || exit 1
 case "$(pwd -P)/" in "$(cd -P "$TARGET" && pwd)"/*) echo "SESSION_INSIDE_TARGET" ;; esac
-python3 "$WAYFARE_ROOT/scripts/security_audit_upstream.py" verify --upstream; echo "VERIFY_RC=$?"
-python3 "$WAYFARE_ROOT/scripts/security_audit_upstream.py" status --summary
+uv run "$WAYFARE_ROOT/scripts/security_audit_upstream.py" verify --upstream; echo "VERIFY_RC=$?"
+uv run "$WAYFARE_ROOT/scripts/security_audit_upstream.py" status --summary
 ```
 
 - `FLEET_ROOT` printed: never fan out. Continue only with the one repo the
@@ -185,7 +185,7 @@ finding and asks for a ticket:
    runs, so search by title too:
 
    ```bash
-   python3 -I -c 'import hashlib,sys; print("DEEP-" + hashlib.sha256(sys.argv[1].encode()).hexdigest()[:12].upper())' "$FINGERPRINT"
+   uv run --quiet --no-project python -I -c 'import hashlib,sys; print("DEEP-" + hashlib.sha256(sys.argv[1].encode()).hexdigest()[:12].upper())' "$FINGERPRINT"
    ```
 
 3. Follow the rest of [finding-tickets.md](../../references/finding-tickets.md),
@@ -194,8 +194,8 @@ finding and asks for a ticket:
 ## Gotchas
 
 - `refresh` and the pin belong to the wayfare-skills repo, not to a run. To take
-  an upstream change, run `scripts/security_audit_upstream.py status` and then
-  `refresh` in a worktree of that repo, and open a PR. `status` lists the
+  an upstream change, run `uv run scripts/security_audit_upstream.py status` and
+  then `refresh` in a worktree of that repo, and open a PR. `status` lists the
   commits and files.
 - The age check in `refresh` reads a commit date the author's git client set. It
   stops an honest recent commit, and a backdated one passes it. The PR review is

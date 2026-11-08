@@ -4,7 +4,7 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PY=${PUBLISH_PYTHON:-"$ROOT/.analysis/publish-env/bin/python3"}
 if [ ! -x "$PY" ]; then
-    echo "missing $PY; run: python3 -m venv .analysis/publish-env && .analysis/publish-env/bin/pip install -r publishing/requirements.txt" >&2
+    echo "missing $PY; run: uv venv .analysis/publish-env && uv pip install --python .analysis/publish-env -r publishing/requirements.txt" >&2
     exit 1
 fi
 # WeasyPrint loads Pango and friends through dlopen; Homebrew's lib dir is not on the default path.

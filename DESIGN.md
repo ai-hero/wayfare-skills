@@ -21,7 +21,7 @@ Markdown, bash, and Python: the compliance engine, the doc checker
 (`check_docs.py`), and the linters the skills run before they post or commit
 (`pr_text_lint.py`, `diff_leftovers.py`). No compiled language, no dependency
 manifest beyond the per-agent plugin manifests and `publishing/requirements.txt`
-(pyyaml is pinned in `.pre-commit-config.yaml`), no build step. `pre-commit` holds the gates and the
+(each script pins its own dependencies in PEP 723 inline metadata and runs through `uv run`, never a bare `python3`), no build step. `pre-commit` holds the gates and the
 `Justfile` names them: `just lint`, `typecheck`, `test` and `validate` run the
 same checks locally and in `pr-check.yaml`, one recipe per CI step. mdformat
 owns Markdown line breaks, so nobody re-wraps a paragraph by hand, except in this

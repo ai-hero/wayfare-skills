@@ -545,18 +545,18 @@ design prototypes typically are), extract the target tree at the ref under test
 from the snapshot repo with `git -C "$SNAP" archive REF | tar -x -C SCRATCH_DIR`
 (never `git checkout` in `$SNAP`, whose worktree must keep tracking the latest
 pull) and serve it with a throwaway static server (e.g.
-`python3 -m http.server PORT --directory SCRATCH_DIR`); serve or point at the
-source's own dev stack for the live side. Screenshot both and look: full page,
-scrolled, not just the fold, since drift often lives below it. This is required,
-not optional, whenever `sync`'s **stale** or **covered** findings, or a task's
-Definition of Done, make a claim about what a page looks like. A claim resting
-only on a code read or a text diff is unverified, not confirmed. For volume, fan
-the page pairs out across parallel subagents rather than walking them one at a
-time, but brief each with the specific pages it owns and have it read the
-relevant task's already-logged departures first, so it doesn't re-report a
-settled, intentional difference as new drift. Give each its own tab or browser
-context. Agents sharing one tab group will step on each other's navigation and
-misattribute findings.
+`uv run --no-project python -m http.server PORT --directory SCRATCH_DIR`); serve
+or point at the source's own dev stack for the live side. Screenshot both and
+look: full page, scrolled, not just the fold, since drift often lives below it.
+This is required, not optional, whenever `sync`'s **stale** or **covered**
+findings, or a task's Definition of Done, make a claim about what a page looks
+like. A claim resting only on a code read or a text diff is unverified, not
+confirmed. For volume, fan the page pairs out across parallel subagents rather
+than walking them one at a time, but brief each with the specific pages it owns
+and have it read the relevant task's already-logged departures first, so it
+doesn't re-report a settled, intentional difference as new drift. Give each its
+own tab or browser context. Agents sharing one tab group will step on each
+other's navigation and misattribute findings.
 
 **Path fields ride behind `--`.** A task's `source:`/`target:` values are
 store-file text that reaches `git show`/`git diff` argv (and the design project

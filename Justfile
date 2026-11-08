@@ -32,7 +32,7 @@ lint:
 
 # Structured data parses.
 typecheck:
-    @python3 -c "\
+    @uv run --quiet --no-project --with pyyaml==6.0.3 python -c "\
     import json, sys, yaml; \
     from pathlib import Path; \
     skip=('.git/', 'assets/security-audit/'); \
@@ -64,7 +64,7 @@ validate:
 
 # The vendored security audit matches its pinned upstream commit.
 verify-vendored-upstream:
-    @python3 scripts/security_audit_upstream.py verify --upstream
+    @uv run --quiet scripts/security_audit_upstream.py verify --upstream
 
 # Delegated to pre-commit for the same reason lint is: these hooks are pied
 # there, and a second copy of the same formatter can disagree with the one the

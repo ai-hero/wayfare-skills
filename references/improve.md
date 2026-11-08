@@ -20,10 +20,11 @@ fleet there is no template and no backport; say so.
 **At a fleet root** (Step 0 printed `FLEET_ROOT`), `wayfare-audit-compliance` is
 the family audit:
 
-1. Run the engine for the whole family, at merged state: `scripts/audit.py --md`
-   (it snapshots each repo at `origin/main`; pass `--no-snapshot` only when the
-   user asks to audit the checkouts as they sit). Print the table.
-2. Regenerate the fleet's table: `scripts/consistency.py` writes
+1. Run the engine for the whole family, at merged state:
+   `uv run scripts/audit.py --md` (it snapshots each repo at `origin/main`; pass
+   `--no-snapshot` only when the user asks to audit the checkouts as they sit).
+   Print the table.
+2. Regenerate the fleet's table: `uv run scripts/consistency.py` writes
    `CONSISTENCY.md` into the register checkout, with `FIRST_SEEN.json` beside
    it: the date each open failure was first seen, which the table's ages and
    deadlines count from. It is a git repo; propose one commit of both files and

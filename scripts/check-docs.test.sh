@@ -25,7 +25,9 @@ check() { # name expected actual
   fi
 }
 
-python3 -c 'import yaml' 2>/dev/null || { echo "SKIP: pyyaml not installed"; exit 0; }
+# No skip when uv is missing: a suite that skips prints the same as one that
+# passed.
+UV="$(command -v uv)" || { echo "check-docs.test.sh: uv missing (https://docs.astral.sh/uv/)"; exit 1; }
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -67,7 +69,7 @@ Run `a → b → c` and see [the plan](../../docs/PIPELINES.md).
 EOF
   printf '# Readme\n\nTwo kinds, one block each.\n' > "$R/README.md"
 }
-run() { git -C "$R" add -A >/dev/null; python3 "$SCRIPT" --root "$R" 2>/dev/null; }
+run() { git -C "$R" add -A >/dev/null; "$UV" run --quiet "$SCRIPT" --root "$R" 2>/dev/null; }
 checks_of() { run | sed -nE 's/.*\[([a-z]+)\].*/\1/p' | sort -u | tr '\n' ' ' | sed 's/ $//'; }
 SK() { printf '%s\n' "$R/skills/wayfare-demo/SKILL.md"; }
 
@@ -233,7 +235,7 @@ git -C "$R" checkout -qb side; printf '\nside \xe2\x80\x94 one\n' >> "$R/README.
 git -C "$R" checkout -q -; printf '\nmain two\n' >> "$R/README.md"; git -C "$R" commit -qam main
 git -C "$R" merge -q side >/dev/null 2>&1
 check "the merge fixture really conflicts" "yes" "$(git -C "$R" ls-files -u -- README.md | grep -q . && echo yes || echo no)"
-check "a conflicted file is read once, not once per stage" "1" "$(python3 "$SCRIPT" --root "$R" 2>/dev/null | grep -c '^README.md:.*em dash')"
+check "a conflicted file is read once, not once per stage" "1" "$("$UV" run --quiet "$SCRIPT" --root "$R" 2>/dev/null | grep -c '^README.md:.*em dash')"
 
 # The banned list is a copy of docs/AGENTS-MD.md R6 (as check-agents-md.sh's
 # is); read the doc so the two cannot drift apart without this failing.

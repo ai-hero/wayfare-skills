@@ -233,6 +233,14 @@ check_tooling() {
     emit BLOCKER "tooling: 'jq' not installed — required by gh api calls"
   fi
 
+  # 2b. uv: push-pr, review-pr and respond-pr lint every post with
+  #     `uv run scripts/pr_text_lint.py`, so a missing uv stops the first post.
+  if command -v uv >/dev/null 2>&1; then
+    emit OK "tooling: uv present"
+  else
+    emit BLOCKER "tooling: 'uv' not installed — wayfare runs its Python scripts through it (https://docs.astral.sh/uv/)"
+  fi
+
   # 3. Node ≥18 (Playwright MCP needs it)
   if command -v node >/dev/null 2>&1; then
     local node_major

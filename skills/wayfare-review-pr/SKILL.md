@@ -2,7 +2,7 @@
 name: wayfare-review-pr
 description: "Review a PR with independent quality and security passes. Apply fixes only in self-review mode. Use before marking your PR ready or when reviewing another author's PR without editing it."
 argument-hint: "[#PR] [--no-mark-ready] | recalibrate"
-compatibility: "Requires the complete Wayfare plugin, git, GitHub CLI, network access, and optional review-agent capabilities in the active client."
+compatibility: "Requires the complete Wayfare plugin, git, uv, GitHub CLI, network access, and optional review-agent capabilities in the active client."
 ---
 
 # Review a pull request

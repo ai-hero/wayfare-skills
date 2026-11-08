@@ -287,7 +287,7 @@ EOF
 # The exact text that gets posted. A finding means fix the text and
 # re-run, never post around it.
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind comment --body-file - <<<"$BODY" || exit 1
+uv run "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind comment --body-file - <<<"$BODY" || exit 1
 gh pr comment $PR_NUMBER --body "$BODY"
 ```
 
@@ -403,7 +403,7 @@ fix: address self-review findings
 EOF
 )
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind commit --body-file - <<<"$MSG" || exit 1
+uv run "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind commit --body-file - <<<"$MSG" || exit 1
 git commit -m "$MSG"
 git push origin "$PR_BRANCH"
 ```
@@ -455,7 +455,7 @@ EOF
 # The exact text that gets posted. A finding means fix the text and
 # re-run, never post around it.
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind comment --body-file - <<<"$BODY" || exit 1
+uv run "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind comment --body-file - <<<"$BODY" || exit 1
 gh pr comment $PR_NUMBER --body "$BODY"
 ```
 
@@ -489,7 +489,7 @@ EOF
 # The exact text that gets posted. A finding means fix the text and
 # re-run, never post around it.
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind pr-edit --title "NEW_TITLE_UNDER_70_CHARS" --body-file - <<<"$BODY" || exit 1
+uv run "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind pr-edit --title "NEW_TITLE_UNDER_70_CHARS" --body-file - <<<"$BODY" || exit 1
 gh pr edit $PR_NUMBER --title "NEW_TITLE_UNDER_70_CHARS" --body "$BODY"
 ```
 
@@ -625,7 +625,7 @@ Important: {finding}
 EOF
 )
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind inline --body-file - <<<"$COMMENT_BODY" || exit 1
+uv run "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind inline --body-file - <<<"$COMMENT_BODY" || exit 1
 gh api "repos/$OWNER/$REPO/pulls/$PR_NUMBER/comments" \
   -f body="$COMMENT_BODY" \
   -f commit_id="$HEAD_SHA" \
@@ -667,7 +667,7 @@ EOF
 # The exact text that gets posted. A finding means fix the text and
 # re-run, never post around it.
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-python3 "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind review --body-file - <<<"$BODY" || exit 1
+uv run "$WAYFARE_ROOT/scripts/pr_text_lint.py" --kind review --body-file - <<<"$BODY" || exit 1
 gh pr review $PR_NUMBER {DECISION_FLAG} --body "$BODY"
 ```
 

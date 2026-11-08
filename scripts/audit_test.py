@@ -1,7 +1,11 @@
+# /// script
+# requires-python = ">=3.12"
+# dependencies = ["pyyaml==6.0.3"]
+# ///
 # Copyright (c) 2026 A.I. Hero, Inc.
 # All Rights Reserved.
 
-"""Tables for audit.py's parsers. Run: python3 -m unittest scripts/audit_test.py
+"""Tables for audit.py's parsers. Run: uv run scripts/audit_test.py
 
 Each parser here has the failure mode the Justfile names for the hook tests:
 matching nothing is indistinguishable from a clean input, so a regression

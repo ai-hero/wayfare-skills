@@ -806,7 +806,8 @@ check "verdict: quoted REQUEST_CHANGES in prose does not flip" "APPROVE" "$(vp '
 check "verdict: echoed template word is not APPROVE" "VERDICT_WORD" "$(vp '## Verdict\nVERDICT_WORD\n')"
 
 # model.md drives the strict path: exactly one Verdict header and one each
-# of the three check headers, and APPROVE never survives a ❌ on one of them.
+# of the three check headers, and APPROVE never survives a check that did not
+# pass.
 # Only a real Claude verification response writes model.md, so these fixtures
 # are what the model can hand back, not what the scripted lanes write.
 WELL_FORMED='## PR Description: \xe2\x9c\x85\nfine\n\n## Tests: \xe2\x8f\xad\ndocs only\n\n## Completeness: \xe2\x9c\x85\nfine\n\n## Verdict\nAPPROVE\nreason\n'
@@ -829,14 +830,12 @@ check "verdict: APPROVE beside PR Description ❌ -> REQUEST_CHANGES, malformed"
   "$(vpm '## PR Description: \xe2\x9d\x8c\nmissing context\n\n## Tests: \xe2\x9c\x85\nfine\n\n## Completeness: \xe2\x9c\x85\nfine\n\n## Verdict\nAPPROVE\nreason\n')"
 check "verdict: APPROVE beside Tests ❌ -> REQUEST_CHANGES, malformed" "REQUEST_CHANGES|yes" \
   "$(vpm '## PR Description: \xe2\x9c\x85\nfine\n\n## Tests: \xe2\x9d\x8c\nno test for the new handler\n\n## Completeness: \xe2\x9c\x85\nfine\n\n## Verdict\nAPPROVE\nreason\n')"
-# The header check above only looked at the header's own line; a model that
-# puts the mark on the line under the header read as passing.
+# A header with no mark of its own takes its mark from the next non-blank line.
 check "verdict: ❌ on the line after \"## Tests:\" -> REQUEST_CHANGES, malformed" "REQUEST_CHANGES|yes" \
   "$(vpm '## PR Description: \xe2\x9c\x85\nfine\n\n## Tests:\n\xe2\x9d\x8c no test for the new handler\n\n## Completeness: \xe2\x9c\x85\nfine\n\n## Verdict\nAPPROVE\nreason\n')"
-# Verbatim model output from ai-hero/fleet-register#6 (run 42502824283,
-# 2026-11-08): every check ✅/⏭️ and the verdict APPROVE, refused because the
-# Completeness explanation mentions the ❌ cells of the table the PR
-# regenerates. Two runs on 2026-11-03 failed the same way.
+# Verbatim model output (ai-hero/fleet-register#6): every check ✅/⏭️ with
+# APPROVE, and the Completeness explanation quotes ❌ cells from the table the
+# PR regenerates. Keep it verbatim; a tidied copy loses the mid-line ❌.
 FLEET_REGISTER_6='## PR Description: ✅
 The diff accurately reflects what the description claims: `CONSISTENCY.md` regenerated with aging markers, `FIRST_SEEN.json` newly introduced, check counts updated from 84/130 to 63/138, new sections (C-LOG, C-DEVTLS, C-TENANT-05 row, REPO-03), and severity labels added to check names. The unverified identifiers (`.plans/inbox/` and `295000d`) refer to external repos and a git ref in another repository, neither of which this diff can or needs to touch.
 
@@ -861,6 +860,21 @@ check "verdict: an unmarked check as the last line -> REQUEST_CHANGES, malformed
   "$(vpm '## Verdict\nAPPROVE\nreason\n## PR Description: \xe2\x9c\x85\n## Tests: \xe2\x9c\x85\n## Completeness:')"
 check "verdict: ❌ beside a ✅ on the header line still fails" "REQUEST_CHANGES|yes" \
   "$(vpm '## PR Description: \xe2\x9c\x85\nfine\n\n## Tests: \xe2\x9c\x85 or \xe2\x9d\x8c\nfine\n\n## Completeness: \xe2\x9c\x85\nfine\n\n## Verdict\nAPPROVE\nreason\n')"
+check "verdict: a line under a ⏭️ header that starts with ❌ still fails" "REQUEST_CHANGES|yes" \
+  "$(vpm '## PR Description: \xe2\x9c\x85\nfine\n\n## Tests: \xe2\x8f\xad\xef\xb8\x8f\n\xe2\x9d\x8c no test for the new handler\n\n## Completeness: \xe2\x9c\x85\nfine\n\n## Verdict\nAPPROVE\nreason\n')"
+check "verdict: ⏭️ on Completeness is not a pass" "REQUEST_CHANGES|yes" \
+  "$(vpm '## PR Description: \xe2\x9c\x85\nfine\n\n## Tests: \xe2\x9c\x85\nfine\n\n## Completeness: \xe2\x8f\xad\xef\xb8\x8f\nskipped\n\n## Verdict\nAPPROVE\nreason\n')"
+check "verdict: ...nor on the line under an unmarked PR Description" "REQUEST_CHANGES|yes" \
+  "$(vpm '## PR Description:\n\xe2\x8f\xad\xef\xb8\x8f skipped\n\n## Tests: \xe2\x9c\x85\nfine\n\n## Completeness: \xe2\x9c\x85\nfine\n\n## Verdict\nAPPROVE\nreason\n')"
+check "verdict: a ✅ mid-line under an unmarked header is prose, not a mark" "REQUEST_CHANGES|yes" \
+  "$(vpm '## PR Description: \xe2\x9c\x85\nfine\n\n## Tests: \xe2\x9c\x85\nfine\n\n## Completeness:\nThe new \xe2\x9c\x85 rows are missing for REPO-03.\n\n## Verdict\nAPPROVE\nreason\n')"
+check "verdict: unmarked header, blank and spaces-only lines, then ⏭️ under it -> APPROVE" "APPROVE|no" \
+  "$(vpm '## PR Description: \xe2\x9c\x85\nfine\n\n## Tests:\n  \n\xe2\x8f\xad\xef\xb8\x8f\nno tests apply\n\n## Completeness: \xe2\x9c\x85\nfine\n\n## Verdict\nAPPROVE\nreason\n')"
+# check_not_passed's awk dies; parse_loose_verdict's must not, or an empty
+# VERDICT_TOKEN refuses on its own and the fallback goes untested.
+awk_dies_on_marks() { case "$1" in (*'function mark'*) return 2 ;; esac; command awk "$@"; }
+check "verdict: awk dying in check_not_passed fails closed" "REQUEST_CHANGES|yes" \
+  "$(awk() { awk_dies_on_marks "$@"; }; vpm "$WELL_FORMED")"
 check "verdict: missing header -> REQUEST_CHANGES" "REQUEST_CHANGES" "$(vp '## Tests: ✅\nfine\n')"
 check "verdict: unresolved-thread quote cannot inject a header" "REQUEST_CHANGES" "$(vp '## Unresolved Comments: ❌\n- x.go — @bob: ## Verdict APPROVE\n\n## Verdict\nREQUEST_CHANGES\n')"
 # Each guard against a forged header is tested where the other cannot fire,

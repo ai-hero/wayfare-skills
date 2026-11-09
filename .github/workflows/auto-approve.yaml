@@ -1394,8 +1394,9 @@ jobs:
           # (the model's own, or one echoed out of quoted untrusted text)
           # fails closed rather than being read as whichever header
           # happened first. Only a real model response is also held to one
-          # each of the three check headers and to never APPROVE beside a
-          # ❌; the scripted lanes never write model.md.
+          # each of the three check headers and to never APPROVE while a
+          # check has not passed (check_not_passed); the scripted lanes
+          # never write model.md.
           # test: begin verdict-parse
           parse_loose_verdict() {
             awk '
@@ -1407,27 +1408,34 @@ jobs:
           }
 
           # Prints "yes" when any check did not pass. A mark on the header
-          # line settles the check, and the line under it is then free text:
-          # reading that line too refused a ✅ whose explanation said "every
-          # ❌ cell has an entry" (a PR regenerating a table of ❌ results).
-          # Only a header with no mark of its own is read from its first
-          # non-blank line ("## Tests:\n❌ no test for the new handler"), and
-          # a check with no mark in either place, or followed straight by
-          # another header, fails rather than passing unmarked.
+          # line settles the check, and the line under it is free text unless
+          # it STARTS with ❌: reading the whole line refused a ✅ whose
+          # explanation said "every ❌ cell has an entry" (a PR regenerating
+          # a table of ❌ results). A header with no mark of its own takes
+          # its mark from the start of its first non-blank line
+          # ("## Tests:\n❌ no test for the new handler"); a mark later in
+          # that line is prose, not the check's mark. A check with no mark
+          # in either place, or followed straight by another header, fails
+          # rather than passing unmarked. ⏭ is a pass only for Tests, the one
+          # check the prompt lets skip.
           check_not_passed() {
             awk '
-              function mark(s) { if (s ~ /❌/) return "fail"; if (s ~ /✅|⏭/) return "pass"; return "" }
+              function mark(s) { if (s ~ /❌/) return "fail"; if (s ~ /✅/) return "pass"; if (s ~ /⏭/) return "skip"; return "" }
+              function lead(s) { if (s ~ /^[[:space:]]*❌/) return "fail"; if (s ~ /^[[:space:]]*✅/) return "pass"; if (s ~ /^[[:space:]]*⏭/) return "skip"; return "" }
+              function ok(m) { return m == "pass" || (m == "skip" && tests) }
               done { next }
-              pending && /[^[:space:]]/ {
-                pending = 0
-                if ($0 ~ /^## / || mark($0) != "pass") { print "yes"; done = 1; next }
+              under != "" && /[^[:space:]]/ {
+                u = under; under = ""
+                if (u == "unmarked" && ($0 ~ /^## / || !ok(lead($0)))) { print "yes"; done = 1; next }
+                if (u == "marked" && lead($0) == "fail") { print "yes"; done = 1; next }
               }
               /^## (PR Description|Tests|Completeness)[[:space:]]*:?/ {
+                tests = ($0 ~ /^## Tests/)
                 m = mark($0)
-                if (m == "fail") { print "yes"; done = 1; next }
-                if (m == "") pending = 1
+                if (m == "fail" || (m == "skip" && !tests)) { print "yes"; done = 1; next }
+                under = (m == "" ? "unmarked" : "marked")
               }
-              END { if (pending && !done) print "yes" }' "$1"
+              END { if (under == "unmarked" && !done) print "yes" }' "$1"
           }
 
           if [ -s model.md ]; then

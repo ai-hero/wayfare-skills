@@ -607,6 +607,63 @@ json=$(fs --file "$T/pipx.yaml" --unreviewed plan --json)
 check "json carries the floor" "outdated 3.7.1 4.0.0" \
   "$(printf '%s' "$json" | "$UV_PY" -c 'import json,sys; s=json.load(sys.stdin)["groups"][0]["steps"][0]; print(s["status"], s["floor"]["installed"], s["floor"]["min"])')"
 
+# ── check --floors-only: the session-start hook's mode ──────────────
+floored() { # floor ; the register's setup.yaml, with cfd floored
+  printf '%s\ngroups:\n  - {name: g, title: G, steps: [{brew: [{name: cfd, min: "%s", why: eMudhra certs}, {name: absent-tool, min: "1.0", why: w}]}]}\n' "$BASE" "$1"
+}
+push_setup() { # floor
+  floored "$1" > "$G/work/setup.yaml"
+  g -C "$G/work" add -A && g -C "$G/work" commit -qm "floor $1" && g -C "$G/work" push -q origin HEAD:main
+}
+fetch_reg() { g -C "$F/.fleet" fetch -q origin "+refs/heads/main:refs/remotes/origin/main"; }
+echo 2026.10.7 > "$ST/ver-cfd"
+push_setup 2026.10.2; fetch_reg
+: > "$LOG"
+out=$(gate check --floors-only); rc=$?
+check "floors-only: silent and 0 when every floor is met" "0 []" "$rc [$out]"
+check "floors-only asks brew nothing" "" "$(cat "$LOG")"
+push_setup 2027.1.0
+out=$(gate check --floors-only)
+check "floors-only never fetches: a raised floor waits for the next fetch" "[]" "[$out]"
+fetch_reg
+out=$(gate check --floors-only); rc=$?
+check "floors-only: one line for the one tool below its floor" "0 1" "$rc $(printf '%s\n' "$out" | grep -c .)"
+has "floors-only names the tool, versions, why and fix" "cfd is below its version floor: installed 2026.10.7 at $BIN/cfd; needs >= 2027.1.0: eMudhra certs. Fix: brew upgrade cfd" "$out"
+lacks "a floored tool not on PATH is skipped" "absent-tool" "$out"
+printf '#!/bin/sh\nsleep 5\n' > "$BIN/slow-a"; printf '#!/bin/sh\nsleep 5\n' > "$BIN/slow-b"; chmod +x "$BIN/slow-a" "$BIN/slow-b"
+printf '%s\ngroups:\n  - {name: g, title: G, steps: [{brew: [{name: slow-a, min: "1.0", why: w}, {name: slow-b, min: "1.0", why: w}, {name: cfd, min: "2027.1.0", why: w}]}]}\n' "$BASE" > "$T/slow.yaml"
+s=$(date +%s); out=$(fs --file "$T/slow.yaml" --unreviewed check --floors-only); rc=$?; e=$(date +%s)
+check "floors-only: two hung tools stay inside the hook's 5s" "0 yes" "$rc $([ $((e - s)) -le 4 ] && echo yes || echo no)"
+has "a hung --version is reported, not hidden" "slow-a is below its version floor: installed version unknown" "$out"
+lacks "tools past the budget are skipped" "cfd is below" "$out"
+out=$(PLAT=linux-x86_64 gate check --floors-only); rc=$?
+check "floors-only: silent on another platform" "0 []" "$rc [$out]"
+mkdir -p "$T/nofleet"
+out=$(fs --fleet "$T/nofleet" check --floors-only); rc=$?
+check "floors-only: silent with no register" "0 []" "$rc [$out]"
+: > "$PINS"
+out=$(gate check --floors-only); rc=$?
+check "floors-only: silent when the gate refuses" "0 []" "$rc [$out]"
+printf '%s %s\n' "$F" "file$R" > "$PINS"
+
+HOOK="$HERE/../hooks/check-floors.sh"
+hook() { # cwd ; runs the SessionStart hook as Claude Code would
+  printf '{"hook_event_name":"SessionStart","cwd":"%s"}' "$1" | env -i HOME="$H" XDG_CONFIG_HOME="$H/.config" \
+    PATH="$BIN:$(dirname "$UV"):/usr/bin:/bin" TMPDIR="$T" UV_CACHE_DIR="$UV_CACHE" \
+    UV_PYTHON_INSTALL_DIR="$("$UV" python dir)" GIT_CONFIG_NOSYSTEM=1 FLEET_SETUP_PLATFORM=macos-arm64 \
+    bash "$HOOK" 2>&1
+}
+mkdir -p "$F/some-repo/sub"
+out=$(hook "$F/some-repo/sub"); rc=$?
+check "hook exits 0 with a warning" 0 "$rc"
+check "hook warns the person and the agent" "SessionStart|1|1" \
+  "$(printf '%s' "$out" | jq -r '[.hookSpecificOutput.hookEventName, (.systemMessage | contains("cfd is below its version floor") | if . then 1 else 0 end), (.hookSpecificOutput.additionalContext | contains("brew upgrade cfd") | if . then 1 else 0 end)] | join("|")' 2>&1)"
+push_setup 2026.10.2; fetch_reg
+out=$(hook "$F/some-repo"); rc=$?
+check "hook: silent on a clean machine" "0 []" "$rc [$out]"
+out=$(hook "$T/nofleet"); rc=$?
+check "hook: silent outside a fleet" "0 []" "$rc [$out]"
+
 # ── uvx -w ──────────────────────────────────────────────────────────
 pin "uvx -w unpinned" 2 uvx '["-w", "extra", "tool==1.2.3"]'
 pin "uvx -wVALUE unpinned" 2 uvx '["-wextra", "tool==1.2.3"]'

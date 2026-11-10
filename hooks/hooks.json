@@ -1,5 +1,5 @@
 {
-  "description": "wayfare: catch deferred work that was never filed in .plans/",
+  "description": "wayfare: catch deferred work that was never filed in .plans/, and warn when a fleet tool is below its version floor",
   "hooks": {
     "Stop": [
       {
@@ -8,6 +8,18 @@
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/check-deferrals.sh\"",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/check-floors.sh\"",
+            "timeout": 5
           }
         ]
       }

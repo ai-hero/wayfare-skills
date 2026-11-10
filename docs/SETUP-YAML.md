@@ -179,6 +179,19 @@ fix for a tool already in use. `apply` runs `brew upgrade NAME`,
 `brew upgrade --cask NAME` or `pipx upgrade NAME`, then reads the version again.
 If the copy on `PATH` is still old, it fails and names that copy.
 
+**At session start**, the plugin's `hooks/check-floors.sh` runs
+`check --floors-only` from the nearest folder above the session's cwd that holds
+`.fleet/`. That mode reads origin/main **as last fetched**, never fetches, and
+runs only `--version` of each floored tool that is on `PATH`. It prints one line
+per tool below its floor, which the hook shows to the person and the agent, and
+it is silent in every other case, including no register, a gate refusal, another
+platform, or no `setup.yaml`. It never blocks a session. A raised floor reaches
+a machine the next time anything fetches the register, such as `plan`, `check`
+or the audit. Its version probes share a 3.5s budget under the hook's 5s
+timeout. A hung `--version` is reported as an unknown version, and tools left
+when the budget runs out are skipped. It runs on `startup` and `resume`, not
+after a compact or a clear. It takes about 0.1 to 0.2s.
+
 `why` is one of `password`, `browser`, `secret`, `gui` or `choice` (a value only
 the person can give, such as their commit email). `path` entries are also put on
 the script's own `PATH` for its checks, so a tool installed into `~/.local/bin`
@@ -230,6 +243,7 @@ a pass means, for the report.
 uv run scripts/fleet-setup.py --fleet FLEET_ROOT validate
 uv run scripts/fleet-setup.py --fleet FLEET_ROOT plan [--json]
 uv run scripts/fleet-setup.py --fleet FLEET_ROOT check [--json]
+uv run scripts/fleet-setup.py --fleet FLEET_ROOT check --floors-only
 uv run scripts/fleet-setup.py --fleet FLEET_ROOT apply --group NAME --at SHA [--confirmed ID]...
 uv run scripts/fleet-setup.py --fleet FLEET_ROOT verify [--json]
 uv run scripts/fleet-setup.py --file setup.yaml validate          # an edit, before its PR

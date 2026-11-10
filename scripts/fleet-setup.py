@@ -63,6 +63,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 
 import yaml
 
@@ -894,12 +895,23 @@ def summary(plan):
 def floor_warnings(doc):
     """One line per floored tool on PATH that is below its floor. A tool that
     is not on PATH is skipped rather than asked of brew: brew answers in
-    seconds, and this runs at every session start. check covers it."""
-    m = machine_for(doc, version_timeout=2)
+    seconds, and this runs at every session start. check covers it.
+
+    The probes share a budget under the hook's 5s timeout: Claude Code reports
+    a hook it had to kill as an error, so two slow tools would turn a warning
+    into a failure. Each probe gets at most 2s and never more than what is
+    left, so the whole run stays under 3.5s; tools left when the budget runs
+    out are skipped."""
+    m = machine_for(doc)
     out = []
+    deadline = time.monotonic() + 3.5
     for _, _, kind, item in entries(doc):
         if kind not in UPGRADE or not isinstance(item, dict):
             continue
+        left = deadline - time.monotonic()
+        if left < 0.2:
+            break
+        m.version_timeout = min(2, left)
         if not m.which(item.get("command") or item["name"].rsplit("/", 1)[-1]):
             continue
         short = floor_short(m, kind, item)

@@ -187,7 +187,10 @@ per tool below its floor, which the hook shows to the person and the agent, and
 it is silent in every other case, including no register, a gate refusal, another
 platform, or no `setup.yaml`. It never blocks a session. A raised floor reaches
 a machine the next time anything fetches the register, such as `plan`, `check`
-or the audit. Its hard timeout is 5s, and it takes about 0.1s.
+or the audit. Its version probes share a 3.5s budget under the hook's 5s
+timeout. A hung `--version` is reported as an unknown version, and tools left
+when the budget runs out are skipped. It runs on `startup` and `resume`, not
+after a compact or a clear. It takes about 0.1–0.2s.
 
 `why` is one of `password`, `browser`, `secret`, `gui` or `choice` (a value only
 the person can give, such as their commit email). `path` entries are also put on

@@ -630,6 +630,12 @@ out=$(gate check --floors-only); rc=$?
 check "floors-only: one line for the one tool below its floor" "0 1" "$rc $(printf '%s\n' "$out" | grep -c .)"
 has "floors-only names the tool, versions, why and fix" "cfd is below its version floor: installed 2026.10.7 at $BIN/cfd; needs >= 2027.1.0: eMudhra certs. Fix: brew upgrade cfd" "$out"
 lacks "a floored tool not on PATH is skipped" "absent-tool" "$out"
+printf '#!/bin/sh\nsleep 5\n' > "$BIN/slow-a"; printf '#!/bin/sh\nsleep 5\n' > "$BIN/slow-b"; chmod +x "$BIN/slow-a" "$BIN/slow-b"
+printf '%s\ngroups:\n  - {name: g, title: G, steps: [{brew: [{name: slow-a, min: "1.0", why: w}, {name: slow-b, min: "1.0", why: w}, {name: cfd, min: "2027.1.0", why: w}]}]}\n' "$BASE" > "$T/slow.yaml"
+s=$(date +%s); out=$(fs --file "$T/slow.yaml" --unreviewed check --floors-only); rc=$?; e=$(date +%s)
+check "floors-only: two hung tools stay inside the hook's 5s" "0 yes" "$rc $([ $((e - s)) -le 4 ] && echo yes || echo no)"
+has "a hung --version is reported, not hidden" "slow-a is below its version floor: installed version unknown" "$out"
+lacks "tools past the budget are skipped" "cfd is below" "$out"
 out=$(PLAT=linux-x86_64 gate check --floors-only); rc=$?
 check "floors-only: silent on another platform" "0 []" "$rc [$out]"
 mkdir -p "$T/nofleet"

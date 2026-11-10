@@ -106,9 +106,9 @@ A **step** is a mapping with exactly one key, its kind:
 
 | Kind | Value | Present when | Runs |
 | -- | -- | -- | -- |
-| `brew` | list of formulae | `brew list --formula` has it (a tap formula by its short name) | `brew install NAME` |
-| `cask` | list of casks | `brew list --cask` has it | `brew install --cask NAME` |
-| `pipx` | list of packages | `pipx list --short` has it | `pipx install NAME` |
+| `brew` | list of formulae, each a name or a [floor](#version-floors) | `brew list --formula` has it (a tap formula by its short name) | `brew install NAME` |
+| `cask` | list of casks, each a name or a floor | `brew list --cask` has it | `brew install --cask NAME` |
+| `pipx` | list of packages, each a name or a floor | `pipx list --short` has it | `pipx install NAME` |
 | `installer` | `name`, `check`, `run` | the command `check` is on `PATH` | `run`, by bash, then `check` again |
 | `git` | map of key to string value | `git config --global --get KEY` equals it | `git config --global KEY VALUE` |
 | `shell` | `file`, `lines` | the file has the line, exactly | appends the line |
@@ -146,6 +146,38 @@ something other than what the file says:
    later `apply` would stop at it again. One whose `why` is `secret` runs in a
    separate terminal (`terminal: separate`).
 8. **An http header's `prefix`** is letters, digits, spaces and `._-` only.
+9. **A version floor's `min` is quoted digits and dots** (`"2026.10.2"`), and
+   comes with a `why`. Unquoted, YAML reads `2026.10` as a number.
+
+### Version floors
+
+A `brew`, `cask` or `pipx` item is a name, or a mapping that also sets the
+lowest version the fleet accepts:
+
+```yaml
+- brew:
+    - just
+    - name: cloudflared
+      min: "2026.10.2"
+      why: earlier releases trust the compromised eMudhra intermediates
+      command: cloudflared   # optional; the default is the short name
+```
+
+Presence is checked as before. A present item with a floor runs
+`COMMAND --version` and reads the first dotted number, so what is measured is
+the binary on `PATH`, the one that runs. A copy outside the package manager,
+earlier on `PATH`, is what an advisory's upgrade most often misses. When the
+command is not on `PATH` (a cask app, say), the version comes from
+`brew list --versions` or `pipx list --short`. Versions compare as numbers, so
+`2026.10.10` is above `2026.10.2`. A version that cannot be read counts as below
+the floor.
+
+Below the floor, the entry's status is `outdated` (`[update]` in the plan). The
+plan shows the installed version, where it was read, the floor and the `why`.
+`check` exits 1 for it, even in an optional group, because a floor is a security
+fix for a tool already in use. `apply` runs `brew upgrade NAME`,
+`brew upgrade --cask NAME` or `pipx upgrade NAME`, then reads the version again.
+If the copy on `PATH` is still old, it fails and names that copy.
 
 `why` is one of `password`, `browser`, `secret`, `gui` or `choice` (a value only
 the person can give, such as their commit email). `path` entries are also put on
@@ -210,13 +242,13 @@ through the gate above first; a refusal prints `GATE CODE: why` and exits 3, and
 a register with no `setup.yaml` on `origin/main` exits 4 (`NO_SETUP_YAML`).
 
 `plan` prints the reviewed commit and lists every entry in file order with an
-id, its status (`present`, `missing`, `person`) and the command it would run.
-The id is `GROUP.KIND:KEY`, where the key is what the entry is (a formula, a
-server name, a git key, or a short hash of a shell line or a person step's title
-and check), so an edit that adds a step does not move another's id, and the same
-step twice in one group is invalid. `check` is the plan plus `verify`, and exits
-1 while a required step is open or a check fails. Neither installs anything;
-both run the file's check commands.
+id, its status (`present`, `missing`, `outdated`, `person`) and the command it
+would run. The id is `GROUP.KIND:KEY`, where the key is what the entry is (a
+formula, a server name, a git key, or a short hash of a shell line or a person
+step's title and check), so an edit that adds a step does not move another's id,
+and the same step twice in one group is invalid. `check` is the plan plus
+`verify`, and exits 1 while a required step is open or a check fails. Neither
+installs anything; both run the file's check commands.
 
 `apply` needs `--at SHA` from `plan` (exit 3, `GATE MOVED`, when origin/main has
 moved since). It runs one group's missing entries in file order and stops at the

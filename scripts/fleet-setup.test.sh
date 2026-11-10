@@ -59,7 +59,12 @@ echo "brew \$*" >> "$LOG"
 case "\$1 \$2" in
   "list --formula") cat "$ST/formula" 2>/dev/null; exit 0 ;;
   "list --cask") cat "$ST/cask" 2>/dev/null; exit 0 ;;
+  "list --versions") [ -f "$ST/ver-\$3" ] && echo "\$3 \$(cat "$ST/ver-\$3")"; exit 0 ;;
 esac
+if [ "\$1" = upgrade ]; then
+  n="\$2"; [ "\$n" = --cask ] && n="\$3"
+  cp "$ST/latest-\$n" "$ST/ver-\$n"; exit 0
+fi
 if [ "\$1" = install ]; then
   shift
   f="$ST/formula"; [ "\$1" = --cask ] && { f="$ST/cask"; shift; }
@@ -531,6 +536,76 @@ printf '%s\ngroups:\n  - {name: g, title: G, steps: [{brew: [a]}, {brew: [a]}]}\
 out=$(fs --file "$T/dup.yaml" validate); rc=$?
 check "the same step twice in a group is invalid" 2 "$rc"
 has "names the duplicate" "g.brew:a: the same step twice" "$out"
+
+# ── version floors ──────────────────────────────────────────────────
+# cfd is a brew formula whose binary reads the version brew installed;
+# stray-cfd is a copy earlier on PATH that no brew upgrade touches.
+cat > "$BIN/cfd" <<EOF
+#!/bin/sh
+echo "cfd version \$(cat "$ST/ver-cfd") (built 2026-10-30T16:43:29Z)"
+EOF
+printf '#!/bin/sh\necho "cfd version 2026.9.0"\n' > "$BIN/stray-cfd"
+printf '#!/bin/sh\necho "no version here"\n' > "$BIN/mute"
+chmod +x "$BIN/cfd" "$BIN/stray-cfd" "$BIN/mute"
+floor() { # [command] ; a file with cfd floored at 2026.10.2 in an optional group
+  printf '%s\ngroups:\n  - {name: g, title: G, optional: true, ask: q, steps: [{brew: [{name: cfd, min: "2026.10.2", why: eMudhra certs%s}]}]}\n' "$BASE" "${1:+, command: $1}"
+}
+ok_step "a floored formula" '{brew: [just, {name: cfd, min: "2026.10.2", why: an advisory}]}'
+ok_step "a floored cask with its command" '{cask: [{name: orbstack, min: "1.9", why: an advisory, command: orb}]}'
+bad "floor needs a why" 2 "missing required key 'why'" "$(step '{brew: [{name: cfd, min: "2026.10.2"}]}')"
+bad "unquoted floor reads as a number" 2 "expected a quoted version" "$(step '{brew: [{name: cfd, min: 2026.10, why: w}]}')"
+bad "floor is a version" 2 "expected a quoted version" "$(step '{brew: [{name: cfd, min: "latest", why: w}]}')"
+bad "floor typo" 2 "unknown key 'minimum'" "$(step '{brew: [{name: cfd, minimum: "1.0", why: w}]}')"
+bad "floor command shape" 2 "is not a valid value" "$(step '{brew: [{name: cfd, min: "1.0", why: w, command: "cfd; id"}]}')"
+
+echo cfd >> "$ST/formula"
+floor > "$T/floor.yaml"
+echo 2026.10.1 > "$ST/ver-cfd"; echo 2026.10.7 > "$ST/latest-cfd"
+out=$(fs --file "$T/floor.yaml" --unreviewed plan)
+has "below the floor is an update" "[update] g.brew:cfd" "$out"
+has "names the binary, the floor and why" "installed 2026.10.1 at $BIN/cfd; needs >= 2026.10.2: eMudhra certs" "$out"
+has "the fix is an upgrade" "brew upgrade cfd" "$out"
+out=$(fs --file "$T/floor.yaml" --unreviewed check); rc=$?
+check "check fails below a floor, even in an optional group" 1 "$rc"
+has "summary counts it" "1 below a version floor" "$out"
+echo 2026.10.10 > "$ST/ver-cfd"
+out=$(fs --file "$T/floor.yaml" --unreviewed check); rc=$?
+check "versions compare as numbers, not strings" "0" "$rc"
+has "at the floor or above is ok" "[ok]     g.brew:cfd" "$out"
+
+echo 2026.10.1 > "$ST/ver-cfd"; : > "$LOG"
+out=$(fs --file "$T/floor.yaml" --unreviewed apply --group g); rc=$?
+check "apply upgrades a tool below its floor" "0 brew upgrade cfd" "$rc $(grep -E 'brew (upgrade|install)' "$LOG")"
+: > "$LOG"
+out=$(fs --file "$T/floor.yaml" --unreviewed apply --group g); rc=$?
+check "a second apply upgrades nothing" "0 " "$rc $(grep -E 'brew (upgrade|install)' "$LOG")"
+
+floor stray-cfd > "$T/stray.yaml"
+out=$(fs --file "$T/stray.yaml" --unreviewed plan)
+has "the binary on PATH wins over brew's record" "installed 2026.9.0 at $BIN/stray-cfd" "$out"
+out=$(fs --file "$T/stray.yaml" --unreviewed apply --group g); rc=$?
+check "an upgrade that leaves the PATH copy old fails" 1 "$rc"
+has "and says which copy" "the floor is still not met; installed 2026.9.0 at $BIN/stray-cfd" "$out"
+
+floor not-on-path > "$T/nopath.yaml"
+out=$(fs --file "$T/nopath.yaml" --unreviewed plan)
+has "no binary on PATH falls back to brew's record" "[ok]     g.brew:cfd" "$out"
+echo 2026.10.1 > "$ST/ver-cfd"
+out=$(fs --file "$T/nopath.yaml" --unreviewed plan)
+has "brew's record below the floor" "installed 2026.10.1 at brew" "$out"
+floor mute > "$T/mute.yaml"
+out=$(fs --file "$T/mute.yaml" --unreviewed check); rc=$?
+check "an unreadable version fails check" 1 "$rc"
+has "and says it could not tell" "version unknown ($BIN/mute --version printed no version)" "$out"
+
+printf '%s\ngroups:\n  - {name: g, title: G, steps: [{pipx: [{name: pre-commit, min: "4.0.0", why: w}]}]}\n' "$BASE" > "$T/pipx.yaml"
+printf 'pre-commit 3.7.1\n' > "$ST/pipx"
+out=$(fs --file "$T/pipx.yaml" --unreviewed plan)
+has "pipx floor read from pipx" "installed 3.7.1 at pipx; needs >= 4.0.0: w" "$out"
+has "pipx fix is pipx upgrade" "pipx upgrade pre-commit" "$out"
+json=$(fs --file "$T/pipx.yaml" --unreviewed plan --json)
+check "json carries the floor" "outdated 3.7.1 4.0.0" \
+  "$(printf '%s' "$json" | "$UV_PY" -c 'import json,sys; s=json.load(sys.stdin)["groups"][0]["steps"][0]; print(s["status"], s["floor"]["installed"], s["floor"]["min"])')"
 
 # ── uvx -w ──────────────────────────────────────────────────────────
 pin "uvx -w unpinned" 2 uvx '["-w", "extra", "tool==1.2.3"]'

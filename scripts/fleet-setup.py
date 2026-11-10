@@ -82,6 +82,10 @@ RC_FILES = ("~/.zshrc", "~/.zprofile", "~/.zshenv", "~/.bashrc", "~/.bash_profil
 LAUNCHERS = {"npx", "bunx", "pnpx", "uvx"}
 PKG_FLAGS = ("--package", "-p", "--from", "--with", "-w")
 PINNED_RE = re.compile(r"^@?[A-Za-z0-9][A-Za-z0-9._/-]*(@|==)\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$")
+# A floor is digits and dots only, so it compares numerically: 2026.10.10 is
+# above 2026.10.2, which a string comparison gets wrong.
+FLOOR_RE = re.compile(r"^\d+(\.\d+)*$")
+FOUND_VERSION_RE = re.compile(r"\d+(?:\.\d+)+")
 REVIEWED_REF = "refs/remotes/origin/main"
 HERE = pathlib.Path(__file__).resolve().parent
 
@@ -204,6 +208,18 @@ def _check_mcp(errs, where, m):
         errs.add(f"{where}.transport", f"expected stdio or http, got {t!r}")
 
 
+def _check_floor(errs, where, item):
+    # why is required: a floor nobody can explain gets lowered the first time
+    # it fails a check.
+    if _keys(errs, where, item, ("name", "min", "why"), ("command",)):
+        _str(errs, f"{where}.name", item.get("name"), PKG_RE)
+        if not isinstance(item.get("min"), str) or not FLOOR_RE.match(item["min"]):
+            errs.add(f"{where}.min", f"expected a quoted version of digits and dots (\"2026.10.2\"), got {item.get('min')!r}")
+        _str(errs, f"{where}.why", item.get("why"))
+        if "command" in item:
+            _str(errs, f"{where}.command", item["command"], CMD_RE, "a command name")
+
+
 def _check_step(errs, where, step, marketplaces):
     if not isinstance(step, dict) or len(step) != 1:
         got = list(step) if isinstance(step, dict) else type(step).__name__
@@ -214,7 +230,14 @@ def _check_step(errs, where, step, marketplaces):
     if kind not in KINDS:
         errs.add(where, f"unknown step kind {kind!r} (expected: {', '.join(KINDS)})")
     elif kind in ("brew", "cask", "pipx"):
-        _str_list(errs, w, body, PKG_RE)
+        if not isinstance(body, list) or not body:
+            errs.add(w, f"expected a non-empty list, got {type(body).__name__}")
+        else:
+            for i, item in enumerate(body):
+                if isinstance(item, dict):
+                    _check_floor(errs, f"{w}[{i}]", item)
+                else:
+                    _str(errs, f"{w}[{i}]", item, PKG_RE)
     elif kind == "installer":
         if _keys(errs, w, body, ("name", "check", "run")):
             _str(errs, f"{w}.name", body.get("name"))
@@ -545,6 +568,32 @@ class Machine:
         got = self.lines(("brew", cask), ["brew", "list", "--cask" if cask else "--formula", "-1"])
         return got is not None and name.rsplit("/", 1)[-1] in {x.strip() for x in got}
 
+    def installed_version(self, kind, item):
+        """(version, where) for an entry with a floor, or (None, why not).
+
+        The binary that resolves on PATH is the one that runs, so it wins over
+        the package manager's record: an older copy earlier on PATH, outside
+        Homebrew, is exactly what an upgrade through Homebrew leaves behind."""
+        name = item["name"]
+        exe = self.which(item.get("command") or name.rsplit("/", 1)[-1])
+        if exe:
+            r, why = self.run([exe, "--version"], quiet=False, timeout=60)
+            found = FOUND_VERSION_RE.search(r.stdout or "") if r and r.returncode == 0 else None
+            if found:
+                return found.group(0), exe
+            return None, f"{exe} --version " + (why or "printed no version")
+        if kind == "pipx":
+            for ln in self.lines("pipx", ["pipx", "list", "--short"]) or []:
+                parts = ln.split()
+                if len(parts) >= 2 and parts[0] == name:
+                    return parts[1], "pipx"
+            return None, "pipx lists no version"
+        got = self.lines(("brew-versions", kind, name),
+                         ["brew", "list", *(["--cask"] if kind == "cask" else []), "--versions", name])
+        if got and got[0].split()[1:]:
+            return got[0].split()[-1], "brew"
+        return None, "brew lists no version"
+
     def pipx_has(self, name):
         got = self.lines("pipx", ["pipx", "list", "--short"])
         return got is not None and name in {x.split()[0] for x in got if x.strip()}
@@ -597,11 +646,48 @@ def _short(*parts):
     return hashlib.sha256("\0".join(parts).encode()).hexdigest()[:8]
 
 
+def pkg_name(item):
+    return item["name"] if isinstance(item, dict) else item
+
+
+def version_tuple(v):
+    return tuple(int(x) for x in v.split("."))
+
+
+def below(found, floor):
+    a, b = version_tuple(found), version_tuple(floor)
+    n = max(len(a), len(b))
+    return a + (0,) * (n - len(a)) < b + (0,) * (n - len(b))
+
+
+UPGRADE = {"brew": "brew upgrade {}", "cask": "brew upgrade --cask {}", "pipx": "pipx upgrade {}"}
+
+
+def floor_short(m, kind, item):
+    """None when the entry has no floor or meets it; otherwise what is wrong.
+    A version that cannot be read counts as short: a check that passes when it
+    cannot tell is no check."""
+    if kind not in UPGRADE or not isinstance(item, dict):
+        return None
+    found, where = m.installed_version(kind, item)
+    if found is not None and not below(found, item["min"]):
+        return None
+    return {"min": item["min"], "why": item["why"], "installed": found, "at": where,
+            "command": UPGRADE[kind].format(item["name"])}
+
+
+def floor_line(f):
+    got = f"{f['installed']} at {f['at']}" if f["installed"] else f"version unknown ({f['at']})"
+    return f"installed {got}; needs >= {f['min']}: {f['why']}"
+
+
 def entry_key(kind, item):
     """What an entry is, not where it sits: an edit that inserts a step above
     one must not move its id, or a --confirmed given for one person step
     would close another."""
-    if kind in ("brew", "cask", "pipx", "plugin"):
+    if kind in ("brew", "cask", "pipx"):
+        return pkg_name(item)
+    if kind == "plugin":
         return item
     if kind in ("marketplace", "mcp", "installer"):
         return item["name"] if kind != "installer" else item["check"]
@@ -640,12 +726,11 @@ def entries(doc):
 def describe(kind, item):
     """(label, command, person-fields) for one entry. Commands never carry a
     secret value: the file has no field that can hold one."""
-    if kind == "brew":
-        return f"brew {item}", f"brew install {item}", None
-    if kind == "cask":
-        return f"cask {item}", f"brew install --cask {item}", None
-    if kind == "pipx":
-        return f"pipx {item}", f"pipx install {item}", None
+    if kind in ("brew", "cask", "pipx"):
+        name = pkg_name(item)
+        floor = f" (>= {item['min']})" if isinstance(item, dict) else ""
+        install = {"brew": "brew install {}", "cask": "brew install --cask {}", "pipx": "pipx install {}"}[kind]
+        return f"{kind} {name}{floor}", install.format(name), None
     if kind == "installer":
         return f"installer {item['name']} (skipped when `{item['check']}` is on PATH)", item["run"], None
     if kind == "git":
@@ -673,9 +758,9 @@ def describe(kind, item):
 
 def status(m, kind, item, confirmed, eid):
     if kind in ("brew", "cask"):
-        return m.brew_has(kind == "cask", item)
+        return m.brew_has(kind == "cask", pkg_name(item))
     if kind == "pipx":
-        return m.pipx_has(item)
+        return m.pipx_has(pkg_name(item))
     if kind == "installer":
         return m.which(item["check"]) is not None
     if kind == "git":
@@ -733,13 +818,16 @@ def build_plan(doc, path, confirmed=()):
         done = status(m, kind, item, set(confirmed), eid)
         e = {"id": eid, "kind": kind, "label": label, "command": command,
              "status": "present" if done else ("person" if person else "missing")}
+        short = floor_short(m, kind, item) if done else None
+        if short:
+            e["status"], e["command"], e["floor"] = "outdated", short["command"], short
         if person:
             e["person"] = person
         by_name[g["name"]]["steps"].append(e)
     return plan
 
 
-MARK = {"present": "[ok]    ", "missing": "[todo]  ", "person": "[person]"}
+MARK = {"present": "[ok]    ", "missing": "[todo]  ", "person": "[person]", "outdated": "[update]"}
 
 
 def print_plan(plan):
@@ -760,6 +848,8 @@ def print_plan(plan):
             print(f"   note: {n}")
         for s in g["steps"]:
             print(f"  {MARK[s['status']]} {s['id']:<32} {s['label']}")
+            if "floor" in s:
+                print(f"             {floor_line(s['floor'])}")
             if s["status"] != "present" and s["command"]:
                 for ln in s["command"].splitlines():
                     print(f"             {ln}")
@@ -773,17 +863,19 @@ def print_plan(plan):
             print(f"  - {v['name']}: {v['run']}  (passes: {v['passes']})")
     c = summary(plan)
     print()
-    print(f"summary: {c['present']} present, {c['missing']} to run, {c['person']} person steps open;"
-          f" optional groups: {', '.join(c['optional']) or 'none'}")
+    print(f"summary: {c['present']} present, {c['missing']} to run, {c['person']} person steps open,"
+          f" {c['outdated']} below a version floor; optional groups: {', '.join(c['optional']) or 'none'}")
 
 
 def summary(plan):
-    c = {"present": 0, "missing": 0, "person": 0, "required_open": 0,
+    c = {"present": 0, "missing": 0, "person": 0, "outdated": 0, "required_open": 0,
          "optional": [g["name"] for g in plan["groups"] if g["optional"]]}
     for g in plan["groups"]:
         for s in g["steps"]:
             c[s["status"]] += 1
-            if s["status"] != "present" and not g["optional"]:
+            # A floor is a security fix, so a tool below one fails check even
+            # in an optional group: the person installed it, and it is in use.
+            if s["status"] == "outdated" or (s["status"] != "present" and not g["optional"]):
                 c["required_open"] += 1
     return c
 
@@ -814,8 +906,11 @@ def apply_group(doc, group, confirmed):
             continue
         label, command, person = describe(kind, item)
         if status(m, kind, item, confirmed, eid):
-            print(f"[ok]     {eid:<32} {label}")
-            continue
+            short = floor_short(m, kind, item)
+            if not short:
+                print(f"[ok]     {eid:<32} {label}")
+                continue
+            command = short["command"]
         if person:
             print(f"[person] {eid:<32} {label}")
             print(f"STOPPED at {eid}: {person['title']}")
@@ -844,6 +939,10 @@ def apply_group(doc, group, confirmed):
             return 1
         if not status(m, kind, item, confirmed, eid):
             print(f"FAILED {eid}: the command succeeded but the check still fails ({label})")
+            return 1
+        short = floor_short(m, kind, item)
+        if short:
+            print(f"FAILED {eid}: the command succeeded but the floor is still not met; {floor_line(short)}")
             return 1
     print(f"group {group}: done")
     return 0

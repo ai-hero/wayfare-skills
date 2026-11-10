@@ -75,7 +75,9 @@ WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfar
 ```
 
 Show the person the plan as printed: the notes, each group with its `[ok]`,
-`[todo]` and `[person]` entries, and the summary line. If the platform line says
+`[todo]`, `[update]` and `[person]` entries, and the summary line. An `[update]`
+entry is installed below its version floor. Quote its `installed …; needs >= …`
+line, because that line is the reason to upgrade. If the platform line says
 `MISMATCH`, stop: the file is for another kind of machine. Keep the sha on the
 `reviewed:` line as `SHA`: every `apply` passes it, so a register change merged
 after the person saw this plan is refused rather than run unseen.
@@ -100,7 +102,9 @@ Take the groups in plan order. For each one:
    record it as declined.
 
 3. If it is required and has `[todo]` entries, list their commands and ask once
-   to run them. On no, record the group as skipped and go on.
+   to run them. On no, record the group as skipped and go on. An `[update]`
+   entry is asked about even in a declined optional group: the tool is already
+   installed and below a security floor, so `apply` for that group is the fix.
 
 4. Run the group:
 

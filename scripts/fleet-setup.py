@@ -11,6 +11,7 @@
     uv run scripts/fleet-setup.py [--fleet DIR] validate
     uv run scripts/fleet-setup.py [--fleet DIR] plan [--json] [--confirmed ID]...
     uv run scripts/fleet-setup.py [--fleet DIR] check [--json]
+    uv run scripts/fleet-setup.py [--fleet DIR] check --floors-only
     uv run scripts/fleet-setup.py [--fleet DIR] apply --group G --at SHA [--confirmed ID]...
     uv run scripts/fleet-setup.py [--fleet DIR] verify [--json]
     uv run scripts/fleet-setup.py --file F validate
@@ -33,6 +34,12 @@ first person step that is still open; run it again with --confirmed ID once the
 person has done that step. Every step checks before it acts, so a second apply
 runs nothing. archive checks that an archive from an old machine holds only the
 files fleet setup restores, and with --extract unpacks exactly those.
+
+check --floors-only is the session-start hook's mode: it reads origin/main as
+last fetched, without fetching, runs only the --version of each floored tool on
+PATH, prints one line per tool below its floor, and is silent and exits 0 in
+every other case, a refusal included. A raised floor reaches a machine with
+its next fetch of the register.
 
 Exit: 0 done, 1 something missing or failed (or an archive refused), 2 invalid
 file or usage, 3 the review gate refused the file, 4 the register has no
@@ -425,7 +432,7 @@ def git(repo, *args, timeout=120):
     return r.returncode, r.stdout, r.stderr.strip()
 
 
-def load_reviewed(fleet):
+def load_reviewed(fleet, fetch=True):
     """setup.yaml as it stands on the pinned register's origin/main, fetched
     now. The full ref name, because a local branch or tag called origin/main
     wins over the remote-tracking ref when the short name is resolved. The
@@ -445,9 +452,10 @@ def load_reviewed(fleet):
     seen = audit.remote_identity(url)
     if seen != pin:
         raise Gate("PIN_MISMATCH", f"origin is {seen}, but this machine pins {pin}")
-    rc, _, err = git(reg, "fetch", "-q", "origin", f"+refs/heads/main:{REVIEWED_REF}")
-    if rc:
-        raise Gate("NO_FETCH", f"fetching origin main failed: {err}")
+    if fetch:
+        rc, _, err = git(reg, "fetch", "-q", "origin", f"+refs/heads/main:{REVIEWED_REF}")
+        if rc:
+            raise Gate("NO_FETCH", f"fetching origin main failed: {err}")
     rc, tree, err = git(reg, "ls-tree", REVIEWED_REF, "--", "setup.yaml")
     if rc:
         raise Gate("NO_FETCH", f"{REVIEWED_REF} does not resolve: {err}")
@@ -464,6 +472,8 @@ def load_reviewed(fleet):
     _, sha, _ = git(reg, "rev-parse", "--verify", f"{REVIEWED_REF}^{{commit}}")
     sha = sha.strip()
     local = reg / "setup.yaml"
+    if not fetch:
+        return text, f"{seen} setup.yaml @ origin/main {sha[:12]}", sha
     try:
         if local.is_symlink() or local.read_text() != text:
             print(f"note: {local} differs from origin/main; the reviewed copy is used", file=sys.stderr)
@@ -527,7 +537,8 @@ def secret_script(m):
 class Machine:
     """Read-only probes of this machine, each run at most once."""
 
-    def __init__(self, extra_path):
+    def __init__(self, extra_path, version_timeout=60):
+        self.version_timeout = version_timeout
         self.env = dict(os.environ)
         self.env["PATH"] = os.pathsep.join([*extra_path, self.env.get("PATH", "")])
         self.cache = {}
@@ -577,7 +588,7 @@ class Machine:
         name = item["name"]
         exe = self.which(item.get("command") or name.rsplit("/", 1)[-1])
         if exe:
-            r, why = self.run([exe, "--version"], quiet=False, timeout=60)
+            r, why = self.run([exe, "--version"], quiet=False, timeout=self.version_timeout)
             found = FOUND_VERSION_RE.search(r.stdout or "") if r and r.returncode == 0 else None
             if found:
                 return found.group(0), exe
@@ -778,13 +789,13 @@ def status(m, kind, item, confirmed, eid):
     raise AssertionError(kind)
 
 
-def machine_for(doc):
+def machine_for(doc, **kw):
     extra = []
     for g in doc["groups"]:
         for step in g["steps"]:
             if "path" in step:
                 extra += [expand(e) for e in step["path"]["entries"]]
-    return Machine(extra)
+    return Machine(extra, **kw)
 
 
 def platform_now():
@@ -878,6 +889,23 @@ def summary(plan):
             if s["status"] == "outdated" or (s["status"] != "present" and not g["optional"]):
                 c["required_open"] += 1
     return c
+
+
+def floor_warnings(doc):
+    """One line per floored tool on PATH that is below its floor. A tool that
+    is not on PATH is skipped rather than asked of brew: brew answers in
+    seconds, and this runs at every session start. check covers it."""
+    m = machine_for(doc, version_timeout=2)
+    out = []
+    for _, _, kind, item in entries(doc):
+        if kind not in UPGRADE or not isinstance(item, dict):
+            continue
+        if not m.which(item.get("command") or item["name"].rsplit("/", 1)[-1]):
+            continue
+        short = floor_short(m, kind, item)
+        if short:
+            out.append(f"{item['name']} is below its version floor: {floor_line(short)}. Fix: {short['command']}")
+    return out
 
 
 def run_verify(doc):
@@ -1047,6 +1075,9 @@ def main(argv=None):
         p.add_argument("--json", action="store_true")
         if name == "plan":
             p.add_argument("--confirmed", action="append", default=[])
+        if name == "check":
+            p.add_argument("--floors-only", action="store_true",
+                           help="only the version floors, without fetching; silent unless one is short")
     p = sub.add_parser("apply")
     p.add_argument("--group", required=True)
     p.add_argument("--at", metavar="SHA", help="the origin/main commit plan showed; required without --file")
@@ -1075,6 +1106,19 @@ def main(argv=None):
         print(f"{a.cmd}: --file runs commands from a file nobody reviewed (person-step checks, verify, "
               "installs); pass --unreviewed as well to mean it", file=sys.stderr)
         return 2
+    if a.cmd == "check" and a.floors_only:
+        # Advisory, at session start: every refusal is silence and exit 0, so
+        # a machine outside a fleet, or a fleet with no floors, sees nothing.
+        try:
+            text, source, _ = load_file(a.file) if a.file else load_reviewed(a.fleet, fetch=False)
+            doc = parse(text, source)
+        except (Gate, Invalid):
+            return 0
+        if platform_now() != doc["platform"]:
+            return 0
+        for w in floor_warnings(doc):
+            print(w)
+        return 0
     if a.cmd == "apply" and not a.file and not a.at:
         print("apply: pass --at SHA, the origin/main commit plan printed", file=sys.stderr)
         return 2

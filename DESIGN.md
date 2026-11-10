@@ -43,7 +43,7 @@ but its suite only runs where that venv exists (see Testing).
 | `references/` | Procedure shared by several skills; a skill points at it rather than restating it. `authorization.md` says when a run continues, confirms, stops or defers, and `client-capabilities.md` maps the skills' generic operations onto each host's tools. |
 | `docs/` | The standards: the store, connections, the fleet map, messages, pipelines, and the rest. |
 | `scripts/` | The shell library every skill sources, its helpers and `*.test.sh` suites, the Python compliance engine (`audit.py`, `consistency.py`), and the Python checkers (`check_docs.py`, `pr_text_lint.py`, `diff_leftovers.py`). |
-| `hooks/` | Claude Code hooks (`hooks.json`): a Stop hook, `check-deferrals.sh`, that blocks a stop once when deferred work was never filed in `.plans/`. Claude Code only; other hosts do not run it. |
+| `hooks/` | Claude Code hooks (`hooks.json`): a Stop hook, `check-deferrals.sh`, that blocks a stop once when deferred work was never filed in `.plans/`, and a SessionStart hook, `check-floors.sh`, that warns when a tool the fleet's `setup.yaml` floors is installed below that floor. Claude Code only; other hosts do not run them. |
 | `Justfile` | The gate recipes CI calls, one per step. |
 | `assets/` | Files installed **into** other repos, except two read in place: `assets/compliance/`, the baseline register, and `assets/security-audit/`, a pinned third-party copy. |
 | `plugin.json`, `.claude-plugin/`, `.agents/` | One portable manifest for Agent Plugin hosts, a separate Claude Code adapter, and marketplace metadata over the same skills. |

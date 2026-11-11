@@ -29,6 +29,48 @@ with the plain claim underneath.
 "what really matters", "fundamentally", "the heart of the matter". The sentence
 that follows is usually an ordinary point with extra ceremony. Make the point.
 
+## Scenes and names the reader was never given
+
+A draft written from notes refers to things the notes knew and the reader
+doesn't. Each of these made Rahul stop and ask "what are you talking about?"
+
+**A general situation told as a past event.** "The referring office had the
+patient's name, date of birth and insurance in its own EHR; faxing turned it
+into an image" reads like the middle of a story nobody started. A general
+situation is present tense: "When a doctor's office refers a patient, it usually
+has the patient's name, date of birth and insurance in its own EHR. Faxing turns
+all of that into an image." A hypothetical starts as one: "Say your card
+processor has a latency spike."
+
+**"The" for something never introduced.** "The warehouse", "the register", "the
+analyst", "the queue", "the check" on first mention. Introduce it with "a" and
+say what it is, or name the system the reader knows ("the EHR").
+
+**An example that doesn't say it's an example.** "The first job is in a
+cardiology practice that gets new-patient referrals from primary-care offices it
+doesn't share an EHR with" starts mid-scene and packs three ideas into the first
+sentence. Open plainly and keep the first sentence short: "As an example,
+consider a cardiology practice that gets referrals for new patients." The
+details come next, one idea per sentence.
+
+**Two names for one thing.** Once a worked case is "an example", it stays "the
+referral example" or "both examples below", never "the first job" or "the first
+one" three paragraphs later. Pick the name at the introduction and keep it.
+
+**A figure of speech in place of what happens.** "Take the names out before it
+leaves the building" (nothing leaves a building; the notes go to a research
+team), "down the hall", "a patient on nobody's list". Say who gets what: "read
+every note to hide the patient's personal details before the research team
+analyzes them."
+
+**Shorthand for steps the reader needs named.** "What's left after the lookups
+is usually a narrow read" makes the reader reconstruct the steps. Name them:
+"That leaves two things for a model to do: turning the fax pages into text, and
+finding the personal details in a note so they can be hidden."
+
+The test for all of these: could a reader who skipped every earlier paragraph
+point at the thing the sentence means? If not, introduce it or name it.
+
 ## Inflation
 
 **Importance inflation.** "stands as a testament", "a pivotal moment",

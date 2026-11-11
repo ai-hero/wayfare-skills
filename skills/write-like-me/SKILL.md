@@ -149,11 +149,14 @@ defining that term. Details in `references/voice.md`, under Titles.
    flagged pattern come back in new clothes ("not X but Y" reworded as "X
    matters less than Y" is still the same move)? Does the last paragraph tell
    the reader what to feel? If so, cut it back to what he actually saw or did.
-   And, in a draft, is there a single light moment anywhere in it? If you
-   cleaned the draft into something a committee could have written, go back to
-   the material, find the spot where the situation is already a little absurd or
-   where he is admitting something, and let him say it the way he would out
-   loud.
+   Is every person, system, example and step introduced before "the" points at
+   it, every example opened as one, and every general situation in the present
+   tense ("Scenes and names the reader was never given" in
+   `references/ai-tells.md`)? And, in a draft, is there a single light moment
+   anywhere in it? If you cleaned the draft into something a committee could
+   have written, go back to the material, find the spot where the situation is
+   already a little absurd or where he is admitting something, and let him say
+   it the way he would out loud.
 
 7. **Check the facts list.** Nothing added. Every item is in the piece or on the
    left-out list. Any drift is an error, not a style choice.

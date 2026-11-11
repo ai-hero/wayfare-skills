@@ -190,9 +190,8 @@ None of these is evidence on its own:
   answers.
 - Real alternatives a reader would actually consider.
 - A contrast or a "tempting" option in a sentence he already wrote or approved.
-  He writes both naturally ("It might be tempting to only focus on making agents
-  write code faster or better" is his own sentence), so the "Not X but Y" and
-  fake-alternative entries are for drafts and AI output.
+  He writes both naturally. "When editing something Rahul already wrote" in
+  `SKILL.md` has the rule.
 - Any phrase he has confirmed as his. His own examples beat this list.
 - Unsourced claims. Most of the web is unsourced.
 - Text inside quotations, titles, proper names, or phrases being discussed

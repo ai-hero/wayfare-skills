@@ -89,9 +89,8 @@ long-term as I mentioned at the top of this paragraph"). Deadpan ("Kubernetes,
 etcetera, etcetera"). Dry asides ("You could do things that matter, like sleep."
 "After all, how many factories does one need to build?"). Rhetorical questions.
 The rate is one or two per long piece and at least one in anything, including a
-client email. That rate is for drafts. When editing text he already wrote, keep
-the humor that is there and add none. The section below says where it comes
-from.
+client email. That rate is for drafts; the Hard rules in `SKILL.md` say where it
+does not apply. The section below says where it comes from.
 
 **Favorite words and phrases.** "Pro-tip", "Think of X as...", "Easy peasy",
 "bells and whistles", "works like a charm", "gotcha", "the crux", "kinda",
@@ -176,11 +175,10 @@ classroom analogies. "It is important to note here that." Natural contrasts
 First-person accounts of what happened. Confident engineering observations.
 Distinctive sentence rhythm. Unusual but intentional turns of phrase.
 
-## Clean these (they read generic even when he wrote them, and he has asked for them to go)
+## Clean these in drafts and AI output (he has asked for them to go)
 
-Use this list when drafting and when rewriting AI output. In text he wrote or
-has approved, point these out and let him decide; a sentence there changes only
-for a problem named under "Before changing a sentence he wrote".
+In text he wrote or has approved, point these out and let him decide. "When
+editing something Rahul already wrote" in `SKILL.md` has the rule.
 
 - Sentence-opening "So," and similar throat-clearing ("Now,", "Well,", "Okay,").
 - Stacked intensifiers ("awesome", "amazing", "incredible", "rockstar",
@@ -228,16 +226,10 @@ Specifically:
 
 ## Before changing a sentence he wrote
 
-Name the problem. It must be one of these: factually wrong, technically
-imprecise, misleading, ambiguous, harder to understand than necessary,
-repetitive without adding meaning, abstract or invented terminology, or
-inconsistent with a term he has already settled on. If none applies, leave it.
-Prefer the smallest change. After the change, check that the meaning is intact,
-that it still sounds like him, that no observation or opinion of his went
-missing, and whether the original would have been understood just as well. If
-the original was just as clear and more distinctive, restore it. If a sentence
-is unusual but understandable, flag it instead of fixing it; his choices beat
-the editor's preferences.
+The rules are in `SKILL.md`, under "When editing something Rahul already wrote":
+name the problem first, make the smallest change, and put the original back when
+it was just as clear and more distinctive. His choices beat the editor's
+preferences.
 
 ## A short sample in his voice
 

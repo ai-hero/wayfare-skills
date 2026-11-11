@@ -23,7 +23,10 @@ If he gave a brief, an outline or notes on the order, those are his. Restate
 them as a chain; do not replace them. Where the material does not answer, ask
 the question open instead of guessing. Show him all three and ask whether this
 is his story, every time, before drafting. A short piece has a short chain
-(three sentences for an email is normal), and you still show it.
+(three sentences for an email is normal), and you still show it. Seeing the
+chain written down often makes him add a part he had left out, which is the
+reason to show it. The one exception is a run with nobody to answer, when
+another skill uses this one as a step: write to the brief the caller passed.
 
 Do not read the main point off where the words went, and do not read the outline
 off the headings of an existing draft. Both tell you where the draft ended up,
@@ -40,9 +43,10 @@ The same path tends to repeat at every level of a piece:
 5. the solution,
 6. what the reader takes away.
 
-An example inside the piece follows it too: the job to be done, how it is done
-today, how each step was matched to a solution, and the solution. This is a
-check and not a template. If a level skips a step, ask him whether he meant to.
+An example inside the piece follows a shorter version: the job to be done, how
+it is done today, how each step was matched to a solution, and the result. This
+is a check and not a template. If a level skips a step, ask him whether he meant
+to.
 
 ## Place the facts on the chain
 
@@ -89,15 +93,15 @@ Other signs of drift:
 
 ## An example of drift
 
-He asked for a blog post on small models in healthcare. His chain:
+He asked for a blog post on small models in healthcare. The chain he agreed:
 
 1. A lot of healthcare work is paperwork jobs.
 2. People do those jobs today by reading page by page, and that is slow.
 3. Other teams are already using open models on jobs like these.
 4. Here is how to think about it: take a job, break it into steps, decide
    whether it should run as a fixed workflow, an agent loop or a mix of the two,
-   and work out which steps that code can do and which need a model trained for
-   that one task.
+   and work out which steps code can do and which need a model trained for that
+   one task.
 5. First example: the job, how it runs today, whether it runs as a workflow, an
    agent loop or a mix, which steps went to a small model, and the result.
 6. Second example, told the same way.
@@ -106,15 +110,11 @@ He asked for a blog post on small models in healthcare. His chain:
 The draft kept every fact and had most of the parts. Read section by section
 from the draft alone, it told a narrower story: how the code checks what the
 model read, and how patient data stays inside your network. Those were details
-of the solution, and they had taken over. The signs were all there. Sentence 2
-had two lines and the compliance rules had half a section. Sentence 4 was told
-as "does this need a model at all" and never as a way to split the steps. Both
-examples gave the split as a table and spent their words on how strong each
-check was. The post ended on run instructions, without sentence 7.
-
-The first chain he gave left out most of sentence 4 (the split between code and
-model, and the choice between a workflow and an agent loop), and he added both
-when he saw the chain written down. That is what showing it to him is for.
+of the solution, and they had taken over. Two of the signs above were there.
+Sentence 2 had two lines and the compliance rules had half a section. Sentence 4
+was told as "does this need a model at all" and never as a way to split the
+steps. Both examples gave the split as a table and spent their words on how
+strong each check was. The post ended on run instructions, without sentence 7.
 
 ## Re-chaining a draft
 
@@ -123,8 +123,10 @@ Two common cases. An agent writes something in the conversation and he says
 and says "write this blog like me" or "rewrite this in my voice". Either way the
 draft gets re-chained, not only cleaned up.
 
-- The draft is AI output, not his text. The smallest-change rules do not protect
-  it.
+- When an agent wrote the draft, or he says it is AI output, the smallest-change
+  rules do not protect it. When the draft is his own writing or text he
+  approved, use "Text that already exists" below. If you cannot tell which, ask
+  him.
 - Take the chain from him, not from the draft. Look back through the
   conversation for what he asked for: the brief, the order he gave, every
   correction since. Write the chain from those, in his words where you can.

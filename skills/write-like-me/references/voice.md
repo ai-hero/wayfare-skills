@@ -89,7 +89,8 @@ long-term as I mentioned at the top of this paragraph"). Deadpan ("Kubernetes,
 etcetera, etcetera"). Dry asides ("You could do things that matter, like sleep."
 "After all, how many factories does one need to build?"). Rhetorical questions.
 The rate is one or two per long piece and at least one in anything, including a
-client email. The section below says where it comes from.
+client email. That rate is for drafts; the Hard rules in `SKILL.md` say where it
+does not apply. The section below says where it comes from.
 
 **Favorite words and phrases.** "Pro-tip", "Think of X as...", "Easy peasy",
 "bells and whistles", "works like a charm", "gotcha", "the crux", "kinda",
@@ -174,12 +175,14 @@ classroom analogies. "It is important to note here that." Natural contrasts
 First-person accounts of what happened. Confident engineering observations.
 Distinctive sentence rhythm. Unusual but intentional turns of phrase.
 
-## Clean these (they read generic even when he wrote them, and he has asked for them to go)
+## Clean these in drafts and AI output (he has asked for them to go)
+
+In text he wrote or has approved, point these out and let him decide. "When
+editing something Rahul already wrote" in `SKILL.md` has the rule.
 
 - Sentence-opening "So," and similar throat-clearing ("Now,", "Well,", "Okay,").
 - Stacked intensifiers ("awesome", "amazing", "incredible", "rockstar",
   "ridiculously") beyond one per piece.
-- Comma splices that should be two sentences.
 - Repeated calls to follow or subscribe inside the body. One at the end is fine.
 - "Clearly" and "obviously" as sentence openers when the point has not been
   shown yet.
@@ -189,9 +192,9 @@ Distinctive sentence rhythm. Unusual but intentional turns of phrase.
   "a causal before-and-after result", "that contrast is my recollection, not a
   matched productivity comparison". Say the same thing the way he would say it
   to a colleague: "I'm going from memory here, not a controlled comparison."
-- Abstract compressions: "translate intent", "where trust places the person",
-  "enter its record", "the autonomy gradient", "the ceiling", "the gate".
-  Replace with the action or decision being described.
+- Abstract compressions: "translate intent", "enter its record", "the autonomy
+  gradient", "the ceiling", "the gate", "the records". Replace with the action
+  or decision being described, and name the specific thing the word stood for.
 - Drafting leftovers he dislikes: "One might be tempted towards optimizing just
   this flow" became, in his own rewrite, "It might be tempting to only focus on
   making agents write code faster or better."
@@ -223,14 +226,10 @@ Specifically:
 
 ## Before changing a sentence he wrote
 
-Name the problem. It must be one of these: factually wrong, technically
-imprecise, misleading, ambiguous, harder to understand than necessary,
-repetitive without adding meaning, abstract or invented terminology, or
-inconsistent with a term he has already settled on. If none applies, leave it.
-Prefer the smallest change. After the change, check that the meaning is intact
-and it still sounds like him. If the original was just as clear and more
-distinctive, restore it. If a sentence is unusual but understandable, flag it
-instead of fixing it; his choices beat the editor's preferences.
+The rules are in `SKILL.md`, under "When editing something Rahul already wrote":
+name the problem first, make the smallest change, and put the original back when
+it was just as clear and more distinctive. His choices beat the editor's
+preferences.
 
 ## A short sample in his voice
 

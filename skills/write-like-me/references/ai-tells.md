@@ -14,12 +14,12 @@ This one comes first because it is the one Rahul hates most.
 
 **Invented terminology.** A plain idea given a coined name so it sounds like a
 framework: "the ceiling", "a gate", "the autonomy gradient", "the trust
-surface", "the record". Ask: would a colleague use this word at a whiteboard? If
-not, say what it actually is.
+surface", "the record", "records". Ask: would a colleague use this word at a
+whiteboard? If not, say what it actually is.
 
 **Abstract compressions.** A concrete action squeezed into a noun phrase:
-"translate intent", "where trust places the person", "changes must enter its
-record", "the human layer". Unpack it. Who does what, and then what happens.
+"translate intent", "changes must enter its record", "the human layer". Unpack
+it. Who does what, and then what happens.
 
 **Formulaic sayings.** "X is the language of Y", "the currency of", "the
 architecture of", "X becomes a trap", "X is not a tool but a mirror". Replace
@@ -59,9 +59,9 @@ format's normal closing.
 **The overused list.** actually, additionally, align with, crucial, delve,
 elevate, emphasize, enduring, enhance, foster, garner, highlight (verb),
 interplay, intricate, key (adjective), landscape (abstract), leverage (verb),
-navigate (figurative), pivotal, robust, seamless, showcase, tapestry, testament,
-underscore (verb), unlock, utilize, valuable, vibrant. One is fine. A cluster is
-the tell.
+load-bearing, navigate (figurative), pivotal, robust, seamless, showcase,
+tapestry, testament, underscore (verb), unlock, utilize, valuable, vibrant. One
+is fine. A cluster is the tell.
 
 <!-- check-docs: on -->
 
@@ -189,6 +189,11 @@ None of these is evidence on its own:
 - Useful limits and scope statements, safety notices, named objections, FAQ
   answers.
 - Real alternatives a reader would actually consider.
+- A contrast or a "tempting" option in a sentence he already wrote or approved.
+  He writes both naturally ("It might be tempting to only focus on making agents
+  write code faster or better" is his own sentence), so the "Not X but Y" and
+  fake-alternative entries are for drafts and AI output.
+- Any phrase he has confirmed as his. His own examples beat this list.
 - Unsourced claims. Most of the web is unsourced.
 - Text inside quotations, titles, proper names, or phrases being discussed
   rather than used.

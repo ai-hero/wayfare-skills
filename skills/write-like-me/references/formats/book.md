@@ -8,6 +8,16 @@ with chapter numbers, in the working folder or the repo), read one chapter
 before writing. Chapter Four was his approved calibration for examples; Chapter
 One for the overall voice. The live text beats anything in this file.
 
+## Open the book's own guide first
+
+`SKILL.md` says to read a project's own guide before writing and to let it win.
+For the book that means two files beside the manuscript: `voice-guide.md` and
+`author-decisions.md` (in the wayfare checkout, under `analysis/manuscript/`).
+The guide records which passages he confirmed as his, which he dislikes, and
+which he accepts as they stand. The decisions file records what the book may
+say: what was built and what is only proposed, what an example is allowed to
+claim, and the topics he has asked to leave out. Both are read-only.
+
 ## Who reads it and what they get
 
 An engineering leader, a senior engineer, or a founder who is deciding whether
@@ -61,6 +71,9 @@ and "account" (the narrative) stays where the analysis paragraph uses it. But do
 not compress ordinary actions into abstractions about "the record"; say what the
 person or agent does.
 
+The Chapter Two summary line about "where trust places the person" reads like an
+abstraction and he has accepted it as it is. Leave it unless he asks.
+
 ## Limits, opinions, and first person
 
 The book is his informed opinion, and he says so. State limits in his words: "I
@@ -68,22 +81,29 @@ do not claim this as scientific proof", "Treat this as an informed opinion",
 "I'm going from memory here." Not "this is not a causal before-and-after result"
 and not "one contribution of the case is therefore methodological." Keep his
 confident engineering observations and his humor ("After all, how many factories
-does one need to build?"), and when writing new book text, give each section at
-least one dry line drawn from the material, usually the moment the system did
-something a bit absurd or the moment he admits what he got wrong. Do not add
-first-person recollections he did not supply.
+does one need to build?"). The light moment is per piece, not per section: allow
+his natural asides and contractions, keep every light line he wrote, and do not
+add a joke to a section to give it one. Do not add first-person recollections he
+did not supply.
+
+When putting a limit in plain words, keep the limit. What he built, what he
+observed and what he only proposes stay distinguishable, and an example
+illustrates the explanation next to it without becoming proof of it.
 
 ## Marks
 
-Title Case headings. Parentheses for "(e.g. ...)" and caveats. No emoji. Em
-dashes rare; a spaced one at most once or twice a chapter. Bold only on a term
-being defined the first time, if at all. No bullet lists with bold labels in the
+Title Case headings. Parentheses for "(e.g. ...)" and caveats. No emoji. No em
+dashes; use a comma, a colon, parentheses or a period. Bold only on a term being
+defined the first time, if at all. No bullet lists with bold labels in the
 narrative; lists of steps or options are fine when the content is actually a
 list.
 
 ## When editing existing chapters
 
-Follow the "before changing a sentence he wrote" rules in `voice.md` strictly.
-Treat text he has already approved as settled. Apply changes to new framing and
-transitions; do not rewrite working passages for consistency. Flag
-unusual-but-clear sentences instead of changing them.
+Follow "When editing something Rahul already wrote" in `SKILL.md` strictly, for
+every sentence already in the manuscript. Treat text he has already approved as
+settled. Apply changes to new framing and transitions; do not rewrite working
+passages for consistency. Flag unusual-but-clear sentences instead of changing
+them.
+
+Wait for his answer on any new stylistic proposal.

@@ -2639,6 +2639,8 @@ def _(r):
     # Sentry client, untraced and unreported, after every restart.
     _rc, plugins = sh(r, "git grep -l -E 'define(Nitro)?Plugin\\(' -- '*.ts' ':(exclude)*.test.ts'")
     boot = [p for p in plugins.splitlines() if init.search((r / p).read_text())]
+    if boot and init.search(src):
+        return FAIL, f"Sentry starts twice, in {boot[0]} and in the server entry: every integration installs twice"
     if boot:
         return PASS, f"init at boot in {boot[0]}; fetch wrapped"
     if init.search(src):

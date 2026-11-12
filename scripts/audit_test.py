@@ -3018,5 +3018,45 @@ class RuleNotSpelling(unittest.TestCase):
         self.assertEqual(st, audit.PASS)
 
 
+class SENTRY06(unittest.TestCase):
+    ENTRY = "export default createServerEntry(wrapFetchWithSentry({ fetch: (q) => h.fetch(q) }));\n"
+
+    def run_on(self, files):
+        with tempfile.TemporaryDirectory() as d:
+            r = git_repo(pathlib.Path(d), "app")
+            for rel, text in files.items():
+                write(r, rel, text)
+            git(r, "add", "-A")
+            git(r, "commit", "-q", "-m", "x")
+            return audit.CHECKS["SENTRY-06"](r)
+
+    def test_init_in_a_nitro_plugin_passes(self):
+        st, detail = self.run_on({
+            "ui/src/server.ts": self.ENTRY,
+            "ui/src/server/sentry-boot.ts": "export default definePlugin(() => {\n  initSentryServer();\n});\n",
+        })
+        self.assertEqual(st, audit.PASS, detail)
+
+    def test_init_in_the_lazy_server_entry_fails(self):
+        st, detail = self.run_on({"ui/src/server.ts": "initSentryServer();\n" + self.ENTRY})
+        self.assertEqual(st, audit.FAIL)
+        self.assertIn("first SSR request", detail)
+
+    def test_a_plugin_that_does_not_init_is_not_boot(self):
+        st, _ = self.run_on({
+            "ui/src/server.ts": self.ENTRY,
+            "ui/src/server/other.ts": "export default definePlugin(() => {});\n",
+        })
+        self.assertEqual(st, audit.FAIL)
+
+    def test_unwrapped_fetch_fails(self):
+        st, detail = self.run_on({
+            "ui/src/server.ts": "export default createServerEntry(h);\n",
+            "ui/src/server/sentry-boot.ts": "export default definePlugin(() => initSentryServer());\n",
+        })
+        self.assertEqual(st, audit.FAIL)
+        self.assertIn("not wrapped", detail)
+
+
 if __name__ == "__main__":
     unittest.main()

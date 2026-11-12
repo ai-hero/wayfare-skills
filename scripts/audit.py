@@ -2628,14 +2628,22 @@ def _(r):
     if server is None:
         return NA, "no Node SSR server entry"
     src = server.read_text()
-    # Init (the repo's initSentryServer helper or a direct server Sentry.init)
-    # AND the fetch handler wrapped. Either half missing means SSR errors are
-    # unreported — SENTRY-01's failure one tier up.
-    if "initSentryServer" not in src and not re.search(r"Sentry\.init", src):
-        return FAIL, "server entry does not initialize Sentry — SSR errors unreported"
+    # The fetch handler wrapped AND an init that runs at boot. Either half
+    # missing means SSR errors are unreported — SENTRY-01's failure one tier up.
     if "wrapFetchWithSentry" not in src:
         return FAIL, "fetch handler not wrapped — SSR errors escape uncaught"
-    return PASS, "server-side init + wrapped fetch"
+    init = re.compile(r"initSentryServer\(\)|Sentry\.init\(")
+    # A Nitro plugin, because Nitro runs plugins at startup but loads the
+    # server entry lazily, on the first request that reaches SSR: an init in
+    # server.ts leaves every API request before the first page render with no
+    # Sentry client, untraced and unreported, after every restart.
+    _rc, plugins = sh(r, "git grep -l -E 'define(Nitro)?Plugin\\(' -- '*.ts' ':(exclude)*.test.ts'")
+    boot = [p for p in plugins.splitlines() if init.search((r / p).read_text())]
+    if boot:
+        return PASS, f"init at boot in {boot[0]}; fetch wrapped"
+    if init.search(src):
+        return FAIL, "Sentry starts in the server entry, which Nitro loads on the first SSR request, not at boot"
+    return FAIL, "server entry does not initialize Sentry — SSR errors unreported"
 
 
 # Attacker-controllable contexts that must reach a shell or a github-script

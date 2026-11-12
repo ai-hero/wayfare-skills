@@ -3049,6 +3049,14 @@ class SENTRY06(unittest.TestCase):
         })
         self.assertEqual(st, audit.FAIL)
 
+    def test_init_in_both_places_fails(self):
+        st, detail = self.run_on({
+            "ui/src/server.ts": "initSentryServer();\n" + self.ENTRY,
+            "ui/src/server/sentry-boot.ts": "export default definePlugin(() => {\n  initSentryServer();\n});\n",
+        })
+        self.assertEqual(st, audit.FAIL)
+        self.assertIn("twice", detail)
+
     def test_unwrapped_fetch_fails(self):
         st, detail = self.run_on({
             "ui/src/server.ts": "export default createServerEntry(h);\n",

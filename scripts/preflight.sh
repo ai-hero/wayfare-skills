@@ -182,7 +182,6 @@ emit() {
 # ---------- shared context -------------------------------------------------
 
 ROOT=$(hero_root)
-HERO="$ROOT/HERO.md"
 DEFAULT_BRANCH=$(hero_default_branch "$ROOT")
 
 # Lazy gh-auth probe, set on first call, cached for the rest of the run.
@@ -337,7 +336,7 @@ check_repo() {
   ensure_gh_auth_probed
 
   # 1. HERO.md present
-  if [ -f "$HERO" ]; then
+  if hero_config_exists "$ROOT"; then
     emit OK "repo: HERO.md present"
   else
     emit BLOCKER "repo: HERO.md missing — run wayfare:wayfare-init-repo"
@@ -350,7 +349,7 @@ check_repo() {
   # Keep this list deliberately tight; the standalone script is the one
   # that grows. See check-hero-staleness.sh's header for the rationale.
   local hero_time config_time
-  hero_time=$(git -C "$ROOT" log -1 --format=%ct -- HERO.md 2>/dev/null | grep -E '^[0-9]+$' || echo "")
+  hero_time=$(hero_config_commit_time "$ROOT" | grep -E '^[0-9]+$' || echo "")
   config_time=$(git -C "$ROOT" log -1 --format=%ct -- \
     pyproject.toml ':(glob)**/pyproject.toml' \
     package.json ':(glob)**/package.json' \
@@ -422,7 +421,7 @@ check_repo() {
 # Parses HERO.md projects[] into the PROJECTS array. Each entry is a single
 # line `name|path|port|dependency-file|dev-command`. Missing fields are empty.
 parse_hero_projects() {
-  awk '
+  hero_config_show "$ROOT" 2>/dev/null | awk '
     /^## Projects/        { in_projects = 1; next }
     in_projects && /^## / { in_projects = 0 }
     !in_projects          { next }
@@ -439,11 +438,11 @@ parse_hero_projects() {
     END {
       if (name != "") print name "|" path "|" port "|" depfile "|" devcmd
     }
-  ' "$HERO" 2>/dev/null
+  '
 }
 
 check_runtime() {
-  [ -f "$HERO" ] || { emit SKIP "runtime: HERO.md missing — cannot scope checks"; return 0; }
+  hero_config_exists "$ROOT" || { emit SKIP "runtime: HERO.md missing — cannot scope checks"; return 0; }
 
   local projects=()
   while IFS= read -r line; do

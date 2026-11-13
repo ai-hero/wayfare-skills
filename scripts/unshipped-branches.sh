@@ -89,8 +89,7 @@ else
 fi
 
 OWNED=""
-STORE=$(hero_store_path "$ROOT")
-for f in "$STORE"/items/*.md; do
+for f in "$(hero_items_dir "$ROOT")"/*.md; do
   [ -f "$f" ] || continue
   # A finished item keeps its `branch:`; counting it would hide that branch
   # from every other class for good.

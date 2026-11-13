@@ -2473,6 +2473,51 @@ check "local skills: unknown hook is named on stderr" "yes" "$(hero_local_skills
 check "local skills: no skills dir is empty, rc 0"    "yes" "$(hero_local_skills "$TMP/w" >/dev/null 2>&1 && echo yes || echo no)"
 W="$TMP/w/.plans"
 
+# ---------- store layer: config, store name, register ----------------------
+
+mkdir -p "$TMP/layer/.git" "$TMP/layer/.plans/inbox" "$TMP/nolayer"
+cat > "$TMP/layer/HERO.md" <<'EOF'
+# Hero Configuration
+
+## Repository
+
+- agent: coderabbit
+- trigger: post "@bot review # now"
+
+## Deployment
+
+- platform: fly
+- health-endpoint: https://a.example/healthz
+- health-endpoint: https://b.example/healthz
+
+## Wayfare
+
+- source-repo: none
+EOF
+
+check "config_exists: present" "yes" "$(hero_config_exists "$TMP/layer" && echo yes || echo no)"
+check "config_exists: absent" "no" "$(hero_config_exists "$TMP/nolayer" && echo yes || echo no)"
+check "config_show: prints the file" "# Hero Configuration" "$(hero_config_show "$TMP/layer" | head -1)"
+hero_config_show "$TMP/nolayer" >/dev/null 2>&1; check "config_show: absent is rc 1" "1" "$?"
+check "config_sections: heading and body" "## Deployment|- platform: fly" \
+  "$(hero_config_sections "$TMP/layer" 'Deployment' | sed -n '1p;3p' | paste -sd'|' -)"
+check "config_sections: stops at the next section" "" \
+  "$(hero_config_sections "$TMP/layer" 'Repository|Deployment' | grep -F 'source-repo')"
+check "config_section_body: heading excluded" "- source-repo: none" \
+  "$(hero_config_section_body "$TMP/layer" Wayfare | grep .)"
+check "field_all: every repeat" "2" "$(hero_field_all health-endpoint "$TMP/layer" | wc -l | tr -d ' ')"
+check "field_raw: keeps the # and quotes hero_field would strip" \
+  'post "@bot review # now"' "$(hero_field_raw trigger "$TMP/layer")"
+check "field_in: block-scoped read" "fly" "$(hero_field_in "$TMP/layer" platform '## Deployment')"
+check "store_name: the store directory" ".plans" "$(hero_store_name)"
+check "inbox_exists: present" "yes" "$(hero_inbox_exists "$TMP/layer" && echo yes || echo no)"
+check "inbox_exists: absent" "no" "$(hero_inbox_exists "$TMP/nolayer" && echo yes || echo no)"
+mkdir -p "$TMP/fl/.fleet/.git" "$TMP/fl/repo/deep"
+check "register_find: walks up to the folder holding .fleet/" "$(cd "$TMP/fl" && pwd -P)" \
+  "$(hero_register_find "$TMP/fl/repo/deep")"
+hero_register_find "$TMP/nolayer" >/dev/null 2>&1; check "register_find: none above is rc 1" "1" "$?"
+check "register_checkout: names the checkout" "$TMP/fl/.fleet" "$(hero_register_checkout "$TMP/fl")"
+
 if [ "$FAIL" -gt 0 ]; then
   echo "hero-lib: $PASS passed, $FAIL FAILED"
   exit 1
@@ -2488,7 +2533,7 @@ fi
 # floor with a hundred cases of slack protects nothing, which is how this
 # suite came to run 365 against a floor of 210. Raise it with every block you
 # add, and read the CI number rather than the local one when you do.
-MIN_CASES=475
+MIN_CASES=490
 if [ "$PASS" -lt "$MIN_CASES" ]; then
   echo "hero-lib: only $PASS cases ran, expected >= $MIN_CASES — a block stopped executing" >&2
   exit 1

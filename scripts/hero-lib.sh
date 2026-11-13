@@ -124,6 +124,74 @@ hero_field() {
   hero_md_field "$root/HERO.md" "$1"
 }
 
+# The store layer for HERO.md. A skill, reference, hook or script never opens
+# the file by name: it asks one of these, so what answers (today the file, later
+# the server) can change in one place. validate.sh fails a direct read.
+
+# One field from a named block of the config, as hero_md_field reads it:
+# `platform` repeats across sections, so a bare hero_field answers the wrong one.
+hero_field_in() { # ROOT KEY BLOCK [PARENT]
+  hero_md_field "$(hero_config_file "$1")" "$2" "$3" "${4:-}"
+}
+
+# Path of the config source. Only for a caller that must hand a path to another
+# tool; a caller that wants content uses hero_config_show.
+hero_config_file() { # [ROOT]
+  printf '%s' "${1:-$(hero_root)}/HERO.md"
+}
+
+# Whether a readable config exists.
+hero_config_exists() { # [ROOT]
+  [ -r "$(hero_config_file "${1:-}")" ]
+}
+
+# The whole config on stdout; rc 1 and no output when it is unreadable.
+hero_config_show() { # [ROOT]
+  hero_config_exists "${1:-}" || return 1
+  cat "$(hero_config_file "${1:-}")"
+}
+
+# Unix time of the config's last commit; prints nothing when it has none.
+hero_config_commit_time() { # [ROOT]
+  git -C "${1:-$(hero_root)}" log -1 --format=%ct -- HERO.md 2>/dev/null
+}
+
+# Every `## NAME` section whose NAME matches the ERE, heading included, through
+# the line before the next `## `. Prints nothing when none match, so gate on
+# content, not rc: awk exits 0 on no match.
+hero_config_sections() { # ROOT NAME_ERE
+  hero_config_exists "$1" || return 1
+  awk -v re="^## ($2)[[:space:]]*$" '/^## /{f = ($0 ~ re)} f' "$(hero_config_file "$1")"
+}
+
+# The body of the first `## NAME` section, heading excluded.
+hero_config_section_body() { # ROOT NAME
+  hero_config_exists "$1" || return 1
+  awk -v n="## $2" 'index($0, n) == 1 {f=1; next} /^## /{f=0} f' "$(hero_config_file "$1")"
+}
+
+# The design-system block in both spellings: the `### design-system` connection
+# block and the `## Design System` section an unmigrated repo still carries.
+# Matching only the first returns empty on those repos.
+hero_config_design_system() { # [ROOT]
+  hero_config_exists "${1:-}" || return 1
+  sed -n -e '/^### design-system/,/^#\{2,3\} /p' -e '/^## Design System/,/^## /p' "$(hero_config_file "${1:-}")"
+}
+
+# Every value of a repeating `- KEY: value` line, one per line, unprocessed.
+# hero_field returns only the first; `health-endpoint` legitimately repeats.
+hero_field_all() { # KEY [ROOT]
+  hero_config_exists "${2:-}" || return 1
+  awk -v k="- $1:" 'index($0, k) == 1 {sub(/^[^:]*: */, ""); print}' "$(hero_config_file "${2:-}")"
+}
+
+# The first `- KEY: value` as written: no comment or quote stripping, unlike
+# hero_field. For a value that legitimately holds `#` or quotes, such as a
+# trigger comment's text.
+hero_field_raw() { # KEY [ROOT]
+  hero_field_all "$@" | head -1
+}
+
 # One field from a connection block in HERO.md (docs/CONNECTIONS.md):
 #   hero_connection design at
 #   hero_connection design-system namespace
@@ -1099,6 +1167,38 @@ hero_store_path() { # [ROOT]
     case "$gitdir" in */.git/worktrees/*) root=${gitdir%/.git/worktrees/*} ;; esac
   fi
   printf '%s' "$root/.plans"
+}
+
+# The store directory's name inside a repo, for a caller that must name it in a
+# pattern, an exclude list or a tar member rather than open it.
+hero_store_name() {
+  printf '%s' '.plans'
+}
+
+# Whether ROOT's store has an inbox a message can be deposited into.
+hero_inbox_exists() { # [ROOT]
+  [ -d "$(hero_store_path "${1:-}")/inbox" ]
+}
+
+# The register checkout under fleet folder DIR: prints its path and returns 0
+# when it is a git checkout, returns 1 when there is none.
+hero_register_checkout() { # DIR
+  [ -e "$1/.fleet/.git" ] || return 1
+  printf '%s' "$1/.fleet"
+}
+
+# The nearest folder at or above START (default: the cwd) that holds a `.fleet/`
+# register checkout, or rc 1. Looser than hero_fleet_root on purpose: the
+# SessionStart hook only needs the register, and must stay silent when the map
+# is unreadable.
+hero_register_find() { # [START]
+  local d
+  d=$(cd "${1:-$PWD}" 2>/dev/null && pwd -P) || return 1
+  while [ ! -d "$d/.fleet/.git" ]; do
+    [ "$d" = / ] && return 1
+    d=$(dirname "$d")
+  done
+  printf '%s' "$d"
 }
 
 # Absolute path to the work-item store, created and git-ignored on first use.

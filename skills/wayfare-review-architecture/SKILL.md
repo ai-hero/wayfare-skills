@@ -171,10 +171,14 @@ SOURCE_REF=$(sed -n '3s/^> Last updated: .* · Source ref: \([0-9a-f]\{40\}\)$/\
 [ -n "$SOURCE_REF" ] || SOURCE_REF=$(sed -n '3s/^> Last updated: .* · Source ref: \([0-9a-f]\{40\}\)$/\1/p' "$ROOT/ARCHITECTURE.md" 2>/dev/null)
 [ -n "$SOURCE_REF" ] || SOURCE_REF=UNANCHORED
 
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+# shellcheck source=/dev/null
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
+
 # Only the sections this skill uses — don't cat the whole HERO.md into
 # context. Gate on CONTENT, not awk's exit code: awk exits 0 with empty
 # output when HERO.md exists but lacks these sections.
-HERO_SECTIONS=$(awk '/^## (Repository|Projects|Deployment)[[:space:]]*$/{f=1;print;next} /^## /{f=0} f' "$ROOT/HERO.md" 2>/dev/null) # hero-lint: allow-inline — display only; whole sections read into context, no values parsed
+HERO_SECTIONS=$(hero_config_sections "$ROOT" 'Repository|Projects|Deployment' 2>/dev/null)
 [ -n "$HERO_SECTIONS" ] && printf '%s\n' "$HERO_SECTIONS" || echo "NO_HERO_SECTIONS"
 ```
 

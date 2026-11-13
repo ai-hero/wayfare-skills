@@ -27,10 +27,11 @@
 set -uo pipefail
 
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-HERO="$ROOT/HERO.md"
-[[ -f "$HERO" ]] || exit 0
+# shellcheck source=/dev/null
+. "$(dirname "${BASH_SOURCE[0]}")/hero-lib.sh" || exit 0
+hero_config_exists "$ROOT" || exit 0
 
-HERO_TIME=$(git -C "$ROOT" log -1 --format=%ct -- HERO.md 2>/dev/null | grep -E '^[0-9]+$' || echo 0)
+HERO_TIME=$(hero_config_commit_time "$ROOT" | grep -E '^[0-9]+$' || echo 0)
 # Default-substitute any empty value (corrupt repo, env hijack, no commits) to
 # 0. The `grep -E '^[0-9]+$'` already filters non-numeric output; this
 # default + the grep together ensure the `(( arithmetic ))` compare below

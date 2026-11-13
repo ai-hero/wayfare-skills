@@ -824,6 +824,59 @@ while IFS= read -r f; do
 done < <(find "$SKILLS_DIR" "$PLUGIN_ROOT/references" "$PLUGIN_ROOT/scripts/new-skill.sh" -type f 2>/dev/null)
 [[ $INLINE_FLEET_ERRORS -eq 0 ]] && pass "no inline fleet-root test in skills/, references/ or new-skill.sh"
 
+# ── store layer: nothing outside it reads a store file by name ─────
+# Plans, the fleet map, the config and the inbox are reached through hero-lib.sh,
+# hero-fields.sh and fleet-scan.sh (and audit.py for the scripts that are
+# Python). A skill, reference, hook or script that cat/greps/tests one of them
+# directly cannot follow the store to another backend: the fork only shows
+# when the backend changes, and then every such site reads the wrong place.
+#
+# Checks the code a skill runs, not prose about it: fenced blocks in
+# skills/ and references/, every line of hooks/*.sh and scripts/*.sh. Comment
+# lines are skipped. There is no opt-out marker: a read that has no function
+# yet gets one in hero-lib.sh.
+store_direct_reads() { # FILE MODE(md|sh) -> prints "LINE: text" per offending line
+  awk -v mode="$2" '
+    mode == "md" && /^[[:space:]]*```/ { fence = !fence; next }
+    mode == "md" && !fence             { next }
+    /^[[:space:]]*#/                   { next }
+    {
+      line = $0
+      sub(/[[:space:]]#[[:space:]].*$/, "", line)
+      tok = "(HERO\\.md|FLEET\\.md|\\.plans|\\.fleet|/inbox)"
+      cmd = "(^|[^[:alnum:]_.-])(cat|grep|egrep|fgrep|sed|awk|head|tail|ls|find|cp|mv|rm|tee|wc|stat|diff|sort)[[:space:]]"
+      if ((line ~ cmd && line ~ tok) || line ~ ("[<>][[:space:]]*[^[:space:]]*" tok) || line ~ ("\\[ -[a-z] [^]]*" tok))
+        print NR ": " $0
+    }
+  ' "$1"
+}
+STORE_DIRECT_ERRORS=0
+while IFS= read -r f; do
+  case "$f" in
+    */scripts/hero-lib.sh|*/scripts/hero-fields.sh|*/scripts/fleet-scan.sh|*/scripts/validate.sh|*.test.sh) continue ;;
+  esac
+  case "$f" in *.md) mode=md ;; *) mode="sh" ;; esac
+  hits=$(store_direct_reads "$f" "$mode")
+  [ -z "$hits" ] && continue
+  STORE_DIRECT_ERRORS=$((STORE_DIRECT_ERRORS + 1))
+  error "reads a store file directly, outside the store layer" \
+    "${f#"$PLUGIN_ROOT/"}" "$(printf '%s' "$hits" | head -1 | cut -d: -f1)" \
+    "Source scripts/hero-lib.sh and call a hero_* function (hero_config_show, hero_field, hero_items_dir, hero_fleet_repos, ...), or add one there"
+done < <({ find "$SKILLS_DIR" "$PLUGIN_ROOT/references" -type f -name '*.md'; find "$PLUGIN_ROOT/hooks" "$PLUGIN_ROOT/scripts" -maxdepth 1 -type f -name '*.sh'; } 2>/dev/null)
+
+# The Python scripts: a path join naming a store file belongs to audit.py's
+# config_path, register_dir and fleet_map, which every other script calls.
+while IFS= read -r f; do
+  case "$f" in */scripts/audit.py|*_test.py) continue ;; esac
+  hits=$(grep -nE '/ *"(HERO\.md|FLEET\.md|\.plans|\.fleet|inbox)"' "$f" || true)
+  [ -z "$hits" ] && continue
+  STORE_DIRECT_ERRORS=$((STORE_DIRECT_ERRORS + 1))
+  error "joins a store file's path directly, outside the store layer" \
+    "${f#"$PLUGIN_ROOT/"}" "$(printf '%s' "$hits" | head -1 | cut -d: -f1)" \
+    "Use audit.config_path, audit.register_dir or audit.fleet_map, or add the function to audit.py"
+done < <(find "$PLUGIN_ROOT/scripts" -maxdepth 1 -type f -name '*.py' 2>/dev/null)
+[[ $STORE_DIRECT_ERRORS -eq 0 ]] && pass "no store file is read outside the store layer"
+
 # ── work-item store: producers must have a consumer ────────────────
 # wayfare-grill-idea, handoff, and harden all WRITE work-items into .plans/
 # (and read the plate back to build on it). wayfare-build-task is the only skill that

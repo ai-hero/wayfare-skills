@@ -174,7 +174,7 @@ HERO_LIB="$WAYFARE_ROOT/scripts/hero-lib.sh"
 . "$HERO_LIB" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT — export WAYFARE_ROOT as the plugin root"; exit 1; }
 
 ROOT=$(hero_root)
-cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
+hero_config_show "$ROOT" 2>/dev/null || echo "NO_HERO_CONFIG"
 hero_check_staleness
 hero_fleet_step0 || exit 1
 # Mail from a sibling repo (docs/MESSAGES.md), and deploy probes whose runs

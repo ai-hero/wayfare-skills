@@ -90,9 +90,9 @@ as wrong. Do not ask about a row that already has the correct value.
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 . "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
+hero_config_show "$ROOT" 2>/dev/null || echo "NO_HERO_CONFIG"
 hero_fleet_step0 || exit 1
 ```
 
@@ -1210,7 +1210,7 @@ elif [ "${GOAL_DEPLOY:-verify}" = none ]; then
 else
   # BLOCK-scoped: an unscoped read returns CI/CD's platform. rc 2 is a value
   # the security gate rejected, not an absent key — say so instead of `none`.
-  DEPLOY_PLATFORM=$(hero_md_field "$ROOT/HERO.md" platform '## Deployment' | tr '[:upper:]' '[:lower:]'); HF_RC=$?
+  DEPLOY_PLATFORM=$(hero_field_in "$ROOT" platform '## Deployment' | tr '[:upper:]' '[:lower:]'); HF_RC=$?
   [ "$HF_RC" -eq 2 ] && { DEPLOY_PLATFORM=none; DEPLOY_CAVEAT="Deployment platform value rejected as unsafe — treat the result as UNKNOWN"; }
   DEPLOY_PLATFORM=${DEPLOY_PLATFORM:-none}
 
@@ -1420,8 +1420,8 @@ HERO.md's Deployment section lists one or more, e.g.
 
 ```bash
 # hero_field returns only the FIRST match; health-endpoint legitimately repeats,
-# so this list is read directly.
-HEALTH_ENDPOINTS=$(awk -F': ' '/^- health-endpoint:/ {print $2}' "$ROOT/HERO.md" 2>/dev/null `# hero-lint: allow-inline` \
+# so the whole list is read with hero_field_all.
+HEALTH_ENDPOINTS=$(hero_field_all health-endpoint "$ROOT" 2>/dev/null \
   | tr -d '"' | tr -d "'")
 
 if [ -z "$HEALTH_ENDPOINTS" ]; then

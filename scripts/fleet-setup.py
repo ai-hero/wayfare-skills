@@ -440,10 +440,10 @@ def load_reviewed(fleet, fetch=True):
     working tree is never read: a branch checked out to review a register PR,
     or an unpushed edit, would otherwise choose what this machine installs."""
     root = pathlib.Path(fleet).resolve()
-    reg = root / ".fleet"
+    audit = audit_module()
+    reg = audit.register_dir(root)
     if not (reg / ".git").exists():
         raise Gate("NO_REGISTER", f"{reg} is not a git checkout")
-    audit = audit_module()
     pin = audit.pinned_register(root)
     if pin is None:
         raise Gate("NO_PIN", f"this machine pins no register for {root} ({audit.pin_file()})")

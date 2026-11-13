@@ -80,7 +80,7 @@ case "$HF_RC" in
   0) hero_is_valid_branch "$DEFAULT_BRANCH" || { DEFAULT_BRANCH=main; fail_source "default-branch-invalid"; } ;;
   2) DEFAULT_BRANCH=main; fail_source "default-branch-rejected" ;;
   *) DEFAULT_BRANCH=main
-     [ -r "$(hero_root)/HERO.md" ] || fail_source "no-hero-md" ;;
+     hero_config_exists || fail_source "no-hero-md" ;;
 esac
 
 CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)
@@ -255,7 +255,7 @@ SUBTASKS_OPEN=""; SUBTASKS_TOTAL=""; DOD_OPEN=""; DOD_TOTAL=""
 STORE=$(hero_store_path 2>/dev/null)
 # Items live in `.plans/items/` under schema 1 (docs/PLAN.md); the listing
 # prints bare filenames, so every read below joins them to ITEMS, not STORE.
-ITEMS="$STORE/items"
+ITEMS=$(hero_items_dir)
 # The guard is on the store, never on `items/`: an unmigrated store has no
 # such directory, and skipping the block for it read as "nothing in flight"
 # on every consumer the day schema 1 shipped. hero_ready_items refuses such a

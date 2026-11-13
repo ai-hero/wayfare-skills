@@ -150,6 +150,19 @@ def in_git_worktree(d):
     return any((p / ".git").exists() for p in (d, *d.parents) if p != home)
 
 
+# The local backend's names for the store files this engine reads. Every other
+# script asks these (or fleet_map and read_fleet below) instead of joining
+# "HERO.md" or ".fleet" itself, which validate.sh enforces for scripts/*.py.
+def config_path(repo):
+    """The file holding repo's HERO.md config."""
+    return pathlib.Path(repo) / "HERO.md"
+
+
+def register_dir(root):
+    """The register checkout under fleet folder root."""
+    return pathlib.Path(root) / ".fleet"
+
+
 class FleetMapError(Exception):
     """.fleet/FLEET.md exists but cannot be read as a file: a directory, a
     dangling link, no read permission. Never "no map": a baseline-only run
@@ -209,7 +222,7 @@ def fleet_root(start=None):
             found, err = fleet_map(d, quiet=True), None
         except FleetMapError as e:
             found, err = True, e
-        if found and not (d / "HERO.md").is_file():
+        if found and not config_path(d).is_file():
             if not in_git_worktree(d):
                 if err:
                     raise err
@@ -415,7 +428,7 @@ def configure(root=None, load_overlay=True, no_fleet=False, no_fleet_flag=True):
     # Anything else lets a register PR point `register:` at a sibling whose
     # main its author controls, plus a matching register-repo, and the audit
     # would import that sibling's checkers.py as reviewed.
-    if REGISTER != (root / ".fleet").resolve():
+    if REGISTER != register_dir(root).resolve():
         sys.exit(f"FLEET.md register: {reg} must be .fleet/ — the map lives in {root / '.fleet'}, "
                  "which is the register; delete the key or set it to .fleet/")
     TEMPLATE = fields.get("template") or None
@@ -728,7 +741,7 @@ def published_files(repo):
     unsafe, which the FAIL detail carries: otherwise a declaration that had no
     effect looks like one that was never written."""
     refused = []
-    v = hero_md_field(repo / "HERO.md", "published-files", "## Repository", refused) or ""
+    v = hero_md_field(config_path(repo), "published-files", "## Repository", refused) or ""
     names = (p.strip(_AWK_SPACE) for p in v.split(","))
     return sorted({p for p in names if p and "/" not in p}), "; ".join(refused)
 

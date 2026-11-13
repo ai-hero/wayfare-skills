@@ -87,6 +87,7 @@ mk_zztest_skill() { # DIR BODY_EXTRA
 ---
 name: zztest
 description: A test skill used only by validate.test.sh fixtures, long enough.
+compatibility: "Requires the complete Wayfare plugin."
 ---
 
 # zztest
@@ -411,6 +412,42 @@ rm -f "$d/.claude-plugin/plugin.json"
 run_validate "$d"
 check "missing .claude-plugin/plugin.json: nonzero rc" "yes" "$([ "$RC" -ne 0 ] && echo yes || echo no)"
 check "missing .claude-plugin/plugin.json: no unbound-variable crash" "" "$(printf '%s' "$OUT" | grep -io 'unbound variable' || true)"
+
+# ---------- store layer: no direct store-file read ---------------------------
+
+d=$(fixture store-direct-items)
+mk_zztest_skill "$d" '```bash
+cat .plans/items/001-x.md
+```'
+run_validate "$d"
+check "skill reads .plans/items directly: rc" "1" "$RC"
+check_contains "skill reads .plans/items directly: reported" "$OUT" "reads a store file directly, outside the store layer"
+check_contains "skill reads .plans/items directly: names the file" "$OUT" "skills/zztest/SKILL.md"
+
+d=$(fixture store-direct-config)
+mk_zztest_skill "$d" '```bash
+grep "^- agent:" "$ROOT/HERO.md"
+```'
+run_validate "$d"
+check "skill greps HERO.md directly: rc" "1" "$RC"
+check_contains "skill greps HERO.md directly: reported" "$OUT" "reads a store file directly, outside the store layer"
+
+d=$(fixture store-direct-test)
+mk_zztest_skill "$d" '```bash
+[ -d "$TO_ROOT/.plans/inbox" ] || echo none
+```'
+run_validate "$d"
+check "skill tests the inbox path directly: rc" "1" "$RC"
+
+d=$(fixture store-via-layer)
+mk_zztest_skill "$d" 'The store lives in `.plans/` and skills never open it.
+
+```bash
+hero_config_show "$ROOT"
+ls "$(hero_items_dir)"
+```'
+run_validate "$d"
+check "skill goes through the layer, prose names the files: rc" "0" "$RC"
 
 if [ "$FAIL" -gt 0 ]; then
   echo "validate: $PASS passed, $FAIL FAILED"

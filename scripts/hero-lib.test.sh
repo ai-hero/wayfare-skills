@@ -421,6 +421,36 @@ XDG_CONFIG_HOME="$PX" hero_register_pin "$F" >/dev/null; check "register-pin: a 
 printf '%s github.com/acme/fleet-register\n' "$TMP/flink" > "$PX/wayfare/registers"
 XDG_CONFIG_HOME="$PX" hero_register_pin "$F" >/dev/null; check "register-pin: a pin written through a symlink does not pin" "1" "$?"
 rm -f "$TMP/flink" "$TMP/pins.bak"
+
+# hero_store_backend: WAYFARE_STORE, else the pin's URL line, else local. The
+# env var is cleared per case so the caller's own setting never leaks in.
+sb() { ( unset WAYFARE_STORE; "$@" ); }
+rm -rf "$PX"; mkdir -p "$PX/wayfare"
+check "store-backend: no pin file and no override is local" "local" "$(XDG_CONFIG_HOME="$PX" sb hero_store_backend "$F/web")"
+printf '%s github.com/acme/fleet-register\n' "$F" > "$PX/wayfare/registers"
+check "store-backend: a register-only pin is local" "local" "$(XDG_CONFIG_HOME="$PX" sb hero_store_backend "$F/web")"
+printf '%s github.com/acme/fleet-register\n%s https://App.Example.com/ # prod\n' "$F" "$F" > "$PX/wayfare/registers"
+check "store-backend: the pin's URL line is the backend, trailing slash gone" \
+  "https://App.Example.com" "$(XDG_CONFIG_HOME="$PX" sb hero_store_backend "$F/web")"
+check "store-backend: the register line beside a URL line still reads as the register" \
+  "github.com/acme/fleet-register" "$(XDG_CONFIG_HOME="$PX" hero_register_pin "$F")"
+printf '%s https://app.example.com\n' "$F" > "$PX/wayfare/registers"
+XDG_CONFIG_HOME="$PX" hero_register_pin "$F" >/dev/null; check "store-backend: a URL line alone is not a register pin" "1" "$?"
+check "store-backend: WAYFARE_STORE=local wins over the pin" "local" "$(XDG_CONFIG_HOME="$PX" WAYFARE_STORE=local hero_store_backend "$F/web")"
+check "store-backend: WAYFARE_STORE URL wins over the pin" \
+  "http://127.0.0.1:33008" "$(XDG_CONFIG_HOME="$PX" WAYFARE_STORE=http://127.0.0.1:33008/ hero_store_backend "$F/web")"
+check "store-backend: WAYFARE_STORE URL applies with no pin file" \
+  "https://t.example.com" "$(XDG_CONFIG_HOME="$TMP/no-such-xdg" WAYFARE_STORE=https://t.example.com hero_store_backend "$TMP/nofleet/repo")"
+check "store-backend: an empty WAYFARE_STORE falls through to the pin" \
+  "https://app.example.com" "$(XDG_CONFIG_HOME="$PX" WAYFARE_STORE='' hero_store_backend "$F/web")"
+check "store-backend: another fleet's URL line is not this fleet's" "local" \
+  "$(printf '%s https://app.example.com\n' "$TMP/nofleet" > "$PX/wayfare/registers"; XDG_CONFIG_HOME="$PX" sb hero_store_backend "$F/web")"
+printf '%s ftp://app.example.com\n' "$F" > "$PX/wayfare/registers"
+XDG_CONFIG_HOME="$PX" sb hero_store_backend "$F/web" >/dev/null 2>&1; check "store-backend: a non-http pin URL is an error, not local" "1" "$?"
+XDG_CONFIG_HOME="$PX" WAYFARE_STORE=sever hero_store_backend "$F/web" >/dev/null 2>&1; check "store-backend: a malformed WAYFARE_STORE is an error, not local" "1" "$?"
+printf '%s https://app.example.com\n' "$F" > "$PX/wayfare/registers"
+XDG_CONFIG_HOME="$PX" sb hero_store_require_local "$F/web" >/dev/null 2>&1; check "store-dispatch: a server backend refuses the local layer" "1" "$?"
+XDG_CONFIG_HOME="$PX" WAYFARE_STORE=local hero_store_require_local "$F/web" >/dev/null 2>&1; check "store-dispatch: local passes" "0" "$?"
 rm -rf "$PX"
 
 # The walk covers ancestors, not just the folder holding .fleet/.

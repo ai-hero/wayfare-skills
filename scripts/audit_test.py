@@ -1326,6 +1326,16 @@ class Configured(unittest.TestCase):
         self.assertEqual(audit.remote_identity("/tmp/x/fx/register.git"), "file/tmp/x/fx/register")
         self.assertEqual(audit.remote_identity("file:///tmp/x/fx/register"), "file/tmp/x/fx/register")
 
+    def test_an_app_url_line_is_not_a_register_pin(self):
+        pins = pathlib.Path(os.environ["XDG_CONFIG_HOME"]) / "wayfare" / "registers"
+        pins.parent.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(lambda: pins.unlink(missing_ok=True))
+        pins.write_text(f"{self.root} https://app.example.com\n")
+        self.assertIsNone(audit.pinned_register(self.root), "a URL alone pins no register")
+        pins.write_text(f"{self.root} https://app.example.com\n{self.root} gitlab.com/fx/register\n")
+        self.assertEqual(audit.pinned_register(self.root), "gitlab.com/fx/register",
+                         "the register line beside a URL line still reads")
+
     def test_register_pin(self):
         fleet_fixture(self.root, "## Fleet\n- name: fx\n")
         review_register(self.root, pin=False)

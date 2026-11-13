@@ -344,7 +344,8 @@ def pinned_register(root):
     fleet: the fleet root's absolute physical path, whitespace, the register
     as remote_identity() spells it. `#` starts a comment. A path with
     whitespace in it cannot be pinned. hero_register_pin reads it the same
-    way."""
+    way. A value holding `://` is an app URL (hero_store_backend), not a
+    register, and is skipped."""
     try:
         lines = pathlib.Path(pin_file()).read_text().splitlines()
     except (OSError, UnicodeDecodeError):
@@ -352,7 +353,7 @@ def pinned_register(root):
     want = str(pathlib.Path(root).resolve())
     for line in lines:
         parts = line.split("#", 1)[0].split()
-        if len(parts) == 2 and parts[0] == want:
+        if len(parts) == 2 and parts[0] == want and "://" not in parts[1]:
             return _pin_value(parts[1])
     return None
 

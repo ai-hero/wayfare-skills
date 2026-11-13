@@ -808,12 +808,15 @@ hero_fleet_step0() { # [DIR]
 # read as github.com/OWNER/NAME. It lives outside the register on purpose: the
 # map's own register-repo is written from inside the checkout it vouches for.
 # scripts/audit.py's pinned_register() reads the same file the same way.
+# A line whose second field holds `://` is an app URL (hero_store_backend), not
+# a register: both readers skip it, so one root may carry both lines and a URL
+# is never handed on as a register identity.
 hero_register_pin() { # FLEET_ROOT
   local root file v
   root=$(cd "$1" 2>/dev/null && pwd -P) || return 1
   file="${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"
   [ -r "$file" ] || return 1
-  v=$(awk -v want="$root" '{ sub(/#.*/, "") } NF == 2 && $1 == want { print tolower($2); found = 1; exit } END { exit !found }' "$file") || return 1
+  v=$(awk -v want="$root" '{ sub(/#.*/, "") } NF == 2 && $1 == want && $2 !~ /:\/\// { print tolower($2); found = 1; exit } END { exit !found }' "$file") || return 1
   v=${v%/}; v=${v%.git}
   case "$v" in file*) ;; */*/*) ;; */*) v="github.com/$v" ;; esac
   printf '%s\n' "$v"
@@ -1201,6 +1204,42 @@ hero_register_find() { # [START]
   printf '%s' "$d"
 }
 
+# Which store backend this fleet runs on: prints `local` or the app's URL.
+# WAYFARE_STORE (`local` or a URL) wins, for rehearsal runs; else the pin file's
+# URL line for the fleet root (`FLEET_ROOT https://app.example.com`, beside any
+# register line for the same root); else `local`. Anything that names a URL but
+# is not http(s) is an error (rc 1, stderr), never a silent fall back to local:
+# a fleet that meant the server would keep writing files the server never sees.
+hero_store_backend() { # [DIR]
+  local v file root
+  v=${WAYFARE_STORE:-}
+  if [ -z "$v" ]; then
+    file="${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"
+    [ -r "$file" ] || { echo local; return 0; }
+    root=$(hero_fleet_root "${1:-$PWD}" 2>/dev/null) || { echo local; return 0; }
+    v=$(awk -v want="$root" '{ sub(/#.*/, "") } NF == 2 && $1 == want && $2 ~ /:\/\// { print $2; exit }' "$file")
+    [ -n "$v" ] || { echo local; return 0; }
+  fi
+  case "$v" in
+    local) echo local ;;
+    http://?*|https://?*)
+      case "$v" in *[[:space:]]*) ;; *) printf '%s\n' "${v%/}"; return 0 ;; esac
+      echo "hero_store_backend: '$v' is not a usable store URL (whitespace)" >&2; return 1 ;;
+    *) echo "hero_store_backend: '$v' is neither 'local' nor an http(s) URL; fix WAYFARE_STORE or the pin file" >&2; return 1 ;;
+  esac
+}
+
+# The dispatch point every local store function passes through. Only the local
+# backend exists yet; a server fleet stops here with the reason rather than
+# reading or writing files the server does not own.
+hero_store_require_local() { # [DIR]
+  local b
+  b=$(hero_store_backend "${1:-}") || return 1
+  [ "$b" = local ] && return 0
+  echo "hero: this fleet's store is the server at $b, and the server backend is not built yet; unset WAYFARE_STORE or remove the URL line from the pin file to use the local store" >&2
+  return 1
+}
+
 # Absolute path to the work-item store, created and git-ignored on first use.
 # A dot-directory: tool-private state, like `.beads/`. It keeps the repo root
 # clean and is far less likely to collide with a real project directory.
@@ -1213,6 +1252,7 @@ hero_work_store() {
   local root store legacy link
   store=$(hero_store_path "${1:-}")
   root=${store%/.plans}
+  hero_store_require_local "$root" || return 1
 
   # Establish we can actually ignore the store BEFORE creating or migrating
   # anything. Doing it after meant a non-git directory got a store created and

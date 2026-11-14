@@ -43,13 +43,15 @@ typecheck:
     print(f'{len(j)} JSON + {len(y)} YAML parsed')"
 
 # Globbed, so a new scripts/*.test.sh gates without touching this recipe or
-# the workflow.
+# the workflow. The asset hook tables are in the glob because CI here is the
+# only place that runs them before they are vendored; downstream copies run
+# them only after the bug has shipped.
 
 # Shell unit suites.
 test:
     #!/usr/bin/env bash
     set -euo pipefail
-    for t in scripts/*.test.sh; do
+    for t in scripts/*.test.sh assets/*/hooks/*.test.sh; do
       echo "-- $t"
       bash "$t"
     done

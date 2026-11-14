@@ -558,9 +558,15 @@ procedures:
 
 ## Updating vendored assets in a downstream repo
 
-`scripts/install-design-system.sh` and `scripts/install-auto-approve.sh` copy
-files *into* consuming repos (`.claude/rules/`, `.claude/hooks/`). Those copies
-are vendored, not authored: fix bugs here, then re-vendor.
+`scripts/install-design-system.sh`, `scripts/install-stop-checks.sh` and
+`scripts/install-auto-approve.sh` copy files *into* consuming repos
+(`.claude/rules/`, `.claude/hooks/`). Those copies are vendored, not authored:
+fix bugs here, then re-vendor.
+
+`install-stop-checks.sh` wires a Stop hook that runs the repo's
+`just check-fast` before an agent ends its turn and sends it back to work on a
+failure. The repo owns the recipe; keep it to checks that finish in seconds,
+because it runs on every stop.
 
 To refresh a consuming repo after a fix lands upstream:
 

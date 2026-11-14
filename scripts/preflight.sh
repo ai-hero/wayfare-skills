@@ -358,7 +358,9 @@ check_repo() {
     .github/workflows .pre-commit-config.yaml \
     CLAUDE.md Makefile justfile Taskfile.yml 2>/dev/null \
     | grep -E '^[0-9]+$' || echo "")
-  if [ -z "$hero_time" ] && [ -z "$config_time" ]; then
+  if [ -z "$hero_time" ] && [ "$(hero_srv_route_root "$ROOT" 2>/dev/null)" = server ]; then
+    emit SKIP "repo: HERO.md is on the Wayfare server, which keeps no commit time — staleness unknown"
+  elif [ -z "$hero_time" ] && [ -z "$config_time" ]; then
     emit SKIP "repo: cannot read git history (empty repo?) — staleness unknown"
   elif [ "${config_time:-0}" -gt "${hero_time:-0}" ]; then
     emit WARN "repo: HERO.md may be stale — run wayfare:wayfare-init-repo recalibrate"

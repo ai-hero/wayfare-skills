@@ -1397,6 +1397,38 @@ class Configured(unittest.TestCase):
             with self.assertRaises(audit.ServerError):
                 audit.record_results("app", [], self.root / "fx")
 
+    def test_read_fleet_over_the_cli_equals_the_map(self):
+        """read_fleet under a server reads the `fleet` tool and returns what the
+        same data in a FLEET.md returns: org, template, port-range, and each row's
+        group (lowercased, `none` when unset) and port. Keys the server lacks
+        (name) are absent, a failing CLI exits naming the server, and the call
+        sent is `fleet --json {}` under the URL's workspace."""
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n- org: acme\n- template: tpl\n- port-range: 33000-33099\n"
+                      "\n## Repos\n\n### app\n\n- group: Core\n- port: 33008\n\n### lib\n\n- group: none\n")
+        want_fields, want_repos = audit.read_fleet(self.root)
+        log = self.root / "cli.log"
+        data = {"data": {"settings": {"org": "acme", "template": "tpl", "port_min": 33000, "port_max": 33099},
+                         "groups": [{"id": "g1", "name": "Core"}],
+                         "rows": [{"project": {"slug": "app", "group_id": "g1", "port": 33008}},
+                                  {"project": {"slug": "lib"}}]}}
+        stub = self._stub_cli(
+            f'printf "%s url=%s ws=%s\\n" "$*" "$WAYFARE_URL" "$WAYFARE_WORKSPACE" > {log}\n'
+            'if [ -n "$STUB_FAIL" ]; then echo "boom: token rejected" >&2; exit 1; fi\n'
+            f"echo '{json.dumps(data)}'\n")
+        with mock.patch.dict(os.environ, {"WAYFARE_STORE": "https://wf.test/ws-1", "WAYFARE_CLI": str(stub)}):
+            os.environ.pop("STUB_FAIL", None)
+            fields, repos = audit.read_fleet(self.root)
+            self.assertEqual(repos, want_repos)
+            for k in ("org", "template", "port-range"):
+                self.assertEqual(fields[k], want_fields[k])
+            self.assertNotIn("name", fields)
+            self.assertEqual(log.read_text().strip(), "fleet --json {} url=https://wf.test ws=ws-1")
+            os.environ["STUB_FAIL"] = "1"
+            with self.assertRaises(SystemExit) as cm:
+                audit.read_fleet(self.root)
+            self.assertIn("https://wf.test/ws-1", str(cm.exception))
+            self.assertIn("boom: token rejected", str(cm.exception))
+
     def test_register_pin(self):
         fleet_fixture(self.root, "## Fleet\n- name: fx\n")
         review_register(self.root, pin=False)

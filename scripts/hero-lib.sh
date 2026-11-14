@@ -157,7 +157,9 @@ hero_config_show() { # [ROOT]
 
 # Unix time of the config's last commit; prints nothing when it has none.
 hero_config_commit_time() { # [ROOT]
-  hero_srv_refuse hero_config_commit_time "" "${1:-}" || return 1
+  local r
+  r=$(hero_srv_route_root "${1:-}") || return 1
+  [ "$r" = server ] && return 0
   git -C "${1:-$(hero_root)}" log -1 --format=%ct -- HERO.md 2>/dev/null
 }
 
@@ -645,7 +647,8 @@ hero_default_branch_verbose() {
 hero_check_staleness() {
   local root hero_time config_time
   root="${1:-$(hero_root)}"
-  hero_srv_refuse hero_check_staleness "" "$root" || return 1
+  hero_time=$(hero_srv_route_root "$root") || return 1
+  [ "$hero_time" = server ] && return 0
   [ -r "$root/HERO.md" ] || return 0
   hero_time=$(git -C "$root" log -1 --format=%ct -- HERO.md 2>/dev/null | grep -E '^[0-9]+$' || echo 0)
   config_time=$(git -C "$root" log -1 --format=%ct -- \
@@ -863,7 +866,7 @@ hero_fleet_field() { # KEY [FLEET_ROOT]
   local root
   local map
   root="${2:-$(hero_fleet_root)}" || return 1
-  hero_srv_refuse_root hero_fleet_field "$root" || return 1
+  if [ "$(hero_srv_route_root "$root")" = server ]; then hero_srv_fleet_field "$1" "$root"; return; fi
   map=$(hero_fleet_map "$root") || return
   hero_md_field "$map" "$1" "## Fleet"
 }
@@ -1189,7 +1192,9 @@ hero_store_name() {
 
 # Whether ROOT's store has an inbox a message can be deposited into.
 hero_inbox_exists() { # [ROOT]
-  hero_srv_refuse_root hero_inbox_exists "${1:-}" || return 1
+  local r
+  r=$(hero_srv_route_root "$(hero_srv_root "${1:-}")") || return 1
+  if [ "$r" = server ]; then hero_srv_project "$(hero_srv_root "${1:-}")" >/dev/null; return; fi
   [ -d "$(hero_store_path "${1:-}")/inbox" ]
 }
 
@@ -1491,7 +1496,8 @@ hero_item_channel() {
 # previous head on every run.
 hero_plan_field() { # KEY [STORE]
   local store
-  hero_srv_refuse hero_plan_field "${2:-}" || return 1
+  store=$(hero_srv_route_store "${2:-}") || return 1
+  if [ "$store" = server ]; then hero_srv_plan_field "$1" "${2:-}"; return; fi
   store="${2:-$(hero_store_path)}"
   [ -f "$store/PLAN.md" ] || return 1
   case "$1" in
@@ -1513,7 +1519,12 @@ hero_plan_field() { # KEY [STORE]
 # lists as a malformed item.
 # shellcheck disable=SC2120  # optional arg; callers usually rely on the default
 hero_items_dir() { # [ROOT]
-  hero_srv_refuse_root hero_items_dir "${1:-}" || return 1
+  local r store
+  r=$(hero_srv_route_root "${1:-}") || return 1
+  if [ "$r" = server ]; then
+    store=$(hero_srv_store "$(hero_srv_root "${1:-}")") || return 1
+    printf '%s' "$store/items"; return
+  fi
   printf '%s' "$(hero_store_path "${1:-}")/items"
 }
 
@@ -1793,7 +1804,11 @@ hero_is_msg_id() { # ID
 # instead (docs/MESSAGES.md, Sending step 2).
 hero_msg_find() { # STORE FROM ABOUT
   local f n=0 st exp today
-  hero_srv_refuse hero_msg_find "${1:-}" || return 2
+  case "$(hero_srv_route_store "${1:-}")" in
+    server) hero_srv_msg_find "$1" "${2:-}" "${3:-}"; return ;;
+    local) ;;
+    *) return 2 ;;
+  esac
   # rc 2, not 1: there is no mailbox to read, so this probe did not run. Read
   # as 1 ("not sent yet") the sender deposits into a store it has never been
   # able to check, which is the double-dispatch the probe exists to prevent.
@@ -2641,9 +2656,8 @@ hero_goal_candidates() ( # GOAL_ID [STORE]
   local goal store f id itype state parent pinfo index gstate members mpaths blocked_on
   local paths p bad deps dep dstate cands next changed out
   [ -n "$1" ] || { echo "hero_goal_candidates: empty GOAL_ID" >&2; return 2; }
-  hero_srv_refuse hero_goal_candidates "${2:-}" || return 1
   goal=$(hero_norm_id "$1")
-  store="${2:-$(hero_work_store)}" || return 1
+  store=$(hero_srv_store_for "${2:-}") || return 1
   cd "$store/items" 2>/dev/null || { echo "hero_goal_candidates: no item directory at $store/items" >&2; return 1; }
   setopt localoptions nullglob 2>/dev/null || true
 
@@ -2857,13 +2871,16 @@ POLICY
 # already parse (an items/NNN-slug.md file, a HERO.md, a store with PLAN.md),
 # so one parser answers both backends and the two cannot drift.
 #
-# A function that has no server variant does not fall through to the files:
-# it fails, naming itself and the server (hero_srv_refuse). A failed CLI call
-# is an error naming the server, never an empty result.
+# A function never falls through to the local files under a server: it answers
+# from the server or fails, naming what the server lacks. A failed CLI call is
+# an error naming the server, never an empty result.
 #
-# Not built for the server, so each one fails there: hero_plan_field,
-# hero_goal_candidates, hero_items_dir, hero_inbox_exists, hero_msg_find,
-# hero_config_commit_time, hero_check_staleness, hero_fleet_field.
+# Only fields the server has no value for fail there: hero_plan_field keys
+# other than schema, source.head and target.head, and hero_fleet_field keys
+# other than org, template and port-range. hero_config_commit_time prints
+# nothing and hero_check_staleness is silent under a server: the server keeps
+# no commit time for a config, and comparing nothing to a repo file's time
+# reads as stale on every run.
 # hero_deploy_pending is machine-local state, not server data: it keeps reading
 # its file (hero_store_require_local guards its writes, task 100). A path-taking reader (hero_item_field and the rest) is
 # backend-free: it parses whatever file it is handed, and hero_item_file hands
@@ -2918,26 +2935,6 @@ hero_srv_route_store() { # [STORE]
     ''|.plans|*/.plans) hero_srv_route_root "$(hero_srv_root "${1:-}")" ;;
     *) echo local ;;
   esac
-}
-
-# Fail, naming the function and the server, when the backend is the server.
-hero_srv_refuse() { # NAME [STORE] [ROOT]
-  local r b root
-  r=$(hero_srv_route_store "${2:-}") || return 1
-  [ "$r" = server ] || return 0
-  root=$(hero_srv_root "${3:-${2:-}}")
-  b=$(hero_store_backend "$root")
-  echo "$1: not implemented for the Wayfare server at $b; the local store is not read in its place" >&2
-  return 1
-}
-
-hero_srv_refuse_root() { # NAME [ROOT]
-  local r b
-  r=$(hero_srv_route_root "${2:-}") || return 1
-  [ "$r" = server ] || return 0
-  b=$(hero_store_backend "${2:-}")
-  echo "$1: not implemented for the Wayfare server at $b; the local store is not read in its place" >&2
-  return 1
 }
 
 # Run one wayfare CLI subcommand against ROOT's server, printing its JSON. A
@@ -3009,8 +3006,8 @@ def item_fm:
   + "status: \(.status // "new" | if . == "" then "new" else . end)\n"
   + opt("resolution"; .resolution) + opt("priority"; ((.priority // "") | pri)) + opt("severity"; .severity)
   + opt("shape"; .shape) + opt("channel"; .channel) + opt("parent"; .goal_number) + opt("rank"; .rank)
-  + opt("depends_on"; .depends_on) + opt("blocked_on"; .blocked_on) + opt("blocked_since"; .blocked_since)
-  + opt("sources"; .sources) + opt("targets"; .targets) + opt("success"; .success) + opt("origin"; .origin)
+  + opt("depends_on"; .depends_on) + opt("blocked_on"; .blocked_on) + opt("blocked_since"; ((.blocked_since // "")[0:10]))
+  + opt("source"; .sources) + opt("target"; .targets) + opt("bot"; .bot) + opt("success"; .success) + opt("origin"; .origin)
   + opt("pr"; .pr) + opt("branch"; .branch) + opt("discovered_from"; .discovered_from) + "---\n";
 def log_line: "- \((.at // "")[0:10]) (\(.by // "agent")) \(.tag): \(.body)";
 def item_md: item_fm + "\n" + (.description // "") + "\n\n## Log\n\n" + ((.log // []) | map(log_line) | join("\n")) + "\n";
@@ -3115,8 +3112,8 @@ hero_item_set() { # NUMBER KEY VALUE [ROOT]
     title|priority|severity|shape|blocked_on|success|origin) kind=str ;;
     rank|parent) kind=int ;;
     depends_on) kind=ints ;;
-    sources|targets) kind=list ;;
-    *) echo "hero_item_set: '$2' is not a field this writes (title priority severity shape rank parent depends_on blocked_on sources targets success origin); a status moves by transition" >&2; return 2 ;;
+    source|target) kind=list ;;
+    *) echo "hero_item_set: '$2' is not a field this writes (title priority severity shape rank parent depends_on blocked_on source target success origin); a status moves by hero_item_transition" >&2; return 2 ;;
   esac
   root=$(hero_srv_root "${4:-}")
   r=$(hero_srv_route_root "$root") || return 1
@@ -3127,7 +3124,8 @@ hero_item_set() { # NUMBER KEY VALUE [ROOT]
     printf '%s: %s\n' "$2" "$(hero_item_field "$f" "$2")"
     return 0
   fi
-  skey=$2; [ "$2" = parent ] && skey=goal_number
+  skey=$2
+  case "$2" in parent) skey=goal_number ;; source) skey=sources ;; target) skey=targets ;; esac
   if [ "$2" = priority ]; then
     case "$3" in p0|p1|high) val=high ;; p2|medium) val=medium ;; p3|low) val=low ;;
       *) echo "hero_item_set: priority '$3' is not p0-p3 or high/medium/low" >&2; return 2 ;; esac
@@ -3141,7 +3139,7 @@ hero_item_set() { # NUMBER KEY VALUE [ROOT]
       else $v end)}') || { echo "hero_item_set: '$3' is not a valid $2" >&2; return 2; }
   json=$(hero_srv_cli "$root" update-item --json "$body") || return 1
   printf '%s' "$json" | jq -r --arg k "$2" "$_HERO_SRV_JQ"'
-    .item | ({"parent": .goal_number, "priority": ((.priority // "") | pri)}[$k] // .[$k]) as $v
+    .item | ({"parent": .goal_number, "priority": ((.priority // "") | pri), "source": .sources, "target": .targets}[$k] // .[$k]) as $v
     | "\($k): \($v // "" | val)"'
 }
 
@@ -3164,6 +3162,96 @@ hero_item_log() { # NUMBER TAG TEXT [ROOT]
   body=$(jq -n --arg pid "$pid" --argjson n "$n" --arg tag "$2" --arg text "$3" '{project_id: $pid, number: $n, tag: $tag, text: $text}')
   json=$(hero_srv_cli "$root" log --json "$body") || return 1
   printf '%s' "$json" | jq -r '.item.log[-1] | "\(.tag): \(.body)"'
+}
+
+# One key of the server's plan, as hero_plan_field reads it from PLAN.md: the
+# plan row holds `schema` (always 1 here), the source head and the design head.
+# Every other key (repo, default_branch, initialized, next_id, source.root,
+# target.project, target.snapshot) is not on the plan row and fails, naming it.
+hero_srv_plan_field() { # KEY [STORE]
+  local root pid json
+  case "$1" in
+    schema) printf '1'; return 0 ;;
+    source.head|target.head) ;;
+    *) echo "hero_plan_field: '$1' is not on the Wayfare server's plan (schema, source.head, target.head); the plan row has no such field" >&2; return 1 ;;
+  esac
+  root=$(hero_srv_root "${2:-}")
+  pid=$(hero_srv_project "$root") || return 1
+  json=$(hero_srv_cli "$root" plan --project-id "$pid") || return 1
+  if [ "$1" = source.head ]; then printf '%s' "$json" | jq -j '.plan.source_head // ""'
+  else printf '%s' "$json" | jq -j '.plan.target_head // ""'; fi
+}
+
+# hero_msg_find under the server: the ids, one per line, of live threads from
+# repo FROM to this store's repo whose item number or subject is ABOUT (the
+# local `about:` is an item id or a subject token). Live is open or claimed,
+# not past its `expires`. rc 1 none, rc 2 the probe could not run, as locally.
+hero_srv_msg_find() { # STORE FROM ABOUT
+  local root tpid fpid json out
+  [ -n "${3:-}" ] || { echo "hero_msg_find: ABOUT is empty; an about-less probe matches every about-less message; pass a subject token" >&2; return 2; }
+  root=$(hero_srv_root "${1:-}")
+  tpid=$(hero_srv_project "$root") || return 2
+  fpid=$(hero_srv_project "$root" "$2") || return 2
+  json=$(hero_srv_cli "$root" messages --project-id "$tpid") || return 2
+  out=$(printf '%s' "$json" | jq -r --arg t "$tpid" --arg f "$fpid" --arg a "$3" --arg today "$(date +%Y%m%d)" '
+    .threads[]?
+    | select(.to_project_id == $t and .from_project_id == $f)
+    | select((.status | ascii_downcase) as $s | $s == "open" or $s == "claimed")
+    | select((((.about.item_number // "") | tostring) == $a) or (.subject == $a))
+    | select(((.expires // "")[0:10] | gsub("-"; "")) as $d | ($d | test("^[0-9]{8}$") | not) or ($d | tonumber) >= ($today | tonumber))
+    | .id') || return 2
+  [ -n "$out" ] || return 1
+  printf '%s\n' "$out"
+}
+
+# A `## Fleet` value from the server's fleet settings: org, template and
+# port-range (MIN-MAX, absent when both are 0). name, template-port, register
+# and register-repo are not on the settings (a fleet is a workspace, named by
+# the issuer; the register is the app's), so they fail, naming the key.
+hero_srv_fleet_field() { # KEY ROOT
+  local json v
+  case "$1" in org|template|port-range) ;;
+    *) echo "hero_fleet_field: '$1' is not on the Wayfare server's fleet settings (org, template, port-range)" >&2; return 1 ;; esac
+  json=$(hero_srv_cli "$2" fleet) || return 1
+  v=$(printf '%s' "$json" | jq -r --arg k "$1" '
+    .data.settings // {} | if $k == "org" then (.org // "")
+      elif $k == "template" then (.template // "")
+      elif (.port_min // 0) == 0 and (.port_max // 0) == 0 then ""
+      else "\(.port_min // 0)-\(.port_max // 0)" end')
+  [ -n "$v" ] || return 1
+  printf '%s' "$v"
+}
+
+# Move an item to status TO, with a REASON and, for done, a RESOLUTION; prints
+# `status: TO` and, with one, `resolution: R`. Local writes the frontmatter and
+# a log line the way skills do by hand; the server takes `transition`, which
+# enforces its own gates (ready and accepted are a person's, a task ships by the
+# merge verdict) and logs the move itself, so the log text differs between them.
+hero_item_transition() { # NUMBER TO REASON [RESOLUTION] [ROOT]
+  local root r n f pid body json
+  n=$((10#${1:-x})) 2>/dev/null || { echo "hero_item_transition: '${1:-}' is not an item number" >&2; return 2; }
+  case "${2:-}" in new|accepted|planning|ready|active|review|done|dropped) ;;
+    *) echo "hero_item_transition: '${2:-}' is not a status (new accepted planning ready active review done dropped)" >&2; return 2 ;; esac
+  [ -n "${3:-}" ] || { echo "hero_item_transition: REASON is required" >&2; return 2; }
+  case "${4:-}" in ''|shipped|delivered|rejected|promoted|obsolete) ;;
+    *) echo "hero_item_transition: '${4:-}' is not a resolution (shipped delivered rejected promoted obsolete)" >&2; return 2 ;; esac
+  root=$(hero_srv_root "${5:-}")
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = local ]; then
+    hero_store_require_local "$root" hero_item_transition || return 1
+    f=$(hero_item_file "$n" "$root") || return 1
+    _hero_local_set "$f" status "$2" || return 1
+    [ -z "${4:-}" ] || _hero_local_set "$f" resolution "$4" || return 1
+    _hero_local_append "$f" Log "- $(date +%Y-%m-%d) (${WAYFARE_AGENT:-agent}) status: $2: $3" || return 1
+    printf 'status: %s\n' "$(hero_item_field "$f" status)"
+    [ -z "${4:-}" ] || printf 'resolution: %s\n' "$(hero_item_field "$f" resolution)"
+    return 0
+  fi
+  pid=$(hero_srv_project "$root") || return 1
+  body=$(jq -n --arg pid "$pid" --argjson n "$n" --arg to "$2" --arg why "$3" --arg res "${4:-}" \
+    '{project_id: $pid, number: $n, to: $to, reason: $why} + (if $res == "" then {} else {resolution: $res} end)')
+  json=$(hero_srv_cli "$root" transition --json "$body") || return 1
+  printf '%s' "$json" | jq -r '.item | "status: \(.status)", (if (.resolution // "") == "" then empty else "resolution: \(.resolution)" end)'
 }
 
 # ----- messages
@@ -3284,7 +3372,7 @@ hero_srv_fleet_repos() { # FLEET_ROOT
     (.data.groups // []) as $g
     | .data.rows[]? | .project as $p
     | [$p.slug, "\($root)/\($p.slug)",
-       (if ($p.groupId // "") == "" then "none" else ([$g[] | select(.id == $p.groupId) | .name][0] // "none" | ascii_downcase) end),
+       (if ($p.group_id // "") == "" then "none" else ([$g[] | select(.id == $p.group_id) | .name][0] // "none" | ascii_downcase) end),
        (if ($p.port // 0) == 0 then "" else ($p.port | tostring) end)] | @tsv'
 }
 
@@ -3293,15 +3381,16 @@ hero_srv_fleet_repos() { # FLEET_ROOT
 # `port`. Another key is not on the server's row.
 hero_srv_fleet_repo_field() { # NAME KEY ROOT
   local json v
-  case "$2" in path|group|port) ;;
-    *) echo "hero_fleet_repo_field: '$2' is not on the Wayfare server's fleet row (path, group, port)" >&2; return 1 ;; esac
+  case "$2" in path|group|port|what) ;;
+    *) echo "hero_fleet_repo_field: '$2' is not on the Wayfare server's fleet row (path, group, port, what)" >&2; return 1 ;; esac
   json=$(hero_srv_cli "$3" fleet) || return 1
   v=$(printf '%s' "$json" | jq -r --arg n "$1" --arg k "$2" --arg root "${3%/}" '
     (.data.groups // []) as $g
     | [.data.rows[]? | .project | select(.slug == $n)][0] // empty | . as $p
     | if $k == "path" then "\($root)/\(.slug)"
+      elif $k == "what" then (.what // "")
       elif $k == "port" then (if (.port // 0) == 0 then "" else (.port | tostring) end)
-      else ([$g[] | select(.id == ($p.groupId // ""))] | .[0].name // "") end')
+      else ([$g[] | select(.id == ($p.group_id // ""))] | .[0].name // "") end')
   [ -n "$v" ] || return 1
   printf '%s' "$v"
 }

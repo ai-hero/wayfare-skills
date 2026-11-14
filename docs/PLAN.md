@@ -769,21 +769,44 @@ refused.
 The server backend is the store functions calling the `wayfare` CLI
 (`WAYFARE_CLI`, else `wayfare` on PATH), with the URL's one path segment as the
 workspace (`https://app.example.com/<workspace id>`) and a repo mapped to the
-project whose slug is its directory name. Built so far: `hero_ready_items`,
-`hero_idea_count` and `hero_goal_members` (items), `hero_item_file`,
-`hero_item_set` and `hero_item_log` (one item), `hero_msg_send`,
-`hero_msg_reply`, `hero_msg_close` and `hero_inbox_count` (messages), the config
-readers behind `hero_config_file` (`hero_field` and its siblings),
-`hero_fleet_repos` and `hero_fleet_repo_field` (fleet rows) and
-`hero_audit_record`. Server data is rendered into a read-only cache in the local
-file shapes, so one parser answers both backends. Every other store-addressed
-function (`hero_plan_field`, `hero_goal_candidates`, `hero_items_dir`,
-`hero_inbox_exists`, `hero_msg_find`, `hero_config_commit_time`,
-`hero_check_staleness`, `hero_fleet_field`) fails under a server naming itself
-and the server, and never reads the files in its place. A CLI failure is an
-error naming the server, never an empty result. Priority is lossy across the
-two: the server's high, medium and low read back as `p1`, `p2` and `p3`.
-`awaiting`, `replaced_by` and `channel` have no server field and read as absent.
+project whose slug is its directory name. Built: `hero_ready_items`,
+`hero_idea_count`, `hero_goal_members` and `hero_goal_candidates` (items),
+`hero_items_dir` (a read-only cache directory; every caller only reads through
+it), `hero_item_file`, `hero_item_set`, `hero_item_log` and
+`hero_item_transition` (one item; a status moves by transition, never by
+`hero_item_set`), `hero_msg_send`, `hero_msg_reply`, `hero_msg_close`,
+`hero_msg_find`, `hero_inbox_exists` and `hero_inbox_count` (messages), the
+config readers behind `hero_config_file` (`hero_field` and its siblings),
+`hero_plan_field`, `hero_fleet_repos`, `hero_fleet_repo_field`,
+`hero_fleet_field` (fleet) and `hero_audit_record`. Server data is rendered into
+a read-only cache in the local file shapes, so one parser answers both backends.
+The server's own spelling is kept where the local one differs: `hero_msg_find`
+prints thread ids, not inbox paths, and matches `about` against the thread's
+item number or its subject.
+
+A function never reads the local files in place of the server. What the server
+has no value for fails, naming the key: `hero_plan_field` keys other than
+`schema`, `source.head` and `target.head` (no `next_id`, `repo`,
+`default_branch`, `initialized`, `source.root`, `target.project`,
+`target.snapshot`); `hero_fleet_field` keys other than `org`, `template` and
+`port-range` (no `name`, `template-port`, `register`, `register-repo`);
+`hero_fleet_repo_field` keys other than `path`, `group`, `port` and `what`.
+`hero_config_commit_time` prints nothing and `hero_check_staleness` stays silent
+under a server: the config has no commit time there, and comparing none to a
+repo file's time would call every config stale. `preflight.sh` reports SKIP and
+`check-hero-staleness.sh` exits 0 for the same reason. A CLI failure is an error
+naming the server, never an empty result.
+
+Mapping that does not round-trip, so no skill depends on it: priority has
+`high`, `medium` and `low` on the server and `p0` to `p3` locally. `p1` to `p3`
+map to high, medium and low and back; `p0` has no server value, is sent as
+`high` and reads back `p1`, so the urgency a `p0` carried is lost under a
+server. `awaiting`, `replaced_by` and `channel` have no server field and read as
+absent, so under a server `hero_goal_candidates` cannot skip an item suspended
+on a message. The server's derived `blocked` flag is not written into an item
+file: `blocked_on` and `blocked_since` are, and the listing derives blocked from
+them and from `depends_on` as it does locally. A notice is closed on arrival. A
+fleet repo's path is `FLEET_ROOT/NAME`; the server holds none.
 
 Files stay untouched until the cutover: import, compare with the dry run, flip
 the pin. Deleting them and the local backend is a later change.
@@ -799,7 +822,7 @@ format looks the way it does.
 | `.plans/items/NNN-slug.md` frontmatter | one `items` row; `id` is unique per plan, not global |
 | `type` | enum column: the discriminator, five values |
 | `shape`, `channel` | nullable enum columns, valid only for their type |
-| `priority` | nullable enum column (`p0` to `p3`), valid on every type; null is unranked |
+| `priority` | nullable enum column (`p0` to `p3`), valid on every type; null is unranked. The app's has high, medium and low only, so `p0` is lost there (*Two stores*) |
 | `status` | enum column |
 | `resolution` | enum column, valid per type (shipped task; delivered, rejected signal; promoted idea, anti-feature; obsolete any); null until `done` |
 | `depends_on` | `item_dependencies` join table |

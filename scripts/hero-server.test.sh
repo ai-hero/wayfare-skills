@@ -63,6 +63,9 @@ cat > "$FLEET/.fleet/FLEET.md" <<'EOF'
 ## Fleet
 
 - name: test
+- org: acme
+- template: tpl
+- port-range: 33000-33099
 
 ## Repos
 
@@ -70,6 +73,7 @@ cat > "$FLEET/.fleet/FLEET.md" <<'EOF'
 
 - group: Core
 - port: 33008
+- what: The app
 
 ### lib
 
@@ -91,11 +95,14 @@ cat > "$APP/HERO.md" <<'EOF'
 
 - platform: fly
 EOF
-printf -- '---\nschema: 1\n---\n' > "$APP/.plans/PLAN.md"
+printf -- '---\nschema: 1\nrepo: acme/app\nnext_id: 10\nsource:\n  root: .\n  head: aaaa1111\ntarget:\n  project: D\n  head: bbbb2222\n---\n' > "$APP/.plans/PLAN.md"
 I="$APP/.plans/items"
 printf -- '---\nid: 1\ntype: task\ntitle: Bootstrap\nstatus: done\nshape: structural\n---\n' > "$I/001-bootstrap.md"
-printf -- '---\nid: 2\ntype: task\ntitle: Add login\nstatus: ready\npriority: p1\nshape: story\nparent: 9\nrank: 2\ndepends_on: [1]\n---\n' > "$I/002-add-login.md"
-printf -- '---\nid: 3\ntype: task\ntitle: Add logout\nstatus: ready\nshape: story\nparent: 9\nrank: 3\ndepends_on: [2]\n---\n' > "$I/003-add-logout.md"
+printf -- '---\nid: 2\ntype: task\ntitle: Add login\nstatus: ready\npriority: p1\nshape: story\nparent: 9\nrank: 2\ndepends_on: [1]\nsource: [src/login.go]\n---\n' > "$I/002-add-login.md"
+printf -- '---\nid: 3\ntype: task\ntitle: Add logout\nstatus: ready\nshape: story\nparent: 9\nrank: 3\ndepends_on: [2]\nsource: [src/logout.go]\n---\n' > "$I/003-add-logout.md"
+printf -- '---\nid: 5\ntype: task\ntitle: Bump x\nstatus: accepted\nshape: dependency\nsource: [go.mod]\nbot: dependabot\n---\n' > "$I/005-bump-x.md"
+printf -- '---\nid: 6\ntype: task\ntitle: Wait on vendor\nstatus: ready\nshape: story\nparent: 9\nrank: 6\nblocked_on: vendor review\nblocked_since: 2026-11-10\nsource: [src/vendor.go]\n---\n' > "$I/006-wait-on-vendor.md"
+printf -- '---\nid: 7\ntype: task\ntitle: Ungrouped fix\nstatus: ready\nshape: story\nrank: 7\nsource: [src/other.go]\n---\n' > "$I/007-ungrouped-fix.md"
 printf -- '---\nid: 4\ntype: idea\ntitle: Parked thing\nstatus: accepted\n---\n' > "$I/004-parked-thing.md"
 printf -- '---\nid: 9\ntype: goal\ntitle: The goal\nstatus: accepted\n---\n' > "$I/009-the-goal.md"
 
@@ -105,9 +112,12 @@ EOF
 cat > "$STUB_DIR/items.json" <<'EOF'
 {"framing":"x","items":[
 {"number":1,"type":"task","title":"Bootstrap","status":"done","shape":"structural"},
-{"number":2,"type":"task","title":"Add login","status":"ready","priority":"high","shape":"story","goal_number":9,"rank":2,"depends_on":[1]},
-{"number":3,"type":"task","title":"Add logout","status":"ready","shape":"story","goal_number":9,"rank":3,"depends_on":[2]},
+{"number":2,"type":"task","title":"Add login","status":"ready","priority":"high","shape":"story","goal_number":9,"rank":2,"depends_on":[1],"sources":["src/login.go"]},
+{"number":3,"type":"task","title":"Add logout","status":"ready","shape":"story","goal_number":9,"rank":3,"depends_on":[2],"sources":["src/logout.go"]},
 {"number":4,"type":"idea","title":"Parked thing","status":"accepted"},
+{"number":5,"type":"task","title":"Bump x","status":"accepted","shape":"dependency","sources":["go.mod"],"bot":"dependabot"},
+{"number":6,"type":"task","title":"Wait on vendor","status":"ready","shape":"story","goal_number":9,"rank":6,"blocked_on":"vendor review","blocked_since":"2026-11-10T08:00:00Z","blocked":true,"sources":["src/vendor.go"]},
+{"number":7,"type":"task","title":"Ungrouped fix","status":"ready","shape":"story","rank":7,"sources":["src/other.go"]},
 {"number":9,"type":"goal","title":"The goal","status":"accepted"}]}
 EOF
 cat > "$STUB_DIR/item.2.json" <<'EOF'
@@ -122,7 +132,7 @@ printf -- '---\nid: 2\ntype: task\ntitle: Add login\nstatus: ready\npriority: p1
 L=$(hero_ready_items "$APP/.plans" 2>&1)
 reset; S=$(srv hero_ready_items "$APP/.plans" 2>&1)
 check "ready: the server listing equals the local twin's on the same data" "$L" "$S"
-check "ready: the local listing is the one we think (READY row, blocked row)" "READY   002-add-login.md — Add login" "$(printf '%s\n' "$L" | grep ^READY)"
+check "ready: the local listing is the one we think (READY row, blocked row)" "READY   002-add-login.md — Add login" "$(printf '%s\n' "$L" | grep '^READY.*002')"
 check "ready: asked the projects and that project's items, under the URL's workspace" \
   "projects url=https://wf.test ws=ws-1
 items url=https://wf.test ws=ws-1 [--project-id] [p-app]" "$(calls)"
@@ -212,7 +222,7 @@ srv hero_field default-branch "$APP" >/dev/null 2>&1; check "config: and a field
 
 reset
 cat > "$STUB_DIR/fleet.json" <<'EOF'
-{"framing":"x","data":{"groups":[{"id":"g1","name":"Core"}],"rows":[{"project":{"slug":"app","groupId":"g1","port":33008}},{"project":{"slug":"lib","groupId":"g1"}}]}}
+{"framing":"x","data":{"settings":{"org":"acme","template":"tpl","port_min":33000,"port_max":33099},"groups":[{"id":"g1","name":"Core"}],"rows":[{"project":{"slug":"app","group_id":"g1","port":33008,"what":"The app"}},{"project":{"slug":"lib","group_id":"g1"}}]}}
 EOF
 check "fleet: rows agree with the map's" "$(hero_fleet_repos "$FLEET")" "$(srv hero_fleet_repos "$FLEET")"
 check "fleet: a repo's port agrees" "$(hero_fleet_repo_field app port "$FLEET")" "$(srv hero_fleet_repo_field app port "$FLEET")"
@@ -240,7 +250,7 @@ fails() { # NAME CMD... : rc != 0, stdout empty, stderr names the server URL
   case "$err" in *"boom: token rejected"*) ;; *) check "fail: $name carries the CLI's stderr" "contains boom" "$err" ;; esac
 }
 reset
-for s in projects items item config fleet messages send reply close update-item log report-results; do echo "boom: token rejected" > "$STUB_DIR/$s.fail"; done
+for s in projects items item config fleet messages send reply close update-item log report-results plan transition; do echo "boom: token rejected" > "$STUB_DIR/$s.fail"; done
 fails ready hero_ready_items "$APP/.plans"
 fails item_file hero_item_file 2 "$APP"
 fails item_set hero_item_set 2 priority p1 "$APP"
@@ -263,18 +273,151 @@ mkdir -p "$FLEET/ghost/.plans/items"
 srv hero_ready_items "$FLEET/ghost/.plans" >/dev/null 2>"$TMP/err"; check "fail: a repo with no project is an error" "1" "$?"
 case "$(cat "$TMP/err")" in *"ghost"*"$URL"*|*"$URL"*"ghost"*) check "fail: and it names the repo and the server" ok ok ;; *) check "fail: and it names the repo and the server" "names ghost" "$(cat "$TMP/err")" ;; esac
 
-# ---------- functions with no server variant fail loudly, never read the files ----
+# ---------- fields the server has no value for fail loudly, never read the files --
 
-for fn in "hero_plan_field schema $APP/.plans" "hero_goal_candidates 9 $APP/.plans" "hero_items_dir $APP" "hero_inbox_exists $APP" \
-          "hero_msg_find $APP/.plans lib x" "hero_config_commit_time $APP" \
-          "hero_check_staleness $APP" "hero_fleet_field name $FLEET"; do
-  name=${fn%% *}
-  # shellcheck disable=SC2086
-  srv $fn >"$TMP/out" 2>"$TMP/err"; rc=$?
+loud() { # NAME COMMAND... : rc 1, nothing on stdout, stderr names the function
+  local name=$1 rc
+  shift
+  srv "$@" >"$TMP/out" 2>"$TMP/err"; rc=$?
   check "loud: $name fails under the server" "1" "$([ "$rc" -ne 0 ] && echo 1 || echo "rc=$rc")"
   check "loud: $name prints nothing on stdout" "" "$(cat "$TMP/out")"
-  case "$(cat "$TMP/err")" in *"$name"*"Wayfare server at $URL"*) check "loud: $name names itself and the server" ok ok ;; *) check "loud: $name names itself and the server" "names both" "$(cat "$TMP/err")" ;; esac
+  case "$(cat "$TMP/err")" in *"$name"*) check "loud: $name names itself" ok ok ;; *) check "loud: $name names itself" "names $name" "$(cat "$TMP/err")" ;; esac
+}
+loud hero_plan_field hero_plan_field next_id "$APP/.plans"
+loud hero_plan_field hero_plan_field target.project "$APP/.plans"
+loud hero_fleet_field hero_fleet_field name "$FLEET"
+loud hero_fleet_field hero_fleet_field template-port "$FLEET"
+loud hero_fleet_field hero_fleet_field register-repo "$FLEET"
+loud hero_fleet_repo_field hero_fleet_repo_field app register "$FLEET"
+loud hero_item_set hero_item_set 2 status "done" "$APP"
+reset
+E=$(srv hero_item_set 2 status "done" "$APP" 2>&1 >/dev/null)
+case "$E" in *hero_item_transition*) check "loud: the status refusal points at hero_item_transition" ok ok ;; *) check "loud: the status refusal points at hero_item_transition" "names it" "$E" ;; esac
+check "loud: none of them reached the server" "" "$(calls)"
+
+# ---------- plan fields ---------------------------------------------------------
+
+reset
+echo '{"framing":"x","plan":{"project_id":"p-app","source_head":"aaaa1111","target_head":"bbbb2222"}}' > "$STUB_DIR/plan.json"
+for k in schema source.head target.head; do
+  check "plan: $k agrees with PLAN.md" "$(hero_plan_field "$k" "$APP/.plans")" "$(srv hero_plan_field "$k" "$APP/.plans")"
 done
+check "plan: the local twin holds the heads we think" "aaaa1111 bbbb2222" "$(hero_plan_field source.head "$APP/.plans") $(hero_plan_field target.head "$APP/.plans")"
+check "plan: asked the plan of p-app" "plan url=https://wf.test ws=ws-1 [--project-id] [p-app]" "$(calls | grep '^plan' | head -1)"
+echo '{"framing":"x","plan":{"project_id":"p-app","source_head":"aaaa1111"}}' > "$STUB_DIR/plan.json"
+check "plan: a design head the plan lacks reads empty, as an omitted target does" "" "$(srv hero_plan_field target.head "$APP/.plans")"
+
+# ---------- goal candidates, item directory ---------------------------------------
+
+reset
+GL=$(hero_goal_candidates 9 "$APP/.plans" 2>"$TMP/lerr"); GS=$(srv hero_goal_candidates 9 "$APP/.plans" 2>"$TMP/serr")
+check "goals: the server's candidates equal the local twin's" "$GL" "$GS"
+check "goals: stderr (the skips and why) equals too, the bot's PR among them" "$(cat "$TMP/lerr")" "$(cat "$TMP/serr")"
+check "goals: the local twin skips the bot's PR" "yes" "$(grep -q 'a bot' "$TMP/lerr" && echo yes || echo no)"
+check "goals: and offers something (the comparison is not empty against empty)" "yes" "$([ -n "$GL" ] && echo yes || echo no)"
+check "goals: the explicit non-.plans store is read as given" "$GL" "$(srv hero_goal_candidates 9 "$TMP/copied-store" 2>/dev/null)"
+
+reset
+D=$(srv hero_items_dir "$APP")
+check "items_dir: the server's directory lists the local store's item files" "$(ls "$(hero_items_dir "$APP")")" "$(ls "$D")"
+check "items_dir: it is read-only" "no" "$([ -w "$D" ] && echo yes || echo no)"
+check "items_dir: an item in it reads as the local one does" "$(hero_item_field "$I/002-add-login.md" source)" "$(hero_item_field "$D/002-add-login.md" source)"
+check "items_dir: the local path is the store's items/" "$APP/.plans/items" "$(hero_items_dir "$APP")"
+
+# ---------- blocked --------------------------------------------------------------
+
+check "blocked: a blocked_on item lists blocked on both, with its date" "blocked 006-wait-on-vendor.md — Wait on vendor [on: vendor review, since 2026-11-10]" "$(srv hero_ready_items "$APP/.plans" 2>/dev/null | grep '^blocked 006')"
+check "blocked: and the local twin's row is the same" "$(hero_ready_items "$APP/.plans" 2>/dev/null | grep '^blocked 006')" "$(srv hero_ready_items "$APP/.plans" 2>/dev/null | grep '^blocked 006')"
+check "blocked: the server's derived blocked flag is not written into the file" "0" "$(grep -c '^blocked:' "$D/006-wait-on-vendor.md")"
+
+# ---------- inbox probe -------------------------------------------------------------
+
+reset
+check "inbox_exists: local true for a repo with an inbox" "0" "$(hero_inbox_exists "$LIB_REPO"; echo $?)"
+check "inbox_exists: the server's true for a repo with a project" "0" "$(srv hero_inbox_exists "$LIB_REPO"; echo $?)"
+srv hero_inbox_exists "$FLEET/ghost" >/dev/null 2>&1; check "inbox_exists: a repo with no project is false (rc 1)" "1" "$?"
+
+IN="$LIB_REPO/.plans/inbox"
+mk() { printf -- '---\nmsg_id: %s\nfrom: %s\nto: lib\nabout: %s\nstatus: %s\n%s---\n' "$1" "$2" "$3" "$4" "$5" > "$IN/$1.md"; }
+mk m-aaaaaa app 7 new ""
+mk m-bbbbbb app 7 answered ""
+mk m-cccccc lib 7 new ""
+mk m-dddddd app 7 new "expires: 2020-01-01
+"
+mk m-eeeeee app fleet-section claimed ""
+cat > "$STUB_DIR/messages.json" <<'EOF'
+{"threads":[
+{"id":"m-aaaaaa","from_project_id":"p-app","to_project_id":"p-lib","status":"OPEN","about":{"project_id":"p-app","item_number":7}},
+{"id":"m-bbbbbb","from_project_id":"p-app","to_project_id":"p-lib","status":"ANSWERED","about":{"project_id":"p-app","item_number":7}},
+{"id":"m-cccccc","from_project_id":"p-lib","to_project_id":"p-lib","status":"OPEN","about":{"project_id":"p-lib","item_number":7}},
+{"id":"m-dddddd","from_project_id":"p-app","to_project_id":"p-lib","status":"OPEN","about":{"project_id":"p-app","item_number":7},"expires":"2020-01-01T00:00:00Z"},
+{"id":"m-eeeeee","from_project_id":"p-app","to_project_id":"p-lib","status":"CLAIMED","subject":"fleet-section"}]}
+EOF
+ids() { sed 's|.*/||; s|\.md$||'; }
+for about in 7 fleet-section nothing; do
+  hero_msg_find "$IN/.." app "$about" 2>/dev/null | ids > "$TMP/l.ids"; lrc=${PIPESTATUS[0]}
+  srv hero_msg_find "$LIB_REPO/.plans" app "$about" 2>/dev/null > "$TMP/s.ids"; src=$?
+  check "find: '$about' finds the same live messages on both" "$(cat "$TMP/l.ids")" "$(cat "$TMP/s.ids")"
+  check "find: '$about' returns the same rc on both" "$lrc" "$src"
+done
+check "find: the local twin's live match for 7 is the open one, not the answered or expired" "m-aaaaaa" "$(hero_msg_find "$IN/.." app 7 2>/dev/null | ids)"
+srv hero_msg_find "$LIB_REPO/.plans" app "" >/dev/null 2>&1; check "find: an empty ABOUT is rc 2 under the server too" "2" "$?"
+check "find: the server asked lib's threads" "messages url=https://wf.test ws=ws-1 [--project-id] [p-lib]" "$(calls | grep '^messages' | head -1)"
+echo "boom: token rejected" > "$STUB_DIR/messages.fail"
+srv hero_msg_find "$LIB_REPO/.plans" app 7 >/dev/null 2>&1; check "find: a failing CLI is rc 2, the probe did not run, never 1" "2" "$?"
+rm -f "$STUB_DIR/messages.fail"
+
+# ---------- config commit time, staleness ------------------------------------------
+
+reset
+check "commit_time: the server prints nothing, it keeps none" "" "$(srv hero_config_commit_time "$APP")"
+srv hero_config_commit_time "$APP" >/dev/null; check "commit_time: and succeeds" "0" "$?"
+check "staleness: silent and rc 0 under the server" "0:" "$(srv hero_check_staleness "$APP" 2>&1; echo -n "$?" | sed 's/$/:/')" || true
+check "staleness: neither asked the server" "" "$(calls)"
+
+# ---------- fleet fields -----------------------------------------------------------
+
+reset
+for k in org template port-range; do
+  check "fleet: $k agrees with the map's" "$(hero_fleet_field "$k" "$FLEET")" "$(srv hero_fleet_field "$k" "$FLEET")"
+done
+check "fleet: the local twin holds the range we think" "33000-33099" "$(hero_fleet_field port-range "$FLEET")"
+check "fleet: a repo's what agrees" "$(hero_fleet_repo_field app what "$FLEET")" "$(srv hero_fleet_repo_field app what "$FLEET")"
+check "fleet: a repo's path is FLEET_ROOT/NAME on the server" "$FLEET/app" "$(srv hero_fleet_repo_field app path "$FLEET")"
+
+# ---------- status transition ------------------------------------------------------
+
+reset
+W2="$TMP/w2"; cp -R "$FLEET" "$W2"
+check "transition: local prints the status" "status: active" "$(hero_item_transition 2 active "starting" "" "$W2/app")"
+check "transition: local wrote it and logged why" "- $(date +%Y-%m-%d) (agent) status: active: starting" "$(tail -1 "$W2/app/.plans/items/002-add-login.md")"
+LT=$(hero_item_transition 2 "done" "merged" shipped "$W2/app")
+check "transition: local done with a resolution prints both" "status: done
+resolution: shipped" "$LT"
+check "transition: and the file holds both" "done shipped" "$(hero_item_field "$W2/app/.plans/items/002-add-login.md" status) $(hero_item_field "$W2/app/.plans/items/002-add-login.md" resolution)"
+echo '{"item":{"number":2,"status":"done","resolution":"shipped"}}' > "$STUB_DIR/transition.json"
+check "transition: server prints the same" "$LT" "$(srv hero_item_transition 2 "done" "merged" shipped "$APP")"
+check "transition: server was sent to, reason and resolution for p-app item 2" '{"project_id":"p-app","number":2,"to":"done","reason":"merged","resolution":"shipped"}' "$(jq -c . "$STUB_DIR/payload.transition")"
+echo '{"item":{"number":2,"status":"active"}}' > "$STUB_DIR/transition.json"
+check "transition: server without a resolution prints one line" "status: active" "$(srv hero_item_transition 2 active "starting" "" "$APP")"
+check "transition: and sends no resolution key" '{"project_id":"p-app","number":2,"to":"active","reason":"starting"}' "$(jq -c . "$STUB_DIR/payload.transition")"
+hero_item_transition 2 finished why "" "$W2/app" >/dev/null 2>&1; check "transition: a status outside the enum is rc 2" "2" "$?"
+hero_item_transition 2 "done" why bogus "$W2/app" >/dev/null 2>&1; check "transition: a resolution outside the enum is rc 2" "2" "$?"
+hero_item_transition 2 "done" "" "" "$W2/app" >/dev/null 2>&1; check "transition: no reason is rc 2" "2" "$?"
+echo "boom: token rejected" > "$STUB_DIR/transition.fail"
+fails transition hero_item_transition 2 "done" why shipped "$APP"
+rm -f "$STUB_DIR/transition.fail"
+
+# ---------- priority and source round-trip ---------------------------------------------
+
+reset
+echo '{"item":{"number":2,"priority":"high"}}' > "$STUB_DIR/update-item.json"
+check "priority: p0 goes to the server as high" "high" "$(srv hero_item_set 2 priority p0 "$APP" >/dev/null; jq -r .priority "$STUB_DIR/payload.update-item")"
+check "priority: and reads back p1, the loss docs/PLAN.md records (the server has no p0)" "priority: p1" "$(srv hero_item_set 2 priority p0 "$APP")"
+check "priority: p3 round-trips through low" "priority: p3" "$(echo '{"item":{"number":2,"priority":"low"}}' > "$STUB_DIR/update-item.json"; srv hero_item_set 2 priority p3 "$APP")"
+echo '{"item":{"number":2,"sources":["a.go","b.go"]}}' > "$STUB_DIR/update-item.json"
+check "source: the server's line equals the local twin's" "$(hero_item_set 2 source "[a.go, b.go]" "$W2/app")" "$(srv hero_item_set 2 source "[a.go, b.go]" "$APP")"
+check "source: sent as the server's sources list" '{"project_id":"p-app","number":2,"sources":["a.go","b.go"]}' "$(jq -c . "$STUB_DIR/payload.update-item")"
 
 # ---------- local stays the default ------------------------------------------------
 

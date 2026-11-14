@@ -237,6 +237,12 @@ def read_fleet(root):
     """FLEET.md's `## Fleet` keys and `## Repos` rows, mirroring hero-lib's
     hero_fleet_field / hero_fleet_repos. Fenced blocks are skipped and a
     trailing `# comment` is stripped from every value."""
+    try:
+        backend = store_backend(root)
+    except ValueError as e:
+        sys.exit(str(e))
+    if backend != "local":
+        return _server_fleet(root)
     fields, repos, sec, cur, fence = {}, [], None, None, False
     seen = set()
     try:
@@ -285,6 +291,34 @@ def read_fleet(root):
             # An empty group is `none`, as hero_fleet_repos reads it: a
             # half-filled row must not join the family by accident.
             cur[key] = (val.lower() or "none") if key == "group" else val
+    return fields, repos
+
+
+def _server_fleet(root):
+    """read_fleet under a server backend, from the `fleet` tool: the settings'
+    org, template and port range (MIN-MAX, absent when both are 0) and one row
+    per project. A row's path is left empty, so it defaults to ROOT/NAME as a
+    map row with no `path` does. name, template-port, register and
+    register-repo are not on the server's settings and read as absent."""
+    try:
+        data = server_cli("fleet", {}, root).get("data") or {}
+    except ServerError as e:
+        sys.exit(str(e))
+    st = data.get("settings") or {}
+    fields = {k: st[k] for k in ("org", "template") if st.get(k)}
+    if st.get("port_min") or st.get("port_max"):
+        fields["port-range"] = f"{st.get('port_min', 0)}-{st.get('port_max', 0)}"
+    groups = {g.get("id"): g.get("name", "") for g in data.get("groups") or []}
+    repos = []
+    for row in data.get("rows") or []:
+        p = row.get("project") or {}
+        name = p.get("slug", "")
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", name) or name in (".", ".."):
+            print(f"read_fleet: skipping '{name}' — a repo name is [A-Za-z0-9._-] only", file=sys.stderr)
+            continue
+        group = (groups.get(p.get("group_id", ""), "") or "").lower() if p.get("group_id") else ""
+        repos.append({"name": name, "group": group or "none", "path": "",
+                      "port": str(p["port"]) if p.get("port") else ""})
     return fields, repos
 
 

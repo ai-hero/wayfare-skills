@@ -1104,6 +1104,21 @@ def main(argv=None):
         if bad:
             print(f"{a.path}: refused ({a.kind}); nothing unpacked")
             return 1
+        if a.extract and a.kind == "local":
+            # `.plans` is local store content: a restore under a server
+            # backend would diverge the two stores. A malformed backend
+            # refuses too, never reads as local.
+            try:
+                backend = audit_module().store_backend(a.fleet)
+            except ValueError as e:
+                print(f"{a.path}: refused; the store backend is unusable ({e}); nothing unpacked")
+                return 1
+            if backend != "local":
+                print(f"{a.path}: refused; this fleet's store is the server at {backend}, set by WAYFARE_STORE "
+                      "or the URL line in the pin file, so the local store takes no writes; nothing unpacked. "
+                      "Reading the archive still works without --extract. To restore locally, unset "
+                      "WAYFARE_STORE (or set it to local) and delete the URL line from the pin file")
+                return 1
         if a.extract:
             done, kept, refused = extract_archive(t, a.extract)
             for r in refused:

@@ -29,6 +29,7 @@ if [ -z "$STORE" ]; then
   if [ "$DRY" = 1 ]; then STORE=$(hero_store_path) || exit 1
   else STORE=$(hero_work_store) || exit 1; fi
 fi
+[ "$DRY" = 1 ] || hero_store_require_local "${STORE%/.plans}" migrate-plan || exit 1
 [ -d "$STORE" ] || { echo "migrate-plan: no store at '$STORE'" >&2; exit 1; }
 
 TODAY=$(date +%Y-%m-%d)

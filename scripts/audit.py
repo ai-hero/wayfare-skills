@@ -358,6 +358,33 @@ def pinned_register(root):
     return None
 
 
+def store_backend(start=None):
+    """`local` or the app's URL: WAYFARE_STORE, else the pin file's URL line for
+    the fleet root above `start`, else `local`. hero_store_backend answers the
+    same question for the shell and the two must agree. A value that is neither
+    `local` nor an http(s) URL raises ValueError, never reads as local: a fleet
+    that meant the server would keep writing files the server never sees."""
+    v = os.environ.get("WAYFARE_STORE") or ""
+    if not v:
+        try:
+            root = fleet_root(start)
+            lines = pathlib.Path(pin_file()).read_text().splitlines() if root else []
+        except (OSError, UnicodeDecodeError, FleetMapError):
+            return "local"
+        for line in lines:
+            parts = line.split("#", 1)[0].split()
+            if len(parts) == 2 and parts[0] == str(root) and "://" in parts[1]:
+                v = parts[1]
+                break
+        if not v:
+            return "local"
+    if v == "local":
+        return v
+    if re.match(r"^https?://\S+$", v):
+        return v.rstrip("/")
+    raise ValueError(f"'{v}' is neither 'local' nor an http(s) URL; fix WAYFARE_STORE or the pin file")
+
+
 def pin_file():
     base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
     return os.path.join(base, "wayfare", "registers")

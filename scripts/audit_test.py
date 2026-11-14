@@ -1336,6 +1336,25 @@ class Configured(unittest.TestCase):
         self.assertEqual(audit.pinned_register(self.root), "gitlab.com/fx/register",
                          "the register line beside a URL line still reads")
 
+    def test_store_backend(self):
+        """The Python spelling of hero_store_backend: WAYFARE_STORE, else the
+        pin's URL line for the fleet root, else local; a malformed value raises."""
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n")
+        pins = pathlib.Path(os.environ["XDG_CONFIG_HOME"]) / "wayfare" / "registers"
+        pins.parent.mkdir(parents=True, exist_ok=True)
+        self.addCleanup(lambda: pins.unlink(missing_ok=True))
+        pins.unlink(missing_ok=True)
+        with mock.patch.dict(os.environ):
+            os.environ.pop("WAYFARE_STORE", None)
+            self.assertEqual(audit.store_backend(self.root / "fx"), "local")
+            pins.write_text(f"{self.root} https://app.example.com/ # prod\n")
+            self.assertEqual(audit.store_backend(self.root / "fx"), "https://app.example.com")
+            os.environ["WAYFARE_STORE"] = "local"
+            self.assertEqual(audit.store_backend(self.root / "fx"), "local", "the override wins over the pin")
+            os.environ["WAYFARE_STORE"] = "sever"
+            with self.assertRaises(ValueError):
+                audit.store_backend(self.root / "fx")
+
     def test_register_pin(self):
         fleet_fixture(self.root, "## Fleet\n- name: fx\n")
         review_register(self.root, pin=False)

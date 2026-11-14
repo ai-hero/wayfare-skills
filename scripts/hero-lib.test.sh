@@ -449,8 +449,40 @@ printf '%s ftp://app.example.com\n' "$F" > "$PX/wayfare/registers"
 XDG_CONFIG_HOME="$PX" sb hero_store_backend "$F/web" >/dev/null 2>&1; check "store-backend: a non-http pin URL is an error, not local" "1" "$?"
 XDG_CONFIG_HOME="$PX" WAYFARE_STORE=sever hero_store_backend "$F/web" >/dev/null 2>&1; check "store-backend: a malformed WAYFARE_STORE is an error, not local" "1" "$?"
 printf '%s https://app.example.com\n' "$F" > "$PX/wayfare/registers"
-XDG_CONFIG_HOME="$PX" sb hero_store_require_local "$F/web" >/dev/null 2>&1; check "store-dispatch: a server backend refuses the local layer" "1" "$?"
-XDG_CONFIG_HOME="$PX" WAYFARE_STORE=local hero_store_require_local "$F/web" >/dev/null 2>&1; check "store-dispatch: local passes" "0" "$?"
+XDG_CONFIG_HOME="$PX" sb hero_store_require_local "$F/web" >/dev/null 2>&1; check "store-guard: a server backend refuses a local write" "1" "$?"
+XDG_CONFIG_HOME="$PX" WAYFARE_STORE=local hero_store_require_local "$F/web" >/dev/null 2>&1; check "store-guard: local passes" "0" "$?"
+ERR=$(XDG_CONFIG_HOME="$PX" sb hero_store_require_local "$F/web" 2>&1 >/dev/null)
+GOT=""
+for w in WAYFARE_STORE registers https://app.example.com unset; do
+  case "$ERR" in *"$w"*) GOT="$GOT${GOT:+ }yes" ;; *) GOT="$GOT${GOT:+ }no" ;; esac
+done
+check "store-guard: the refusal names the switch, the pin file, the URL and the way back" "yes yes yes yes" "$GOT"
+
+# Reads keep resolving the local store under a server backend; only writes
+# refuse. The store is made first, on the local backend.
+SW="$TMP/srvw"; mkdir -p "$SW"; git init -q "$SW" 2>/dev/null
+( unset WAYFARE_STORE; hero_work_store "$SW" >/dev/null 2>&1 )
+mkdir -p "$SW/.plans/items"
+printf -- '---\nid: 1\ntype: task\nstatus: ready\n---\n' > "$SW/.plans/items/001-x.md"
+srv() { ( unset WAYFARE_STORE; export XDG_CONFIG_HOME="$PX" WAYFARE_STORE=https://app.example.com; "$@" ); }
+check "store-guard: hero_work_store still resolves the store under a server backend" "$SW/.plans" "$(srv hero_work_store "$SW" 2>/dev/null)"
+check "store-guard: an item read still works under a server backend" "ready" "$(srv hero_item_status "$SW/.plans/items/001-x.md")"
+rm -rf "$SW/.plans/inbox"
+srv hero_work_store "$SW" >/dev/null 2>&1
+check "store-guard: hero_work_store under a server backend creates nothing" "no" "$([ -e "$SW/.plans/inbox" ] && echo yes || echo no)"
+SN="$TMP/srvnone"; mkdir -p "$SN"; git init -q "$SN" 2>/dev/null
+srv hero_work_store "$SN" >/dev/null 2>&1; check "store-guard: hero_work_store under a server backend does not create a missing store" "1 no" "$? $([ -e "$SN/.plans" ] && echo yes || echo no)"
+
+mkdir -p "$SW/.plans/inbox"
+printf -- '---\nmsg_id: m-aa0001\nstatus: new\n---\nhi\n' > "$TMP/srvmsg.md"
+srv hero_msg_deposit "$SW/.plans" m-aa0001 "$TMP/srvmsg.md" >/dev/null 2>&1; check "store-guard: hero_msg_deposit refuses under a server backend" "1 no" "$? $([ -e "$SW/.plans/inbox/m-aa0001.md" ] && echo yes || echo no)"
+SHA=$(printf 'a%.0s' $(seq 40))
+srv hero_deploy_pending_add "$SW/.plans" "$SHA" 7 >/dev/null 2>&1; check "store-guard: hero_deploy_pending_add refuses under a server backend" "1 no" "$? $([ -e "$SW/.plans/.deploy-pending" ] && echo yes || echo no)"
+( unset WAYFARE_STORE; hero_deploy_pending_add "$SW/.plans" "$SHA" 7 ) >/dev/null 2>&1
+srv hero_deploy_pending_clear "$SW/.plans" "$SHA" >/dev/null 2>&1; check "store-guard: hero_deploy_pending_clear refuses and keeps the entry" "1 1" "$? $(wc -l < "$SW/.plans/.deploy-pending" | tr -d ' ')"
+check "store-guard: hero_deploy_pending still reads under a server backend" "$SHA" "$(srv hero_deploy_pending "$SW/.plans" | cut -f1)"
+( unset WAYFARE_STORE; hero_msg_deposit "$SW/.plans" m-aa0001 "$TMP/srvmsg.md" >/dev/null 2>&1 ); check "store-guard: the same deposit lands on the local backend" "yes" "$([ -e "$SW/.plans/inbox/m-aa0001.md" ] && echo yes || echo no)"
+( cd "$SW" && srv bash "$(dirname "$LIB")/migrate-plan.sh" >/dev/null 2>&1 ); check "store-guard: migrate-plan refuses under a server backend" "1" "$?"
 rm -rf "$PX"
 
 # The walk covers ancestors, not just the folder holding .fleet/.

@@ -1229,14 +1229,16 @@ hero_store_backend() { # [DIR]
   esac
 }
 
-# The dispatch point every local store function passes through. Only the local
-# backend exists yet; a server fleet stops here with the reason rather than
-# reading or writing files the server does not own.
-hero_store_require_local() { # [DIR]
+# The write guard every local store write passes through. Reads of local files
+# stay possible under a server backend (the archive is read from them); a write
+# would diverge the two stores silently, so it stops here, names the switch and
+# says how to flip back. An unusable backend value stops too, never reads as
+# local.
+hero_store_require_local() { # [DIR] [WHAT]
   local b
   b=$(hero_store_backend "${1:-}") || return 1
   [ "$b" = local ] && return 0
-  echo "hero: this fleet's store is the server at $b, and the server backend is not built yet; unset WAYFARE_STORE or remove the URL line from the pin file to use the local store" >&2
+  echo "hero: refusing to write the local store${2:+ ($2)}: this fleet's store is the server at $b, set by WAYFARE_STORE or the URL line in the pin file (${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers). Local reads still work. To write locally again, unset WAYFARE_STORE (or set WAYFARE_STORE=local to rehearse) and delete the URL line from the pin file" >&2
   return 1
 }
 
@@ -1249,10 +1251,17 @@ hero_store_require_local() { # [DIR]
 # the new name.
 # shellcheck disable=SC2120  # optional arg; callers usually rely on the default
 hero_work_store() {
-  local root store legacy link
+  local root store legacy link b
   store=$(hero_store_path "${1:-}")
   root=${store%/.plans}
-  hero_store_require_local "$root" || return 1
+  b=$(hero_store_backend "$root") || return 1
+  # Under a server backend this is a read: the local store is resolved where
+  # it already is, and nothing is created, migrated or excluded.
+  if [ "$b" != local ]; then
+    [ -d "$store" ] && [ ! -L "$store" ] || { echo "hero_work_store: no local store at '$store' to read; the backend is the server at $b" >&2; return 1; }
+    printf '%s' "$store"
+    return 0
+  fi
 
   # Establish we can actually ignore the store BEFORE creating or migrating
   # anything. Doing it after meant a non-git directory got a store created and
@@ -1838,6 +1847,7 @@ hero_msg_deposit() { # TARGET_STORE MSG_ID BODY_FILE
   # `[ -L store/ ]` follows the link and answers false, so a trailing slash
   # would slip a linked store past the refusal below.
   set -- "${1%/}" "$2" "$3"
+  hero_store_require_local "$1" hero_msg_deposit || return 1
   [ -r "$3" ] || { echo "hero_msg_deposit: cannot read $3" >&2; return 1; }
   hero_is_msg_id "$2" || { echo "hero_msg_deposit: '$2' is not a message id (m- plus six lowercase hex)" >&2; return 1; }
   body_id=$(hero_item_field "$3" msg_id)
@@ -1979,6 +1989,7 @@ hero_pending_unlock() { # FILE
 # present is a no-op. A re-run of the same merge must not queue it twice.
 hero_deploy_pending_add() { # STORE SHA PR
   local f="$1/.deploy-pending"
+  hero_store_require_local "${1:-}" hero_deploy_pending_add || return 1
   [ -d "${1:-}" ] || { echo "hero_deploy_pending_add: no store at '${1:-}'" >&2; return 1; }
   # 40-hex, matching what the rest of the store means by a SHA. An abbreviated
   # sha would be added but never cleared, because hero_deploy_pending_clear matches
@@ -2024,6 +2035,7 @@ hero_deploy_pending() { # STORE
 # answered is how a DEGRADED deploy disappears with no record.
 hero_deploy_pending_clear() { # STORE SHA
   local f="$1/.deploy-pending" tmp rc
+  hero_store_require_local "${1:-}" hero_deploy_pending_clear || return 1
   [ -f "$f" ] || return 0
   # The destructive half validates what the additive half validates. `$2` is
   # interpolated into a BRE, so an unvalidated `.*` matches every line and the

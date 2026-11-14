@@ -505,6 +505,16 @@ check "a refused archive extracts nothing" "1 no no" "$rc $([ -e "$T/poc-home/.c
 mkarch "$T/la.tgz" "web/.env:f" "Library/LaunchAgents/x.plist:f"
 out=$(fs archive --kind local --extract "$T/la" "$T/la.tgz"); rc=$?
 check "a refused member stops the whole extract" "1 0" "$rc $(find "$T/la" -type f 2>/dev/null | wc -l | tr -d ' ')"
+# A server backend refuses the restore of local store files (.plans).
+mkarch "$T/lp.tgz" "web/.plans/items/001-x.md:f"
+out=$(FS_ENV="WAYFARE_STORE=https://app.example.com" fs archive --kind local --extract "$T/lp" "$T/lp.tgz"); rc=$?
+check "a server backend refuses to restore .plans files" "1 0" "$rc $(find "$T/lp" -type f 2>/dev/null | wc -l | tr -d ' ')"
+has "the refusal names WAYFARE_STORE" "WAYFARE_STORE" "$out"
+out=$(FS_ENV="WAYFARE_STORE=sever" fs archive --kind local --extract "$T/lp" "$T/lp.tgz"); rc=$?
+check "a malformed backend refuses too, never reads as local" "1 0" "$rc $(find "$T/lp" -type f 2>/dev/null | wc -l | tr -d ' ')"
+out=$(FS_ENV="WAYFARE_STORE=local" fs archive --kind local --extract "$T/lp" "$T/lp.tgz"); rc=$?
+check "WAYFARE_STORE=local restores as before" "0 1" "$rc $(find "$T/lp" -type f 2>/dev/null | wc -l | tr -d ' ')"
+rm -rf "$T/lp"
 mkarch "$T/mem.tgz" ".claude/:d" ".claude/projects/:d" ".claude/projects/-u-x/:d" ".claude/projects/-u-x/memory/:d" "$MEM:f" ".claude/projects/-u-x/memory/b.md:f"
 mkdir -p "$T/xh/.claude/projects/-u-x/memory"; printf 'newer\n' > "$T/xh/.claude/projects/-u-x/memory/b.md"
 out=$(fs archive --kind memory --extract "$T/xh" "$T/mem.tgz"); rc=$?

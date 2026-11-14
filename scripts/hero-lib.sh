@@ -809,6 +809,8 @@ hero_fleet_step0() { # [DIR]
   return 0
 }
 
+hero_pin_file() { printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"; }
+
 # The register HOST/OWNER/NAME this machine pins for FLEET_ROOT, or return 1.
 # The pin file is ${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers: one line
 # per fleet, the root's absolute physical path, whitespace, HOST/OWNER/NAME
@@ -823,7 +825,7 @@ hero_fleet_step0() { # [DIR]
 hero_register_pin() { # FLEET_ROOT
   local root file v
   root=$(cd "$1" 2>/dev/null && pwd -P) || return 1
-  file="${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"
+  file=$(hero_pin_file)
   [ -r "$file" ] || return 1
   v=$(awk -v want="$root" '{ sub(/#.*/, "") } NF == 2 && $1 == want && $2 !~ /:\/\// { print tolower($2); found = 1; exit } END { exit !found }' "$file") || return 1
   v=${v%/}; v=${v%.git}
@@ -841,7 +843,7 @@ hero_require_register_pin() { # FLEET_ROOT
   local root file
   hero_register_pin "$1" && return 0
   root=$(cd "$1" 2>/dev/null && pwd -P) || root=$1
-  file="${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"
+  file=$(hero_pin_file)
   case "$root" in
     *[[:space:]]*)
       echo "hero_require_register_pin: this machine pins no register for $root, and a path with whitespace cannot be pinned; move the fleet folder to a path without it" >&2
@@ -1192,9 +1194,10 @@ hero_store_name() {
 
 # Whether ROOT's store has an inbox a message can be deposited into.
 hero_inbox_exists() { # [ROOT]
-  local r
-  r=$(hero_srv_route_root "$(hero_srv_root "${1:-}")") || return 1
-  if [ "$r" = server ]; then hero_srv_project "$(hero_srv_root "${1:-}")" >/dev/null; return; fi
+  local r root
+  root=$(hero_srv_root "${1:-}")
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = server ]; then hero_srv_project "$root" >/dev/null; return; fi
   [ -d "$(hero_store_path "${1:-}")/inbox" ]
 }
 
@@ -1229,7 +1232,7 @@ hero_store_backend() { # [DIR]
   local v file root
   v=${WAYFARE_STORE:-}
   if [ -z "$v" ]; then
-    file="${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"
+    file=$(hero_pin_file)
     [ -r "$file" ] || { echo local; return 0; }
     root=$(hero_fleet_root "${1:-$PWD}" 2>/dev/null) || { echo local; return 0; }
     v=$(awk -v want="$root" '{ sub(/#.*/, "") } NF == 2 && $1 == want && $2 ~ /:\/\// { print $2; exit }' "$file")
@@ -1253,7 +1256,7 @@ hero_store_require_local() { # [DIR] [WHAT]
   local b
   b=$(hero_store_backend "${1:-}") || return 1
   [ "$b" = local ] && return 0
-  echo "hero: refusing to write the local store${2:+ ($2)}: this fleet's store is the server at $b, set by WAYFARE_STORE or the URL line in the pin file (${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers). Local reads still work. To write locally again, unset WAYFARE_STORE (or set WAYFARE_STORE=local to rehearse) and delete the URL line from the pin file" >&2
+  echo "hero: refusing to write the local store${2:+ ($2)}: this fleet's store is the server at $b, set by WAYFARE_STORE or the URL line in the pin file ($(hero_pin_file)). Local reads still work. To write locally again, unset WAYFARE_STORE (or set WAYFARE_STORE=local to rehearse) and delete the URL line from the pin file" >&2
   return 1
 }
 
@@ -2907,7 +2910,7 @@ hero_srv_target() { # [DIR]
 # every config read comes through here.
 hero_srv_route_root() { # [ROOT]
   local b file
-  file="${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"
+  file=$(hero_pin_file)
   if [ -z "${WAYFARE_STORE:-}" ] && { [ ! -r "$file" ] || ! grep -q '://' "$file" 2>/dev/null; }; then
     echo local; return 0
   fi
@@ -3106,7 +3109,7 @@ _hero_local_append() { # FILE SECTION LINE
 # it. Local edits the frontmatter; the server takes `update-item`. The keys are
 # the ones update-item stores; a status moves by transition, not by a field.
 hero_item_set() { # NUMBER KEY VALUE [ROOT]
-  local root r n pid skey kind body json
+  local root r n pid skey kind body json f val
   n=$((10#${1:-x})) 2>/dev/null || { echo "hero_item_set: '${1:-}' is not an item number" >&2; return 2; }
   case "$2" in
     title|priority|severity|shape|blocked_on|success|origin) kind=str ;;
@@ -3178,8 +3181,7 @@ hero_srv_plan_field() { # KEY [STORE]
   root=$(hero_srv_root "${2:-}")
   pid=$(hero_srv_project "$root") || return 1
   json=$(hero_srv_cli "$root" plan --project-id "$pid") || return 1
-  if [ "$1" = source.head ]; then printf '%s' "$json" | jq -j '.plan.source_head // ""'
-  else printf '%s' "$json" | jq -j '.plan.target_head // ""'; fi
+  printf '%s' "$json" | jq -j --arg k "${1//./_}" '.plan[$k] // ""'
 }
 
 # hero_msg_find under the server: the ids, one per line, of live threads from

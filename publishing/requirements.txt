@@ -1,9 +1,9 @@
 weasyprint==70.0
 PyMuPDF==1.26.7
 python-pptx==1.0.2
-markdown-it-py==4.0.0
-matplotlib==3.10.6
+markdown-it-py==4.2.0
+matplotlib==3.11.2
 numpy==2.5.4
 pillow==13.0.0
 segno==1.6.6
-fonttools[woff]==4.66.1
+fonttools[woff]==4.67.0

@@ -112,9 +112,14 @@ is the fleet's.
   [docs/PLAN.md](./docs/PLAN.md)); `product` is the whiteboard description of
   what that product is and what it can do (`PRODUCT.md`,
   [docs/PRODUCT-MD.md](./docs/PRODUCT-MD.md)), which on a server-backed fleet is
-  ideas in the app and no file. Conversation uses the first three
-  interchangeably; the code does not. Scope a verb to the wrong noun and it
-  writes the wrong file, which is the mistake below.
+  ideas in the app and no file. Those files are the **local store**: a fleet has
+  one store, local or the Wayfare server, chosen by `hero_store_backend`
+  (`WAYFARE_STORE`, else a URL line in the machine pin, else local;
+  [docs/PLAN.md](./docs/PLAN.md), *Two stores*), and on the server `.plans/`,
+  `.fleet/` and the inbox are records in the app, and the local functions refuse
+  writes. That backend is the design and is not built yet. Conversation uses the
+  first three interchangeably; the code does not. Scope a verb to the wrong noun
+  and it writes the wrong file, which is the mistake below.
 
 - **What a repo attaches to is a connection; where it sits is the fleet.** Six
   kinds, closed list, one `### kind` block each under `## Connections` in
@@ -124,15 +129,16 @@ is the fleet's.
   last one as absent and the run silently drops the lane it should have
   reported.
 
-- **`recalibrate` writes HERO.md; `sync` writes the skill's own file.** Ten
+- **`recalibrate` writes HERO.md; `sync` writes the skill's own file.** Eleven
   skills carry the verb ([docs/RECALIBRATE.md](./docs/RECALIBRATE.md)), and
   `wayfare-recalibrate-config` is the verb itself; their field map is
-  `scripts/hero-fields.sh`, and a field missing there is a field no recalibrate
-  can ask about. `wayfare-sync-fleet` and `wayfare-sync-plan` are unrelated:
-  they converge FLEET.md and the plan, not config. `wayfare-audit-compliance`
-  writes no config at all (it is the compliance audit and the backport drafts),
-  so the config verb is always `recalibrate`, however much `improve` sounds like
-  one.
+  `scripts/hero-fields.sh`, which maps sixteen skills, the eleven plus five that
+  read config and offer no verb of their own, and a field missing there is a
+  field no recalibrate can ask about. `wayfare-sync-fleet` and
+  `wayfare-sync-plan` are unrelated: they converge FLEET.md and the plan, not
+  config. `wayfare-audit-compliance` writes no config at all (it is the
+  compliance audit and the backport drafts), so the config verb is always
+  `recalibrate`, however much `improve` sounds like one.
 
 - **Three skills are stages, reached only by another skill.**
   `wayfare-review-architecture`, `wayfare-sync-architecture` and

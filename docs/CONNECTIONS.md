@@ -205,6 +205,7 @@ stage that uses a connection, confirm the thing named is actually there.
 | -- | -- |
 | an MCP tool (`designsync`, `figma`, `linear`) | the tool is offered in this session and authorized for `at` |
 | a CLI (`gh`, `terraform`, `kubectl`) | the binary is on `PATH` and authenticated |
+| `wayfare` (the CLI, or the app's MCP tools) | the `wayfare` binary is on `PATH` and authenticated to the server `hero_store_backend` prints, or the app's tools are offered in this session |
 | `checkout` | `at` resolves to a directory on disk (`hero_connection_repo`); a caller that needs it to be a git repo runs `git -C ... rev-parse` itself, read-only |
 | `manual` | nothing to check; a person carries the content in |
 
@@ -238,6 +239,23 @@ differently.
 Never call `hero_work_store` on a connection's path. That function creates
 `.plans/` and edits `.git/info/exclude` in whatever root it is handed, and a
 connection is a thing this repo *reads*.
+
+### Wayfare as a reach
+
+`wayfare` is a reach and not a seventh kind: the list of kinds stays closed. A
+connection whose records live in the Wayfare app names it the way a tracker in
+Linear names `linear`, and the check is the table row above. That is a fact
+about this session, so a missing binary is `unreachable` (the three states
+above), never `none`.
+
+The reach is separate from which store a fleet uses. The store is chosen by
+`hero_store_backend` (`docs/PLAN.md`, *Two stores*), from `WAYFARE_STORE` or the
+machine pin and never from a `reach:` line, because `HERO.md` is one of the
+records that moves to the server and a switch stored in the thing it switches
+cannot be read first. A fleet on the server backend needs the reach available to
+read its store at all; a fleet on the local backend needs it only for a
+connection that names it. The server backend is the design and not built yet, so
+nothing resolves a `reach: wayfare` today beyond this check.
 
 ## `at` names a fleet row when the connection is a repo
 

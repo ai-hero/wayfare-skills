@@ -23,6 +23,12 @@ Beside the map, the register holds the compliance overlay (`CONTROLS.yaml`,
 `CHECKS.yaml`, `checkers.py`, rule 1 below) and **`setup.yaml`**, the machine
 setup every developer in the fleet gets ([SETUP-YAML.md](./SETUP-YAML.md)).
 
+That is the local store. A fleet whose store is the Wayfare server
+(`hero_store_backend` prints a URL, `docs/PLAN.md`, *Two stores*) holds the map
+and the register's records in the app instead, and `.fleet/` is read only for
+the archive. The text below describes the local backend, which is what runs
+until the switch is flipped.
+
 Because the map is shared, it names the fleet, not your machine. A row whose
 checkout you never cloned is normal: `review` reports it as `NOT_CLONED`, for
 information, and `sync` offers to clone it to `FLEET_ROOT/NAME`, never anywhere
@@ -65,6 +71,15 @@ placeholder you fill in once you have confirmed the register's `origin` is your
 fleet's register. Nothing from the map or the remote is pasted into it. The pin
 is also where `sync` takes the host and owner it clones from, never the map's
 `org:`.
+
+The same file holds the store switch. A line whose second field is an
+`http(s)://` URL, `FLEET_ROOT https://app.example`, is the fleet's Wayfare
+server, and `hero_store_backend` reads it. It sits beside the register line for
+the same root and is never a register: `hero_register_pin` and `audit.py`'s
+`pinned_register()` skip it, so the audit never takes a URL for a register's
+identity. It lives here and not in the map because the map is among the records
+that move to the server, and a switch stored in the thing it switches cannot be
+read before it is chosen. `WAYFARE_STORE` overrides the line.
 
 ### A new machine
 
@@ -245,6 +260,10 @@ the only thing `sync` writes into a repo, and it is written to the working tree
 for the user to ship; `sync` never commits.
 
 ## Repos that can receive a message
+
+This section is the local backend's. On the Wayfare server backend the app holds
+the mailbox, there is no `.plans/inbox/` to be missing, and a deposit into one
+is refused (`docs/MESSAGES.md`, *Two stores*).
 
 A message or reply to a sibling is a file in its `.plans/inbox/`, and the sender
 refuses to create a missing inbox ([MESSAGES.md](./MESSAGES.md)): `.plans/`

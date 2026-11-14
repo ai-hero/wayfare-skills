@@ -40,9 +40,9 @@ right for what it describes: *"copying a file into a sibling checkout's
 That is an argument about **teammates**, and it still holds, work handed to
 another repo's *people* goes through `handoff --repo` and a tracker issue.
 
-This channel is for **agents on one machine**, addressed by the fleet's
-`FLEET.md` rows, and being invisible to teammates and dying with the checkout is
-the point, not the flaw. The two lanes divide on who the reader is:
+On the local backend this channel is for **agents on one machine**, addressed by
+the fleet's `FLEET.md` rows, and being invisible to teammates and dying with the
+checkout is the point, not the flaw. The two lanes divide on who the reader is:
 
 | The reader is | Use | Lives |
 | -- | -- | -- |
@@ -52,6 +52,25 @@ the point, not the flaw. The two lanes divide on who the reader is:
 Route work through the mailbox and it is invisible the moment the folder is
 deleted. Route a coordination question through the tracker and you have filed a
 ticket nobody wanted.
+
+## Two stores
+
+The mailbox is a store like the plan, with the same two backends
+(`docs/PLAN.md`, *Two stores*). On the **local** backend it is the folder
+described below. On the **Wayfare server** backend the app holds inbox messages
+and they are not files, so nothing in this document that names a path applies to
+them: the deposit, the claim and the reply are the server's, reached through the
+`wayfare` CLI. That backend is the design, not built yet.
+
+Messages cross repos, so one switch covers the whole fleet. A fleet half on
+files and half on the server would drop every message sent across the line,
+which is why `hero_store_backend` is read per fleet and never per repo. Once the
+backend is a server, the local deposit refuses (`hero_msg_deposit`, through
+`hero_store_require_local`): a file written into an inbox the server never reads
+is a message nobody gets. The refusal names the switch and how to flip back, and
+`hero_inbox_count` and the other reads still work on files already on disk.
+
+The rest of this document describes the local backend.
 
 ## Push, one direction, both ways
 

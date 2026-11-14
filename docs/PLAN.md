@@ -10,10 +10,13 @@ handoff, wayfare-grill-idea, wayfare-build-task and harden author items too and
 each stamps its name in `origin`. Every skill that touches work touches it
 through here.
 
-The store is local and private (`.git/info/exclude`, via `hero_exclude_add`). It
-is **also the reference model for the server-side store**, so every field below
-names the column it becomes. A shape that only works as loose Markdown files is
-a shape that has to be redesigned twice.
+A store has two backends behind the same `hero_*` functions: **local**, the
+files below, private to the checkout (`.git/info/exclude`, via
+`hero_exclude_add`), and **the Wayfare server**, which holds the same records in
+the app. `hero_store_backend` says which one a fleet uses (*Two stores*, below).
+The local store is **also the reference model for the server's**, so every field
+below names the column it becomes. A shape that only works as loose Markdown
+files is a shape that has to be redesigned twice.
 
 ## The principle
 
@@ -731,10 +734,49 @@ planned against, so it is stale from exactly the same head.
 Absent anchors mean legacy or unmigrated. `wayfare-sync-plan` backfills them and
 never computes staleness from an absent value.
 
+## Two stores
+
+One switch picks the backend for a whole fleet, never one repo, because inbox
+messages cross repos and a fleet split between backends would drop them.
+`hero_store_backend` prints `local` or the server's URL, in this order:
+
+1. `WAYFARE_STORE`, `local` or an `http(s)://` URL. It wins, so a rehearsal can
+   run against a test fleet without touching the machine's pin.
+2. A `FLEET_ROOT https://...` line in the pin file
+   `${XDG_CONFIG_HOME:-~/.config}/wayfare/registers`, beside the root's register
+   line (`docs/FLEET-MD.md`, *The register is pinned per machine*). The switch
+   is not in `HERO.md` or `FLEET.md` because both are records the server holds:
+   a switch stored in the thing it switches cannot be read before it is chosen.
+3. `local`.
+
+A value that is neither `local` nor an http(s) URL with no whitespace is an
+error, never a silent `local`: a fleet that meant the server would keep writing
+files the server never sees.
+
+Local is the default, so nothing changes until a person flips it. The skills
+call the same functions either way (`hero_ready_items`, `hero_item_field`,
+`hero_msg_deposit` and the rest), and no skill reads a store file directly;
+`scripts/validate.sh` fails one that does.
+
+Once the pin or `WAYFARE_STORE` names a server, the local backend **refuses
+writes** through `hero_store_require_local`: a write would put a record in files
+the server never sees, and the two stores would drift apart without an error.
+The refusal names the switch and how to flip back. Reads stay possible, because
+the cutover imports from the local files and the dry run compares against them.
+A hand edit of a `.plans/` file does not pass through a function and is not
+refused.
+
+The server backend itself, the store functions calling the `wayfare` CLI, is the
+design and is not built yet: today a server URL makes the write functions refuse
+and the read functions resolve the files already on disk.
+
+Files stay untouched until the cutover: import, compare with the dry run, flip
+the pin. Deleting them and the local backend is a later change.
+
 ## The server-side mapping
 
-The store moves behind an API. This is the shape it lands in, and it is why the
-local format looks the way it does.
+The store is the app's. This is the shape it lands in, and it is why the local
+format looks the way it does.
 
 | Local | Server |
 | -- | -- |
@@ -753,10 +795,15 @@ local format looks the way it does.
 | `## Log` lines | `item_events` rows: item, date, actor, tag, body |
 | `## Context` … `## Definition of Done` | text columns; DoD and Subtasks as ordered checklist rows |
 | `next_id` | the authoritative sequence, which it is not locally |
+| `.plans/inbox/` messages | message rows addressed to a project (`docs/MESSAGES.md`) |
+| the fleet map and its files (`.fleet/`) | fleet rows in the app, with the register's records (`setup.yaml`, `CONTROLS.yaml`, `CHECKS.yaml`, `CONSISTENCY.md`) beside them (`docs/FLEET-MD.md`) |
+| `HERO.md` | the project's config, read field by field through `hero_field` and its siblings |
 
-Two things stay local by design and never move: `.plans/inbox/`, which is a
-machine-local mailbox between sibling checkouts and is supposed to die with the
-folder (`docs/MESSAGES.md`), and the fleet register at `.fleet/`.
+The server is where inbox messages and the fleet map end up, not somewhere they
+were meant to stay out of. On the local backend they stay what they are today:
+`.plans/inbox/` is a mailbox between sibling checkouts that dies with the
+folder, and `.fleet/` is the register checkout. The column names for the rows
+are aihero-wayfare's contract, not this standard's.
 
 ## Migrating from the nine-kind schema
 

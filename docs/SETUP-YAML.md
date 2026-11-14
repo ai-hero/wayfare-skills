@@ -16,6 +16,12 @@ It is now data: **`.fleet/setup.yaml`**, in the register repo beside
 with the register, so a change reaches every machine the next time setup runs,
 and a script, not an agent, decides what is present and what is missing.
 
+This is the local store. When the fleet's store is the Wayfare server
+(`hero_store_backend`, `docs/PLAN.md`, *Two stores*), `setup.yaml` is among the
+records the server holds, and the register checkout is read for the archive
+only. Nothing in this file changes until that backend exists; the gate below,
+which reads `origin/main` of the pinned register, is the local backend's.
+
 It holds **machine-level setup only**. A step one repo needs (its `.env`, its
 dev stack, the Node major in its `.nvmrc`, its dev certificate) stays in that
 repo's `HERO.md`, under `## Developer Setup` and `## Projects`, which
@@ -282,3 +288,8 @@ unreadable data after its last member: another tar reader could find members
 there that this one never checked. With `--extract DEST`, an archive that passes
 is unpacked from that same parse, with Python's `data` filter, and a file
 already at its path is kept, never overwritten. Never unpack one with `tar`.
+
+`archive --kind local --extract` writes `NAME/.plans/…` into a checkout, which
+is a write to the local store, so it refuses when the fleet's backend is a
+server (`hero_store_backend`, via the same refusal as `hero_store_require_local`
+in `scripts/hero-lib.sh`). Checking an archive without `--extract` still works.

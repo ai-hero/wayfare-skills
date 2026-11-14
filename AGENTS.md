@@ -117,9 +117,10 @@ is the fleet's.
   (`WAYFARE_STORE`, else a URL line in the machine pin, else local;
   [docs/PLAN.md](./docs/PLAN.md), *Two stores*), and on the server `.plans/`,
   `.fleet/` and the inbox are records in the app, and the local functions refuse
-  writes. That backend is the design and is not built yet. Conversation uses the
-  first three interchangeably; the code does not. Scope a verb to the wrong noun
-  and it writes the wrong file, which is the mistake below.
+  writes. That backend reads and writes through the `wayfare` CLI for the
+  functions docs/PLAN.md lists and fails loudly for the rest. Conversation uses
+  the first three interchangeably; the code does not. Scope a verb to the wrong
+  noun and it writes the wrong file, which is the mistake below.
 
 - **What a repo attaches to is a connection; where it sits is the fleet.** Six
   kinds, closed list, one `### kind` block each under `## Connections` in

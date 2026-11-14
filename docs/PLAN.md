@@ -766,9 +766,24 @@ the cutover imports from the local files and the dry run compares against them.
 A hand edit of a `.plans/` file does not pass through a function and is not
 refused.
 
-The server backend itself, the store functions calling the `wayfare` CLI, is the
-design and is not built yet: today a server URL makes the write functions refuse
-and the read functions resolve the files already on disk.
+The server backend is the store functions calling the `wayfare` CLI
+(`WAYFARE_CLI`, else `wayfare` on PATH), with the URL's one path segment as the
+workspace (`https://app.example.com/<workspace id>`) and a repo mapped to the
+project whose slug is its directory name. Built so far: `hero_ready_items`,
+`hero_idea_count` and `hero_goal_members` (items), `hero_item_file`,
+`hero_item_set` and `hero_item_log` (one item), `hero_msg_send`,
+`hero_msg_reply`, `hero_msg_close` and `hero_inbox_count` (messages), the config
+readers behind `hero_config_file` (`hero_field` and its siblings),
+`hero_fleet_repos` and `hero_fleet_repo_field` (fleet rows) and
+`hero_audit_record`. Server data is rendered into a read-only cache in the local
+file shapes, so one parser answers both backends. Every other store-addressed
+function (`hero_plan_field`, `hero_goal_candidates`, `hero_items_dir`,
+`hero_inbox_exists`, `hero_msg_find`, `hero_config_commit_time`,
+`hero_check_staleness`, `hero_fleet_field`) fails under a server naming itself
+and the server, and never reads the files in its place. A CLI failure is an
+error naming the server, never an empty result. Priority is lossy across the
+two: the server's high, medium and low read back as `p1`, `p2` and `p3`.
+`awaiting`, `replaced_by` and `channel` have no server field and read as absent.
 
 Files stay untouched until the cutover: import, compare with the dry run, flip
 the pin. Deleting them and the local backend is a later change.

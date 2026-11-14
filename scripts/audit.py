@@ -385,6 +385,54 @@ def store_backend(start=None):
     raise ValueError(f"'{v}' is neither 'local' nor an http(s) URL; fix WAYFARE_STORE or the pin file")
 
 
+class ServerError(RuntimeError):
+    """A server-backend call that did not complete. The message names the
+    server; it is never swallowed into an empty result."""
+
+
+def server_cli(sub, args, start=None):
+    """Run `wayfare SUB --json ARGS` against the server store_backend names and
+    return its JSON. The backend URL is `<origin>/<workspace id>`, the same
+    split hero_srv_target makes. The CLI is WAYFARE_CLI, else `wayfare` on PATH;
+    it reads the token itself, so none passes through here."""
+    backend = store_backend(start)
+    if backend == "local":
+        raise ServerError("the backend is local; there is no server to call")
+    m = re.match(r"^(https?://[^/\s]+)/([^/\s]+)$", backend)
+    if not m:
+        raise ServerError(f"the server URL '{backend}' must end in the workspace id "
+                          "(<origin>/<workspace id>); fix WAYFARE_STORE or the URL line in the pin file")
+    cli = os.environ.get("WAYFARE_CLI") or "wayfare"
+    env = {**os.environ, "WAYFARE_URL": m.group(1), "WAYFARE_WORKSPACE": m.group(2)}
+    try:
+        r = subprocess.run([cli, sub, "--json", json.dumps(args)], capture_output=True, text=True,
+                           env=env, timeout=130, check=False)
+    except FileNotFoundError:
+        raise ServerError(f"the Wayfare server at {backend} needs the wayfare CLI, and '{cli}' was not "
+                          "found (set WAYFARE_CLI)") from None
+    if r.returncode != 0:
+        raise ServerError(f"the Wayfare server at {backend} refused or failed 'wayfare {sub}' "
+                          f"(exit {r.returncode}): {r.stderr.strip()[:600]}")
+    try:
+        return json.loads(r.stdout)
+    except ValueError:
+        raise ServerError(f"the Wayfare server at {backend} answered 'wayfare {sub}' with something "
+                          "that is not JSON") from None
+
+
+_RESULT_STATE = {PASS: "pass", FAIL: "fail", NA: "n/a", MANUAL: "manual"}
+
+
+def record_results(repo, results, start=None):
+    """Record one repo's audit results on the server: `results` is
+    (check_id, status) pairs. An ERROR cell is a broken checker, not a result,
+    and is not sent. Returns (recorded, failing). The server refuses a check id
+    its register lacks, and that refusal raises."""
+    sent = [{"check_id": c, "state": _RESULT_STATE[st]} for c, st in results if st in _RESULT_STATE]
+    out = server_cli("report-results", {"repo": repo, "results": sent}, start)
+    return out.get("recorded", 0), out.get("failing", 0)
+
+
 def pin_file():
     base = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
     return os.path.join(base, "wayfare", "registers")
@@ -4307,6 +4355,8 @@ def main():
     ap.add_argument("--no-fleet", action="store_true",
                     help="audit the current repo alone against the baseline, even when it declares a fleet")
     ap.add_argument("--json", action="store_true", help="one JSON object per failing (check x repo) cell, for skills")
+    ap.add_argument("--record", action="store_true",
+                    help="also record every repo's results on the Wayfare server (needs a server backend)")
     a = ap.parse_args()
     if a.cwd:
         try:
@@ -4354,6 +4404,14 @@ def main():
         else:
             with snapshot_family(a.ref, repos):
                 rows, fails, errors = run_matrix(checks, repos)
+
+    if a.record:
+        try:
+            for i, rn in enumerate(repos):
+                rec, failing = record_results(rn, [(c["id"], cells[i][0]) for c, cells in rows])
+                print(f"recorded {rec} results for {rn} on the server ({failing} failing)", file=sys.stderr)
+        except (ServerError, ValueError) as e:
+            sys.exit(f"--record: {e}")
 
     w = max(len(r) for r in repos) + 2
     print(f"engine: {engine_note()}\nassets: {assets_note}\nregister: {register_source()[2]}\n",

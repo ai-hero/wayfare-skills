@@ -1355,6 +1355,48 @@ class Configured(unittest.TestCase):
             with self.assertRaises(ValueError):
                 audit.store_backend(self.root / "fx")
 
+    def _stub_cli(self, body):
+        stub = self.root / "stub-wayfare"
+        stub.write_text("#!/usr/bin/env bash\n" + body)
+        stub.chmod(0o755)
+        return stub
+
+    def test_record_results_over_the_cli(self):
+        """record_results sends the repo and (check, state) pairs through the
+        wayfare CLI under the URL's workspace, skips an ERROR cell, and returns
+        what the server counted; a failing CLI raises naming the server."""
+        fleet_fixture(self.root, "## Fleet\n- name: fx\n")
+        log = self.root / "cli.log"
+        stub = self._stub_cli(
+            f'printf "%s url=%s ws=%s\\n" "$*" "$WAYFARE_URL" "$WAYFARE_WORKSPACE" > {log}\n'
+            'if [ -n "$STUB_FAIL" ]; then echo "boom: token rejected" >&2; exit 1; fi\n'
+            'echo \'{"recorded":2,"failing":1}\'\n')
+        with mock.patch.dict(os.environ, {"WAYFARE_STORE": "https://wf.test/ws-1", "WAYFARE_CLI": str(stub)}):
+            os.environ.pop("STUB_FAIL", None)
+            got = audit.record_results("app", [("A-1", audit.PASS), ("A-2", audit.FAIL), ("A-3", audit.ERROR)],
+                                       self.root / "fx")
+            self.assertEqual(got, (2, 1))
+            sent = log.read_text()
+            self.assertIn("url=https://wf.test ws=ws-1", sent)
+            self.assertIn(json.dumps({"repo": "app", "results": [
+                {"check_id": "A-1", "state": "pass"}, {"check_id": "A-2", "state": "fail"}]}), sent)
+            os.environ["STUB_FAIL"] = "1"
+            with self.assertRaises(audit.ServerError) as cm:
+                audit.record_results("app", [("A-1", audit.PASS)], self.root / "fx")
+            self.assertIn("https://wf.test/ws-1", str(cm.exception))
+            self.assertIn("boom: token rejected", str(cm.exception))
+            os.environ["WAYFARE_CLI"] = str(self.root / "missing")
+            with self.assertRaises(audit.ServerError) as cm:
+                audit.record_results("app", [], self.root / "fx")
+            self.assertIn("https://wf.test/ws-1", str(cm.exception))
+            os.environ["WAYFARE_STORE"] = "https://wf.test"
+            with self.assertRaises(audit.ServerError) as cm:
+                audit.record_results("app", [], self.root / "fx")
+            self.assertIn("workspace id", str(cm.exception))
+            os.environ["WAYFARE_STORE"] = "local"
+            with self.assertRaises(audit.ServerError):
+                audit.record_results("app", [], self.root / "fx")
+
     def test_register_pin(self):
         fleet_fixture(self.root, "## Fleet\n- name: fx\n")
         review_register(self.root, pin=False)

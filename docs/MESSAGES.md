@@ -60,7 +60,10 @@ The mailbox is a store like the plan, with the same two backends
 described below. On the **Wayfare server** backend the app holds inbox messages
 and they are not files, so nothing in this document that names a path applies to
 them: the deposit, the claim and the reply are the server's, reached through the
-`wayfare` CLI. That backend is the design, not built yet.
+`wayfare` CLI (`hero_msg_send`, `hero_msg_reply`, `hero_msg_close` and
+`hero_inbox_count`; docs/PLAN.md, *Two stores*, lists what is built). A server
+request is unread while its thread is open; a notice is closed on arrival, so
+the local twin writes a notice already settled.
 
 Messages cross repos, so one switch covers the whole fleet. A fleet half on
 files and half on the server would drop every message sent across the line,
@@ -131,6 +134,7 @@ type: ask # ask | reply | bug — what the recipient is being handed; see Bug re
 from: auth # FLEET.md row name of the sending repo; `fleet` is reserved for a fleet-root run, which has no repo of its own
 to: api # FLEET.md row name of this repo
 sent: 2026-08-30
+subject: Need the token refresh endpoint # one line; set by hero_msg_send, optional by hand
 reply_to: m-c0fbd5 # present only on a reply — the id being answered
 group: g-4f2a10 # present only on a broadcast — shared by all N messages
 part: 2 of 3 # present only on a broadcast

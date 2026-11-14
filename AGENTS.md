@@ -105,13 +105,16 @@ is the fleet's.
   *before* `@auto-approve`, never between the verdict and the merge: branch
   protection dismisses approvals on push.
 
-- **Three nouns, and each owns one file.** `hero` is the single focus agent in
+- **Four nouns, and each owns one file.** `hero` is the single focus agent in
   one repo (`HERO.md`); `fleet` is the floor those repos sit on (`FLEET.md`,
   [docs/FLEET-MD.md](./docs/FLEET-MD.md)); `wayfare` is the route between the
   product as it is and as it should be (`.plans/`,
-  [docs/PLAN.md](./docs/PLAN.md)). Conversation uses the three interchangeably;
-  the code does not. Scope a verb to the wrong noun and it writes the wrong
-  file, which is the mistake below.
+  [docs/PLAN.md](./docs/PLAN.md)); `product` is the whiteboard description of
+  what that product is and what it can do (`PRODUCT.md`,
+  [docs/PRODUCT-MD.md](./docs/PRODUCT-MD.md)), which on a server-backed fleet is
+  ideas in the app and no file. Conversation uses the first three
+  interchangeably; the code does not. Scope a verb to the wrong noun and it
+  writes the wrong file, which is the mistake below.
 
 - **What a repo attaches to is a connection; where it sits is the fleet.** Six
   kinds, closed list, one `### kind` block each under `## Connections` in

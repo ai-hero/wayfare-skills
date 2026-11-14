@@ -545,6 +545,8 @@ procedures:
 | `wayfare:wayfare-review-fleet` | Report drift between `FLEET.md` and the checkouts beside it: rows not cloned here (informational), folders that are not checkouts, port collisions. Writes nothing |
 | `wayfare:wayfare-check-audit-claim` | Check a compliance tool's claim against what the auditor was told and against the systems, before it is reported. Calls named read tools only, and can compare the tool's tests, the register checks and the tickets. Writes nothing |
 | `wayfare:wayfare-audit-deep` | Run Cloudflare's security audit on one repo, on a person's explicit request: a wrapper over an MIT-licensed copy pinned and hash-checked under `assets/security-audit/`. Started by name. Needs a budget, is source-only by default, keeps run output outside every checkout, and files no ticket. Does not replace `wayfare-audit-security`'s dependency and image scanning |
+| `wayfare:wayfare-sync-product` | Write the whiteboard view of the product: what it is, its features with shipped, partial or planned status, and one statement each, with no restated code. Locally it writes `PRODUCT.md` ([docs/PRODUCT-MD.md](./docs/PRODUCT-MD.md)); on the Wayfare server it files the features as ideas a person accepts. Writes only what you confirm |
+| `wayfare:wayfare-review-product` | Report where `PRODUCT.md` (or the filed feature ideas) and the code have drifted: stale claims, wrong statuses, features nobody described. Writes nothing |
 | `wayfare:wayfare-write-handoff` | Distill the current conversation into one self-contained work-item for a downstream agent (optionally filed to the tracker, or to **another repo** with `--repo OWNER/NAME`) |
 
 ### Utilities

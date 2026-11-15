@@ -413,6 +413,30 @@ run_validate "$d"
 check "missing .claude-plugin/plugin.json: nonzero rc" "yes" "$([ "$RC" -ne 0 ] && echo yes || echo no)"
 check "missing .claude-plugin/plugin.json: no unbound-variable crash" "" "$(printf '%s' "$OUT" | grep -io 'unbound variable' || true)"
 
+# ---------- store layer: a routed skill writes its item through it -----------
+
+d=$(fixture item-write-by-hand)
+printf '\nThen set `status: review` on the item.\n' >> "$d/skills/wayfare-build-task/WORKFLOW.md"
+run_validate "$d"
+check "routed skill sets status by hand: rc" "1" "$RC"
+check_contains "routed skill sets status by hand: reported" "$OUT" "tells the agent to set an item field by hand"
+check_contains "routed skill sets status by hand: names the file" "$OUT" "skills/wayfare-build-task/WORKFLOW.md"
+
+d=$(fixture item-write-branch-by-hand)
+printf '\nWrite `branch: CURRENT_BRANCH` in its frontmatter.\n' >> "$d/skills/wayfare-build-task/WORKFLOW.md"
+run_validate "$d"
+check_contains "routed skill writes branch by hand: reported" "$OUT" "tells the agent to set an item field by hand"
+
+d=$(fixture item-write-unrouted)
+mk_zztest_skill "$d" 'Then set `status: review` on the item.'
+run_validate "$d"
+check "unrouted skill setting status by hand: not this check's" "" "$(printf '%s' "$OUT" | grep -o 'tells the agent to set an item field by hand' || true)"
+
+d=$(fixture item-write-reads-status)
+printf '\nAn item at `status: committed` is already built.\n' >> "$d/skills/wayfare-build-task/WORKFLOW.md"
+run_validate "$d"
+check "routed skill naming a status without setting it: not reported" "" "$(printf '%s' "$OUT" | grep -o 'tells the agent to set an item field by hand' || true)"
+
 # ---------- store layer: no direct store-file read ---------------------------
 
 d=$(fixture store-direct-items)

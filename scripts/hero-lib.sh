@@ -3000,6 +3000,13 @@ def q: if type == "array" then "[" + (map(tostring) | join(", ")) + "]"
   else tostring end;
 def pri: ({"high":"p1","medium":"p2","low":"p3"}[.]) // .;
 def shp: if . == "slice" then "story" else . end;
+def logged($tag): [(.log // [])[] | select(.tag == $tag) | .body];
+def branch_of: (logged("branch") | last) // .branch;
+def box_re: "^[ \t]*([-*]|[0-9]+\\.)[ \t]+\\[[ xX]\\][ \t]+";
+def box_text: sub(box_re; "") | sub("[ \t]+$"; "");
+def desc_ticked: logged("tick") as $t | (.description // "") | split("\n")
+  | map(if test("^[ \t]*([-*]|[0-9]+\\.)[ \t]+\\[ \\]") and (box_text as $x | any($t[]; . == $x))
+        then sub("\\[ \\]"; "[x]") else . end) | join("\n");
 def opt($k; $v): if $v == null or $v == "" or $v == 0 or $v == [] then "" else "\($k): \($v | q)\n" end;
 def item_name:
   (.number | tostring) as $n
@@ -3013,9 +3020,9 @@ def item_fm:
   + opt("shape"; ((.shape // "") | shp)) + opt("channel"; .channel) + opt("parent"; .goal_number) + opt("rank"; .rank)
   + opt("depends_on"; .depends_on) + opt("blocked_on"; .blocked_on) + opt("blocked_since"; ((.blocked_since // "")[0:10]))
   + opt("source"; .sources) + opt("target"; .targets) + opt("bot"; .bot) + opt("success"; .success) + opt("origin"; .origin)
-  + opt("pr"; .pr) + opt("branch"; .branch) + opt("discovered_from"; .discovered_from) + "---\n";
+  + opt("pr"; .pr) + opt("branch"; branch_of) + opt("discovered_from"; .discovered_from) + "---\n";
 def log_line: "- \((.at // "")[0:10]) (\(.by // "agent")) \(.tag): \(.body)";
-def item_md: item_fm + "\n" + (.description // "") + "\n\n## Log\n\n" + ((.log // []) | map(log_line) | join("\n")) + "\n";
+def item_md: item_fm + "\n" + desc_ticked + "\n\n## Log\n\n" + ((.log // []) | map(log_line) | join("\n")) + "\n";
 def val: if type == "array" then "[" + (map(tostring) | join(", ")) + "]" else tostring end;
 '
 
@@ -3032,6 +3039,11 @@ hero_srv_store() { # ROOT
   printf -- '---\nschema: 1\n---\n' > "$cache/store/PLAN.md"
   while IFS= read -r line; do
     [ -n "$line" ] || continue
+    # The listing carries no log, and an active task's `branch:` is its newest
+    # `branch` log line: resume-state.sh finds this branch's item by it.
+    if printf '%s' "$line" | jq -e '.type == "task" and .status == "active"' >/dev/null; then
+      line=$(hero_srv_cli "$1" item --project-id "$pid" --number "$(printf '%s' "$line" | jq -r .number)" | jq -c .item) || return 1
+    fi
     f=$(printf '%s' "$line" | jq -r "$_HERO_SRV_JQ"' item_name') || return 1
     printf '%s' "$line" | jq -r "$_HERO_SRV_JQ"' item_fm' > "$cache/store/items/$f" || return 1
   done <<EOF2
@@ -3114,11 +3126,11 @@ hero_item_set() { # NUMBER KEY VALUE [ROOT]
   local root r n pid skey kind body json f val
   n=$((10#${1:-x})) 2>/dev/null || { echo "hero_item_set: '${1:-}' is not an item number" >&2; return 2; }
   case "$2" in
-    title|priority|severity|shape|blocked_on|success|origin) kind=str ;;
+    title|priority|severity|shape|blocked_on|success|origin|branch) kind=str ;;
     rank|parent) kind=int ;;
     depends_on) kind=ints ;;
     source|target) kind=list ;;
-    *) echo "hero_item_set: '$2' is not a field this writes (title priority severity shape rank parent depends_on blocked_on source target success origin); a status moves by hero_item_transition" >&2; return 2 ;;
+    *) echo "hero_item_set: '$2' is not a field this writes (title priority severity shape rank parent depends_on blocked_on source target success origin branch); a status moves by hero_item_set_status" >&2; return 2 ;;
   esac
   root=$(hero_srv_root "${4:-}")
   r=$(hero_srv_route_root "$root") || return 1
@@ -3127,6 +3139,13 @@ hero_item_set() { # NUMBER KEY VALUE [ROOT]
     f=$(hero_item_file "$n" "$root") || return 1
     _hero_local_set "$f" "$2" "$3" || return 1
     printf '%s: %s\n' "$2" "$(hero_item_field "$f" "$2")"
+    return 0
+  fi
+  # update_item takes no branch, so the server keeps it as a log line, which
+  # the rendered item reads back as `branch:`.
+  if [ "$2" = branch ]; then
+    hero_item_log "$n" branch "$3" "$root" >/dev/null || return 1
+    printf 'branch: %s\n' "$(hero_item_field "$(hero_item_file "$n" "$root")" branch)"
     return 0
   fi
   skey=$2
@@ -3257,6 +3276,92 @@ hero_item_transition() { # NUMBER TO REASON [RESOLUTION] [ROOT]
     '{project_id: $pid, number: $n, to: $to, reason: $why} + (if $res == "" then {} else {resolution: $res} end)')
   json=$(hero_srv_cli "$root" transition --json "$body") || return 1
   printf '%s' "$json" | jq -r '.item | "status: \(.status)", (if (.resolution // "") == "" then empty else "resolution: \(.resolution)" end)'
+}
+
+# Set an item's status as build-task moves it, and print `status: S` as the
+# store now holds it. Local writes the frontmatter (ready adds `ready_marked:`
+# today, done takes a RESOLUTION). The server moves a task by its own events
+# (a claim sets active, link_pr and the merge verdict carry review and done)
+# and refuses a transition on a claimed task, so here: active is a no-op when
+# the item already reads active, else a transition; planning, dropped and
+# done/obsolete are transitions; review, committed and done otherwise are a
+# `status` log line, printed after the server's status as `logged: S`; new,
+# accepted and ready are a person's marks and refused.
+hero_item_set_status() { # NUMBER STATUS [RESOLUTION] [ROOT]
+  local root r n f pid json cur why
+  n=$((10#${1:-x})) 2>/dev/null || { echo "hero_item_set_status: '${1:-}' is not an item number" >&2; return 2; }
+  case "${2:-}" in new|accepted|planning|ready|active|review|committed|done|dropped) ;;
+    *) echo "hero_item_set_status: '${2:-}' is not a status (new accepted planning ready active review committed done dropped)" >&2; return 2 ;; esac
+  case "${3:-}" in ''|shipped|delivered|rejected|promoted|obsolete) ;;
+    *) echo "hero_item_set_status: '${3:-}' is not a resolution (shipped delivered rejected promoted obsolete)" >&2; return 2 ;; esac
+  [ "$2" = "done" ] || [ -z "${3:-}" ] || { echo "hero_item_set_status: a resolution goes with done only" >&2; return 2; }
+  root=$(hero_srv_root "${4:-}")
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = local ]; then
+    hero_store_require_local "$root" hero_item_set_status || return 1
+    f=$(hero_item_file "$n" "$root") || return 1
+    _hero_local_set "$f" status "$2" || return 1
+    [ "$2" != ready ] || _hero_local_set "$f" ready_marked "$(date +%Y-%m-%d)" || return 1
+    [ -z "${3:-}" ] || _hero_local_set "$f" resolution "$3" || return 1
+    printf 'status: %s\n' "$(hero_item_field "$f" status)"
+    return 0
+  fi
+  why="set by ${WAYFARE_AGENT:-wayfare-build-task}"
+  case "$2" in
+    new|accepted|ready)
+      echo "hero_item_set_status: $2 is a person's mark on the Wayfare server; set it there, not from a skill" >&2; return 1 ;;
+    planning|dropped)
+      hero_item_transition "$n" "$2" "$why" "" "$root"; return ;;
+    done)
+      if [ "${3:-}" = obsolete ]; then hero_item_transition "$n" "done" "$why" obsolete "$root"; return; fi ;;
+  esac
+  pid=$(hero_srv_project "$root") || return 1
+  json=$(hero_srv_cli "$root" item --project-id "$pid" --number "$n") || return 1
+  cur=$(printf '%s' "$json" | jq -r '.item.status // ""')
+  if [ "$2" = active ]; then
+    [ "$cur" = active ] && { printf 'status: active\n'; return 0; }
+    hero_item_transition "$n" active "$why" "" "$root"; return
+  fi
+  hero_item_log "$n" status "$2${3:+ ($3)}" "$root" >/dev/null || return 1
+  printf 'status: %s\nlogged: %s\n' "$cur" "$2${3:+ ($3)}"
+}
+
+# Tick the checklist box whose text is TEXT (every such box), and print
+# `tick: TEXT`. An already-ticked box is not an error; no box with that text
+# is rc 1. Local edits the item file. The server keeps the tick as a `tick` log
+# line, which the rendered item shows as `- [x]`: an agent cannot edit the
+# description of a ready item, and the boxes live there.
+hero_item_tick() { # NUMBER TEXT [ROOT]
+  local root r n f pid json tmp rc has
+  n=$((10#${1:-x})) 2>/dev/null || { echo "hero_item_tick: '${1:-}' is not an item number" >&2; return 2; }
+  [ -n "${2:-}" ] || { echo "hero_item_tick: TEXT is required" >&2; return 2; }
+  root=$(hero_srv_root "${3:-}")
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = local ]; then
+    hero_store_require_local "$root" hero_item_tick || return 1
+    f=$(hero_item_file "$n" "$root") || return 1
+    tmp=$(mktemp "${TMPDIR:-/tmp}/wayfare-tick.XXXXXX") || return 1
+    T="$2" awk '
+      BEGIN { re = "^[ \t]*([-*]|[0-9]+\\.)[ \t]+\\[[ xX]\\][ \t]+" }
+      match($0, re) { x = substr($0, RLENGTH + 1); sub(/[ \t]+$/, "", x)
+        if (x == ENVIRON["T"]) { found = 1; if ($0 ~ /\[ \]/) sub(/\[ \]/, "[x]") } }
+      { print }
+      END { exit found ? 0 : 3 }' "$f" > "$tmp"; rc=$?
+    if [ "$rc" -eq 3 ]; then rm -f "$tmp"; echo "hero_item_tick: item $n has no checklist box '$2'" >&2; return 1; fi
+    [ "$rc" -eq 0 ] && cat "$tmp" > "$f"; rc=$?; rm -f "$tmp"
+    [ "$rc" -eq 0 ] || return 1
+    printf 'tick: %s\n' "$2"
+    return 0
+  fi
+  pid=$(hero_srv_project "$root") || return 1
+  json=$(hero_srv_cli "$root" item --project-id "$pid" --number "$n") || return 1
+  has=$(printf '%s' "$json" | jq -r --arg x "$2" "$_HERO_SRV_JQ"' .item | (.description // "") | split("\n")
+    | map(select(test(box_re)) | box_text) | any(.[]; . == $x)')
+  [ "$has" = true ] || { echo "hero_item_tick: item $n has no checklist box '$2'" >&2; return 1; }
+  if ! printf '%s' "$json" | jq -e --arg x "$2" "$_HERO_SRV_JQ"' .item | any(logged("tick")[]; . == $x)' >/dev/null; then
+    hero_item_log "$n" tick "$2" "$root" >/dev/null || return 1
+  fi
+  printf 'tick: %s\n' "$2"
 }
 
 # ----- messages

@@ -295,7 +295,7 @@ loud hero_fleet_repo_field hero_fleet_repo_field app register "$FLEET"
 loud hero_item_set hero_item_set 2 status "done" "$APP"
 reset
 E=$(srv hero_item_set 2 status "done" "$APP" 2>&1 >/dev/null)
-case "$E" in *hero_item_transition*) check "loud: the status refusal points at hero_item_transition" ok ok ;; *) check "loud: the status refusal points at hero_item_transition" "names it" "$E" ;; esac
+case "$E" in *hero_item_set_status*) check "loud: the status refusal points at hero_item_set_status" ok ok ;; *) check "loud: the status refusal points at hero_item_set_status" "names it" "$E" ;; esac
 check "loud: none of them reached the server" "" "$(calls)"
 
 # ---------- plan fields ---------------------------------------------------------
@@ -410,6 +410,75 @@ hero_item_transition 2 "done" "" "" "$W2/app" >/dev/null 2>&1; check "transition
 echo "boom: token rejected" > "$STUB_DIR/transition.fail"
 fails transition hero_item_transition 2 "done" why shipped "$APP"
 rm -f "$STUB_DIR/transition.fail"
+
+# ---------- build-task's writes: status, branch, ticks -------------------------------
+
+reset
+cat > "$STUB_DIR/item.12.json" <<'EOF'
+{"item":{"number":12,"type":"task","title":"Build it","status":"active","shape":"slice","description":"## Subtasks\n\n- [ ] write the parser\n- [ ] wire it up\n\n## Definition of Done\n\n- [ ] it parses","log":[{"at":"2026-11-14T10:00:00Z","by":"a","tag":"branch","body":"feat/old"},{"at":"2026-11-15T10:00:00Z","by":"a","tag":"branch","body":"feat/new"},{"at":"2026-11-15T11:00:00Z","by":"a","tag":"tick","body":"wire it up"}]}}
+EOF
+echo '{"item":{"number":12,"log":[{"tag":"status","body":"x"}]}}' > "$STUB_DIR/log.json"
+LOCAL_SUM=$(cksum < "$I/002-add-login.md")
+check "status: active on an item the claim already made active asks nothing more" "status: active" "$(srv hero_item_set_status 12 active "" "$APP")"
+check "status: and made no transition" "item" "$(calls | awk '{print $1}' | grep -v projects | tr '\n' ' ' | sed 's/ $//')"
+reset
+echo '{"item":{"number":2,"status":"active"}}' > "$STUB_DIR/transition.json"
+check "status: active on a ready item is a transition" "status: active" "$(srv hero_item_set_status 2 active "" "$APP")"
+check "status: sent to active with a reason" "active" "$(jq -r .to "$STUB_DIR/payload.transition")"
+reset
+check "status: review is logged after the server's own status" "status: active
+logged: review" "$(srv hero_item_set_status 12 review "" "$APP")"
+check "status: as a status log line" '{"tag":"status","text":"review"}' "$(jq -c '{tag, text}' "$STUB_DIR/payload.log")"
+check "status: and moves nothing" "" "$(calls | grep '^transition')"
+check "status: done/shipped is logged with its resolution" "logged: done (shipped)" "$(srv hero_item_set_status 12 "done" shipped "$APP" | tail -1)"
+check "status: committed is logged" "logged: committed" "$(srv hero_item_set_status 12 committed "" "$APP" | tail -1)"
+reset
+echo '{"item":{"number":12,"status":"done","resolution":"obsolete"}}' > "$STUB_DIR/transition.json"
+srv hero_item_set_status 12 "done" obsolete "$APP" >/dev/null
+check "status: done/obsolete is the transition an agent may make" "done obsolete" "$(jq -r '"\(.to) \(.resolution)"' "$STUB_DIR/payload.transition")"
+echo '{"item":{"number":12,"status":"dropped"}}' > "$STUB_DIR/transition.json"
+check "status: dropped is a transition" "status: dropped" "$(srv hero_item_set_status 12 dropped "" "$APP")"
+reset
+srv hero_item_set_status 12 ready "" "$APP" >/dev/null 2>"$TMP/err"; check "status: ready is a person's mark on the server (rc 1)" "1" "$?"
+case "$(cat "$TMP/err")" in *"person's mark"*) check "status: and says so" ok ok ;; *) check "status: and says so" "a person's mark" "$(cat "$TMP/err")" ;; esac
+check "status: and asked the server nothing" "" "$(calls | grep -v '^projects')"
+hero_item_set_status 2 finished "" "$APP" >/dev/null 2>&1; check "status: a status outside the enum is rc 2" "2" "$?"
+hero_item_set_status 2 active shipped "$APP" >/dev/null 2>&1; check "status: a resolution without done is rc 2" "2" "$?"
+
+reset
+F=$(srv hero_item_file 12 "$APP")
+check "branch: the newest branch log line renders as branch:" "feat/new" "$(hero_item_field "$F" branch)"
+check "tick: a tick log line renders its box ticked" "- [x] wire it up" "$(grep '^- \[.\] wire it up' "$F")"
+check "tick: an unticked box stays open" "- [ ] write the parser" "$(grep '^- \[.\] write the parser' "$F")"
+check "branch: a status log line leaves the rendered status the server's" "active" "$(hero_item_field "$F" status)"
+reset
+check "branch: server prints the branch it now reads" "branch: feat/new" "$(srv hero_item_set 12 branch feat/new "$APP")"
+check "branch: as a branch log line, not an update_item field" '{"tag":"branch","text":"feat/new"}' "$(jq -c '{tag, text}' "$STUB_DIR/payload.log")"
+check "branch: update-item was not called" "" "$(calls | grep '^update-item')"
+reset
+check "tick: server logs a box it has not ticked" "tick: write the parser" "$(srv hero_item_tick 12 "write the parser" "$APP")"
+check "tick: as a tick log line" '{"tag":"tick","text":"write the parser"}' "$(jq -c '{tag, text}' "$STUB_DIR/payload.log")"
+reset
+check "tick: a box already ticked logs nothing more" "tick: wire it up" "$(srv hero_item_tick 12 "wire it up" "$APP")"
+check "tick: no log call" "" "$(calls | grep '^log')"
+srv hero_item_tick 12 "invent a box" "$APP" >/dev/null 2>&1; check "tick: a box the item does not have is rc 1" "1" "$?"
+check "tick: and logs nothing" "" "$(calls | grep '^log')"
+check "server: none of these wrote the local twin" "$LOCAL_SUM" "$(cksum < "$I/002-add-login.md")"
+
+# The listing omits logs, so an active task's branch needs its own item read.
+reset
+cp "$STUB_DIR/items.json" "$TMP/items.saved"
+echo '{"items":[{"number":12,"type":"task","title":"Build it","status":"active","shape":"slice"}]}' > "$STUB_DIR/items.json"
+D=$(srv hero_items_dir "$APP/.plans")
+check "store: an active task's branch reaches the store the resume reads" "feat/new" "$(hero_item_field "$D/012-build-it.md" branch)"
+cp "$TMP/items.saved" "$STUB_DIR/items.json"
+
+reset
+for s in item log transition; do echo "boom: token rejected" > "$STUB_DIR/$s.fail"; done
+fails set_status hero_item_set_status 12 review "" "$APP"
+fails tick hero_item_tick 12 "write the parser" "$APP"
+fails branch hero_item_set 12 branch feat/x "$APP"
+reset
 
 # ---------- priority and source round-trip ---------------------------------------------
 

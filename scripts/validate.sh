@@ -879,6 +879,28 @@ while IFS= read -r f; do
 done < <(find "$PLUGIN_ROOT/scripts" -maxdepth 1 -type f -name '*.py' 2>/dev/null)
 [[ $STORE_DIRECT_ERRORS -eq 0 ]] && pass "no store file is read outside the store layer"
 
+# ── store layer: a routed skill writes its item through it ─────────
+# Under a server backend the item file is a read-only render, so prose that
+# tells the agent to set `status:` or `branch:` by hand writes nowhere. A skill
+# joins ITEM_WRITES_ROUTED once its item writes call hero_item_set_status,
+# hero_item_set, hero_item_tick and hero_item_log; the rest still edit by hand.
+ITEM_WRITES_ROUTED="wayfare-build-task"
+item_hand_writes() { # FILE -> prints "LINE: text" per instruction to edit a field by hand
+  grep -nE '(^|[^[:alnum:]_])([Ss]et|[Ff]lip[a-z]*( it| the item| the task)? to|[Ww]rite|[Mm]ark( it| the item| the task)?) `(status|branch): ' "$1" || true
+}
+ITEM_WRITE_ERRORS=0
+for s in $ITEM_WRITES_ROUTED; do
+  while IFS= read -r f; do
+    hits=$(item_hand_writes "$f")
+    [ -z "$hits" ] && continue
+    ITEM_WRITE_ERRORS=$((ITEM_WRITE_ERRORS + 1))
+    error "tells the agent to set an item field by hand" \
+      "${f#"$PLUGIN_ROOT/"}" "$(printf '%s' "$hits" | head -1 | cut -d: -f1)" \
+      "Call hero_item_set_status ID STATUS or hero_item_set ID branch BRANCH (scripts/hero-lib.sh)"
+  done < <(find "$SKILLS_DIR/$s" -type f -name '*.md' 2>/dev/null)
+done
+[[ $ITEM_WRITE_ERRORS -eq 0 ]] && pass "routed skills write their item through the store layer"
+
 # ── work-item store: producers must have a consumer ────────────────
 # wayfare-grill-idea, handoff, and harden all WRITE work-items into .plans/
 # (and read the plate back to build on it). wayfare-build-task is the only skill that

@@ -764,7 +764,11 @@ the server never sees, and the two stores would drift apart without an error.
 The refusal names the switch and how to flip back. Reads stay possible, because
 the cutover imports from the local files and the dry run compares against them.
 A hand edit of a `.plans/` file does not pass through a function and is not
-refused.
+refused, which is why a skill writes its item through `hero_item_set_status`,
+`hero_item_set`, `hero_item_tick` and `hero_item_log` instead.
+wayfare-build-task does; `validate.sh` fails its prose if it tells the agent to
+set `status:` or `branch:` by hand, and other skills join that check as they are
+routed.
 
 The server backend is the store functions calling the `wayfare` CLI
 (`WAYFARE_CLI`, else `wayfare` on PATH), with the URL's one path segment as the
@@ -774,15 +778,29 @@ project whose slug is its directory name. Built: `hero_ready_items`,
 `hero_items_dir` (a read-only cache directory; every caller only reads through
 it), `hero_item_file`, `hero_item_set`, `hero_item_log` and
 `hero_item_transition` (one item; a status moves by transition, never by
-`hero_item_set`), `hero_msg_send`, `hero_msg_reply`, `hero_msg_close`,
-`hero_msg_find`, `hero_inbox_exists` and `hero_inbox_count` (messages), the
-config readers behind `hero_config_file` (`hero_field` and its siblings),
-`hero_plan_field`, `hero_fleet_repos`, `hero_fleet_repo_field`,
-`hero_fleet_field` (fleet) and `hero_audit_record`. Server data is rendered into
-a read-only cache in the local file shapes, so one parser answers both backends.
-The server's own spelling is kept where the local one differs: `hero_msg_find`
-prints thread ids, not inbox paths, and matches `about` against the thread's
-item number or its subject.
+`hero_item_set`), `hero_item_set_status` and `hero_item_tick` (below),
+`hero_msg_send`, `hero_msg_reply`, `hero_msg_close`, `hero_msg_find`,
+`hero_inbox_exists` and `hero_inbox_count` (messages), the config readers behind
+`hero_config_file` (`hero_field` and its siblings), `hero_plan_field`,
+`hero_fleet_repos`, `hero_fleet_repo_field`, `hero_fleet_field` (fleet) and
+`hero_audit_record`. Server data is rendered into a read-only cache in the local
+file shapes, so one parser answers both backends. The server's own spelling is
+kept where the local one differs: `hero_msg_find` prints thread ids, not inbox
+paths, and matches `about` against the thread's item number or its subject.
+
+build-task's item writes follow the server's own moves. A claim sets a task
+active, `link_pr` and the merge verdict carry review and done, and the server
+refuses an agent's transition on a claimed task. So `hero_item_set_status` asks
+nothing for `active` on an item already active (else transitions it),
+transitions `planning`, `dropped` and an obsolete `done`, and logs `review`,
+`committed` and a shipped `done` as a `status` line, printing the server's
+status first and the logged one as `logged:`; `new`, `accepted` and `ready` are
+a person's marks and refused. `update_item` takes no branch and an agent cannot
+edit a ready item's description, where its checklist lives, so `branch:` is a
+`branch` log line and a tick a `tick` log line; the rendered item shows the
+newest `branch` line as `branch:` (an active task in the store cache is read
+whole for it, the listing carries no log) and every box a `tick` line names as
+`- [x]`. A box cannot be unticked on the server.
 
 A function never reads the local files in place of the server. What the server
 has no value for fails, naming the key: `hero_plan_field` keys other than

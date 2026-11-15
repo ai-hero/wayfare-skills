@@ -197,6 +197,26 @@ skill having a config to read; running blind through 9 steps is unsafe.
 > Each bash block below runs in a fresh shell, so re-source `hero-lib.sh` at the
 > top of any block that calls a `hero_*` function. The snippets show this.
 
+**Every write to the work item goes through `hero-lib.sh`, never an edit of its
+file.** Under a Wayfare server backend the item file is a read-only render, so
+an edit lands nowhere; the functions write the local file or map to the server
+(docs/PLAN.md, *Two stores*). ID is the item's id:
+
+| Write | Call |
+| -- | -- |
+| status | `hero_item_set_status ID STATUS [RESOLUTION]` (ready stamps `ready_marked:`; done takes `shipped`) |
+| `branch:` | `hero_item_set ID branch BRANCH` |
+| other fields | `hero_item_set ID KEY VALUE` |
+| tick a `## Subtasks` or DoD line | `hero_item_tick ID "LINE TEXT"` (the text after the box) |
+| a `## Log` line | `hero_item_log ID TAG "TEXT"` (it dates the line and signs it `$WAYFARE_AGENT`) |
+
+Export `WAYFARE_AGENT=wayfare-build-task` beside the `hero-lib.sh` source line,
+or every local log line reads `(agent)`.
+
+On the server, `review`, `committed` and a shipped `done` print the server's own
+status and a `logged:` line: the server moves those itself, from the claim,
+`link_pr` and the merge verdict. A non-zero exit is a stop, not a retry by hand.
+
 ### Step 0.3: Pre-flight Checks
 
 Before auto-branching or any other destructive work, run the full pre-flight to
@@ -385,7 +405,7 @@ the first that matches top-to-bottom; rows below the line require
 
 | Condition | Resume at | Reason |
 | -- | -- | -- |
-| `STATE_OK=false` | STOP with diagnostic | print `STATE_ERRORS` (the only health variable emitted; `FETCH_OK` and `GH_OK` are script-internal and unset in your shell); every row below depends on state that was not established. Two recoverable cases. `bot-username` alone: say the review bot cannot be identified and offer to continue at the user's chosen step; `item-claim-conflict`: two unbranched items are in flight and neither names this branch: ask which one is this branch's, write its `branch:`, and re-run. For anything else, fix it and re-run, or invoke the individual skills |
+| `STATE_OK=false` | STOP with diagnostic | print `STATE_ERRORS` (the only health variable emitted; `FETCH_OK` and `GH_OK` are script-internal and unset in your shell); every row below depends on state that was not established. Two recoverable cases. `bot-username` alone: say the review bot cannot be identified and offer to continue at the user's chosen step; `item-claim-conflict`: two unbranched items are in flight and neither names this branch: ask which one is this branch's, record it with `hero_item_set ID branch CURRENT_BRANCH`, and re-run. For anything else, fix it and re-run, or invoke the individual skills |
 | `PR_EXISTS=true` AND `PR_STATE` is `MERGED` or `CLOSED`, `UNCOMMITTED == 0`, `UNPUSHED == 0` | exit with hint | `MERGED` → done; suggest re-running `wayfare:wayfare-ship-pr` if the local checkout still has the branch (Step 7b retries the cleanup for an already-merged PR, and `wayfare-drop-item` refuses merged branches by design). `CLOSED` without merge → the work never landed; say so explicitly and suggest reopening the PR or starting a new branch |
 | `PR_EXISTS=true` AND `PR_STATE` is `MERGED` or `CLOSED`, `UNCOMMITTED == 0`, `UNPUSHED > 0` | exit with hint | local commits exist that never reached the merged or closed PR. Do NOT suggest a reset; push them to a new branch (or reopen) so the work is saved remotely first |
 | `PR_EXISTS=true` AND `PR_STATE` is `MERGED` or `CLOSED`, `UNCOMMITTED > 0` | exit with hint | a merged or closed PR with local edits. Branch off `DEFAULT_BRANCH` for follow-up work |
@@ -541,7 +561,7 @@ Rows are first-match, top to bottom.
 | `$ARGUMENTS` matches a **blocked** item whose only unmet dependencies are `[committed dep: ID]` ids, this invocation carries `commit only: goal GOAL_ID branch GOAL_BRANCH`, and every one of those ids is a member of goal GOAL_ID | That item is the plan → 1c. Those commits are already on GOAL_BRANCH, which is checked out, so the tree has what the item depends on. This row is above the general blocked row because a goal's tasks land in member order and the second one onward is routinely blocked this way; without it the goal would be told to wait for itself. An id outside that goal, or any other unmet dependency, falls through to the row below. |
 | `$ARGUMENTS` matches a **blocked** item | STOP: print the item's unmet `depends_on` ids and their titles. Do not implement past a dependency. A row annotated `[on: TEXT, since DATE]` is blocked on something outside the store (`blocked_on:`, docs/PLAN.md): print the text and date, say a person clears it through `wayfare-sync-plan`'s blocked lane, and never build around it. A `[committed dep: ID]` annotation on the row names a dependency committed on a goal branch and not yet merged: building on it produces a change against a tree that lacks what it depends on, so name the goal that holds that id and wait for it to ship. |
 | `$ARGUMENTS` matches a **suspended** item | STOP: it waits on a sibling repo's reply (`awaiting:`). Say which message and since when; `wayfare-sync-plan`'s inbox stage is what un-suspends it. |
-| `$ARGUMENTS` matches a **plan** (planning) item | STOP: the item awaits the user's ready-mark. Show its title and `success` criteria and ask whether to mark it ready; on yes, set `status: ready` + `ready_marked:` date and it is the plan → 1c. For a task, first confirm `## Approach`, `## Subtasks`, and `## Definition of Done` are non-empty. A planning run that died before writing them leaves a hollow plan; route that to wayfare-grill-idea instead of flipping it. Do NOT re-grill a filled item; that writes a duplicate. **A member of a goal that carries `## Plan`** (the item has `parent`, and the goal's file, the item in `hero_items_dir` whose `id` is that `parent`, has a `## Plan` section) has no `## Approach` to confirm: its "how" is its `### Task N` slice in the goal. The hollow check is `hero_member_planned ITEM_FILE GOAL_FILE` instead: rc 0 is planned; rc 1 is hollow, and its stderr names the missing part (`slice`, `definition-of-done`, `subtasks`), routed to wayfare-grill-idea as above; rc 2 (a `parent` that is not that goal, an unreadable file) is a store defect, routed to `wayfare-sync-plan`. Its ready-mark is the goal's, not its own: one approval covers the goal's `## Plan` and every member's DoD (`docs/PLAN.md`, *Goal-only sections*), so ask it about the goal, and on yes write `status: ready` + `ready_marked:` on every planning member that passes the same check; this item is then the plan → 1c. A member of a goal with no `## Plan` is checked as any other task, on its own `## Approach`. |
+| `$ARGUMENTS` matches a **plan** (planning) item | STOP: the item awaits the user's ready-mark. Show its title and `success` criteria and ask whether to mark it ready; on yes, `hero_item_set_status ID ready` (it stamps `ready_marked:`) and it is the plan → 1c. For a task, first confirm `## Approach`, `## Subtasks`, and `## Definition of Done` are non-empty. A planning run that died before writing them leaves a hollow plan; route that to wayfare-grill-idea instead of flipping it. Do NOT re-grill a filled item; that writes a duplicate. **A member of a goal that carries `## Plan`** (the item has `parent`, and the goal's file, the item in `hero_items_dir` whose `id` is that `parent`, has a `## Plan` section) has no `## Approach` to confirm: its "how" is its `### Task N` slice in the goal. The hollow check is `hero_member_planned ITEM_FILE GOAL_FILE` instead: rc 0 is planned; rc 1 is hollow, and its stderr names the missing part (`slice`, `definition-of-done`, `subtasks`), routed to wayfare-grill-idea as above; rc 2 (a `parent` that is not that goal, an unreadable file) is a store defect, routed to `wayfare-sync-plan`. Its ready-mark is the goal's, not its own: one approval covers the goal's `## Plan` and every member's DoD (`docs/PLAN.md`, *Goal-only sections*), so ask it about the goal, and on yes run `hero_item_set_status ID ready` on every planning member that passes the same check; this item is then the plan → 1c. A member of a goal with no `## Plan` is checked as any other task, on its own `## Approach`. |
 | `$ARGUMENTS` matches a **new** item (`status: new`, or no status line) | STOP: the item was created and nobody has triaged it. Say so and ask whether to move it to `accepted`. Never build or grill an untriaged item. The `new` default exists so a jotted-down item cannot reach here by accident. |
 | `$ARGUMENTS` matches an **anti-feature** (`type: anti-feature`, the listing's `anti` row) | STOP: it records a decision not to build, so there is nothing to build. Print its title and `## Context` as the citation. Reversing the decision is a person's, through `wayfare:wayfare-grill-idea`, which writes the reversal on the anti-feature. Never build past it. |
 | `$ARGUMENTS` matches a **goal** row (`type: goal`) | STOP: a goal is a set of tasks, not a unit of work. Suggest `wayfare:wayfare-start-goal` (to authorize and run it) or `wayfare:wayfare-advance-item GOAL_ID` (one turn of it). |
@@ -627,8 +647,8 @@ must never stand in for a negative one.
 
 When the unevaluable check is waiting on something outside the store (a
 credential, an answer, an upstream release), offer to write `blocked_on:` on the
-item with the reason and `blocked_since:` today, append a `note` line to its
-`## Log`, and stop. Quote a reason that contains `#`
+item with the reason and `blocked_since:` today, add a `note` line with
+`hero_item_log ID note "..."`, and stop. Quote a reason that contains `#`
 (`blocked_on: "#42 upstream"`): unquoted, the `#` opens a YAML comment and the
 item lists READY. The item keeps its status and drops out of READY until a
 person clears the field. The offer is a question like the rest of this row;
@@ -683,8 +703,8 @@ wayfare-build-task's contract.
 
 Render DAG with `implement` active. Implement the work-item resolved in Step 1,
 working from its `Approach` section (or, for a goal member, its slice of the
-goal's `## Plan`, below) and holding its `success` criteria as the target. Mark
-the item `status: active` and write `branch: CURRENT_BRANCH` in its frontmatter
+goal's `## Plan`, below) and holding its `success` criteria as the target. Run
+`hero_item_set_status ID active` and `hero_item_set ID branch CURRENT_BRANCH`
 before the first edit, so a session that dies mid-flight leaves an honest store
 behind and `resume-state.sh` can tell this branch's item from the others a goal
 has in flight.
@@ -716,14 +736,14 @@ Follow these rules:
 
 - **The plan file is the state file.** Any item that carries a `## Subtasks`
   checklist (tasks planned by wayfare-grill-idea, `wayfare-write-handoff` items)
-  is worked top to bottom, and each line is checked off **in the file** (`- [ ]`
-  → `- [x]`) as the last act of that subtask, before the next one starts and not
-  batched at push time. `.plans/` is git-ignored, so the working tree records
-  *what* changed but never *which subtask was mid-way*; this file is the only
-  record a session that dies mid-flight leaves behind, and Step 0.5 routes a
-  resume straight to its first unchecked line. A tick held in memory until the
-  end is the state that gets lost. Every tick also appends a dated line to the
-  item's `## Log`, such as
+  is worked top to bottom, and each line is ticked with
+  `hero_item_tick ID "LINE TEXT"` as the last act of that subtask, before the
+  next one starts and not batched at push time. `.plans/` is git-ignored, so the
+  working tree records *what* changed but never *which subtask was mid-way*;
+  this file is the only record a session that dies mid-flight leaves behind, and
+  Step 0.5 routes a resume straight to its first unchecked line. A tick held in
+  memory until the end is the state that gets lost. Every tick also adds a line
+  to the item's `## Log` with `hero_item_log ID note "..."`, such as
   `- 2026-08-29 (wayfare-build-task) note: subtask 2 done, added the retry in api/client.ts, unit test green`,
   because a checkbox says *that* something happened and nothing about *how* or
   with what evidence; the line is what the next session (or the close-out) reads
@@ -765,19 +785,20 @@ Follow these rules:
   conventions or reviewable-size norms call for it. Then run the pipeline per
   PR, and the task stays unfinished until the last one merges (Step 9a).
 
-- **Your wrong turns go in the item's `## Log` as `mistake` lines, as they
-  happen.** Every approach you took and undid, every fix you redid differently,
-  every assumption that turned out false mid-build, every test written against
-  the wrong behavior: one dated `mistake` line each, append-only, including the
-  ones you recovered from. Write them when they happen, not at the end: a run
-  that dies mid-flight loses the ones it was holding, and a recovered wrong turn
-  leaves no trace in the diff at all. Those lines are what the next planning
-  round reads to find where the plan steered the build wrong, so every one is
-  kept, never summarized into a tidy sentence. Each line **describes** the wrong
-  turn in prose: a `.plans/` file outlives the task, so never paste raw command
-  output, env values or connection strings into one. Create the section if the
-  item lacks one (a legacy item will not have it). Under a goal turn, the report
-  to the parent is a copy of those lines, not a substitute for writing them.
+- **Your wrong turns go in the item's `## Log` as `mistake` lines
+  (`hero_item_log ID mistake "..."`), as they happen.** Every approach you took
+  and undid, every fix you redid differently, every assumption that turned out
+  false mid-build, every test written against the wrong behavior: one dated
+  `mistake` line each, append-only, including the ones you recovered from. Write
+  them when they happen, not at the end: a run that dies mid-flight loses the
+  ones it was holding, and a recovered wrong turn leaves no trace in the diff at
+  all. Those lines are what the next planning round reads to find where the plan
+  steered the build wrong, so every one is kept, never summarized into a tidy
+  sentence. Each line **describes** the wrong turn in prose: a `.plans/` file
+  outlives the task, so never paste raw command output, env values or connection
+  strings into one. Create the section if the item lacks one (a legacy item will
+  not have it). Under a goal turn, the report to the parent is a copy of those
+  lines, not a substitute for writing them.
 
 - **Say what changed before you retry, and stop after two.** Before a second
   attempt at the same failure (a fix that did not take, a test still red, a
@@ -961,10 +982,10 @@ Five rules that make a carve honest:
    this item needs is an answer, a decision, a credential or a release nobody
    here can produce, do not invent an item to depend on. Write `blocked_on:`
    with the reason (quoted when it contains `#`, which unquoted opens a YAML
-   comment) and `blocked_since:` today on this item, append a dated `note` line
-   to its `## Log`, and stop the same way, leaving the tree as it is. The item
-   keeps its status and leaves READY until a person clears the field in
-   `wayfare-sync-plan`'s blocked lane.
+   comment) and `blocked_since:` today on this item, add a `note` line with
+   `hero_item_log ID note "..."`, and stop the same way, leaving the tree as it
+   is. The item keeps its status and leaves READY until a person clears the
+   field in `wayfare-sync-plan`'s blocked lane.
 
    **The edge points one way only.** This case *replaces* the
    child-`depends_on`-parent default above; the two are mutually exclusive.
@@ -995,8 +1016,10 @@ Five rules that make a carve honest:
 
 When the implementation diverges from the target design for a `story` task item
 (the design's answer turns out worse than what the work found, or the flow has a
-gap that stops the slice being Complete), append a `signal` line to the task's
-`## Log`:
+gap that stops the slice being Complete), add a `signal` line to the task's
+`## Log` with
+`hero_item_log ID signal "DF-TASK_ID-YYYY-MM-DD-ORDINAL [undelivered] text"`,
+which writes it as
 `- DATE (wayfare-build-task) signal: DF-TASK_ID-YYYY-MM-DD-ORDINAL [undelivered] text`.
 `references/feedback-channels.md` owns the format; in short, the line carries a
 `DF-TASK_ID-YYYY-MM-DD-ORDINAL` id and an `[undelivered]` marker in fixed
@@ -1123,10 +1146,10 @@ against code Step 5 is about to change, re-triggers it on every fix pushed
 afterwards, and fails auto-approve's prior-review gate, which costs a workflow
 run and a Claude call to learn what this one line would have said.
 
-Then, if the work-item is a task, flip it to `status: review` and append a dated
-`note:` line with the PR URL to its `## Log`. Wayfare's roadmap shows it as in
-review from here, and wayfare (`wayfare-advance-item`, or a goal turn) uses that
-recorded URL to find its way back to the branch.
+Then, if the work-item is a task, run `hero_item_set_status ID review` and
+`hero_item_log ID note "PR_URL"`. Wayfare's roadmap shows it as in review from
+here, and wayfare (`wayfare-advance-item`, or a goal turn) uses that recorded
+URL to find its way back to the branch.
 
 Test-phase failure semantics (owned by wayfare-push-pr, surfaced here):
 
@@ -1301,8 +1324,9 @@ Concretely, in commit-only mode:
 - **Artifact (contract item 5):** the commit SHA. `git rev-parse HEAD` must
   differ from the value at the start of the run. No new commit means the run
   built nothing, whatever else it reported.
-- **On a successful commit, close the item out: set `status: committed`, and
-  record the commit in its `## Log` with a fixed marker in first position:
+- **On a successful commit, close the item out:
+  `hero_item_set_status ID committed`, and record the commit with
+  `hero_item_log ID note` and a fixed marker in first position:
   `[goal-commit: SHA on GOAL_BRANCH, unmerged]`.** Not `done`: that means merged
   with the deploy verified, and the default branch does not have this code yet,
   so `hero_ready_items` keeps every dependent blocked until it does. Not
@@ -1400,21 +1424,21 @@ close-out on this skill's most common path.
 For every other run, close out the item this run worked on: `ITEM_FILE` when
 Step 0.5 set it, otherwise the item Step 1 resolved.
 
-1. Set `status: done` and `resolution: shipped` in the item's
-   `.plans/items/NNN-slug.md` (docs/PLAN.md: `resolution` carries the ending,
-   and a `done` without one is a row the server mapping cannot column). For a
-   task, two gates first: every `## Subtasks` line is checked. A merged PR that
-   covered part of the checklist leaves the task `active`, and the remaining
-   subtasks continue on a fresh branch and PR from Step 2. Every
-   `## Definition of Done` line is also verified against the merged code and
-   checked off, including lines Step 2 already ticked in progress: those were
-   verified against a working tree that has since been simplified, reviewed, and
-   rebased, so re-verify them here and untick any that no longer hold, with a
-   `## Log` line either way. A DoD line that cannot be verified is a finding to
-   report, not a box to tick; leave the task at `review` and say which criterion
-   failed. A planned task whose `## Definition of Done` section is **missing or
-   empty** also fails the gate: zero lines is not a vacuous pass; for a legacy
-   task that predates the sections, confirm the close-out with the user instead.
+1. Run `hero_item_set_status ID done shipped` (docs/PLAN.md: `resolution`
+   carries the ending, and a `done` without one is a row the server mapping
+   cannot column). For a task, two gates first: every `## Subtasks` line is
+   checked. A merged PR that covered part of the checklist leaves the task
+   `active`, and the remaining subtasks continue on a fresh branch and PR from
+   Step 2. Every `## Definition of Done` line is also verified against the
+   merged code and checked off, including lines Step 2 already ticked in
+   progress: those were verified against a working tree that has since been
+   simplified, reviewed, and rebased, so re-verify them here and untick any that
+   no longer hold, with a `## Log` line either way. A DoD line that cannot be
+   verified is a finding to report, not a box to tick; leave the task at
+   `review` and say which criterion failed. A planned task whose
+   `## Definition of Done` section is **missing or empty** also fails the gate:
+   zero lines is not a vacuous pass; for a legacy task that predates the
+   sections, confirm the close-out with the user instead.
 
    **A DoD line that fails because of a deliberate divergence still fails.**
    When a "matches the target design" line does not hold and Step 2b recorded

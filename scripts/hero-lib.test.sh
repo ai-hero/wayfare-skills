@@ -476,6 +476,28 @@ srv hero_work_store "$SN" >/dev/null 2>&1; check "store-guard: hero_work_store u
 mkdir -p "$SW/.plans/inbox"
 printf -- '---\nmsg_id: m-aa0001\nstatus: new\n---\nhi\n' > "$TMP/srvmsg.md"
 srv hero_msg_deposit "$SW/.plans" m-aa0001 "$TMP/srvmsg.md" >/dev/null 2>&1; check "store-guard: hero_msg_deposit refuses under a server backend" "1 no" "$? $([ -e "$SW/.plans/inbox/m-aa0001.md" ] && echo yes || echo no)"
+# build-task's item writes: local edits the file, a server backend never does.
+printf -- '---\nid: 3\ntype: task\nstatus: ready\n---\n\n## Subtasks\n\n- [ ] write the parser\n- [x] wire it up\n1. [ ] number one  \n\n## Definition of Done\n\n- [ ] write the parser\n\n## Log\n' > "$SW/.plans/items/003-w.md"
+check "item-write: set_status writes the status" "status: active" "$(sb hero_item_set_status 3 active "" "$SW")"
+sb hero_item_set_status 3 ready "" "$SW" >/dev/null
+check "item-write: ready also stamps ready_marked today" "$(date +%Y-%m-%d)" "$(hero_item_field "$SW/.plans/items/003-w.md" ready_marked)"
+check "item-write: committed is a local status" "status: committed" "$(sb hero_item_set_status 3 committed "" "$SW")"
+sb hero_item_set_status 3 "done" shipped "$SW" >/dev/null
+check "item-write: done takes its resolution" "done shipped" "$(hero_item_field "$SW/.plans/items/003-w.md" status) $(hero_item_field "$SW/.plans/items/003-w.md" resolution)"
+check "item-write: branch is a field write" "branch: feat/x" "$(sb hero_item_set 3 branch feat/x "$SW")"
+check "item-write: tick prints the box" "tick: write the parser" "$(sb hero_item_tick 3 "write the parser" "$SW")"
+check "item-write: every box with that text is ticked, the others left" "2 1" \
+  "$(grep -c '^- \[x\] write the parser$' "$SW/.plans/items/003-w.md") $(grep -c '^1\. \[ \] number one' "$SW/.plans/items/003-w.md")"
+check "item-write: a numbered box with trailing space ticks by its text" "tick: number one" "$(sb hero_item_tick 3 "number one" "$SW")"
+check "item-write: an already-ticked box is not an error" "tick: wire it up" "$(sb hero_item_tick 3 "wire it up" "$SW")"
+sb hero_item_tick 3 "write the" "$SW" >/dev/null 2>&1; check "item-write: a prefix is not the box (rc 1)" "1" "$?"
+SUM=$(cksum < "$SW/.plans/items/003-w.md")
+for c in "hero_item_set_status 3 active ''" "hero_item_set 3 branch feat/y" "hero_item_tick 3 wire"; do
+  ERR=$(eval "srv $c \"\$SW\"" 2>&1 >/dev/null); RC=$?
+  case "$ERR" in *https://app.example.com*) N=names ;; *) N="$ERR" ;; esac
+  check "item-write: '${c%% *}' under a server backend fails naming the server, file untouched" "1 names $SUM" "$RC $N $(cksum < "$SW/.plans/items/003-w.md")"
+done
+
 SHA=$(printf 'a%.0s' $(seq 40))
 srv hero_deploy_pending_add "$SW/.plans" "$SHA" 7 >/dev/null 2>&1; check "store-guard: hero_deploy_pending_add refuses under a server backend" "1 no" "$? $([ -e "$SW/.plans/.deploy-pending" ] && echo yes || echo no)"
 ( unset WAYFARE_STORE; hero_deploy_pending_add "$SW/.plans" "$SHA" 7 ) >/dev/null 2>&1

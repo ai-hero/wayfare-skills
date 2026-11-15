@@ -172,12 +172,29 @@ sc_log() {
 # own inbox locally. The server only lets an agent speak for a project it holds
 # work in, so a refusal for that reason files one task there (once, found by
 # title) and sends again; that task stays.
+# The server lets an agent send only from a project where it holds a live
+# claim or a task it planned; create_item writes as the agent's owner and does
+# not count. Item 2 is claimed (its dependency is done) and released after the
+# thread closes. Each CLI run is a new instance, so the release passes the
+# handle the claim ran under, or the claim stays until its lease lapses and
+# the next import skips the item.
 ensure_anchor() {
-  local pid
+  local t origin ws
   case "$(hero_store_backend "$ROOT")" in local) return 0 ;; esac
-  pid=$(hero_srv_project "$ROOT") || return 1
-  hero_srv_cli "$ROOT" items --project-id "$pid" | jq -e '[.items[]? | select(.title == "Parity anchor")] | length > 0' >/dev/null && return 0
-  hero_srv_cli "$ROOT" create-item --project-id "$pid" --type task --title "Parity anchor" --origin store-parity >/dev/null
+  ANCHOR_PID=$(hero_srv_project "$ROOT") || return 1
+  ANCHOR_TASK=$(hero_srv_cli "$ROOT" item --project-id "$ANCHOR_PID" --number 2 | jq -r '.item.id // empty')
+  [ -n "$ANCHOR_TASK" ] || return 1
+  t=$(hero_srv_target "$ROOT") || return 1
+  origin=${t% *}; ws=${t#* }
+  ANCHOR_INSTANCE=$(WAYFARE_URL="$origin" WAYFARE_WORKSPACE="$ws" "${WAYFARE_CLI:-wayfare}" claim --project-id "$ANCHOR_PID" --task-id "$ANCHOR_TASK" 2>&1 >/dev/null \
+    | sed -n 's/^Wayfare-Instance: //p')
+  [ -n "$ANCHOR_INSTANCE" ]
+}
+
+release_anchor() {
+  [ -n "${ANCHOR_INSTANCE:-}" ] || return 0
+  hero_srv_cli "$ROOT" release --project-id "$ANCHOR_PID" --task-id "$ANCHOR_TASK" --instance "$ANCHOR_INSTANCE" >/dev/null
+  ANCHOR_INSTANCE=""
 }
 
 sc_messages() {
@@ -194,6 +211,7 @@ sc_messages() {
   out=$(hero_msg_close "$id" answered "done $NONCE" "$ROOT" 2>/dev/null)
   echo "close: ${out//$id/ID}"
   echo "unread after close: +$(($(hero_inbox_count "$ROOT/.plans" 2>/dev/null) - before))"
+  release_anchor 2>/dev/null || echo "release: the claim on item 2 was not released"
 }
 
 sc_hero_fields() {
@@ -302,7 +320,12 @@ case $sub in
     jq -c --argjson n "$n" --argjson p "$payload" 'map(if .number == $n then .log += [{at: "2026-11-14T10:00:00Z", by: "agent", tag: $p.tag, body: $p.text}] else . end)' "$S/items.json" | save items.json
     jq -c --argjson n "$n" '{item: (.[] | select(.number == $n))}' "$S/items.json" ;;
   messages) jq -c '{threads: .}' "$S/threads.json" ;;
+  claim) : > "$S/claimed"; echo '{"task":{"status":"active"}}'; echo "Wayfare-Instance: inst-1" >&2 ;;
+  release)
+    [ -f "$S/claimed" ] || { echo "this agent does not hold a live claim on the task" >&2; exit 1; }
+    rm -f "$S/claimed"; echo '{"task":{"status":"ready"}}' ;;
   send)
+    [ -f "$S/claimed" ] || { echo "an agent speaks for a project only where it has planned a task or holds an unexpired claim there" >&2; exit 1; }
     id="thr-$(($(jq length "$S/threads.json") + 1))"
     if [ "$STUB_MUTATE" != messages ]; then
       jq -c --arg id "$id" --argjson p "$payload" '. + [{id: $id, from_project_id: $p.from_project_id, to_project_id: $p.to_project_id, status: "OPEN", subject: $p.subject}]' "$S/threads.json" | save threads.json
@@ -319,7 +342,6 @@ case $sub in
   report-results)
     if [ "$STUB_MUTATE" = audit ]; then echo '{"recorded":0,"failing":0}'; else
       printf '%s' "$payload" | jq -c '{recorded: (.results | length), failing: ([.results[] | select(.state == "fail")] | length)}'; fi ;;
-  create-item) echo '{"item":{"number":10}}' ;;
   *) echo "stub: unhandled $sub" >&2; exit 1 ;;
 esac
 STUB
@@ -332,10 +354,10 @@ cp "$FIXTURE/check/HERO.md" "$STUB/HERO.md"
 cat > "$STUB/items.json" <<'EOF'
 [
 {"number":1,"type":"task","title":"Parity bootstrap","status":"done","resolution":"shipped","shape":"structural","priority":"medium","goal_number":9,"rank":1,"sources":["src/one.go"],"depends_on":[],"description":"","log":[]},
-{"number":2,"type":"task","title":"Parity ready one","status":"ready","shape":"story","priority":"medium","goal_number":9,"rank":2,"sources":["src/two.go"],"depends_on":[1],"description":"","log":[]},
-{"number":3,"type":"task","title":"Parity ready two","status":"ready","shape":"story","priority":"medium","goal_number":9,"rank":3,"sources":["src/three.go"],"depends_on":[2],"description":"","log":[]},
+{"id":"t-2","number":2,"type":"task","title":"Parity ready one","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":2,"sources":["src/two.go"],"depends_on":[1],"description":"","log":[]},
+{"number":3,"type":"task","title":"Parity ready two","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":3,"sources":["src/three.go"],"depends_on":[2],"description":"","log":[]},
 {"number":4,"type":"idea","title":"Parity parked idea","status":"accepted","description":"","log":[]},
-{"number":5,"type":"task","title":"Parity wait on vendor","status":"ready","shape":"story","priority":"medium","goal_number":9,"rank":5,"sources":["src/five.go"],"depends_on":[],"blocked_on":"vendor review","blocked_since":"2026-11-10T00:00:00Z","blocked":true,"description":"","log":[]},
+{"number":5,"type":"task","title":"Parity wait on vendor","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":5,"sources":["src/five.go"],"depends_on":[],"blocked_on":"vendor review","blocked_since":"2026-11-10T00:00:00Z","blocked":true,"description":"","log":[]},
 {"number":9,"type":"goal","title":"Parity goal","status":"accepted","description":"","log":[]}
 ]
 EOF

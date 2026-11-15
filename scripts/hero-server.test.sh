@@ -112,16 +112,16 @@ EOF
 cat > "$STUB_DIR/items.json" <<'EOF'
 {"framing":"x","items":[
 {"number":1,"type":"task","title":"Bootstrap","status":"done","shape":"structural"},
-{"number":2,"type":"task","title":"Add login","status":"ready","priority":"high","shape":"story","goal_number":9,"rank":2,"depends_on":[1],"sources":["src/login.go"]},
-{"number":3,"type":"task","title":"Add logout","status":"ready","shape":"story","goal_number":9,"rank":3,"depends_on":[2],"sources":["src/logout.go"]},
+{"number":2,"type":"task","title":"Add login","status":"ready","priority":"high","shape":"slice","goal_number":9,"rank":2,"depends_on":[1],"sources":["src/login.go"]},
+{"number":3,"type":"task","title":"Add logout","status":"ready","shape":"slice","goal_number":9,"rank":3,"depends_on":[2],"sources":["src/logout.go"]},
 {"number":4,"type":"idea","title":"Parked thing","status":"accepted"},
 {"number":5,"type":"task","title":"Bump x","status":"accepted","shape":"dependency","sources":["go.mod"],"bot":"dependabot"},
-{"number":6,"type":"task","title":"Wait on vendor","status":"ready","shape":"story","goal_number":9,"rank":6,"blocked_on":"vendor review","blocked_since":"2026-11-10T08:00:00Z","blocked":true,"sources":["src/vendor.go"]},
-{"number":7,"type":"task","title":"Ungrouped fix","status":"ready","shape":"story","rank":7,"sources":["src/other.go"]},
+{"number":6,"type":"task","title":"Wait on vendor","status":"ready","shape":"slice","goal_number":9,"rank":6,"blocked_on":"vendor review","blocked_since":"2026-11-10T08:00:00Z","blocked":true,"sources":["src/vendor.go"]},
+{"number":7,"type":"task","title":"Ungrouped fix","status":"ready","shape":"slice","rank":7,"sources":["src/other.go"]},
 {"number":9,"type":"goal","title":"The goal","status":"accepted"}]}
 EOF
 cat > "$STUB_DIR/item.2.json" <<'EOF'
-{"framing":"x","item":{"number":2,"type":"task","title":"Add login","status":"ready","priority":"high","shape":"story","goal_number":9,"rank":2,"depends_on":[1],"description":"## Context\n\nWhy.","log":[{"at":"2026-11-11T10:00:00Z","by":"rahul","tag":"note","body":"first"}]}}
+{"framing":"x","item":{"number":2,"type":"task","title":"Add login","status":"ready","priority":"high","shape":"slice","goal_number":9,"rank":2,"depends_on":[1],"description":"## Context\n\nWhy.","log":[{"at":"2026-11-11T10:00:00Z","by":"rahul","tag":"note","body":"first"}]}}
 EOF
 # The local twin of item 2 with its body, kept apart so the writes below do not
 # disturb the listing fixtures.
@@ -235,14 +235,17 @@ reset
 RES='[{"check_id":"A-1","state":"pass"},{"check_id":"A-2","state":"fail"}]'
 echo '{"recorded":2,"failing":1}' > "$STUB_DIR/report-results.json"
 check "audit: local counts the same" '{"recorded":2,"failing":1}' "$(hero_audit_record app "$RES" "$APP" 2>/dev/null)"
+check "shape: the server's slice reads back as story" "shape: story" "$(srv hero_item_file 2 "$APP" >/dev/null && grep '^shape:' "$(srv hero_item_file 2 "$APP")")"
 check "audit: server answers the same" '{"recorded":2,"failing":1}' "$(srv hero_audit_record app "$RES" "$APP")"
 check "audit: server was sent the repo and the results" "{\"repo\":\"app\",\"results\":$RES}" "$(jq -c . "$STUB_DIR/payload.report-results")"
 
 # ---------- a failing CLI is an error naming the server, never an empty result -----
 
+# Without pipefail, as a skill's shell runs: this file's own pipefail would
+# hide a function whose last stage is a `| jq` that exits 0 on empty input.
 fails() { # NAME CMD... : rc != 0, stdout empty, stderr names the server URL
   local name=$1 out err rc; shift
-  err=$(srv "$@" 2>&1 >"$TMP/out"); rc=$?
+  err=$(set +o pipefail; srv "$@" 2>&1 >"$TMP/out"); rc=$?
   out=$(cat "$TMP/out")
   check "fail: $name returns non-zero" "1" "$([ "$rc" -ne 0 ] && echo 1 || echo "rc=$rc")"
   check "fail: $name prints nothing on stdout" "" "$out"

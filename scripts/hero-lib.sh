@@ -2991,6 +2991,7 @@ hero_srv_cache() { # ROOT
 # parse. `q` quotes only a value the readers would misread (a leading quote or
 # `#`, a ` #`, or edge whitespace); priority is the server's high/medium/low
 # against the local p1/p2/p3 (p0 has no server spelling, so a p0 reads back p1).
+# The server's shape `slice` is the local `story`; the other shapes match.
 _HERO_SRV_JQ='
 def q: if type == "array" then "[" + (map(tostring) | join(", ")) + "]"
   elif type == "string" then
@@ -2998,6 +2999,7 @@ def q: if type == "array" then "[" + (map(tostring) | join(", ")) + "]"
        (if contains("\"") then "'"'"'" + . + "'"'"'" else "\"" + . + "\"" end) else . end)
   else tostring end;
 def pri: ({"high":"p1","medium":"p2","low":"p3"}[.]) // .;
+def shp: if . == "slice" then "story" else . end;
 def opt($k; $v): if $v == null or $v == "" or $v == 0 or $v == [] then "" else "\($k): \($v | q)\n" end;
 def item_name:
   (.number | tostring) as $n
@@ -3008,7 +3010,7 @@ def item_fm:
   "---\nid: \(.number)\n" + opt("type"; .type) + opt("title"; .title)
   + "status: \(.status // "new" | if . == "" then "new" else . end)\n"
   + opt("resolution"; .resolution) + opt("priority"; ((.priority // "") | pri)) + opt("severity"; .severity)
-  + opt("shape"; .shape) + opt("channel"; .channel) + opt("parent"; .goal_number) + opt("rank"; .rank)
+  + opt("shape"; ((.shape // "") | shp)) + opt("channel"; .channel) + opt("parent"; .goal_number) + opt("rank"; .rank)
   + opt("depends_on"; .depends_on) + opt("blocked_on"; .blocked_on) + opt("blocked_since"; ((.blocked_since // "")[0:10]))
   + opt("source"; .sources) + opt("target"; .targets) + opt("bot"; .bot) + opt("success"; .success) + opt("origin"; .origin)
   + opt("pr"; .pr) + opt("branch"; .branch) + opt("discovered_from"; .discovered_from) + "---\n";
@@ -3132,6 +3134,7 @@ hero_item_set() { # NUMBER KEY VALUE [ROOT]
   if [ "$2" = priority ]; then
     case "$3" in p0|p1|high) val=high ;; p2|medium) val=medium ;; p3|low) val=low ;;
       *) echo "hero_item_set: priority '$3' is not p0-p3 or high/medium/low" >&2; return 2 ;; esac
+  elif [ "$2" = shape ] && [ "$3" = story ]; then val=slice
   else val=$3; fi
   pid=$(hero_srv_project "$root") || return 1
   body=$(jq -n --arg pid "$pid" --argjson n "$n" --arg k "$skey" --arg v "$val" --arg kind "$kind" '
@@ -3142,7 +3145,7 @@ hero_item_set() { # NUMBER KEY VALUE [ROOT]
       else $v end)}') || { echo "hero_item_set: '$3' is not a valid $2" >&2; return 2; }
   json=$(hero_srv_cli "$root" update-item --json "$body") || return 1
   printf '%s' "$json" | jq -r --arg k "$2" "$_HERO_SRV_JQ"'
-    .item | ({"parent": .goal_number, "priority": ((.priority // "") | pri), "source": .sources, "target": .targets}[$k] // .[$k]) as $v
+    .item | ({"parent": .goal_number, "priority": ((.priority // "") | pri), "shape": ((.shape // "") | shp), "source": .sources, "target": .targets}[$k] // .[$k]) as $v
     | "\($k): \($v // "" | val)"'
 }
 
@@ -3402,7 +3405,7 @@ hero_srv_fleet_repo_field() { # NAME KEY ROOT
 # backend has no register to record into (the audit run's output is its
 # record), so it only counts, and says so on stderr.
 hero_audit_record() { # REPO RESULTS_JSON [ROOT]
-  local root r
+  local root r json
   [ -n "${1:-}" ] && [ -n "${2:-}" ] || { echo "hero_audit_record: REPO and RESULTS are required" >&2; return 2; }
   printf '%s' "$2" | jq -e 'type == "array"' >/dev/null 2>&1 || { echo "hero_audit_record: RESULTS must be a JSON array" >&2; return 2; }
   root=$(hero_srv_root "${3:-}")
@@ -3412,5 +3415,6 @@ hero_audit_record() { # REPO RESULTS_JSON [ROOT]
     printf '%s' "$2" | jq -c '{recorded: length, failing: ([.[] | select(.state == "fail")] | length)}'
     return 0
   fi
-  hero_srv_cli "$root" report-results --json "$(jq -n --arg r "$1" --argjson res "$2" '{repo: $r, results: $res}')" | jq -c '{recorded: .recorded, failing: (.failing // 0)}'
+  json=$(hero_srv_cli "$root" report-results --json "$(jq -n --arg r "$1" --argjson res "$2" '{repo: $r, results: $res}')") || return 1
+  printf '%s' "$json" | jq -c '{recorded: .recorded, failing: (.failing // 0)}'
 }

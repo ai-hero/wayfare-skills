@@ -188,6 +188,9 @@ for v in 2.1.276 2.1.277 2.2.0 10.0.0; do
     *) check_absent "claude $v: no AGENTS.md warning" "AGENTS.md will not load" "$OUT_CC" ;;
   esac
 done
+printf '#!/bin/sh\necho "claude: command failed"\n' > "$CCV/bin/claude"
+OUT_CC=$(HOME="$CCV/home" PATH="$CCV/bin:$PATH" "$SCRIPT" --bucket tooling 2>&1)
+check "claude with no version: warns it could not read one" "could not read a version" "$OUT_CC"
 
 echo ""
 echo "preflight.test.sh: $PASS passed, $FAIL failed"

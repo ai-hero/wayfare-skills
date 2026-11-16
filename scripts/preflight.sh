@@ -272,7 +272,9 @@ check_tooling() {
   if command -v claude >/dev/null 2>&1; then
     local cc_ver cc_min=2.1.277
     cc_ver=$(claude --version 2>/dev/null | grep -m1 -oE '[0-9]+\.[0-9]+\.[0-9]+')
-    if [ -n "$cc_ver" ] && [ "$(printf '%s\n%s\n' "$cc_ver" "$cc_min" | sort -V | head -1)" != "$cc_min" ]; then
+    if [ -z "$cc_ver" ]; then
+      emit WARN "tooling: could not read a version from 'claude --version' — AGENTS.md needs Claude Code v$cc_min or later"
+    elif [ "$(printf '%s\n%s\n' "$cc_ver" "$cc_min" | sort -V | head -1)" != "$cc_min" ]; then
       emit WARN "tooling: Claude Code v$cc_ver is older than v$cc_min — AGENTS.md will not load; update Claude Code"
     fi
   fi

@@ -8,9 +8,10 @@ change. The behaviour marked **measured** comes from `mongo:8` on 2026-11-07.
 Four rules, stated for any store. This file gives the MongoDB mechanics.
 
 1. **Every migration works with the release before it, including after a
-   rollback.** The rollout starts the new task before it stops the old one, and
-   a failed rollout restores the old image without undoing the migration. So the
-   old release must keep reading and writing the data the migration left.
+   rollback.** A start-first rollout runs the new task beside the old one (the
+   deploy file says whether yours does), and a failed rollout restores the old
+   image without undoing the migration. So the old release must keep reading and
+   writing the data the migration left.
 2. **A destructive step carries a `contract:` comment** naming the last release
    that read the old shape. Nobody drops a shape a release can still read.
 3. **Migrations run under a lease in the store, and only the API role
@@ -26,21 +27,36 @@ role. There is no down step in most repos.
 A lease is one document in a small collection, for example `migration_lock` with
 `_id: "migrate"`. It is not a version table and not a migration framework.
 
+- `holder` is a random id made once per process. A hostname or role name is
+  shared by two tasks of one rollout, and then every holder check passes for
+  both.
 - Take it with `findOneAndUpdate` on
-  `{_id: "migrate", $or: [{expiresAt: {$lt: now}}, {expiresAt: {$exists: false}}]}`,
-  upsert, and set `holder` and `expiresAt: now + ttl`. A duplicate key error
-  means someone else holds it.
-- Renew `expiresAt` on a timer while steps run, only if `holder` still matches.
-  Stop the runner if a renewal fails.
-- Release it when the steps finish. A crashed holder frees the lease by expiry.
-- A waiter polls with a deadline shorter than the healthcheck start period in
-  the deploy file, then exits non-zero. A waiter that outlasts the start period
-  gets killed by the health check, which hides the real cause.
+  `{_id: "migrate", $expr: {$lt: [{$ifNull: ["$expiresAt", new Date(0)]}, "$$NOW"]}}`,
+  upsert, and set `holder` and `expiresAt` to `$$NOW` plus the TTL in an update
+  pipeline. `$$NOW` needs `$expr` in a filter. Server time keeps clock skew
+  between replicas out of the expiry. A duplicate key error means someone else
+  holds it.
+- Renew `expiresAt` on a timer well inside the TTL (a third of it), filtered on
+  `holder: <this process>`. A renewal that matches no document is a lost lease,
+  the same as an error: the driver reports it as zero matched or no document,
+  not as a failure. On either, cancel the steps' context, log the holder and
+  expiry, and fail the boot.
+- Release it with `deleteOne({_id: "migrate", holder: <this process>})` when the
+  steps finish or fail. An unguarded delete frees a lease another process now
+  holds. A crashed holder frees the lease by expiry.
+- A waiter retries taking the lease, then runs the steps, which find nothing to
+  do. It gives up at a deadline shorter than the healthcheck start period in the
+  deploy file, logs the current holder, `expiresAt` and its deadline, and exits
+  non-zero. A waiter that outlasts the start period gets killed by the health
+  check, which hides the real cause. The holder's own index builds run under the
+  same start period, so a slow build gets the holder killed too.
 - Expiry means two holders can overlap in principle, for example after a long
   pause. That is why each step stays idempotent.
 
 Use the repo's existing role switch; do not invent an environment variable for
-it. Other roles wait for the schema through their own readiness check.
+it. Other roles wait for the schema through their own readiness check, which
+reads what the last step wrote, never the lease: a failed migration frees the
+lease too.
 
 Add a step in the repo's existing mechanism. If the repo has separate baseline
 indexes and a migration list, follow its comments about which one to use. Do not
@@ -114,17 +130,21 @@ A backfill is a resumable background job that starts after the server listens.
 - Use a bulk update with that filter, in batches. Do not count rows and then
   insert.
 - Do not scan a whole collection on each start. Use a filter with an index.
-- Log the count changed and the duration for each batch.
-- Write a completion marker when a run finds no rows left. The contract release
-  checks the marker before it removes the old shape.
+- Log the count changed and the duration for each batch. Log a failed batch at
+  error level with its range, and stop; the next start resumes it. A job that
+  logs and returns leaves a healthy server with no marker, and nobody looks.
+- Write a completion marker when a run finds no rows left. The contract step
+  checks the marker and fails the boot when it is missing, rather than skipping.
 - The job may overlap with another replica's job, so each batch is idempotent.
-  Take the lease again only if the job must not overlap.
+  If it must not overlap, give it a lease of its own `_id`. Holding the
+  `migrate` lease would make every deploy's API boot wait past its deadline.
 
 ## Destructive steps
 
 A destructive step is a drop, a delete, `$unset`, `$rename`, a new unique index
 or `collMod`. Each carries a comment in this form, because rolling back the
-image cannot undo it:
+image cannot undo it. It names the last release that depends on what the step
+removes or forbids: the old shape, duplicate values, or the old validator.
 
 ```go
 // contract: v1.42.0 is the last release that reads the old shape
@@ -138,8 +158,8 @@ collection, or removes a field with data. Show these items:
   also matches a document with no such field.
 - The restore path. Name the backup the restore uses.
 
-A destructive step runs on every boot, so its filter must stay safe after future
-writes.
+A destructive step runs on every boot of the API role, so its filter must stay
+safe after future writes.
 
 ## Remove an index
 
@@ -164,6 +184,8 @@ cluster. Add a new index before its collection grows if you can.
 - The previous release still works against the migrated database.
 - Every destructive step carries a `contract:` marker.
 - The backfill is a background job with a completion marker, not a boot step.
+- The contract step refuses to run without the completion marker.
+- Renewal and release are filtered on this process's `holder`.
 - The step ran against a database in the old shape.
 - Old code can read what the new code writes during the deploy overlap.
 - Every destructive step was confirmed by the user.

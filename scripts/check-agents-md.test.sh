@@ -73,30 +73,35 @@ run "$d"
 check "R1 CLAUDE.md symlink: rc (warn, not error)" "0" "$rc"
 check "R1 CLAUDE.md symlink: warned" "yes" "$(has 'WARN:  R1: CLAUDE.md is a symlink')"
 check "R1 CLAUDE.md symlink: fix is git rm" "yes" "$(has 'Fix:  git rm CLAUDE.md')"
+check "R1 CLAUDE.md symlink: no ln -s" "no" "$(has 'ln -s')"
 
 d=$(fixture both); cp "$d/AGENTS.md" "$d/CLAUDE.md"
 run "$d"
 check "R1 both regular files: rc" "1" "$rc"
 check "R1 both regular files: named" "yes" "$(has 'R1: AGENTS.md and CLAUDE.md are both regular')"
 check "R1 both regular files: fix" "yes" "$(has 'then git rm CLAUDE.md')"
+check "R1 both regular files: no ln -s" "no" "$(has 'ln -s')"
 
 d=$(fixture claude_only); mv "$d/AGENTS.md" "$d/CLAUDE.md"
 run "$d"
 check "R1 CLAUDE.md only: rc (warn, not error)" "0" "$rc"
 check "R1 CLAUDE.md only: warned" "yes" "$(has 'WARN:  R1')"
 check "R1 CLAUDE.md only: fix is git mv alone" "yes" "$(has 'Fix:  git mv CLAUDE.md AGENTS.md')"
+check "R1 CLAUDE.md only: no ln -s" "no" "$(has 'ln -s')"
 
 d=$(fixture agents_only)
 run "$d"
 check "R1 AGENTS.md only: rc" "0" "$rc"
 check "R1 AGENTS.md only: clean" "yes" "$(has ' 0 error(s), 0 warning(s)')"
 
-# A symlink to another file is still just a CLAUDE.md symlink: warned, and the
-# checks run against AGENTS.md, not through the link.
+# A symlink to another file may be deliberate, so it warns with no git rm fix,
+# and the checks run against AGENTS.md, not through the link.
 d=$(fixture wrong_link)
 lines 300 > "$d/README.md"; ln -s README.md "$d/CLAUDE.md"
 run "$d"
 check "R1 wrong symlink target: rc" "0" "$rc"
+check "R1 wrong symlink target: names the target" "yes" "$(has 'symlink to '\''README.md')"
+check "R1 wrong symlink target: no git rm fix" "no" "$(has 'git rm CLAUDE.md')"
 check "R1 wrong symlink target: checks AGENTS.md not the link" "no" "$(has 'R2:')"
 
 d=$(fixture dangling); ln -s AGENTS.md "$d/CLAUDE.md"; rm "$d/AGENTS.md"

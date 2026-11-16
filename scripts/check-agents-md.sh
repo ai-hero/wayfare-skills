@@ -126,13 +126,19 @@ rules() {
 }
 
 # --- R1: one file, AGENTS.md ------------------------------------------------
-# A CLAUDE.md symlink only warns: erroring would break every consumer's
-# pre-commit the day this ships. Claude Code v2.1.277+ loads AGENTS.md itself.
+# A CLAUDE.md symlink only warns: repos set up under the old standard all have
+# one, and an error would fail them before anyone chose to remove it.
 echo "check-agents-md: $ROOT"
 TARGET=""
 if [[ -L "$ROOT/CLAUDE.md" ]]; then
-  [[ -f "$ROOT/AGENTS.md" ]] || die 2 "R1: CLAUDE.md is a symlink, but AGENTS.md is missing"
-  warn "R1: CLAUDE.md is a symlink — Claude Code loads AGENTS.md itself" "git rm CLAUDE.md"
+  link=$(readlink "$ROOT/CLAUDE.md")
+  [[ -f "$ROOT/AGENTS.md" ]] || die 2 "R1: CLAUDE.md is a symlink to '$link', but AGENTS.md is missing"
+  if [[ "${link#./}" == "AGENTS.md" || "$ROOT/CLAUDE.md" -ef "$ROOT/AGENTS.md" ]]; then
+    warn "R1: CLAUDE.md is a symlink — Claude Code loads AGENTS.md itself" "git rm CLAUDE.md"
+  else
+    warn "R1: CLAUDE.md is a symlink to '$link', not AGENTS.md — Claude Code reads that file, unchecked" \
+      "ask whoever aimed it there before removing it"
+  fi
   TARGET="$ROOT/AGENTS.md"
 elif [[ -f "$ROOT/CLAUDE.md" && -f "$ROOT/AGENTS.md" ]]; then
   error "R1: AGENTS.md and CLAUDE.md are both regular files — edits will diverge" \

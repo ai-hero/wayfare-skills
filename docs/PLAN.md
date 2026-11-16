@@ -760,11 +760,14 @@ error too, and so is a fleet map above the folder that cannot be read: either
 way the switch cannot be read, and reading it as `local` writes files the server
 never sees. A checkout outside every fleet folder reads `local` whatever the pin
 holds, because a URL line names one fleet root and a repo under none of them
-(this plugin checkout, a scratch clone) is not that fleet's. Plain `http://` is
-accepted only for `localhost`, `127.0.0.1` and `[::1]`, and userinfo (`@` before
-the host) never, because the CLI sends a bearer token to the URL. Every CLI call
-runs under a bound when `timeout`, `gtimeout` or `perl` is on PATH,
-`WAYFARE_CLI_TIMEOUT` seconds (default 30), and a timeout is an error.
+(this plugin checkout, a scratch clone) is not that fleet's. A checkout under a
+URL line's root, or a worktree whose primary checkout is, with no fleet map
+found above it is an error: it is that fleet's, and its map is missing or passed
+over. Plain `http://` is accepted only for `localhost`, `127.0.0.1` and `[::1]`,
+and userinfo (`@` before the host) never, because the CLI sends a bearer token
+to the URL. Every CLI call runs under a bound when `timeout`, `gtimeout` or
+`perl` is on PATH, `WAYFARE_CLI_TIMEOUT` seconds (default 30), and a timeout is
+an error.
 
 Local is the default, so nothing changes until a person flips it. The skills
 call the same functions either way (`hero_ready_items`, `hero_item_field`,
@@ -815,16 +818,17 @@ answer from a copy with the command lines left out, so every other field
 (`default-branch`, the connections, a project's `port`) still reads and no
 skill's Step 0 stops on it. A skill about to run one asks
 `hero_config_commands_approved ROOT` first, which is rc 0 locally and for
-approved fields, and rc 3 otherwise, with the changed fields and their sha256 on
-stderr. `hero_srv_commands_approve ROOT SHA` records them under
+approved fields, rc 3 when they are not, with the changed fields and their
+sha256 on stderr, and rc 2 when it could not ask.
+`hero_srv_commands_approve ROOT SHA` records them under
 `${XDG_CONFIG_HOME:-~/.config}/wayfare/approved-commands/` (mode 600), refusing
 with rc 3 when the cached fields no longer hash to SHA. A command key is matched
 in any spelling an agent would read as one: any bullet, indent, case, backticks
 or bold, and inside fences. wayfare-push-pr asks before its test phase;
-wayfare-work-task stops before its claim; the other skills run none of these
-fields and read the config as usual. A change to any other field needs no
-approval, and the local backend never asks, because a committed HERO.md is
-reviewed in a PR.
+wayfare-work-task stops before its claim. A skill that runs one without asking
+(wayfare-respond-pr's test step) finds no command while the fields await
+approval, and runs nothing. A change to any other field needs no approval, and
+the local backend never asks, because a committed HERO.md is reviewed in a PR.
 
 An answer the server could not give is never an empty one. A CLI failure, a
 reply that is not JSON, or one missing the key a caller reads is an error naming

@@ -66,7 +66,7 @@ STOP when any of these holds, and print the line given:
 
 - `BACKEND` is `BAD`: print what `hero_store_backend` said.
 - `BACKEND` is `local`:
-  `wayfare-work-task needs the fleet's store to be the Wayfare server, so wayfare-build-task can find the task. Flip it (see docs/PLAN.md, Two stores), then run again.`
+  `wayfare-work-task needs the fleet's store to be the Wayfare server, so wayfare-build-task can find the task. Flip it (see docs/PLAN.md, Two stores), or run from a checkout inside the fleet folder, then run again.`
 - `CMD_RC` is 3: the server's HERO.md has command fields (`task-runner`, a
   `test-command`, a `dev-command`) that no person has approved on this machine,
   and the build would run them. Print the fields `hero_config_commands_approved`

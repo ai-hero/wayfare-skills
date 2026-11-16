@@ -303,19 +303,20 @@ hero_connection_guard() { # KIND KEY VALUE [TYPE]
 }
 
 hero_connection() { # KIND KEY [ROOT]
-  local root value ctype
+  local root value ctype cfg
   root="${3:-$(hero_root)}" || return 1
-  value=$(hero_md_field "$(hero_config_file "$root")" "$2" "### $1" "## Connections") || return $?
+  cfg=$(hero_config_file "$root") || cfg=
+  value=$(hero_md_field "$cfg" "$2" "### $1" "## Connections") || return $?
   # The block's own `type` decides what shape `at` may take. Read straight from
   # hero_md_field, never back through hero_connection, which would recurse.
   # The compliance route's names are judged against the route's own type,
   # which defaults to the main one.
   case "$2" in
     at|compliance-type)
-      ctype=$(hero_md_field "$(hero_config_file "$root")" type "### $1" "## Connections" 2>/dev/null) ;;
+      ctype=$(hero_md_field "$cfg" type "### $1" "## Connections" 2>/dev/null) ;;
     compliance-team|compliance-project|compliance-label)
-      ctype=$(hero_md_field "$(hero_config_file "$root")" compliance-type "### $1" "## Connections" 2>/dev/null) ||
-        ctype=$(hero_md_field "$(hero_config_file "$root")" type "### $1" "## Connections" 2>/dev/null) ;;
+      ctype=$(hero_md_field "$cfg" compliance-type "### $1" "## Connections" 2>/dev/null) ||
+        ctype=$(hero_md_field "$cfg" type "### $1" "## Connections" 2>/dev/null) ;;
   esac
   hero_connection_guard "$1" "$2" "$value" "${ctype:-}" || return 2
   printf '%s' "$value"
@@ -1258,7 +1259,8 @@ hero_register_find() { # [START]
 # server would keep writing files the server never sees. A checkout outside
 # every fleet folder is local, whatever the pin holds: a URL line names one
 # fleet root, and a repo under none of them (this plugin checkout, a scratch
-# clone) is not that fleet's.
+# clone) is not that fleet's. A checkout under a URL line's root with no map
+# found above it is an error, not local.
 hero_store_backend() { # [DIR]
   local v file root rc a
   v=${WAYFARE_STORE:-}
@@ -1270,7 +1272,18 @@ hero_store_backend() { # [DIR]
     root=$(hero_fleet_root "${1:-$PWD}" 2>/dev/null); rc=$?
     case "$rc" in
       0) ;;
-      1) echo local; return 0 ;;
+      1) a=$(cd "${1:-$PWD}" 2>/dev/null && pwd -P) || a=
+         root=$(hero_store_path "$a"); root=${root%/.plans}
+         # A URL root above the checkout, or above a worktree's primary
+         # checkout, means this is that fleet whatever hid its map (missing,
+         # or the folder sits in a git work tree): answering local there
+         # writes files the server never sees.
+         if [ -n "$a" ] && awk -v d="$a" -v p="$root" 'function under(x, r) { return x == r || index(x, r "/") == 1 } { sub(/#.*/, "") } NF == 2 && $2 ~ /:\/\// && (under(d, $1) || under(p, $1)) { f = 1 } END { exit !f }' "$file"; then
+           hero_fleet_root "${1:-$PWD}" >/dev/null
+           echo "hero_store_backend: $a is under a fleet root the pin file $file sends to the server, but no fleet map is found above it; restore the map at FLEET_ROOT/.fleet/FLEET.md or set WAYFARE_STORE" >&2
+           return 1
+         fi
+         echo local; return 0 ;;
       *) hero_fleet_root "${1:-$PWD}" >/dev/null
          echo "hero_store_backend: the fleet map above ${1:-$PWD} cannot be read, so whether this fleet's store is the server is unknown; fix the map" >&2
          return 1 ;;
@@ -3761,8 +3774,8 @@ hero_srv_commands_approve() { # ROOT SHA
 # While its command fields are not approved, the path printed is a copy with
 # those lines left out (HERO.unapproved.md): every other field still reads, and
 # the full render stays at HERO.md for hero_config_commands_approved and
-# hero_srv_commands_approve. Returning an error here instead hid every field,
-# and the default branch fell back to `main`.
+# hero_srv_commands_approve. An error here hides every field, and the default
+# branch falls back to `main`.
 hero_srv_config_file() { # ROOT
   local pid json cache tmp
   pid=$(hero_srv_project "$1") || return 1
@@ -3791,7 +3804,8 @@ hero_srv_config_file() { # ROOT
 # Whether ROOT's config commands (task-runner, every *-command) may run: rc 0
 # locally (a committed HERO.md is reviewed in a PR) and when a person on this
 # machine approved the server's current ones; rc 3, with the changed fields and
-# their sha256 on stderr, when not; rc 2 when the config could not be read.
+# their sha256 on stderr, when not; rc 2 when it could not ask (the store switch
+# is unusable, or the server or the approval record could not be read).
 # Call it right before running one: the config readers leave unapproved
 # command fields out, so a skill that skips this finds no command to run.
 hero_config_commands_approved() { # [ROOT]
@@ -3802,7 +3816,7 @@ hero_config_commands_approved() { # [ROOT]
   hero_srv_config_file "$root" >/dev/null || return 2
   cache=$(hero_srv_cache "$root") || return 2
   [ -r "$cache/HERO.md" ] || return 0
-  hero_srv_commands_approved "$root" "$cache/HERO.md"
+  hero_srv_commands_approved "$root" "$cache/HERO.md" || { [ $? -eq 3 ] && return 3; return 2; }
 }
 
 # The fleet map's rows as hero_fleet_repos prints them: NAME PATH GROUP PORT,

@@ -239,10 +239,15 @@ cmd_cfg "npm test" 3000
 check "commands: an unapproved config still reads its other fields" "main" "$(srv hero_field default-branch "$APP" 2>/dev/null)"
 srv hero_config_exists "$APP" 2>/dev/null; check "commands: and exists is rc 0" "0" "$?"
 check "commands: and a non-command project field reads" "3000" "$(srv hero_field port "$APP" 2>/dev/null)"
+check "commands: and a block read finds its heading" "3000" "$(srv hero_field_in "$APP" port "### api" "## Projects" 2>/dev/null)"
+check "commands: and a plain read says nothing on stderr" "" "$(srv hero_field default-branch "$APP" 2>&1 >/dev/null)"
 srv hero_field test-command "$APP" >/dev/null 2>&1; check "commands: an unapproved test-command is absent (rc 1)" "1" "$?"
 srv hero_field task-runner "$APP" >/dev/null 2>&1; check "commands: and so is the task-runner" "1" "$?"
 check "commands: show leaves out every command line" "0" "$(srv hero_config_show "$APP" 2>/dev/null | grep -cE 'task-runner|-command')"
 srv hero_config_commands_approved "$APP" >/dev/null 2>&1; check "commands: the run check is rc 3" "3" "$?"
+printf 'boom\n' > "$STUB_DIR/config.fail"
+srv hero_config_commands_approved "$APP" >/dev/null 2>&1; check "commands: a server that fails the read is rc 2, never 0" "2" "$?"
+rm -f "$STUB_DIR/config.fail"
 ERR=$(srv hero_config_commands_approved "$APP" 2>&1 >/dev/null)
 case "$ERR" in *"task-runner: just"*"test-command: npm test"*"dev-command: npm run dev"*) check "commands: stderr names every command field" ok ok ;; *) check "commands: stderr names every command field" ok "$ERR" ;; esac
 check "commands: nothing is approved by reading" "no" "$([ -e "$APPROVALS" ] && echo yes || echo no)"
@@ -734,15 +739,18 @@ if [ "$(id -u)" != 0 ]; then
   chmod 600 "$PU/wayfare/registers"
 fi
 
-# A URL line names one fleet root. A checkout under none of them reads local,
-# as it did before the server existed; a checkout inside that fleet reads the
-# server.
+# A URL line names one fleet root. A checkout under none of them reads local; a
+# checkout inside that fleet reads the server, and one under its root with no
+# map found is an error.
 PO="$TMP/pinout"; mkdir -p "$PO/x/wayfare" "$PO/outside/repo" "$PO/fleet/.fleet" "$PO/fleet/app"
 printf '# Fleet\n' > "$PO/fleet/.fleet/FLEET.md"
 printf '%s https://wf.test/ws-1\n' "$PO/fleet" > "$PO/x/wayfare/registers"
 check "backend: a checkout outside every fleet with a URL pin reads local" "local" "$(cd "$PO/outside/repo" && XDG_CONFIG_HOME="$PO/x" hero_store_backend "$PO/outside/repo" 2>/dev/null)"
 check "route: and its config reads route local" "local" "$(XDG_CONFIG_HOME="$PO/x" hero_srv_route_root "$PO/outside/repo" 2>/dev/null)"
 check "backend: a checkout inside the server fleet reads the server" "https://wf.test/ws-1" "$(XDG_CONFIG_HOME="$PO/x" hero_store_backend "$PO/fleet/app" 2>/dev/null)"
+mkdir -p "$PO/nomap/app"; printf '%s https://wf.test/ws-2\n' "$(cd "$PO/nomap" && pwd -P)" >> "$PO/x/wayfare/registers"
+XDG_CONFIG_HOME="$PO/x" hero_store_backend "$PO/nomap/app" >/dev/null 2>"$TMP/e"; check "backend: under a URL root with no map found is rc 1, never local" "1" "$?"
+check "backend: and names the missing map" "1" "$(grep -c 'no fleet map is found' "$TMP/e")"
 PLUGIN_CHECKOUT="$(cd "$(dirname "$LIB")/.." && pwd -P)"
 if ! hero_fleet_root "$PLUGIN_CHECKOUT" >/dev/null 2>&1; then
   check "backend: the plugin checkout, outside any fleet, reads local under a URL pin" "local" "$(XDG_CONFIG_HOME="$PO/x" hero_store_backend "$PLUGIN_CHECKOUT" 2>/dev/null)"

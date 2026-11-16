@@ -661,6 +661,52 @@ XDG_CONFIG_HOME="$PB/x" hero_store_backend "$PB/fleet" >/dev/null 2>&1; check "b
 rmdir "$PB/fleet/.fleet/FLEET.md"; printf '# Fleet\n' > "$PB/fleet/.fleet/FLEET.md"
 check "backend: with the map readable the pin's URL answers" "https://wf.test/ws-1" "$(XDG_CONFIG_HOME="$PB/x" hero_store_backend "$PB/fleet" 2>/dev/null)"
 
+# The CLI's bearer token goes to the store URL: http is for loopback only.
+WAYFARE_STORE=http://example.com/ws-1 hero_store_backend >/dev/null 2>"$TMP/e"; check "https: a remote http URL is rc 1" "1" "$?"
+check "https: and the error names the loopback exception" "1" "$(grep -c 'only https is accepted.*localhost' "$TMP/e")"
+check "https: an https URL is accepted" "https://wf.test/ws-1" "$(WAYFARE_STORE=https://wf.test/ws-1 hero_store_backend)"
+check "https: localhost with a port is accepted" "http://localhost:8080/ws-1" "$(WAYFARE_STORE=http://localhost:8080/ws-1 hero_store_backend)"
+check "https: 127.0.0.1 is accepted" "http://127.0.0.1:8080/ws-1" "$(WAYFARE_STORE=http://127.0.0.1:8080/ws-1 hero_store_backend)"
+check "https: [::1] is accepted" "http://[::1]:8080/ws-1" "$(WAYFARE_STORE="http://[::1]:8080/ws-1" hero_store_backend)"
+WAYFARE_STORE=http://localhost.evil.com/ws-1 hero_store_backend >/dev/null 2>&1; check "https: a host that only starts with localhost is rc 1" "1" "$?"
+
+# A status holding a newline never adds frontmatter lines, and one outside the
+# enum is refused rather than rendered.
+reset
+cat > "$STUB_DIR/item.33.json" <<'EOJ'
+{"item":{"number":33,"type":"task","title":"t","status":"ready\nbranch: evil"}}
+EOJ
+srv hero_item_file 33 "$APP" >/dev/null 2>&1; check "status: a newline in the status is refused" "1" "$?"
+check "status: and no file with a forged branch was rendered" "0" "$(grep -rl '^branch: evil' "${XDG_CACHE_HOME:-$HOME/.cache}/wayfare-srv" 2>/dev/null | wc -l | tr -d ' ')"
+echo '{"item":{"number":34,"type":"task","title":"t","status":"bogus"}}' > "$STUB_DIR/item.34.json"
+srv hero_item_file 34 "$APP" >/dev/null 2>&1; check "status: a status outside the enum is refused" "1" "$?"
+echo '{"item":{"number":35,"type":"task","title":"t","status":"committed"}}' > "$STUB_DIR/item.35.json"
+check "status: an enum status renders" "committed" "$(hero_item_field "$(srv hero_item_file 35 "$APP")" status)"
+
+# An unreadable pin file, or a URL pin with no fleet root above the checkout,
+# never answers local.
+if [ "$(id -u)" != 0 ]; then
+  PU="$TMP/pinunread"; mkdir -p "$PU/wayfare"; printf '%s https://wf.test/ws-1\n' "$PU/fleet" > "$PU/wayfare/registers"; chmod 000 "$PU/wayfare/registers"
+  XDG_CONFIG_HOME="$PU" hero_srv_route_root "$APP" >/dev/null 2>&1; check "route: an unreadable pin file is rc 1, never local" "1" "$?"
+  chmod 600 "$PU/wayfare/registers"
+fi
+PO="$TMP/pinout"; mkdir -p "$PO/x/wayfare" "$PO/outside/repo"
+printf '%s https://wf.test/ws-1\n' "$PO/fleet" > "$PO/x/wayfare/registers"
+(cd "$PO/outside/repo" && XDG_CONFIG_HOME="$PO/x" hero_store_backend "$PO/outside/repo") >/dev/null 2>"$TMP/e"; check "backend: outside the fleet with a URL pin is rc 1" "1" "$?"
+check "backend: and says to run from inside the fleet or set WAYFARE_STORE" "1" "$(grep -c 'outside the fleet folder.*set WAYFARE_STORE' "$TMP/e")"
+
+# A server that accepts and hangs is cut off at WAYFARE_CLI_TIMEOUT.
+reset
+cat > "$TMP/slowcli" <<'EOS'
+#!/usr/bin/env bash
+exec sleep 30
+EOS
+chmod +x "$TMP/slowcli"
+T0=$SECONDS
+WAYFARE_CLI="$TMP/slowcli" WAYFARE_CLI_TIMEOUT=1 srv hero_srv_cli "$APP" projects >/dev/null 2>"$TMP/e"; check "timeout: a hanging CLI is rc 1" "1" "$?"
+check "timeout: within the bound" "1" "$([ $((SECONDS - T0)) -lt 15 ] && echo 1 || echo 0)"
+check "timeout: and the error says so" "1" "$(grep -c 'timed out after 1s' "$TMP/e")"
+
 # ---------- local stays the default ------------------------------------------------
 
 check "default: with no switch a field reads the file" "main" "$(hero_field default-branch "$APP")"

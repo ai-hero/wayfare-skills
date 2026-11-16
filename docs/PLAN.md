@@ -740,7 +740,7 @@ One switch picks the backend for a whole fleet, never one repo, because inbox
 messages cross repos and a fleet split between backends would drop them.
 `hero_store_backend` prints `local` or the server's URL, in this order:
 
-1. `WAYFARE_STORE`, `local` or an `http(s)://` URL. It wins, so a rehearsal can
+1. `WAYFARE_STORE`, `local` or an `https://` URL. It wins, so a rehearsal can
    run against a test fleet without touching the machine's pin.
 2. A `FLEET_ROOT https://...` line in the pin file
    `${XDG_CONFIG_HOME:-~/.config}/wayfare/registers`, beside the root's register
@@ -749,11 +749,15 @@ messages cross repos and a fleet split between backends would drop them.
    a switch stored in the thing it switches cannot be read before it is chosen.
 3. `local`.
 
-A value that is neither `local` nor an http(s) URL with no whitespace is an
-error, never a silent `local`: a fleet that meant the server would keep writing
-files the server never sees. So is a pin file holding URL lines that cannot be
-read, or a fleet map above the folder that cannot be read: either way the switch
-cannot be read, and reading it as `local` writes files the server never sees.
+A value that is neither `local` nor an https URL with no whitespace is an error,
+never a silent `local`: a fleet that meant the server would keep writing files
+the server never sees. Plain `http://` is accepted only for `localhost`,
+`127.0.0.1` and `[::1]`, because the CLI sends a bearer token to the URL. So is
+a pin file holding URL lines that cannot be read, a fleet map above the folder
+that cannot be read, or a checkout outside the fleet folder while the pin holds
+a URL line: either way the switch cannot be read, and reading it as `local`
+writes files the server never sees. Every CLI call runs under a bound,
+`WAYFARE_CLI_TIMEOUT` seconds (default 30), and a timeout is an error.
 
 Local is the default, so nothing changes until a person flips it. The skills
 call the same functions either way (`hero_ready_items`, `hero_item_field`,

@@ -1252,7 +1252,8 @@ hero_register_find() { # [START]
 # WAYFARE_STORE (`local` or a URL) wins, for rehearsal runs; else the pin file's
 # URL line for the fleet root (`FLEET_ROOT https://app.example.com/<workspace
 # id>`, beside any register line for the same root); else `local`. A value
-# that is neither `local` nor an http(s) URL is an error (rc 1, stderr), and so
+# that is neither `local` nor an https URL (http only for localhost, 127.0.0.1
+# and [::1]) is an error (rc 1, stderr), and so
 # is a pin file holding URL lines that cannot be read or a fleet map that
 # cannot be read: none of them is a silent fall back to local, since a fleet
 # that meant the server would keep writing files the server never sees.
@@ -1267,7 +1268,8 @@ hero_store_backend() { # [DIR]
     root=$(hero_fleet_root "${1:-$PWD}" 2>/dev/null); rc=$?
     case "$rc" in
       0) ;;
-      1) echo local; return 0 ;;
+      1) echo "hero_store_backend: this checkout is outside the fleet folder; the fleet's store is the server; run from inside the fleet or set WAYFARE_STORE (pin file $file holds a URL line)" >&2
+         return 1 ;;
       *) hero_fleet_root "${1:-$PWD}" >/dev/null
          echo "hero_store_backend: the fleet map above ${1:-$PWD} cannot be read, so whether this fleet's store is the server is unknown; fix the map" >&2
          return 1 ;;
@@ -1278,8 +1280,13 @@ hero_store_backend() { # [DIR]
   case "$v" in
     local) echo local ;;
     http://?*|https://?*)
-      case "$v" in *[[:space:]]*) ;; *) printf '%s\n' "${v%/}"; return 0 ;; esac
-      echo "hero_store_backend: '$v' is not a usable store URL (whitespace)" >&2; return 1 ;;
+      case "$v" in *[[:space:]]*) echo "hero_store_backend: '$v' is not a usable store URL (whitespace)" >&2; return 1 ;; esac
+      # The CLI sends a bearer token to this URL; cleartext is for loopback only.
+      case "$v" in
+        http://localhost|http://localhost[:/]*|http://127.0.0.1|http://127.0.0.1[:/]*|http://\[::1\]|http://\[::1\][:/]*) ;;
+        http://*) echo "hero_store_backend: '$v' is http; only https is accepted (http is allowed for localhost, 127.0.0.1 and [::1] only); fix WAYFARE_STORE or the pin file" >&2; return 1 ;;
+      esac
+      printf '%s\n' "${v%/}"; return 0 ;;
     *) echo "hero_store_backend: '$v' is neither 'local' nor an http(s) URL; fix WAYFARE_STORE or the pin file" >&2; return 1 ;;
   esac
 }
@@ -2950,8 +2957,11 @@ hero_srv_target() { # [DIR]
 hero_srv_route_root() { # [ROOT]
   local b file
   file=$(hero_pin_file)
-  if [ -z "${WAYFARE_STORE:-}" ] && { [ ! -r "$file" ] || ! grep -q '://' "$file" 2>/dev/null; }; then
-    echo local; return 0
+  if [ -z "${WAYFARE_STORE:-}" ]; then
+    if [ -e "$file" ] && [ ! -r "$file" ]; then
+      echo "hero_srv_route_root: cannot read the pin file $file, so whether this fleet's store is the server is unknown" >&2; return 1
+    fi
+    if [ ! -e "$file" ] || ! grep -q '://' "$file" 2>/dev/null; then echo local; return 0; fi
   fi
   b=$(hero_store_backend "${1:-$(hero_root)}") || return 1
   if [ "$b" = local ]; then echo local; else echo server; fi
@@ -2983,7 +2993,7 @@ hero_srv_route_store() { # [STORE]
 # non-zero exit, a missing binary or non-JSON output is rc 1 with an error that
 # names the server and carries the CLI's own reason.
 hero_srv_cli() { # ROOT SUBCOMMAND [ARGS...]
-  local root t b origin ws cli out err rc
+  local root t b origin ws cli out err rc secs bound
   root=$1; shift
   t=$(hero_srv_target "$root") || return 1
   b=$(hero_store_backend "$root")
@@ -2992,7 +3002,17 @@ hero_srv_cli() { # ROOT SUBCOMMAND [ARGS...]
   command -v "$cli" >/dev/null 2>&1 || { echo "hero: the Wayfare server at $b needs the wayfare CLI, and '$cli' is not on PATH (set WAYFARE_CLI)" >&2; return 1; }
   command -v jq >/dev/null 2>&1 || { echo "hero: the Wayfare server at $b needs jq on PATH" >&2; return 1; }
   err=$(mktemp "${TMPDIR:-/tmp}/wayfare-cli-err.XXXXXX") || return 1
-  out=$(WAYFARE_URL="$origin" WAYFARE_WORKSPACE="$ws" "$cli" "$@" 2>"$err"); rc=$?
+  secs=${WAYFARE_CLI_TIMEOUT:-30}
+  case "$secs" in ''|*[!0-9]*|0) secs=30 ;; esac
+  if command -v timeout >/dev/null 2>&1; then bound=(timeout "$secs")
+  elif command -v gtimeout >/dev/null 2>&1; then bound=(gtimeout "$secs")
+  elif command -v perl >/dev/null 2>&1; then bound=(perl -e 'alarm shift; exec @ARGV' "$secs")
+  else bound=(); echo "hero: no timeout, gtimeout or perl on PATH; the wayfare CLI call runs with no time bound" >&2; fi
+  out=$(WAYFARE_URL="$origin" WAYFARE_WORKSPACE="$ws" ${bound[@]+"${bound[@]}"} "$cli" "$@" 2>"$err"); rc=$?
+  if [ "$rc" -eq 124 ] || [ "$rc" -eq 142 ] || [ "$rc" -eq 137 ]; then
+    echo "hero: the Wayfare server at $b timed out after ${secs}s on 'wayfare $1'" >&2
+    rm -f "$err"; return 1
+  fi
   if [ "$rc" -ne 0 ]; then
     echo "hero: the Wayfare server at $b refused or failed 'wayfare $1' (exit $rc): $(head -c 600 "$err")" >&2
     rm -f "$err"; return 1
@@ -3075,9 +3095,11 @@ def item_name:
   | (if ($n | length) < 3 then ("000" + $n)[-3:] else $n end) + "-"
     + ((.title // "" | ascii_downcase | gsub("[^a-z0-9]+"; "-") | ltrimstr("-") | .[0:40] | rtrimstr("-"))
        | if . == "" then "item" else . end) + ".md";
+def status_ok: if IN("new","accepted","planning","ready","active","review","committed","done","dropped") then .
+  else error("not an item status: \(tojson)") end;
 def item_fm:
   "---\nid: \(.number | inum)\n" + opt("type"; .type) + opt("title"; .title)
-  + "status: \(.status // "new" | if . == "" then "new" else . end)\n"
+  + "status: \(.status // "new" | clean | if . == "" then "new" else . end | status_ok)\n"
   + opt("resolution"; .resolution) + opt("priority"; ((.priority // "") | pri)) + opt("severity"; .severity)
   + opt("shape"; ((.shape // "") | shp)) + opt("channel"; .channel) + opt("parent"; .goal_number) + opt("rank"; .rank)
   + opt("depends_on"; .depends_on) + opt("blocked_on"; .blocked_on) + opt("blocked_since"; ((.blocked_since // "")[0:10]))
@@ -3426,7 +3448,7 @@ hero_item_transition() { # NUMBER TO REASON [RESOLUTION] [ROOT]
     '{project_id: $pid, number: $n, to: $to, reason: $why} + (if $res == "" then {} else {resolution: $res} end)')
   json=$(hero_srv_cli "$root" transition --json "$body") || return 1
   printf '%s' "$json" | jq -e '.item.status | strings' >/dev/null || { _hero_srv_shape "$root" transition; return 1; }
-  printf '%s' "$json" | jq -r '.item | "status: \(.status)", (if (.resolution // "") == "" then empty else "resolution: \(.resolution)" end)'
+  printf '%s' "$json" | jq -r '.item | "status: \(.status | gsub("[[:cntrl:]]"; " "))", (if (.resolution // "") == "" then empty else "resolution: \(.resolution)" end)'
 }
 
 # Set an item's status as build-task moves it, and print `status: S` as the

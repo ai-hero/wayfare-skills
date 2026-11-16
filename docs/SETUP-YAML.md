@@ -127,33 +127,37 @@ A **step** is a mapping with exactly one key, its kind:
 Rules the validator enforces, each because getting it wrong would install
 something other than what the file says:
 
-1. **An unknown key is an error, at every level.** `checks:` for `check:` would
-   otherwise drop the presence check without a word, and an unknown step kind
-   would drop the whole step.
-2. **Values are typed.** A git value is a string, so `pull.rebase: "false"` is
-   quoted; YAML reads a bare `false` as a boolean.
-3. **`shell` and `path` write only shell startup files**: `~/.zshrc`,
-   `~/.zprofile`, `~/.zshenv`, `~/.bashrc`, `~/.bash_profile` or `~/.profile`.
-   Anything else under `~/`, such as `~/.ssh/authorized_keys`, is refused.
-4. **A `path` entry is `$HOME/…` or an absolute path**, of letters, digits and
-   `._@+-` only. It is written inside double quotes, where `"`, `` ` ``, `$(` or
-   `\` would run as shell at every login, and where a leading `~` is not
-   expanded, so it would name a folder literally called `~`.
-5. **A `plugin` names a marketplace an earlier `marketplace` step declared.**
-6. **A stdio `mcp` server run through `npx`, `bunx`, `pnpx` or `uvx` names exact
-   versions**: a full `MAJOR.MINOR.PATCH`, with an optional prerelease or build
-   suffix (`@playwright/mcp@0.0.83`, `pkg==1.2.3`), never bare, `@latest`, `@1`
-   or `@1.x`, which npm reads as ranges. Every value of `--package`, `-p`,
-   `--from` and `--with` is checked, and the first positional argument when none
-   of those is given. Those launchers fetch the package each run with the
-   person's credentials in reach, and an unpinned one skips the cooldown on new
-   releases.
-7. **A `person` step has a `check`**, so it can read as done; without one every
-   later `apply` would stop at it again. One whose `why` is `secret` runs in a
-   separate terminal (`terminal: separate`).
-8. **An http header's `prefix`** is letters, digits, spaces and `._-` only.
-9. **A version floor's `min` is quoted digits and dots** (`"2026.10.2"`), and
-   comes with a `why`. Unquoted, YAML reads `2026.10` as a number.
+01. **An unknown key is an error, at every level.** `checks:` for `check:` would
+    otherwise drop the presence check without a word, and an unknown step kind
+    would drop the whole step.
+02. **Values are typed.** A git value is a string, so `pull.rebase: "false"` is
+    quoted; YAML reads a bare `false` as a boolean.
+03. **`shell` and `path` write only shell startup files**: `~/.zshrc`,
+    `~/.zprofile`, `~/.zshenv`, `~/.bashrc`, `~/.bash_profile` or `~/.profile`.
+    Anything else under `~/`, such as `~/.ssh/authorized_keys`, is refused.
+04. **A `path` entry is `$HOME/…` or an absolute path**, of letters, digits and
+    `._@+-` only. It is written inside double quotes, where `"`, `` ` ``, `$(`
+    or `\` would run as shell at every login, and where a leading `~` is not
+    expanded, so it would name a folder literally called `~`.
+05. **A `plugin` names a marketplace an earlier `marketplace` step declared.**
+06. **A stdio `mcp` server run through `npx`, `bunx`, `pnpx` or `uvx` names
+    exact versions**: a full `MAJOR.MINOR.PATCH`, with an optional prerelease or
+    build suffix (`@playwright/mcp@0.0.83`, `pkg==1.2.3`), never bare,
+    `@latest`, `@1` or `@1.x`, which npm reads as ranges. Every value of
+    `--package` and `-p` (npx, bunx, pnpx), `--from` (uvx) and `--with` or `-w`
+    (uvx) is checked, and the first positional argument unless a flag that names
+    the command (`--package`, `-p`, `--from`) is given: `--with` only adds a
+    dependency, so the package after it is still checked. Those launchers fetch
+    the package each run with the person's credentials in reach, and an unpinned
+    one skips the cooldown on new releases.
+07. **A `person` step has a `check`**, so it can read as done; without one every
+    later `apply` would stop at it again. One whose `why` is `secret` runs in a
+    separate terminal (`terminal: separate`).
+08. **An http header's `prefix`** is letters, digits, spaces and `._-` only.
+09. **A version floor's `min` is quoted digits and dots** (`"2026.10.2"`), and
+    comes with a `why`. Unquoted, YAML reads `2026.10` as a number.
+10. **A package or plugin name never starts with `-`**, since it reaches `brew`,
+    `pipx` and `claude plugin` as an argument, where `--HEAD` is an option.
 
 ### Version floors
 
@@ -191,12 +195,14 @@ If the copy on `PATH` is still old, it fails and names that copy.
 runs only `--version` of each floored tool that is on `PATH`. It prints one line
 per tool below its floor, which the hook shows to the person and the agent, and
 it is silent in every other case, including no register, a gate refusal, another
-platform, or no `setup.yaml`. It never blocks a session. A raised floor reaches
-a machine the next time anything fetches the register, such as `plan`, `check`
-or the audit. Its version probes share a 3.5s budget under the hook's 5s
-timeout. A hung `--version` is reported as an unknown version, and tools left
-when the budget runs out are skipped. It runs on `startup` and `resume`, not
-after a compact or a clear. It takes about 0.1 to 0.2s.
+platform, or no `setup.yaml`, except one: a `setup.yaml` that fails validation
+(an unknown key from a newer schema, say) prints one line saying the floors were
+not checked. It never blocks a session. A raised floor reaches a machine the
+next time anything fetches the register, such as `plan`, `check` or the audit.
+Its version probes share a 3.5s budget under the hook's 5s timeout. A hung
+`--version` is reported as an unknown version, and tools left when the budget
+runs out are skipped. It runs on `startup` and `resume`, not after a compact or
+a clear. It takes about 0.1 to 0.2s.
 
 `why` is one of `password`, `browser`, `secret`, `gui` or `choice` (a value only
 the person can give, such as their commit email). `path` entries are also put on

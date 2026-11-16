@@ -72,11 +72,14 @@ KINDS = ("brew", "cask", "pipx", "installer", "git", "shell", "path",
          "marketplace", "plugin", "mcp", "person")
 PERSON_WHY = ("password", "browser", "secret", "gui", "choice")
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-PKG_RE = re.compile(r"^[A-Za-z0-9@._+/-]+$")
+# No leading "-": a name reaches `brew install`, `pipx install` and
+# `claude plugin marketplace add` as an argument, where --HEAD or --force is
+# an option, not a package.
+PKG_RE = re.compile(r"^[A-Za-z0-9@][A-Za-z0-9@._+/-]*$")
 CMD_RE = re.compile(r"^[A-Za-z0-9._+-]+$")
 ENV_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 GIT_KEY_RE = re.compile(r"^[A-Za-z][A-Za-z0-9-]*(\.[A-Za-z0-9-]+)+$")
-PLUGIN_RE = re.compile(r"^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+$")
+PLUGIN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*@[A-Za-z0-9._-]+$")
 HEADER_RE = re.compile(r"^[A-Za-z0-9-]+$")
 PREFIX_RE = re.compile(r"^[A-Za-z0-9 ._-]*$")
 # Written inside double quotes in an rc file, so anything the shell expands
@@ -88,7 +91,14 @@ RC_FILES = ("~/.zshrc", "~/.zprofile", "~/.zshenv", "~/.bashrc", "~/.bash_profil
 # reach, so an unpinned one installs whatever was published a minute ago. npm
 # reads `pkg@1` and `pkg@1.x` as ranges, so only a full MAJOR.MINOR.PATCH pins.
 LAUNCHERS = {"npx", "bunx", "pnpx", "uvx"}
-PKG_FLAGS = ("--package", "-p", "--from", "--with", "-w")
+# Per launcher, because the same letter means different things: uvx -w is
+# --with (an extra dependency), npx -w is --workspace (not a package at all).
+# Only a flag that names the command makes the positional argument a command
+# name; an extra-dependency flag leaves the positional as the real package.
+COMMAND_FLAGS = {"npx": ("--package", "-p"), "bunx": ("--package", "-p"),
+                 "pnpx": ("--package", "-p"), "uvx": ("--from",)}
+EXTRA_FLAGS = {"uvx": ("--with", "-w")}
+VALUE_FLAGS = {"npx": ("--workspace", "-w")}
 PINNED_RE = re.compile(r"^@?[A-Za-z0-9][A-Za-z0-9._/-]*(@|==)\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$")
 # A floor is digits and dots only, so it compares numerically: 2026.10.10 is
 # above 2026.10.2, which a string comparison gets wrong.
@@ -147,28 +157,34 @@ def _rc_file(errs, where, v):
         errs.add(where, f"{v!r} is not a shell startup file (expected one of: {', '.join(RC_FILES)})")
 
 
-def launcher_packages(args):
+def launcher_packages(launcher, args):
     """The package-bearing arguments of an npx/uvx-style launcher: every value
-    of --package, -p, --from, --with and -w (attached, as in -wPKG, or not),
-    and the first positional argument when none of those is given (with one,
-    that argument is a command)."""
+    of its command-naming and extra-dependency flags (attached, as in -wPKG,
+    or not), plus the first positional argument unless a command-naming flag
+    was given (with one, that argument is a command)."""
+    command_flags = COMMAND_FLAGS.get(launcher, ())
+    extra_flags = EXTRA_FLAGS.get(launcher, ())
+    value_flags = VALUE_FLAGS.get(launcher, ())
+    shorts = tuple(f for f in command_flags + extra_flags + value_flags
+                   if len(f) == 2)
     pkgs, named, positional, i = [], False, [], 0
     while i < len(args):
         a = args[i]
         flag, eq, val = a.partition("=")
-        if not eq and a[:2] in ("-p", "-w") and len(a) > 2:
+        if not eq and a[:2] in shorts and len(a) > 2:
             flag, eq, val = a[:2], "=", a[2:]
-        if flag in PKG_FLAGS:
-            named = True
-            if eq:
-                pkgs.append(val)
-            else:
-                pkgs.append(args[i + 1] if i + 1 < len(args) else "")
+        if flag in command_flags + extra_flags + value_flags:
+            if flag in command_flags:
+                named = True
+            if not eq:
+                val = args[i + 1] if i + 1 < len(args) else ""
                 i += 1
+            if flag not in value_flags:
+                pkgs.append(val)
         elif not a.startswith("-"):
             positional.append(a)
         i += 1
-    return pkgs if named else positional[:1]
+    return pkgs if named else pkgs + positional[:1]
 
 
 def _check_mcp(errs, where, m):
@@ -188,7 +204,7 @@ def _check_mcp(errs, where, m):
             if args:
                 _str_list(errs, f"{where}.args", args)
             if m["command"] in LAUNCHERS and isinstance(args, list) and all(isinstance(a, str) for a in args):
-                pkgs = launcher_packages(args)
+                pkgs = launcher_packages(m["command"], args)
                 bad = [p for p in pkgs if not PINNED_RE.match(p)] or ([] if pkgs else ["(none)"])
                 if bad:
                     errs.add(f"{where}.args", f"{m['command']} must run exact versions (pkg@1.2.3), got {bad}")
@@ -1139,7 +1155,13 @@ def main(argv=None):
         try:
             text, source, _ = load_file(a.file) if a.file else load_reviewed(a.fleet, fetch=False)
             doc = parse(text, source)
-        except (Gate, Invalid):
+        except Gate:
+            return 0
+        except Invalid:
+            # An unknown key from a newer schema lands here, and silence would
+            # read as "every floor met" on a machine whose plugin is older.
+            print("wayfare: fleet floors not checked: setup.yaml failed validation "
+                  "(run scripts/fleet-setup.py validate)")
             return 0
         if platform_now() != doc["platform"]:
             return 0

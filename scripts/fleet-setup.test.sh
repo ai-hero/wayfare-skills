@@ -173,6 +173,11 @@ bad "wrong type: list" 2 "expected a non-empty list, got str" "$(step 'brew: jus
 bad "wrong type: git value" 2 "expected a string, got bool False; quote it" "$(step '{git: {pull.rebase: false}}')"
 bad "wrong type: optional" 2 "optional: expected true or false" "$(printf '%s\ngroups:\n  - {name: g, title: G, optional: "yes", ask: q, steps: [{brew: [a]}]}\n' "$BASE")"
 bad "optional group needs ask" 2 "needs the question to ask" "$(printf '%s\ngroups:\n  - {name: g, title: G, optional: true, steps: [{brew: [a]}]}\n' "$BASE")"
+bad "brew name that is an option" 2 "is not a valid value" "$(step '{brew: ["--HEAD"]}')"
+bad "pipx name that is an option" 2 "is not a valid value" "$(step '{pipx: ["--force"]}')"
+bad "floor name that is an option" 2 "is not a valid value" "$(step '{brew: [{name: "--HEAD", min: "1.0", why: w}]}')"
+bad "marketplace source that is an option" 2 "is not a valid value" "$(step '{marketplace: [{name: m, source: "-x@m"}]}')"
+bad "plugin name that is an option" 2 "is not a valid value" "$(step '{plugin: ["-x@m"]}')"
 bad "unpinned npx" 2 "must run exact versions" "$(step '{mcp: {name: p, transport: stdio, command: npx, args: [-y, "@playwright/mcp"]}}')"
 bad "npx at latest" 2 "must run exact versions" "$(step '{mcp: {name: p, transport: stdio, command: npx, args: [-y, "@playwright/mcp@latest"]}}')"
 bad "secret value is not a field" 2 "unknown key 'env'" "$(step '{mcp: {name: p, transport: stdio, command: node, env: {K: v}}}')"
@@ -189,11 +194,15 @@ pin "--package=latest" 2 npx '[-y, "--package=evil@latest", "evil"]'
 pin "--package unpinned beside a pinned positional" 2 npx '[-y, "--package=evil@latest", "ok@1.2.3"]'
 pin "-p unpinned" 2 npx '[-y, "-p", "evil", "evil"]'
 pin "uvx --from unpinned" 2 uvx '["--from", "evil", "evil"]'
+pin "uvx --with pinned, real package unpinned" 2 uvx '["--with", "rich==13.7.1", "some-tool"]'
+pin "uvx -w pinned, real package unpinned" 2 uvx '["-w", "rich==13.7.1", "some-tool"]'
+pin "npx -w is a workspace, not a package" 2 npx '["-w", "x@1.0.0", "-y", "evil-pkg"]'
 pin "uvx --with unpinned beside a pinned package" 2 uvx '["--with", "extra", "tool==1.2.3"]'
 ok_step() { printf '%s\n' "$(step "$2")" > "$T/ok.yaml"; out=$(fs --file "$T/ok.yaml" validate); check "accepted: $1" 0 $?; }
 ok_step "npx exact" '{mcp: {name: p, transport: stdio, command: npx, args: [-y, "@scope/pkg@1.2.3"]}}'
 ok_step "npx prerelease" '{mcp: {name: p, transport: stdio, command: npx, args: [-y, "pkg@1.2.3-beta.1"]}}'
 ok_step "npx -p pinned, command after" '{mcp: {name: p, transport: stdio, command: npx, args: [-y, "-p", "pkg@1.2.3", "pkg-cli"]}}'
+ok_step "uvx --with and the package both pinned" '{mcp: {name: p, transport: stdio, command: uvx, args: ["--with", "rich==13.7.1", "some-tool==1.2.3"]}}'
 ok_step "uvx --from pinned" '{mcp: {name: p, transport: stdio, command: uvx, args: ["--from", "pkg==1.2.3", "cmd"]}}'
 # The literal ~ is what the validator must refuse.
 # shellcheck disable=SC2088
@@ -673,6 +682,12 @@ out=$(hook "$F/some-repo"); rc=$?
 check "hook: silent on a clean machine" "0 []" "$rc [$out]"
 out=$(hook "$T/nofleet"); rc=$?
 check "hook: silent outside a fleet" "0 []" "$rc [$out]"
+
+# A register adopting a schema key this plugin does not know must not read as
+# "every floor met".
+printf '%s\nbogus_key: 1\ngroups:\n  - {name: g, title: G, steps: [{brew: [a]}]}\n' "$BASE" > "$T/newer.yaml"
+out=$(fs --file "$T/newer.yaml" --unreviewed check --floors-only); rc=$?
+check "floors-only: says so when setup.yaml failed validation" "0 wayfare: fleet floors not checked: setup.yaml failed validation (run scripts/fleet-setup.py validate)" "$rc $out"
 
 # ── uvx -w ──────────────────────────────────────────────────────────
 pin "uvx -w unpinned" 2 uvx '["-w", "extra", "tool==1.2.3"]'

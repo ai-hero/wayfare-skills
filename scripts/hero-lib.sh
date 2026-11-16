@@ -3459,7 +3459,7 @@ hero_item_transition() { # NUMBER TO REASON [RESOLUTION] [ROOT]
     '{project_id: $pid, number: $n, to: $to, reason: $why} + (if $res == "" then {} else {resolution: $res} end)')
   json=$(hero_srv_cli "$root" transition --json "$body") || return 1
   printf '%s' "$json" | jq -e '.item.status | strings' >/dev/null || { _hero_srv_shape "$root" transition; return 1; }
-  printf '%s' "$json" | jq -r '.item | "status: \(.status | gsub("[[:cntrl:]]"; " "))", (if (.resolution // "") == "" then empty else "resolution: \(.resolution)" end)'
+  printf '%s' "$json" | jq -r '.item | "status: \(.status | gsub("[[:cntrl:]]"; " "))", (if (.resolution // "") == "" then empty else "resolution: \(.resolution | tostring | gsub("[[:cntrl:]]"; " "))" end)'
 }
 
 # Set an item's status as build-task moves it, and print `status: S` as the

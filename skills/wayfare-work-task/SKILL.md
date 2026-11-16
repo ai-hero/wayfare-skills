@@ -72,6 +72,9 @@ STOP when any of these holds, and print the line given:
   stderr and say a person must approve them in an interactive session
   (`hero_srv_commands_approve`). Never approve them here, and claim nothing:
   this stop comes before the claim, so there is no claim to release.
+- `CFG_RC` is 2: the server's HERO.md could not be read. Print what
+  `hero_config_exists` said on stderr. wayfare-build-task's Step 0 would stop on
+  the same read after the claim, so stop here, before it.
 - The MCP tools `projects`, `read`, `claim`, `report`, `link_pr`, `release` and
   `comment` are not all available from one Wayfare server. Claude Code names
   them `mcp__wayfare-<ws>__<tool>`. Print the setup line from **Setup** above

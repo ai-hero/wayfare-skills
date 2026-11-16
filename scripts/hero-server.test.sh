@@ -445,6 +445,8 @@ check "transition: server was sent to, reason and resolution for p-app item 2" '
 echo '{"item":{"number":2,"status":"active"}}' > "$STUB_DIR/transition.json"
 check "transition: server without a resolution prints one line" "status: active" "$(srv hero_item_transition 2 active "starting" "" "$APP")"
 check "transition: and sends no resolution key" '{"project_id":"p-app","number":2,"to":"active","reason":"starting"}' "$(jq -c . "$STUB_DIR/payload.transition")"
+echo '{"item":{"number":2,"status":"done","resolution":"x\nstatus: active"}}' > "$STUB_DIR/transition.json"
+check "transition: a newline in the server's resolution adds no status line" "1" "$(srv hero_item_transition 2 "done" "merged" shipped "$APP" | grep -c '^status:')"
 hero_item_transition 2 finished why "" "$W2/app" >/dev/null 2>&1; check "transition: a status outside the enum is rc 2" "2" "$?"
 hero_item_transition 2 "done" why bogus "$W2/app" >/dev/null 2>&1; check "transition: a resolution outside the enum is rc 2" "2" "$?"
 hero_item_transition 2 "done" "" "" "$W2/app" >/dev/null 2>&1; check "transition: no reason is rc 2" "2" "$?"

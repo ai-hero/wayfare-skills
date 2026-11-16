@@ -547,8 +547,10 @@ check "render: and wrote nothing outside the cache" "0" "$(find "$TMP" -name 'x-
 
 # The cache is the user's own, mode 700, and a directory someone else placed
 # there is refused rather than written into.
+# GNU stat first: on Linux `stat -f` is filesystem status and succeeds, so the
+# BSD spelling first never falls through.
 CB="$TMP/xdg-cache/wayfare-srv"
-check "cache: under XDG_CACHE_HOME, mode 700" "700" "$(XDG_CACHE_HOME="$TMP/xdg-cache" srv hero_item_file 2 "$APP" >/dev/null; stat -f %Lp "$CB" 2>/dev/null || stat -c %a "$CB")"
+check "cache: under XDG_CACHE_HOME, mode 700" "700" "$(XDG_CACHE_HOME="$TMP/xdg-cache" srv hero_item_file 2 "$APP" >/dev/null; stat -c %a "$CB" 2>/dev/null || stat -f %Lp "$CB")"
 mkdir -p "$TMP/elsewhere" "$TMP/xdg-link"; ln -s "$TMP/elsewhere" "$TMP/xdg-link/wayfare-srv"
 XDG_CACHE_HOME="$TMP/xdg-link" srv hero_item_file 2 "$APP" >/dev/null 2>&1; check "cache: a symlinked cache is refused" "1" "$?"
 check "cache: and nothing was written through it" "0" "$(find "$TMP/elsewhere" -type f | wc -l | tr -d ' ')"

@@ -1,7 +1,7 @@
 ---
 name: wayfare-model-data
 # prettier-ignore
-description: "Model stored data, write migrations, add indexes, cache reads, and fix slow queries in a MongoDB and Redis backend. Use before adding or changing a stored field, collection, store method, query, index, cached read, or boot migration. Use when an endpoint is slow or uncached, even if nobody mentions the database. Use audit to report a repo's gaps."
+description: "Model stored data, write migrations, add indexes, cache reads, and fix slow queries in a MongoDB and Redis backend. Use before adding or changing a stored field, collection, store method, query, index, cached read, or migration. Use when an endpoint is slow or uncached, even if nobody mentions the database. Use audit to report a repo's gaps."
 argument-hint: "[audit] | CHANGE_OR_SLOW_QUERY"
 compatibility: "Requires the complete Wayfare plugin, git, and a Go backend on MongoDB and Redis. Evidence steps require docker or a running dev stack with mongosh. Never requires production access."
 ---
@@ -104,8 +104,11 @@ These rules apply to every route.
    reason in a comment if a read stays unbounded.
 6. **A cached read uses the repo's helper.** Authorization gates are not cached
    unless the repo's `DESIGN.md` says so.
-7. **A schema change is a boot migration.** It is named and idempotent, and it
-   keeps the old shape readable until no running code needs it.
+7. **A schema change is a named, idempotent migration that the previous release
+   survives, including after a rollback.** It runs under an expiring lease, and
+   only the API role runs it. A destructive step carries a `contract:` marker. A
+   backfill is a background job with a completion marker, and boot does indexes
+   and fast shape fixes only.
 8. **A performance claim has evidence.** Evidence is an explain result or a
    measured duration. Read shape alone produces a candidate, not a finding.
 
@@ -154,7 +157,7 @@ did not read. Do not rank by traffic unless you have traffic data.
 
 - **Production access is not part of this skill.** Never run explain, create an
   index, or run a backfill against production unless the user asks for that
-  action in this session. Indexes reach production through the boot migration.
+  action in this session. Indexes reach production through the migration.
 - **"document db" here means MongoDB, not Amazon DocumentDB.** Do not apply
   DocumentDB's planner, `$hint`, or index limits.
 - **A shared comment is wrong about index names.** `hero-template`,

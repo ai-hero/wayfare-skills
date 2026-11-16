@@ -687,7 +687,8 @@ check "hook: silent outside a fleet" "0 []" "$rc [$out]"
 # "every floor met".
 printf '%s\nbogus_key: 1\ngroups:\n  - {name: g, title: G, steps: [{brew: [a]}]}\n' "$BASE" > "$T/newer.yaml"
 out=$(fs --file "$T/newer.yaml" --unreviewed check --floors-only); rc=$?
-check "floors-only: says so when setup.yaml failed validation" "0 wayfare: fleet floors not checked: setup.yaml failed validation (run scripts/fleet-setup.py validate)" "$rc $out"
+case "$rc $out" in "0 wayfare: fleet floors not checked: setup.yaml failed validation (from "*" run: uv run scripts/fleet-setup.py --fleet "*" validate)") r=ok ;; *) r="$rc $out" ;; esac
+check "floors-only: says so when setup.yaml failed validation, with a command that runs" ok "$r"
 
 # ── uvx -w ──────────────────────────────────────────────────────────
 pin "uvx -w unpinned" 2 uvx '["-w", "extra", "tool==1.2.3"]'

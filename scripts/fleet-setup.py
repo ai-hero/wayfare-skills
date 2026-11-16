@@ -161,7 +161,8 @@ def launcher_packages(launcher, args):
     """The package-bearing arguments of an npx/uvx-style launcher: every value
     of its command-naming and extra-dependency flags (attached, as in -wPKG,
     or not), plus the first positional argument unless a command-naming flag
-    was given (with one, that argument is a command)."""
+    was given (with one, that argument is a command). A value-only flag (npx
+    --workspace/-w) is skipped along with its value."""
     command_flags = COMMAND_FLAGS.get(launcher, ())
     extra_flags = EXTRA_FLAGS.get(launcher, ())
     value_flags = VALUE_FLAGS.get(launcher, ())
@@ -1161,7 +1162,7 @@ def main(argv=None):
             # An unknown key from a newer schema lands here, and silence would
             # read as "every floor met" on a machine whose plugin is older.
             print("wayfare: fleet floors not checked: setup.yaml failed validation "
-                  "(run scripts/fleet-setup.py validate)")
+                  f"(from {HERE.parent} run: uv run scripts/fleet-setup.py --fleet {a.fleet} validate)")
             return 0
         if platform_now() != doc["platform"]:
             return 0

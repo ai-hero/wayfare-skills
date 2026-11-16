@@ -130,7 +130,9 @@ hero_field() {
 # server's rendered copy) changes in one place. validate.sh fails a direct
 # read. rc 1 is "no config" or "no such field"; rc 2 is "could not ask" (the
 # backend switch is unusable, or the server refused or failed). Read as rc 1,
-# an outage sends a configured repo to wayfare-init-repo.
+# an outage sends a configured repo to wayfare-init-repo. rc 3 is "the
+# server's command fields await a person's approval" (hero_srv_commands_approved):
+# folded into 2 it reads as an outage, and the skill never asks the person.
 
 # One field from a named block of the config, as hero_md_field reads it:
 # `platform` repeats across sections, so a bare hero_field answers the wrong one.
@@ -1253,9 +1255,10 @@ hero_register_find() { # [START]
 # URL line for the fleet root (`FLEET_ROOT https://app.example.com/<workspace
 # id>`, beside any register line for the same root); else `local`. A value
 # that is neither `local` nor an https URL (http only for localhost, 127.0.0.1
-# and [::1]) is an error (rc 1, stderr), and so
-# is a pin file holding URL lines that cannot be read or a fleet map that
-# cannot be read: none of them is a silent fall back to local, since a fleet
+# and [::1], never with userinfo) is an error (rc 1, stderr), and so is a pin
+# file holding URL lines that cannot be read, a fleet map that cannot be read,
+# or a checkout outside every fleet folder while the pin holds a URL line: none
+# of them is a silent fall back to local, since a fleet
 # that meant the server would keep writing files the server never sees.
 hero_store_backend() { # [DIR]
   local v file root rc a

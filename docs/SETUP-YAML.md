@@ -156,8 +156,9 @@ something other than what the file says:
 08. **An http header's `prefix`** is letters, digits, spaces and `._-` only.
 09. **A version floor's `min` is quoted digits and dots** (`"2026.10.2"`), and
     comes with a `why`. Unquoted, YAML reads `2026.10` as a number.
-10. **A package or plugin name never starts with `-`**, since it reaches `brew`,
-    `pipx` and `claude plugin` as an argument, where `--HEAD` is an option.
+10. **A package, marketplace or plugin name, or a marketplace source, never
+    starts with `-`**, since it reaches `brew`, `pipx` and `claude plugin` as an
+    argument, where `--HEAD` is an option.
 
 ### Version floors
 

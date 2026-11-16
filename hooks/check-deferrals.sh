@@ -59,7 +59,8 @@ case $MAX_MB in '' | *[!0-9]*) MAX_MB=512 ;; esac
 SIZE=$(wc -c <"$TRANSCRIPT" 2>/dev/null | tr -d ' ')
 [ -n "$SIZE" ] && [ "$SIZE" -le $((MAX_MB * 1048576)) ] || exit 0
 
-# GNU tail's -r is an error and BSD has no tac, so test for tac first.
+# tac is GNU-only and tail -r BSD-only (GNU tail rejects -r): probe both, and
+# with neither skip the check rather than read the whole file.
 if command -v tac >/dev/null 2>&1; then
   rev() { tac "$@"; }
 elif tail -r </dev/null >/dev/null 2>&1; then

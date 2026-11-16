@@ -36,7 +36,11 @@ OUT=$(cd "$PLUGIN_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV
   uv run --offline --no-config --quiet scripts/fleet-setup.py --fleet "$FLEET" check --floors-only 2>/dev/null) || exit 0
 [ -n "$OUT" ] || exit 0
 
-MSG="wayfare: below a fleet version floor (from $FLEET/.fleet setup.yaml):
-$OUT"
+# The not-checked line is not a missed floor; under that heading it reads as one.
+case "$OUT" in
+  "wayfare: fleet floors not checked"*) MSG=$OUT ;;
+  *) MSG="wayfare: below a fleet version floor (from $FLEET/.fleet setup.yaml):
+$OUT" ;;
+esac
 jq -n --arg m "$MSG" '{systemMessage: $m, hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $m}}'
 exit 0

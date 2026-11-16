@@ -1058,8 +1058,9 @@ echo ""
 bold "5. Hook dependencies need a human"
 
 # hooks/*.sh run in every session of everyone with the plugin, and so does
-# every script they source or `uv run` and every sibling that script loads by
-# path. Each must match a line of the human-review list, or a PR changing it
+# every scripts/X.sh or X.py they name and every sibling a named .py loads
+# with spec_from_file_location and a quoted file name. A .sh dependency's own
+# references and a sibling loaded by a variable path are not followed. Each must match a line of the human-review list, or a PR changing it
 # is approved by the model alone. Matched like auto-approve.yaml does: whole
 # path, case-insensitive, `*` crosses `/`. tr, not ${x,,}: macOS bash is 3.2.
 HUMAN_LIST="$PLUGIN_ROOT/.github/auto-approve-human-review.txt"

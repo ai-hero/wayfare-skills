@@ -171,11 +171,13 @@ how they depend. That map is `wayfare:wayfare-sync-architecture`'s job (the root
 `wayfare:wayfare-review-architecture` through the active client's skill
 mechanism with the line `launched by wayfare` (staleness is its call, never a
 `Source ref` comparison done here). When it reports `MISSING` or stale rows,
-offer its `sync`, the same skill with the same launch line, before going on. If
-the user declines, derive the layering from a direct read of the source instead,
-say it is unverified, and carry the review's findings into this run's report: a
-declined refresh must never make the staleness disappear. **This map orders
-subtasks, never tasks.** Task order comes from the journey.
+offer its `sync`, the same skill with the same launch line, before going on. On
+the default branch that `sync` files a `shape: docs` task and writes no
+`DESIGN.md` ([store-writes.md](store-writes.md)); carry the filed item into this
+run's report. If the user declines, derive the layering from a direct read of
+the source instead, say it is unverified, and carry the review's findings into
+this run's report: a declined refresh must never make the staleness disappear.
+**This map orders subtasks, never tasks.** Task order comes from the journey.
 
 **The `harden` stage, in both modes, after the map.** Invoke
 `wayfare:wayfare-audit-security all` through the active client's skill mechanism

@@ -190,8 +190,8 @@ Propose the goal before Step 3's gate, and at Step 4 write it with its `## Plan`
 `## Subtasks` generated from its slice and its own `## Definition of Done`, with
 no `## Approach`. **Read `../../references/planning.md` (_A goal's plan_) before
 proposing one.** Cross-cutting decisions go in `### Design`, not the members'
-`## Context`; an architectural one also goes in `DESIGN.md`, because a decision
-made in a planning pass and written nowhere gets remade differently next time. A
+`## Context`; an architectural one is also drafted as a `DESIGN.md` entry there
+(Step 4), because an unrecorded decision gets remade differently next time. A
 task left outside any goal keeps its own `## Approach` and its own ready-mark; a
 goal's plan takes one, covering `## Plan` and every member's DoD. The user is
 approving plans, not a planning session.
@@ -351,27 +351,10 @@ After writing, print the readiness view (below), where new items show as `plan`
 rows, then run the ready-mark gate (Step 5).
 
 When the grilling settled a **one-way-door architectural decision** (schema,
-public API, data model, service boundary), offer to also append it to
-`DESIGN.md`'s `## Decisions` section, because the grilled answers _are_ the
-entry. Do not make the user derive them again later.
-`wayfare:wayfare-review-architecture` owns the format. Append the entry at the
-end, in date order, using this shape:
-
-```markdown
-### YYYY-MM-DD — DECISION_TITLE
-
-- Context: what forced a choice (the grilled Context answer)
-- Decision: what was chosen, over what alternatives (fold the grilled
-  Alternatives in here)
-- Consequences: what this commits us to (fold the grilled Reversibility
-  answer in here)
-```
-
-Append the entry only. Never touch the file's `Last updated` or `Source ref`
-line. Only `architecture sync` updates the anchor. If `DESIGN.md` doesn't exist,
-don't hand-create a bare one (that would bypass the owning skill's format and
-confirm flow), offer `wayfare:wayfare-sync-architecture` to bootstrap it,
-carrying the decision as trailing context.
+public API, data model, service boundary), draft its entry into the item: a
+`## DESIGN.md` section, or the goal's `### Design` for a member of a goal with
+`## Plan`, plus the Subtask and DoD line that apply it on that item's branch.
+Read `../../references/store-writes.md` (_The DESIGN.md channel_) for the shape.
 
 ### Step 5: The ready-mark gate
 

@@ -901,6 +901,47 @@ for s in $ITEM_WRITES_ROUTED; do
 done
 [[ $ITEM_WRITE_ERRORS -eq 0 ]] && pass "routed skills write their item through the store layer"
 
+# ── DESIGN.md is written only on a branch a live item owns ─────────
+# A skill that offers or instructs a DESIGN.md write on the default branch
+# leaves the file modified with no item to carry it (references/store-writes.md).
+# Checked a paragraph at a time, because mdformat wraps the verb and the file
+# name onto different lines. grill-idea writes the file never; sync-architecture
+# does, so only an instruction naming the default branch (or a bootstrap with
+# no branch test) counts there.
+design_write_paras() { # FILE MODE(any|default) -> prints the first line of each offending paragraph
+  awk -v mode="$2" '
+    function flush() {
+      lp = tolower(p)
+      if (lp ~ /design\.md/ && lp ~ /(append|write|edit|update|create|bootstrap)/ \
+          && lp !~ /(never|nothing|not |instead|draft|files? (a|one|the)|shape: docs)/ \
+          && (mode == "any" || lp ~ /default branch/)) print start
+      p = ""; start = 0
+    }
+    /^[[:space:]]*$/ { flush(); next }
+    { if (!start) start = NR; p = p " " $0 }
+    END { flush() }
+  ' "$1"
+}
+DESIGN_WRITE_ERRORS=0
+for pair in "wayfare-grill-idea:any" "wayfare-sync-architecture:default"; do
+  s=${pair%%:*}
+  while IFS= read -r f; do
+    hit=$(design_write_paras "$f" "${pair##*:}" | head -1)
+    [ -z "$hit" ] && continue
+    DESIGN_WRITE_ERRORS=$((DESIGN_WRITE_ERRORS + 1))
+    error "tells the agent to write DESIGN.md outside a live item's branch" \
+      "${f#"$PLUGIN_ROOT/"}" "$hit" \
+      "Draft the entry into the item, or file a shape: docs task; see references/store-writes.md"
+  done < <(find "$SKILLS_DIR/$s" -type f -name '*.md' 2>/dev/null)
+done
+for s in wayfare-grill-idea wayfare-sync-architecture; do
+  grep -q 'references/store-writes\.md' "$SKILLS_DIR/$s/SKILL.md" 2>/dev/null && continue
+  DESIGN_WRITE_ERRORS=$((DESIGN_WRITE_ERRORS + 1))
+  error "does not link the DESIGN.md channel rule" "skills/$s/SKILL.md" "" \
+    "Link ../../references/store-writes.md where the skill handles a DESIGN.md change"
+done
+[[ $DESIGN_WRITE_ERRORS -eq 0 ]] && pass "DESIGN.md is written only on a live item's branch"
+
 # ── work-item store: producers must have a consumer ────────────────
 # wayfare-grill-idea, handoff, and harden all WRITE work-items into .plans/
 # (and read the plate back to build on it). wayfare-build-task is the only skill that

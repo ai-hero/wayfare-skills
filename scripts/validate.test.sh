@@ -437,6 +437,28 @@ printf '\nAn item at `status: committed` is already built.\n' >> "$d/skills/wayf
 run_validate "$d"
 check "routed skill naming a status without setting it: not reported" "" "$(printf '%s' "$OUT" | grep -o 'tells the agent to set an item field by hand' || true)"
 
+# ---------- DESIGN.md is written only on a live item's branch ---------------
+
+d=$(fixture design-grill-offers-append)
+printf '\nWhen the grilling settled a one-way-door decision, offer to also append it to\n`DESIGN.md`'"'"'s `## Decisions` section.\n' >> "$d/skills/wayfare-grill-idea/SKILL.md"
+run_validate "$d"
+check "grill-idea offers a DESIGN.md append: rc" "1" "$RC"
+check_contains "grill-idea offers a DESIGN.md append: reported" "$OUT" "tells the agent to write DESIGN.md outside a live item's branch"
+check_contains "grill-idea offers a DESIGN.md append: names the file" "$OUT" "skills/wayfare-grill-idea/SKILL.md"
+
+d=$(fixture design-sync-writes-on-default)
+printf '\nOn the default branch, write DESIGN.md straight into the\nworking tree once the user confirms.\n' >> "$d/skills/wayfare-sync-architecture/SKILL.md"
+run_validate "$d"
+check "sync-architecture writes DESIGN.md on the default branch: rc" "1" "$RC"
+check_contains "sync-architecture writes DESIGN.md on the default branch: reported" "$OUT" "tells the agent to write DESIGN.md outside a live item's branch"
+check_contains "sync-architecture writes DESIGN.md on the default branch: names the file" "$OUT" "skills/wayfare-sync-architecture/SKILL.md"
+
+d=$(fixture design-sync-unlinked)
+sed -i.bak 's#references/store-writes\.md#references/other.md#g' "$d/skills/wayfare-sync-architecture/SKILL.md"
+rm -f "$d/skills/wayfare-sync-architecture/SKILL.md.bak"
+run_validate "$d"
+check_contains "sync-architecture without the channel link: reported" "$OUT" "does not link the DESIGN.md channel rule"
+
 # ---------- store layer: no direct store-file read ---------------------------
 
 d=$(fixture store-direct-items)

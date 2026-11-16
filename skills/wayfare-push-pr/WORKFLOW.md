@@ -74,15 +74,17 @@ HERO_LIB="$WAYFARE_ROOT/scripts/hero-lib.sh"
 . "$HERO_LIB" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT — export WAYFARE_ROOT as the plugin root"; exit 1; }
 
 ROOT=$(hero_root)
-hero_config_show "$ROOT" || { rc=$?; [ $rc -eq 3 ] && { echo "COMMANDS_UNAPPROVED"; exit 3; }; [ $rc -eq 1 ] || exit 1; echo "NO_HERO_CONFIG"; }
+hero_config_show "$ROOT" || { [ $? -eq 1 ] || exit 1; echo "NO_HERO_CONFIG"; }
+hero_config_commands_approved "$ROOT" || { rc=$?; [ $rc -eq 3 ] && { echo "COMMANDS_UNAPPROVED"; exit 3; }; exit 1; }
 hero_fleet_step0 || exit 1
 hero_check_staleness
 ```
 
 If it prints `COMMANDS_UNAPPROVED`, the server's HERO.md holds command fields
 (`task-runner`, `test-command`, `dev-command`) that no person has approved on
-this machine, and the test phase would run them. The fields are on stderr: show
-them to the person and ask. On a yes, run
+this machine, and the test phase would run them. The config shown above leaves
+them out, so never fill one in from memory or auto-detect around it. The fields
+are on stderr: show them to the person and ask. On a yes, run
 `hero_srv_commands_approve "$ROOT" SHA` with the sha256 the same stderr printed,
 and repeat Step 0; rc 3 there means the fields changed since they were shown, so
 show the new ones and ask again; on a no, STOP. Headless, STOP and name the

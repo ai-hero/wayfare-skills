@@ -756,14 +756,15 @@ messages cross repos and a fleet split between backends would drop them.
 A value that is neither `local` nor an https URL with no whitespace is an error,
 never a silent `local`: a fleet that meant the server would keep writing files
 the server never sees. A pin file holding URL lines that cannot be read is an
-error too, and so is a fleet map above the folder that cannot be read, or a
-checkout outside the fleet folder while the pin holds a URL line: either way the
-switch cannot be read, and reading it as `local` writes files the server never
-sees. Plain `http://` is accepted only for `localhost`, `127.0.0.1` and `[::1]`,
-and userinfo (`@` before the host) never, because the CLI sends a bearer token
-to the URL. Every CLI call runs under a bound when `timeout`, `gtimeout` or
-`perl` is on PATH, `WAYFARE_CLI_TIMEOUT` seconds (default 30), and a timeout is
-an error.
+error too, and so is a fleet map above the folder that cannot be read: either
+way the switch cannot be read, and reading it as `local` writes files the server
+never sees. A checkout outside every fleet folder reads `local` whatever the pin
+holds, because a URL line names one fleet root and a repo under none of them
+(this plugin checkout, a scratch clone) is not that fleet's. Plain `http://` is
+accepted only for `localhost`, `127.0.0.1` and `[::1]`, and userinfo (`@` before
+the host) never, because the CLI sends a bearer token to the URL. Every CLI call
+runs under a bound when `timeout`, `gtimeout` or `perl` is on PATH,
+`WAYFARE_CLI_TIMEOUT` seconds (default 30), and a timeout is an error.
 
 Local is the default, so nothing changes until a person flips it. The skills
 call the same functions either way (`hero_ready_items`, `hero_item_field`,
@@ -809,16 +810,21 @@ or else the subject itself (the default), and sends a number as the thread's
 
 A server-held HERO.md is editable in the app, and its `task-runner` and
 `*-command` fields (`test-command`, `dev-command`) run in the person's shell.
-The config readers therefore return 3, not 2, until a person has approved those
-fields on this machine: `hero_srv_config_file` prints the changed fields on
-stderr with their sha256, and `hero_srv_commands_approve ROOT SHA` records them
-under `${XDG_CONFIG_HOME:-~/.config}/wayfare/approved-commands/` (mode 600),
-refusing with rc 3 when the cached fields no longer hash to SHA. A command key
-is matched in any spelling an agent would read as one: any bullet, indent, case,
-backticks or bold, and inside fences. wayfare-push-pr asks; the other skills
-stop at Step 0 with the fields on stderr; wayfare-work-task stops before its
-claim. A change to any other field needs no approval, and the local backend
-never asks, because a committed HERO.md is reviewed in a PR.
+Until a person has approved those fields on this machine, the config readers
+answer from a copy with the command lines left out, so every other field
+(`default-branch`, the connections, a project's `port`) still reads and no
+skill's Step 0 stops on it. A skill about to run one asks
+`hero_config_commands_approved ROOT` first, which is rc 0 locally and for
+approved fields, and rc 3 otherwise, with the changed fields and their sha256 on
+stderr. `hero_srv_commands_approve ROOT SHA` records them under
+`${XDG_CONFIG_HOME:-~/.config}/wayfare/approved-commands/` (mode 600), refusing
+with rc 3 when the cached fields no longer hash to SHA. A command key is matched
+in any spelling an agent would read as one: any bullet, indent, case, backticks
+or bold, and inside fences. wayfare-push-pr asks before its test phase;
+wayfare-work-task stops before its claim; the other skills run none of these
+fields and read the config as usual. A change to any other field needs no
+approval, and the local backend never asks, because a committed HERO.md is
+reviewed in a PR.
 
 An answer the server could not give is never an empty one. A CLI failure, a
 reply that is not JSON, or one missing the key a caller reads is an error naming

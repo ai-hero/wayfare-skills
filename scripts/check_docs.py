@@ -80,7 +80,7 @@ def tracked(root, pattern):
                          capture_output=True, text=True, check=True).stdout
     # Mid-merge, ls-files lists a conflicted path once per stage.
     out = "\n".join(dict.fromkeys(out.splitlines()))
-    # A symlink (CLAUDE.md -> AGENTS.md) would report every finding twice.
+    # A leftover symlink (CLAUDE.md -> AGENTS.md) would report every finding twice.
     return [p for p in out.splitlines()
             if not p.startswith(EXCLUDE_DIRS) and not (root / p).is_symlink()]
 

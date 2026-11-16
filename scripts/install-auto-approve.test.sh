@@ -170,6 +170,14 @@ print(','.join(sorted(k for k in ep if k not in cp)) or 'none')
 ")
 check "contract: caller grants every scope the callee declares" "none" "$missing_perms"
 
+# The fleet's register fails a workflow whose top level grants anything; the
+# job block above is the whole grant, so `contents: read` here is unused.
+top_perms=$(yaml_py -c "
+import yaml
+print(repr(yaml.safe_load(open('$SOURCE')).get('permissions')))
+")
+check "contract: caller grants nothing at the top level" "{}" "$top_perms"
+
 # Code lines only. The caller carries a comment WARNING against
 # `secrets: inherit`, and a plain grep matches that and reports the file as
 # using it, the same prose-matching trap as init's install probe.

@@ -8,6 +8,7 @@ the art is drawn in code by `guide_scenes`, one function per page, with `guide_a
 an SVG of W x H points: the copy in a left column, the scene in the rest, except where a scene asks
 for the whole page.
 """
+
 import functools
 import json
 import os
@@ -25,13 +26,19 @@ COL = 262.0
 ART = (M + COL + 34, 44.0, W - M, H - 44.0)
 # Each weight is cut to a static instance: Chrome prints a variable font at another weight as Type 3.
 WEIGHTS = {"Manrope": (200, 300, 500), "Geist": (300, 400, 500), "Geist Mono": (400, 500)}
-FLOWS = {"direction": "Direction flow", "build": "Build flow", "delivery": "Delivery flow",
-         "consistency": "Consistency flow", "improvement": "Improvement flow"}
+FLOWS = {
+    "direction": "Direction flow",
+    "build": "Build flow",
+    "delivery": "Delivery flow",
+    "consistency": "Consistency flow",
+    "improvement": "Improvement flow",
+}
 
 
 @functools.lru_cache(maxsize=None)
 def _metrics(font):
     from fontTools.ttLib import TTFont
+
     tt = TTFont(FONTS[font])
     return tt.getBestCmap(), tt["hmtx"], tt["head"].unitsPerEm
 
@@ -70,9 +77,11 @@ def headline_size(s, w, start=30, floor=22, max_lines=3):
 
 
 def chrome(guide, n, total, flow=None):
-    out = [rect(M, 30, 22, 2, ROSE, "none", 0),
-           mono(M, 22, f"Field guide {guide['number']}", 6.6),
-           mono(W - M, 22, f"{n:02d} / {total}", 6.6, anchor="end")]
+    out = [
+        rect(M, 30, 22, 2, ROSE, "none", 0),
+        mono(M, 22, f"Field guide {guide['number']}", 6.6),
+        mono(W - M, 22, f"{n:02d} / {total}", 6.6, anchor="end"),
+    ]
     if flow:
         label = FLOWS[flow]
         out.append(mono(W - M - 52, 22, label, 6.6, ROSE_DARK, anchor="end"))
@@ -97,25 +106,33 @@ def copy_column(p, top=96, x=M, w=COL):
 
 def page_svg(guide, p, n, total):
     from guide_scenes import SCENES
+
     art = SCENES[(guide["key"], n)]
     full = getattr(art, "full", False)
     body = art(p, guide) if full else (copy_column(p) + art(p, guide))
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}">'
-            f'{rect(0, 0, W, H, PAGE, "none", 0)}{body}{chrome(guide, n, total, p.get("flow"))}</svg>')
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}">'
+        f"{rect(0, 0, W, H, PAGE, 'none', 0)}{body}{chrome(guide, n, total, p.get('flow'))}</svg>"
+    )
 
 
 def font_css():
-    return "".join(f'@font-face{{font-family:"{n}";src:url("file://{static_font(n, w)}") format("truetype");'
-                   f'font-weight:{w}}}' for n, ws in WEIGHTS.items() for w in ws)
+    return "".join(
+        f'@font-face{{font-family:"{n}";src:url("file://{static_font(n, w)}") format("truetype");font-weight:{w}}}'
+        for n, ws in WEIGHTS.items()
+        for w in ws
+    )
 
 
 def print_pdf(svgs, out):
     page = os.path.splitext(out)[0] + ".html"
     with open(page, "w", encoding="utf-8") as f:
-        f.write(f'<!doctype html><html><head><meta charset="utf-8"><style>{font_css()}'
-                f'@page{{size:{W}pt {H}pt;margin:0}}html,body{{margin:0}}'
-                f'svg{{display:block;width:{W}pt;height:{H}pt;page-break-after:always;break-after:page}}'
-                f'</style></head><body>{"".join(svgs)}</body></html>')
+        f.write(
+            f'<!doctype html><html><head><meta charset="utf-8"><style>{font_css()}'
+            f"@page{{size:{W}pt {H}pt;margin:0}}html,body{{margin:0}}"
+            f"svg{{display:block;width:{W}pt;height:{H}pt;page-break-after:always;break-after:page}}"
+            f"</style></head><body>{''.join(svgs)}</body></html>"
+        )
     print_page(page, out, 6000)
     n = len(svgs)
     with fitz.open(out) as doc:
@@ -135,6 +152,7 @@ def print_pdf(svgs, out):
 def build(guide, only=None):
     """`only` builds a proof of some pages under a separate name, never over the full guide."""
     from guide_scenes import SCENES
+
     pages = guide["pages"]
     # Scenes are keyed by page position, so a page added, dropped or moved in guides.json would pair
     # every later page with the wrong drawing.

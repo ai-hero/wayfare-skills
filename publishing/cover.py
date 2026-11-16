@@ -11,6 +11,7 @@ animated version turns the same joints through keyframes sampled from that solve
 the cover is a field of `editions/meta.json`; the back carries the Introduction's first paragraph
 until there is back-cover copy.
 """
+
 import html
 import json
 import math
@@ -31,16 +32,16 @@ FONTS = {
 }
 
 # Light-theme values of the tokens the website's factory line uses (design-system styles.css).
-INK = "#0B0D14"          # ink-figure: the title
-ICON = "#383D49"         # icon-neutral: every structural stroke
-LINE = "#7B8290"         # line-strong / icon-quiet
-QUIET = "#666D7B"        # text-quiet: eyebrows and flow labels
-HAIR = "#C6C9D0"         # ink-line
-PAGE = "#FFFFFF"         # surface-page
-SUNK = "#F4F5F8"         # surface-sunken
-ROSE = "#E93A61"         # mark-agent / pal-300: the work and the person
-ROSE_DARK = "#A5153E"    # pal-500
-WASH = "#FEF1F4"         # surface-selected: pal-300 at 7% on paper
+INK = "#0B0D14"  # ink-figure: the title
+ICON = "#383D49"  # icon-neutral: every structural stroke
+LINE = "#7B8290"  # line-strong / icon-quiet
+QUIET = "#666D7B"  # text-quiet: eyebrows and flow labels
+HAIR = "#C6C9D0"  # ink-line
+PAGE = "#FFFFFF"  # surface-page
+SUNK = "#F4F5F8"  # surface-sunken
+ROSE = "#E93A61"  # mark-agent / pal-300: the work and the person
+ROSE_DARK = "#A5153E"  # pal-500
+WASH = "#FEF1F4"  # surface-selected: pal-300 at 7% on paper
 
 PT = 72
 # The book's trim, for the interior (book.css takes it from here) and the cover alike. 7.5 x 9.25 in
@@ -75,17 +76,23 @@ class Iso:
 
     def poly(self, pts, fill, stroke=ICON, sw=None, dash=None, extra=""):
         d = f' stroke-dasharray="{dash}"' if dash else ""
-        self.out.append(f'<polygon points="{pts}" fill="{fill}" stroke="{stroke}" stroke-width="{sw or self.sw}"'
-                        f' stroke-linejoin="round"{d}{extra}/>')
+        self.out.append(
+            f'<polygon points="{pts}" fill="{fill}" stroke="{stroke}" stroke-width="{sw or self.sw}"'
+            f' stroke-linejoin="round"{d}{extra}/>'
+        )
 
     def box(self, u, v, w, d, h, top=PAGE, right=PAGE, front=SUNK, stroke=ICON, dash=None, extra=""):
         g = []
         self.out, keep = g, self.out
-        self.poly(self.pts((u + w, v, h), (u + w, v + d, h), (u + w, v + d, 0), (u + w, v, 0)), right, stroke, dash=dash)
-        self.poly(self.pts((u, v + d, h), (u + w, v + d, h), (u + w, v + d, 0), (u, v + d, 0)), front, stroke, dash=dash)
+        self.poly(
+            self.pts((u + w, v, h), (u + w, v + d, h), (u + w, v + d, 0), (u + w, v, 0)), right, stroke, dash=dash
+        )
+        self.poly(
+            self.pts((u, v + d, h), (u + w, v + d, h), (u + w, v + d, 0), (u, v + d, 0)), front, stroke, dash=dash
+        )
         self.poly(self.pts((u, v, h), (u + w, v, h), (u + w, v + d, h), (u, v + d, h)), top, stroke, dash=dash)
         self.out = keep
-        self.out.append(f'<g{extra}>' + "".join(g) + "</g>")
+        self.out.append(f"<g{extra}>" + "".join(g) + "</g>")
 
     def face_matrix(self, u, v, z, edge):
         """Map face units onto the top face centred at (u, v, z), one unit per `edge` grid units."""
@@ -97,50 +104,72 @@ class Iso:
     def line(self, a, b, stroke=LINE, sw=None, dash=None, extra=""):
         (x1, y1), (x2, y2) = self.p(*a), self.p(*b)
         d = f' stroke-dasharray="{dash}"' if dash else ""
-        self.out.append(f'<line x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" y2="{y2:.2f}" stroke="{stroke}"'
-                        f' stroke-width="{sw or self.sw}" stroke-linecap="round"{d}{extra}/>')
+        self.out.append(
+            f'<line x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" y2="{y2:.2f}" stroke="{stroke}"'
+            f' stroke-width="{sw or self.sw}" stroke-linecap="round"{d}{extra}/>'
+        )
 
     def path(self, pts, stroke=LINE, sw=None, dash=None, extra=""):
         d = "M" + " L".join(f"{x:.2f},{y:.2f}" for x, y in (self.p(*q) for q in pts))
         da = f' stroke-dasharray="{dash}"' if dash else ""
-        self.out.append(f'<path d="{d}" fill="none" stroke="{stroke}" stroke-width="{sw or self.sw}"'
-                        f' stroke-linecap="round" stroke-linejoin="round"{da}{extra}/>')
+        self.out.append(
+            f'<path d="{d}" fill="none" stroke="{stroke}" stroke-width="{sw or self.sw}"'
+            f' stroke-linecap="round" stroke-linejoin="round"{da}{extra}/>'
+        )
 
     def head(self, a, b, stroke=LINE, size=None):
         """An open chevron at `b`, pointing from `a`: the website's arrowhead."""
         (x1, y1), (x2, y2) = self.p(*a), self.p(*b)
         ang, k = math.atan2(y2 - y1, x2 - x1), size or self.s * 0.22
-        pts = [(x2 - k * math.cos(ang - 0.5), y2 - k * math.sin(ang - 0.5)), (x2, y2),
-               (x2 - k * math.cos(ang + 0.5), y2 - k * math.sin(ang + 0.5))]
+        pts = [
+            (x2 - k * math.cos(ang - 0.5), y2 - k * math.sin(ang - 0.5)),
+            (x2, y2),
+            (x2 - k * math.cos(ang + 0.5), y2 - k * math.sin(ang + 0.5)),
+        ]
         d = "M" + " L".join(f"{x:.2f},{y:.2f}" for x, y in pts)
-        self.out.append(f'<path d="{d}" fill="none" stroke="{stroke}" stroke-width="{self.sw}"'
-                        f' stroke-linecap="round" stroke-linejoin="round"/>')
+        self.out.append(
+            f'<path d="{d}" fill="none" stroke="{stroke}" stroke-width="{self.sw}"'
+            f' stroke-linecap="round" stroke-linejoin="round"/>'
+        )
 
     def label(self, text, u, v, z=0, size=5.6, anchor="start", along="u", fill=QUIET):
         """A mono eyebrow lying on the floor, skewed along an isometric axis like the website's."""
         x, y = self.p(u, v, z)
         m = "0.866,0.5,0,1" if along == "u" else "0.866,-0.5,0,1"
-        self.out.append(f'<text transform="matrix({m},{x:.2f},{y:.2f})" font-family="Geist Mono" font-weight="400"'
-                        f' font-size="{size}" letter-spacing="{size * 0.12:.2f}" fill="{fill}"'
-                        f' text-anchor="{anchor}">{esc(text)}</text>')
+        self.out.append(
+            f'<text transform="matrix({m},{x:.2f},{y:.2f})" font-family="Geist Mono" font-weight="400"'
+            f' font-size="{size}" letter-spacing="{size * 0.12:.2f}" fill="{fill}"'
+            f' text-anchor="{anchor}">{esc(text)}</text>'
+        )
 
     def raw(self, s):
         self.out.append(s)
 
 
 def _ngon(n, r=0.28, rot=-90.0):
-    return [(r * math.cos(math.radians(rot + 360 * k / n)), r * math.sin(math.radians(rot + 360 * k / n)))
-            for k in range(n)]
+    return [
+        (r * math.cos(math.radians(rot + 360 * k / n)), r * math.sin(math.radians(rot + 360 * k / n))) for k in range(n)
+    ]
 
 
 def _star(n, r1=0.3, r2=0.13):
-    return [((r1 if k % 2 == 0 else r2) * math.cos(math.radians(-90 + 180 * k / n)),
-             (r1 if k % 2 == 0 else r2) * math.sin(math.radians(-90 + 180 * k / n))) for k in range(2 * n)]
+    return [
+        (
+            (r1 if k % 2 == 0 else r2) * math.cos(math.radians(-90 + 180 * k / n)),
+            (r1 if k % 2 == 0 else r2) * math.sin(math.radians(-90 + 180 * k / n)),
+        )
+        for k in range(2 * n)
+    ]
 
 
 def _arc(cx, cy, r, a0, a1, n=24):
-    return [(cx + r * math.cos(math.radians(a0 + (a1 - a0) * k / n)),
-             cy + r * math.sin(math.radians(a0 + (a1 - a0) * k / n))) for k in range(n + 1)]
+    return [
+        (
+            cx + r * math.cos(math.radians(a0 + (a1 - a0) * k / n)),
+            cy + r * math.sin(math.radians(a0 + (a1 - a0) * k / n)),
+        )
+        for k in range(n + 1)
+    ]
 
 
 _W = 0.1
@@ -151,14 +180,42 @@ SHAPES = [
     [[(0, -0.32), (0.24, 0), (0, 0.32), (-0.24, 0)]],
     [_ngon(6)],
     [_ngon(5, 0.3)],
-    [[(-_W, -0.3), (_W, -0.3), (_W, -_W), (0.3, -_W), (0.3, _W), (_W, _W), (_W, 0.3), (-_W, 0.3), (-_W, _W),
-      (-0.3, _W), (-0.3, -_W), (-_W, -_W)]],
+    [
+        [
+            (-_W, -0.3),
+            (_W, -0.3),
+            (_W, -_W),
+            (0.3, -_W),
+            (0.3, _W),
+            (_W, _W),
+            (_W, 0.3),
+            (-_W, 0.3),
+            (-_W, _W),
+            (-0.3, _W),
+            (-0.3, -_W),
+            (-_W, -_W),
+        ]
+    ],
     [_ngon(40, 0.29), _ngon(30, 0.14)],
     [[(-0.28, -0.18), (0, 0.06), (0.28, -0.18), (0.28, 0.06), (0, 0.3), (-0.28, 0.06)]],
     [_star(5)],
     [_ngon(8, 0.29, -67.5)],
-    [[(-0.3, -0.22), (-0.22, -0.3), (0, -0.08), (0.22, -0.3), (0.3, -0.22), (0.08, 0), (0.3, 0.22), (0.22, 0.3),
-      (0, 0.08), (-0.22, 0.3), (-0.3, 0.22), (-0.08, 0)]],
+    [
+        [
+            (-0.3, -0.22),
+            (-0.22, -0.3),
+            (0, -0.08),
+            (0.22, -0.3),
+            (0.3, -0.22),
+            (0.08, 0),
+            (0.3, 0.22),
+            (0.22, 0.3),
+            (0, 0.08),
+            (-0.22, 0.3),
+            (-0.3, 0.22),
+            (-0.08, 0),
+        ]
+    ],
     [_arc(0, 0.1, 0.3, 180, 360)],
     [[(-0.3, 0.2), (-0.16, -0.2), (0.16, -0.2), (0.3, 0.2)]],
     [[(-0.3, 0.18), (-0.12, -0.18), (0.3, -0.18), (0.12, 0.18)]],
@@ -167,8 +224,10 @@ SHAPES = [
     [[(-0.3, -0.3), (0.3, -0.3), (0.3, -0.1), (0.1, -0.1), (0.1, 0.3), (-0.1, 0.3), (-0.1, -0.1), (-0.3, -0.1)]],
     [_arc(0, -0.15, 0.3, 30, 150, 16) + _arc(0, 0.15, 0.3, 210, 330, 16)[1:-1]],
     [[(0, 0.3), (0.3, -0.24), (-0.3, -0.24)]],
-    [[(-0.26, -0.26), (0.26, -0.26), (0.26, 0.26), (-0.26, 0.26)], [(-0.12, -0.12), (0.12, -0.12), (0.12, 0.12),
-                                                                     (-0.12, 0.12)]],
+    [
+        [(-0.26, -0.26), (0.26, -0.26), (0.26, 0.26), (-0.26, 0.26)],
+        [(-0.12, -0.12), (0.12, -0.12), (0.12, 0.12), (-0.12, 0.12)],
+    ],
     [_ngon(3, 0.32, -90), _ngon(3, 0.32, 90)],
     [_ngon(40, 0.29), _ngon(12, 0.05)],
     [_star(4, 0.32, 0.1)],
@@ -247,7 +306,7 @@ class Machine:
         dx, dy = tx - sh[0], ty - sh[1]
         reach = max(abs(L1 - L2) + 1, min(L1 + L2 - 1, math.hypot(dx, dy)))
         aim = math.atan2(dy, dx)
-        spread = math.acos((L1 ** 2 + reach ** 2 - L2 ** 2) / (2 * L1 * reach))
+        spread = math.acos((L1**2 + reach**2 - L2**2) / (2 * L1 * reach))
         th = aim - spread if math.sin(aim - spread) < math.sin(aim + spread) else aim + spread
         el = (sh[0] + L1 * math.cos(th), sh[1] + L1 * math.sin(th))
         wr = (sh[0] + reach * math.cos(aim), sh[1] + reach * math.sin(aim))
@@ -272,41 +331,61 @@ class Machine:
         cls = (lambda c: f' class="{c} m{idx}"') if animated else (lambda c: "")
         tu, tv = u + 0.2, v + box_v + e / 2 + 0.05
         if ticket:
-            g.raw(f'<g{cls("ticket")}>')
-            g.poly(g.pts((tu - 0.32, tv - 0.32, 0), (tu + 0.32, tv - 0.32, 0), (tu + 0.32, tv + 0.32, 0),
-                         (tu - 0.32, tv + 0.32, 0)), PAGE, LINE)
+            g.raw(f"<g{cls('ticket')}>")
+            g.poly(
+                g.pts(
+                    (tu - 0.32, tv - 0.32, 0),
+                    (tu + 0.32, tv - 0.32, 0),
+                    (tu + 0.32, tv + 0.32, 0),
+                    (tu - 0.32, tv + 0.32, 0),
+                ),
+                PAGE,
+                LINE,
+            )
             tk = screen_d(g, self.loops, lambda x, y: (tu + x * 0.64, tv + y * 0.64, 0))
-            g.raw(f'<path d="{tk}" fill="none" stroke="{LINE}" stroke-width="{sw * 0.8:.2f}"'
-                  f' stroke-linejoin="round"/></g>')
+            g.raw(
+                f'<path d="{tk}" fill="none" stroke="{LINE}" stroke-width="{sw * 0.8:.2f}"'
+                f' stroke-linejoin="round"/></g>'
+            )
         bx, by = g.p(u + PED[0], v + PED[1], 0)
         rx, ry, hb = 0.5 * s, 0.25 * s, 0.85 * s
-        g.raw(f'<path d="M{bx - rx:.2f},{by - hb:.2f} L{bx - rx:.2f},{by:.2f} A{rx:.2f},{ry:.2f} 0 0 0 {bx + rx:.2f},{by:.2f}'
-              f' L{bx + rx:.2f},{by - hb:.2f}" fill="{PAGE}" stroke="{ICON}" stroke-width="{sw}"/>'
-              f'<ellipse cx="{bx:.2f}" cy="{by - hb:.2f}" rx="{rx:.2f}" ry="{ry:.2f}" fill="{PAGE}" stroke="{ICON}"'
-              f' stroke-width="{sw}"/>')
+        g.raw(
+            f'<path d="M{bx - rx:.2f},{by - hb:.2f} L{bx - rx:.2f},{by:.2f} A{rx:.2f},{ry:.2f} 0 0 0 {bx + rx:.2f},{by:.2f}'
+            f' L{bx + rx:.2f},{by - hb:.2f}" fill="{PAGE}" stroke="{ICON}" stroke-width="{sw}"/>'
+            f'<ellipse cx="{bx:.2f}" cy="{by - hb:.2f}" rx="{rx:.2f}" ry="{ry:.2f}" fill="{PAGE}" stroke="{ICON}"'
+            f' stroke-width="{sw}"/>'
+        )
         nx = 0.2 * s
         top = by - ARM_SHOULDER * s
-        g.raw(f'<rect x="{bx - nx:.2f}" y="{top:.2f}" width="{2 * nx:.2f}" height="{by - hb - top:.2f}" fill="{PAGE}"/>'
-              f'<line x1="{bx - nx:.2f}" y1="{top:.2f}" x2="{bx - nx:.2f}" y2="{by - hb:.2f}" stroke="{ICON}" stroke-width="{sw}"/>'
-              f'<line x1="{bx + nx:.2f}" y1="{top:.2f}" x2="{bx + nx:.2f}" y2="{by - hb:.2f}" stroke="{ICON}" stroke-width="{sw}"/>')
+        g.raw(
+            f'<rect x="{bx - nx:.2f}" y="{top:.2f}" width="{2 * nx:.2f}" height="{by - hb - top:.2f}" fill="{PAGE}"/>'
+            f'<line x1="{bx - nx:.2f}" y1="{top:.2f}" x2="{bx - nx:.2f}" y2="{by - hb:.2f}" stroke="{ICON}" stroke-width="{sw}"/>'
+            f'<line x1="{bx + nx:.2f}" y1="{top:.2f}" x2="{bx + nx:.2f}" y2="{by - hb:.2f}" stroke="{ICON}" stroke-width="{sw}"/>'
+        )
         g.box(u + box_u, v + box_v, e, e, h)
         cu, cv, _ = self.face(0, 0)
-        g.raw(f'<ellipse{cls("wash")} cx="{g.p(cu, cv, h)[0]:.2f}" cy="{g.p(cu, cv, h)[1]:.2f}" rx="{0.55 * e * s:.2f}"'
-              f' ry="{0.27 * e * s:.2f}" fill="{WASH}"/>')
+        g.raw(
+            f'<ellipse{cls("wash")} cx="{g.p(cu, cv, h)[0]:.2f}" cy="{g.p(cu, cv, h)[1]:.2f}" rx="{0.55 * e * s:.2f}"'
+            f' ry="{0.27 * e * s:.2f}" fill="{WASH}"/>'
+        )
         on_top = lambda x, y: (cu + x * e * MARK, cv + y * e * MARK, h)  # noqa: E731
         if animated:
             d, extra = screen_d(g, self.loops, on_top), ' pathLength="100"'
         else:
             d, extra = screen_d(g, partial(self.loops, f)[0] if f < 0.999 else self.loops, on_top, f >= 0.999), ""
-        g.raw(f'<path{cls("trace")} d="{d}" fill="none" stroke="{ROSE}" stroke-width="{sw * 1.6:.2f}"{extra}'
-              f' stroke-linejoin="round" stroke-linecap="round"/>')
+        g.raw(
+            f'<path{cls("trace")} d="{d}" fill="none" stroke="{ROSE}" stroke-width="{sw * 1.6:.2f}"{extra}'
+            f' stroke-linejoin="round" stroke-linecap="round"/>'
+        )
         if shipped:
             su = u + box_u + e + 0.6
-            g.raw(f'<g{cls("ship")}>')
+            g.raw(f"<g{cls('ship')}>")
             g.box(su, v + box_v + 0.15, 0.8, 0.8, 0.7, top=PAGE, right=PAGE, front=PAGE, stroke=LINE, dash="1.6 1.8")
             sd = screen_d(g, self.loops, lambda x, y: (su + 0.4 + x * 0.8, v + box_v + 0.55 + y * 0.8, 0.7))
-            g.raw(f'<path d="{sd}" fill="none" stroke="{ROSE}" stroke-width="{sw * 1.3:.2f}"'
-                  f' stroke-linejoin="round"/></g>')
+            g.raw(
+                f'<path d="{sd}" fill="none" stroke="{ROSE}" stroke-width="{sw * 1.3:.2f}"'
+                f' stroke-linejoin="round"/></g>'
+            )
         self.draw_arm(f, lift, animated, idx)
 
     def draw_arm(self, f, lift, animated, idx):
@@ -321,24 +400,32 @@ class Machine:
         # Built in a frame where both links lie flat, then turned into the pose; the animated
         # version swaps these rotations for keyframes.
         r1, r2 = math.degrees(th), math.degrees(ph - th)
-        tube = lambda x2, w: (f'<line x1="0" y1="0" x2="{x2:.2f}" y2="0" stroke="{ICON}" stroke-width="{w:.2f}" stroke-linecap="round"/>'  # noqa: E731
-                              f'<line x1="0" y1="0" x2="{x2:.2f}" y2="0" stroke="{PAGE}" stroke-width="{w - 2 * sw:.2f}" stroke-linecap="round"/>')
-        joint = lambda r: (f'<circle r="{r:.2f}" fill="{PAGE}" stroke="{ICON}" stroke-width="{sw}"/>'  # noqa: E731
-                           f'<circle r="{0.04 * s:.2f}" fill="{LINE}"/>')
+        tube = lambda x2, w: (  # noqa: E731
+            f'<line x1="0" y1="0" x2="{x2:.2f}" y2="0" stroke="{ICON}" stroke-width="{w:.2f}" stroke-linecap="round"/>'
+            f'<line x1="0" y1="0" x2="{x2:.2f}" y2="0" stroke="{PAGE}" stroke-width="{w - 2 * sw:.2f}" stroke-linecap="round"/>'
+        )
+        joint = lambda r: (  # noqa: E731
+            f'<circle r="{r:.2f}" fill="{PAGE}" stroke="{ICON}" stroke-width="{sw}"/>'
+            f'<circle r="{0.04 * s:.2f}" fill="{LINE}"/>'
+        )
         hw, ht = 0.18 * s, 0.3 * s
-        tool = (f'<circle r="{0.12 * s:.2f}" fill="{PAGE}" stroke="{ICON}" stroke-width="{sw}"/>'
-                f'<path d="M{-hw:.2f},{0.1 * s:.2f} L{hw:.2f},{0.1 * s:.2f} L{hw * 0.45:.2f},{0.1 * s + ht:.2f}'
-                f' L{-hw * 0.45:.2f},{0.1 * s + ht:.2f} Z" fill="{PAGE}" stroke="{ICON}" stroke-width="{sw}" stroke-linejoin="round"/>'
-                f'<line{a("beam")} x1="0" y1="{0.1 * s + ht + 0.08 * s:.2f}" x2="0" y2="{(1.05 + lift) * s - 0.1 * s:.2f}"'
-                f' stroke="{ROSE}" stroke-width="{sw * 1.1:.2f}" stroke-dasharray="{0.06 * s:.2f} {0.08 * s:.2f}"'
-                f' stroke-linecap="round" opacity="{0 if lift > 0.2 and not animated else 1}"/>'
-                f'<circle{a("glow")} cy="{0.1 * s + ht + 0.06 * s:.2f}" r="{0.14 * s:.2f}" fill="{ROSE}" opacity=".24"/>'
-                f'<circle cy="{0.1 * s + ht + 0.06 * s:.2f}" r="{0.07 * s:.2f}" fill="{ROSE}"/>')
-        g.raw(f'<g transform="translate({sh[0]:.2f},{sh[1]:.2f})">'
-              f'<g{a("upper")} style="transform:rotate({r1:.2f}deg){an("u")}">{tube(L1, w1)}'
-              f'<g transform="translate({L1:.2f},0)"><g{a("fore")} style="transform:rotate({r2:.2f}deg){an("f")}">{tube(L2, w2)}'
-              f'<g transform="translate({L2:.2f},0)"><g{a("tool")} style="transform:rotate({-r1 - r2:.2f}deg){an("t")}">{tool}</g></g>'
-              f'{joint(0.17 * s)}</g></g>{joint(0.2 * s)}</g></g>')
+        tool = (
+            f'<circle r="{0.12 * s:.2f}" fill="{PAGE}" stroke="{ICON}" stroke-width="{sw}"/>'
+            f'<path d="M{-hw:.2f},{0.1 * s:.2f} L{hw:.2f},{0.1 * s:.2f} L{hw * 0.45:.2f},{0.1 * s + ht:.2f}'
+            f' L{-hw * 0.45:.2f},{0.1 * s + ht:.2f} Z" fill="{PAGE}" stroke="{ICON}" stroke-width="{sw}" stroke-linejoin="round"/>'
+            f'<line{a("beam")} x1="0" y1="{0.1 * s + ht + 0.08 * s:.2f}" x2="0" y2="{(1.05 + lift) * s - 0.1 * s:.2f}"'
+            f' stroke="{ROSE}" stroke-width="{sw * 1.1:.2f}" stroke-dasharray="{0.06 * s:.2f} {0.08 * s:.2f}"'
+            f' stroke-linecap="round" opacity="{0 if lift > 0.2 and not animated else 1}"/>'
+            f'<circle{a("glow")} cy="{0.1 * s + ht + 0.06 * s:.2f}" r="{0.14 * s:.2f}" fill="{ROSE}" opacity=".24"/>'
+            f'<circle cy="{0.1 * s + ht + 0.06 * s:.2f}" r="{0.07 * s:.2f}" fill="{ROSE}"/>'
+        )
+        g.raw(
+            f'<g transform="translate({sh[0]:.2f},{sh[1]:.2f})">'
+            f'<g{a("upper")} style="transform:rotate({r1:.2f}deg){an("u")}">{tube(L1, w1)}'
+            f'<g transform="translate({L1:.2f},0)"><g{a("fore")} style="transform:rotate({r2:.2f}deg){an("f")}">{tube(L2, w2)}'
+            f'<g transform="translate({L2:.2f},0)"><g{a("tool")} style="transform:rotate({-r1 - r2:.2f}deg){an("t")}">{tool}</g></g>'
+            f"{joint(0.17 * s)}</g></g>{joint(0.2 * s)}</g></g>"
+        )
 
 
 def factory(g, animated=False):
@@ -350,8 +437,14 @@ def factory(g, animated=False):
     for cj in range(2):
         for ci in range(2):
             cu, cv = ci * (cell_u + gap), cj * (cell_v + gap)
-            g.poly(g.pts((cu, cv, 0.45), (cu + cell_u, cv, 0.45), (cu + cell_u, cv + cell_v, 0.45),
-                         (cu, cv + cell_v, 0.45)), SUNK, HAIR, sw=sw * 0.9)
+            g.poly(
+                g.pts(
+                    (cu, cv, 0.45), (cu + cell_u, cv, 0.45), (cu + cell_u, cv + cell_v, 0.45), (cu, cv + cell_v, 0.45)
+                ),
+                SUNK,
+                HAIR,
+                sw=sw * 0.9,
+            )
             for j in range(2):
                 for i in range(3):
                     machines.append((cu + i * PITCH_U + 0.1, cv + j * PITCH_V + 0.05, k))
@@ -364,8 +457,11 @@ def factory(g, animated=False):
         # For print every machine shows its product: most mid-etch at different points of the
         # outline (so no two arms share a pose), one in four finished with the version shipping.
         done = k % 4 == 2
-        still = None if animated else (1.0 if done else 0.45 + 0.5 * ((k * 0.381966) % 1.0),
-                                       0.45 if done else 0.0, k % 3 == 1, done)
+        still = (
+            None
+            if animated
+            else (1.0 if done else 0.45 + 0.5 * ((k * 0.381966) % 1.0), 0.45 if done else 0.0, k % 3 == 1, done)
+        )
         g.raw(f'<g class="machine" style="--d:{-phase * CYCLE_S:.2f}s">' if animated else "<g>")
         m.draw(0.5, animated, k, still)
         g.raw("</g>")
@@ -382,14 +478,18 @@ def static_font(family, weight):
     if not os.path.exists(out):
         from fontTools.ttLib import TTFont
         from fontTools.varLib.instancer import instantiateVariableFont
+
         os.makedirs(os.path.dirname(out), exist_ok=True)
         instantiateVariableFont(TTFont(FONTS[family]), {"wght": weight}).save(out)
     return out
 
 
 def font_css(fmt="truetype"):
-    return "".join(f'@font-face{{font-family:"{n}";src:url("file://{static_font(n, w)}") format("{fmt}");'
-                   f'font-weight:{w}}}' for n, ws in WEIGHTS.items() for w in ws)
+    return "".join(
+        f'@font-face{{font-family:"{n}";src:url("file://{static_font(n, w)}") format("{fmt}");font-weight:{w}}}'
+        for n, ws in WEIGHTS.items()
+        for w in ws
+    )
 
 
 def front_art(w, h, animated=False):
@@ -411,29 +511,39 @@ def title_block(meta, x, top, width, scale=1.0):
     cut = min(range(1, len(t)), key=lambda i: max(len(" ".join(t[:i])), len(" ".join(t[i:])))) if len(t) > 1 else 1
     lines = [" ".join(t[:cut]), " ".join(t[cut:])] if len(t) > 1 else t
     size = 50 * scale
-    out = [f'<rect x="{x:.2f}" y="{top:.2f}" width="{28 * scale:.2f}" height="{2.2 * scale:.2f}" fill="{ROSE}"/>',
-           f'<text x="{x:.2f}" y="{top + 20 * scale:.2f}" font-family="Geist Mono" font-size="{7.5 * scale:.2f}"'
-           f' letter-spacing="{7.5 * scale * 0.14:.2f}" fill="{QUIET}">{esc(meta["affiliation"].upper())}</text>']
+    out = [
+        f'<rect x="{x:.2f}" y="{top:.2f}" width="{28 * scale:.2f}" height="{2.2 * scale:.2f}" fill="{ROSE}"/>',
+        f'<text x="{x:.2f}" y="{top + 20 * scale:.2f}" font-family="Geist Mono" font-size="{7.5 * scale:.2f}"'
+        f' letter-spacing="{7.5 * scale * 0.14:.2f}" fill="{QUIET}">{esc(meta["affiliation"].upper())}</text>',
+    ]
     y = top + 20 * scale + size * 1.18
     for ln in lines:
-        out.append(f'<text x="{x - 2 * scale:.2f}" y="{y:.2f}" font-family="Manrope" font-weight="200"'
-                   f' font-size="{size:.2f}" letter-spacing="{-size * 0.02:.2f}" fill="{INK}">{esc(ln)}</text>')
+        out.append(
+            f'<text x="{x - 2 * scale:.2f}" y="{y:.2f}" font-family="Manrope" font-weight="200"'
+            f' font-size="{size:.2f}" letter-spacing="{-size * 0.02:.2f}" fill="{INK}">{esc(ln)}</text>'
+        )
         y += size * 1.04
     if meta.get("part"):
-        out.append(f'<text x="{x:.2f}" y="{y + 2 * scale:.2f}" font-family="Geist Mono" font-size="{9 * scale:.2f}"'
-                   f' letter-spacing="{9 * scale * 0.18:.2f}" fill="{ROSE}">{esc(meta["part"].upper())}</text>')
+        out.append(
+            f'<text x="{x:.2f}" y="{y + 2 * scale:.2f}" font-family="Geist Mono" font-size="{9 * scale:.2f}"'
+            f' letter-spacing="{9 * scale * 0.18:.2f}" fill="{ROSE}">{esc(meta["part"].upper())}</text>'
+        )
         y += 10 * scale
     if meta.get("subtitle"):
-        out.append(f'<text x="{x:.2f}" y="{y + 10 * scale:.2f}" font-family="Geist" font-weight="300"'
-                   f' font-size="{15 * scale:.2f}" fill="{ICON}">{esc(meta["subtitle"])}</text>')
+        out.append(
+            f'<text x="{x:.2f}" y="{y + 10 * scale:.2f}" font-family="Geist" font-weight="300"'
+            f' font-size="{15 * scale:.2f}" fill="{ICON}">{esc(meta["subtitle"])}</text>'
+        )
     return "".join(out)
 
 
 def author_block(meta, x, bottom, scale=1.0):
-    return (f'<text x="{x:.2f}" y="{bottom - 14 * scale:.2f}" font-family="Geist" font-weight="400"'
-            f' font-size="{14 * scale:.2f}" fill="{INK}">{esc(meta["author"])}</text>'
-            f'<line x1="{x:.2f}" y1="{bottom - 36 * scale:.2f}" x2="{x + 28 * scale:.2f}" y2="{bottom - 36 * scale:.2f}"'
-            f' stroke="{HAIR}" stroke-width="{0.8 * scale:.2f}"/>')
+    return (
+        f'<text x="{x:.2f}" y="{bottom - 14 * scale:.2f}" font-family="Geist" font-weight="400"'
+        f' font-size="{14 * scale:.2f}" fill="{INK}">{esc(meta["author"])}</text>'
+        f'<line x1="{x:.2f}" y1="{bottom - 36 * scale:.2f}" x2="{x + 28 * scale:.2f}" y2="{bottom - 36 * scale:.2f}"'
+        f' stroke="{HAIR}" stroke-width="{0.8 * scale:.2f}"/>'
+    )
 
 
 def front_svg(meta, bleed=BLEED, animated=False, w=TRIM_W, h=TRIM_H, css=""):
@@ -442,24 +552,39 @@ def front_svg(meta, bleed=BLEED, animated=False, w=TRIM_W, h=TRIM_H, css=""):
     k = w / TRIM_W
     art = front_art(w, h, animated)
     margin = 0.75 * PT * k
-    body = (f'<rect width="{W:.2f}" height="{H:.2f}" fill="{PAGE}"/>'
-            f'<g transform="translate({bleed:.2f},{bleed:.2f})">'
-            f'<g>{"".join(art.out)}</g>'
-            + title_block(meta, margin, 0.95 * PT * k, w - 2 * margin, k)
-            + author_block(meta, margin, h - 0.55 * PT * k, k)
-            + "</g>")
+    body = (
+        f'<rect width="{W:.2f}" height="{H:.2f}" fill="{PAGE}"/>'
+        f'<g transform="translate({bleed:.2f},{bleed:.2f})">'
+        f"<g>{''.join(art.out)}</g>"
+        + title_block(meta, margin, 0.95 * PT * k, w - 2 * margin, k)
+        + author_block(meta, margin, h - 0.55 * PT * k, k)
+        + "</g>"
+    )
     style = f"<style>{css}</style>" if css else ""
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W:.2f} {H:.2f}" width="{W:.2f}" height="{H:.2f}">'
-            f'{style}{body}</svg>'), art
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W:.2f} {H:.2f}" width="{W:.2f}" height="{H:.2f}">'
+        f"{style}{body}</svg>"
+    ), art
 
 
 def print_page(page, out, budget_ms):
     """Print a local HTML file to PDF with headless Chrome. Chrome's stderr is captured, so a failure
     re-raises with it: the bare CalledProcessError names only the command line."""
     try:
-        subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--no-first-run", "--no-pdf-header-footer",
-                        f"--virtual-time-budget={budget_ms}", f"--print-to-pdf={out}", f"file://{page}"],
-                       check=True, capture_output=True)
+        subprocess.run(
+            [
+                CHROME,
+                "--headless=new",
+                "--disable-gpu",
+                "--no-first-run",
+                "--no-pdf-header-footer",
+                f"--virtual-time-budget={budget_ms}",
+                f"--print-to-pdf={out}",
+                f"file://{page}",
+            ],
+            check=True,
+            capture_output=True,
+        )
     except subprocess.CalledProcessError as e:
         raise SystemExit(f"chrome failed printing {page}:\n{e.stderr.decode(errors='replace')}") from e
 
@@ -469,9 +594,11 @@ def chrome_pdf(svg, w_pt, h_pt, out, fonts=True):
     `fonts` is false (art with no text, which then needs no font files on the machine)."""
     page = os.path.splitext(out)[0] + ".html"
     with open(page, "w", encoding="utf-8") as f:
-        f.write(f'<!doctype html><html><head><meta charset="utf-8"><style>{font_css() if fonts else ""}'
-                f'@page{{size:{w_pt}pt {h_pt}pt;margin:0}}html,body{{margin:0}}svg{{display:block;'
-                f'width:{w_pt}pt;height:{h_pt}pt}}</style></head><body>{svg}</body></html>')
+        f.write(
+            f'<!doctype html><html><head><meta charset="utf-8"><style>{font_css() if fonts else ""}'
+            f"@page{{size:{w_pt}pt {h_pt}pt;margin:0}}html,body{{margin:0}}svg{{display:block;"
+            f"width:{w_pt}pt;height:{h_pt}pt}}</style></head><body>{svg}</body></html>"
+        )
     print_page(page, out, 4000)
     os.remove(page)
     # Chrome rounds the page up to a whole CSS pixel, so a wrap comes out up to 1/96 in wider than
@@ -493,6 +620,7 @@ def raster(pdf, out, dpi=None, size=None):
     pix = page.get_pixmap(matrix=fitz.Matrix(z * 1.001, z * 1.001), alpha=False)
     if size and (pix.width, pix.height) != size:
         from PIL import Image
+
         Image.frombytes("RGB", (pix.width, pix.height), pix.samples).resize(size, Image.LANCZOS).save(out)
     else:
         pix.save(out)
@@ -505,6 +633,7 @@ def first_paragraph():
         for b in s["blocks"]:
             if b["kind"] == "p":
                 from inline import md_plain
+
                 return md_plain(b["md"])
     return ""
 
@@ -512,6 +641,7 @@ def first_paragraph():
 def wrap_lines(text, width_pt, size, font="Geist"):
     """Greedy wrap measured with the face's own advance widths."""
     from fontTools.ttLib import TTFont
+
     tt = TTFont(FONTS[font])
     cmap, hmtx, upm = tt.getBestCmap(), tt["hmtx"], tt["head"].unitsPerEm
     adv = lambda t: sum(hmtx[cmap.get(ord(c), cmap[32])][0] for c in t) * size / upm  # noqa: E731
@@ -540,8 +670,10 @@ def ean13_modules(isbn):
     if check != int(digits[12]):
         raise ValueError(f"cover: ISBN {isbn!r} has check digit {digits[12]}, expected {check}")
     flip = lambda bits: "".join("1" if b == "0" else "0" for b in bits)  # noqa: E731
-    left = "".join(EAN_L[int(d)] if p == "L" else flip(EAN_L[int(d)])[::-1]
-                   for d, p in zip(digits[1:7], EAN_PARITY[int(digits[0])]))
+    left = "".join(
+        EAN_L[int(d)] if p == "L" else flip(EAN_L[int(d)])[::-1]
+        for d, p in zip(digits[1:7], EAN_PARITY[int(digits[0])])
+    )
     right = "".join(flip(EAN_L[int(d)]) for d in digits[7:])
     return "101" + left + "01010" + right + "101"
 
@@ -561,24 +693,33 @@ def barcode_svg(meta, x, y):
     # Pure black on white whatever the palette: scanners read contrast, not the book's ink token. One
     # rect per bar, not per module: abutting rects can rasterize with a hairline seam inside a bar.
     runs = [(m.start(), m.end()) for m in re.finditer("1+", modules)]
-    bars = "".join(f'<rect x="{left + a * X:.3f}" y="{top:.2f}" width="{(b - a) * X:.3f}" '
-                   f'height="{h + (5 * X if a in guards else 0):.2f}" fill="#000000"/>' for a, b in runs)
+    bars = "".join(
+        f'<rect x="{left + a * X:.3f}" y="{top:.2f}" width="{(b - a) * X:.3f}" '
+        f'height="{h + (5 * X if a in guards else 0):.2f}" fill="#000000"/>'
+        for a, b in runs
+    )
     ty = top + h + 5 * X + 1.6
     mono = 'font-family="Geist Mono" font-size="8.4" fill="#000000"'
-    text = (f'<text x="{left - 7 * X:.2f}" y="{ty + 6:.2f}" text-anchor="end" {mono}>{digits[0]}</text>'
-            f'<text x="{left + 24 * X:.2f}" y="{ty + 6:.2f}" text-anchor="middle" letter-spacing="1.2" {mono}>{digits[1:7]}</text>'
-            f'<text x="{left + 71 * X:.2f}" y="{ty + 6:.2f}" text-anchor="middle" letter-spacing="1.2" {mono}>{digits[7:]}</text>')
-    label = (f'<text x="{x + BARCODE_W / 2:.2f}" y="{y + 0.17 * PT:.2f}" text-anchor="middle" font-family="Geist Mono"'
-             f' font-size="7.5" letter-spacing="0.6" fill="#000000">ISBN {esc(meta["isbn"])}</text>')
-    return (f'<rect x="{x:.2f}" y="{y:.2f}" width="{BARCODE_W:.2f}" height="{BARCODE_H:.2f}" fill="#FFFFFF"/>'
-            f'{label}{bars}{text}')
+    text = (
+        f'<text x="{left - 7 * X:.2f}" y="{ty + 6:.2f}" text-anchor="end" {mono}>{digits[0]}</text>'
+        f'<text x="{left + 24 * X:.2f}" y="{ty + 6:.2f}" text-anchor="middle" letter-spacing="1.2" {mono}>{digits[1:7]}</text>'
+        f'<text x="{left + 71 * X:.2f}" y="{ty + 6:.2f}" text-anchor="middle" letter-spacing="1.2" {mono}>{digits[7:]}</text>'
+    )
+    label = (
+        f'<text x="{x + BARCODE_W / 2:.2f}" y="{y + 0.17 * PT:.2f}" text-anchor="middle" font-family="Geist Mono"'
+        f' font-size="7.5" letter-spacing="0.6" fill="#000000">ISBN {esc(meta["isbn"])}</text>'
+    )
+    return (
+        f'<rect x="{x:.2f}" y="{y:.2f}" width="{BARCODE_W:.2f}" height="{BARCODE_H:.2f}" fill="#FFFFFF"/>'
+        f"{label}{bars}{text}"
+    )
 
 
 def wrap_svg(meta, pages):
     spine = pages * PAPER_IN_PER_PAGE * PT
     W, H = 2 * TRIM_W + spine + 2 * BLEED, TRIM_H + 2 * BLEED
     front, _ = front_svg(meta, bleed=0)
-    inner = front[front.index(">") + 1:front.rindex("</svg>")]
+    inner = front[front.index(">") + 1 : front.rindex("</svg>")]
     fx = BLEED + TRIM_W + spine
     m = 0.75 * PT
     text = first_paragraph()
@@ -586,30 +727,46 @@ def wrap_svg(meta, pages):
     back = [f'<rect x="{BLEED + m:.2f}" y="{BLEED + 0.95 * PT:.2f}" width="28" height="2.2" fill="{ROSE}"/>']
     y = BLEED + 0.95 * PT + 34
     for ln in lines:
-        back.append(f'<text x="{BLEED + m:.2f}" y="{y:.2f}" font-family="Geist" font-weight="300" font-size="10.5"'
-                    f' fill="{ICON}">{esc(ln)}</text>')
+        back.append(
+            f'<text x="{BLEED + m:.2f}" y="{y:.2f}" font-family="Geist" font-weight="300" font-size="10.5"'
+            f' fill="{ICON}">{esc(ln)}</text>'
+        )
         y += 16.5
-    back.append(f'<text x="{BLEED + m:.2f}" y="{BLEED + TRIM_H - 0.55 * PT - 14:.2f}" font-family="Geist Mono"'
-                f' font-size="7.5" letter-spacing="1.05" fill="{QUIET}">{esc(meta["affiliation"].upper())}</text>')
+    back.append(
+        f'<text x="{BLEED + m:.2f}" y="{BLEED + TRIM_H - 0.55 * PT - 14:.2f}" font-family="Geist Mono"'
+        f' font-size="7.5" letter-spacing="1.05" fill="{QUIET}">{esc(meta["affiliation"].upper())}</text>'
+    )
     bx, by = BLEED + TRIM_W - m - BARCODE_W, BLEED + TRIM_H - 0.55 * PT - BARCODE_H
-    back.append(barcode_svg(meta, bx, by) or
-                f'<rect x="{bx:.2f}" y="{by:.2f}" width="{BARCODE_W:.2f}" height="{BARCODE_H:.2f}" fill="{PAGE}"'
-                f' stroke="{HAIR}" stroke-width="0.6" stroke-dasharray="2 2"/>')
+    back.append(
+        barcode_svg(meta, bx, by)
+        or f'<rect x="{bx:.2f}" y="{by:.2f}" width="{BARCODE_W:.2f}" height="{BARCODE_H:.2f}" fill="{PAGE}"'
+        f' stroke="{HAIR}" stroke-width="0.6" stroke-dasharray="2 2"/>'
+    )
     sx, cy = BLEED + TRIM_W + spine / 2, H / 2
     fs = min(9.0, spine * 0.42)
-    part = (f'<tspan dx="{fs:.2f}" font-family="Geist Mono" font-size="{fs * 0.78:.2f}" letter-spacing="{fs * 0.08:.2f}"'
-            f' fill="{ROSE}">{esc(meta["part"].upper())}</tspan>') if meta.get("part") else ""
-    spine_text = (f'<g transform="translate({sx:.2f},{cy:.2f}) rotate(90)">'
-                  f'<text x="{-TRIM_H / 2 + 0.6 * PT:.2f}" y="{fs * 0.36:.2f}" font-family="Manrope" font-weight="300"'
-                  f' font-size="{fs:.2f}" fill="{INK}">{esc(meta["title"])}{part}</text>'
-                  f'<text x="{TRIM_H / 2 - 0.6 * PT:.2f}" y="{fs * 0.36:.2f}" text-anchor="end" font-family="Geist Mono"'
-                  f' font-size="{fs * 0.78:.2f}" letter-spacing="{fs * 0.08:.2f}" fill="{QUIET}">'
-                  f'{esc(meta["author"].upper())}</text></g>')
-    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W:.2f} {H:.2f}" width="{W:.2f}" height="{H:.2f}">'
-           f'<rect width="{W:.2f}" height="{H:.2f}" fill="{PAGE}"/>'
-           f'<rect x="{BLEED + TRIM_W:.2f}" y="0" width="{spine:.2f}" height="{H:.2f}" fill="{SUNK}"/>'
-           f'{"".join(back)}{spine_text}'
-           f'<g transform="translate({fx:.2f},{BLEED:.2f})">{inner}</g></svg>')
+    part = (
+        (
+            f'<tspan dx="{fs:.2f}" font-family="Geist Mono" font-size="{fs * 0.78:.2f}" letter-spacing="{fs * 0.08:.2f}"'
+            f' fill="{ROSE}">{esc(meta["part"].upper())}</tspan>'
+        )
+        if meta.get("part")
+        else ""
+    )
+    spine_text = (
+        f'<g transform="translate({sx:.2f},{cy:.2f}) rotate(90)">'
+        f'<text x="{-TRIM_H / 2 + 0.6 * PT:.2f}" y="{fs * 0.36:.2f}" font-family="Manrope" font-weight="300"'
+        f' font-size="{fs:.2f}" fill="{INK}">{esc(meta["title"])}{part}</text>'
+        f'<text x="{TRIM_H / 2 - 0.6 * PT:.2f}" y="{fs * 0.36:.2f}" text-anchor="end" font-family="Geist Mono"'
+        f' font-size="{fs * 0.78:.2f}" letter-spacing="{fs * 0.08:.2f}" fill="{QUIET}">'
+        f"{esc(meta['author'].upper())}</text></g>"
+    )
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W:.2f} {H:.2f}" width="{W:.2f}" height="{H:.2f}">'
+        f'<rect width="{W:.2f}" height="{H:.2f}" fill="{PAGE}"/>'
+        f'<rect x="{BLEED + TRIM_W:.2f}" y="0" width="{spine:.2f}" height="{H:.2f}" fill="{SUNK}"/>'
+        f"{''.join(back)}{spine_text}"
+        f'<g transform="translate({fx:.2f},{BLEED:.2f})">{inner}</g></svg>'
+    )
     return svg, W, H, spine
 
 
@@ -672,8 +829,12 @@ def animated_svg(meta, w=TRIM_W, h=TRIM_H):
     g = front_art(w, h, animated=True)
     span_u = 2 * 3 * PITCH_U + GAP + 2 * PAD
     span_v = 2 * 2 * PITCH_V + GAP + 2 * PAD
-    corners = [g.p(-PAD, -PAD, -g.oz), g.p(span_u - PAD, -PAD, -g.oz), g.p(span_u - PAD, span_v - PAD, -g.oz),
-               g.p(-PAD, span_v - PAD, -g.oz)]
+    corners = [
+        g.p(-PAD, -PAD, -g.oz),
+        g.p(span_u - PAD, -PAD, -g.oz),
+        g.p(span_u - PAD, span_v - PAD, -g.oz),
+        g.p(-PAD, span_v - PAD, -g.oz),
+    ]
     x0 = min(c[0] for c in corners) - 6
     x1 = max(c[0] for c in corners) + 6
     y0 = min(c[1] for c in corners) - (ARM_SHOULDER + ARM_UPPER + 0.6) * g.s
@@ -681,11 +842,21 @@ def animated_svg(meta, w=TRIM_W, h=TRIM_H):
     tx, ty = (g.p(-0.9, 0)[i] - g.p(0, 0)[i] for i in (0, 1))
     sx, sy = (g.p(-0.6, 0)[i] - g.p(0, 0)[i] for i in (0, 1))
     arms = "\n".join(arm_keyframes(m, m.index) for m in g.machines)
-    css = ANIMATION_CSS % {"cycle": f"{CYCLE_S:g}", "tx": f"{tx:.1f}", "ty": f"{ty:.1f}", "sx": f"{sx:.1f}",
-                           "sy": f"{sy:.1f}", "arms": arms}
-    label = esc(f"{meta['title']}: four cells of six machines on one floor, each etching and shipping a different shape.")
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x0:.1f} {y0:.1f} {x1 - x0:.1f} {y1 - y0:.1f}"'
-            f' role="img" aria-label="{label}"><style>{css}</style>{"".join(g.out)}</svg>')
+    css = ANIMATION_CSS % {
+        "cycle": f"{CYCLE_S:g}",
+        "tx": f"{tx:.1f}",
+        "ty": f"{ty:.1f}",
+        "sx": f"{sx:.1f}",
+        "sy": f"{sy:.1f}",
+        "arms": arms,
+    }
+    label = esc(
+        f"{meta['title']}: four cells of six machines on one floor, each etching and shipping a different shape."
+    )
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x0:.1f} {y0:.1f} {x1 - x0:.1f} {y1 - y0:.1f}"'
+        f' role="img" aria-label="{label}"><style>{css}</style>{"".join(g.out)}</svg>'
+    )
 
 
 def main():
@@ -708,7 +879,9 @@ def main():
     # page, and an interior older than the source may no longer have the book's page count.
     book = os.path.join(d, "book-interior.pdf")
     if not os.path.exists(book) or os.path.getmtime(book) < os.path.getmtime(paths.SOURCE):
-        raise SystemExit(f"cover: {book} is missing or older than the source; run ./publish book, which draws the cover")
+        raise SystemExit(
+            f"cover: {book} is missing or older than the source; run ./publish book, which draws the cover"
+        )
     pages = len(fitz.open(book))
     wsvg, ww, wh, spine = wrap_svg(meta, pages)
     chrome_pdf(wsvg, ww, wh, os.path.join(d, "cover-wrap.pdf"))

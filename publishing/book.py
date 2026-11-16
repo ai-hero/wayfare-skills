@@ -7,6 +7,7 @@ Layout lives in `book/book.css`; this module writes the HTML (with an inline max
 figures), solves figure placement against rendered pages, restricts WeasyPrint's fetches to local
 assets and fonts, and downloads the pinned Manrope font when it is missing. A layout fault is fixed there or here, never in the PDF.
 """
+
 import functools
 import hashlib
 import html
@@ -23,8 +24,10 @@ from inline import EXAMPLE_TITLE, full_title, md_plain, note_end, sub_notes
 
 HERE = os.path.join(paths.HERE, "book")
 
-ONES = ("Zero One Two Three Four Five Six Seven Eight Nine Ten Eleven Twelve Thirteen Fourteen Fifteen "
-        "Sixteen Seventeen Eighteen Nineteen Twenty").split()
+ONES = (
+    "Zero One Two Three Four Five Six Seven Eight Nine Ten Eleven Twelve Thirteen Fourteen Fifteen "
+    "Sixteen Seventeen Eighteen Nineteen Twenty"
+).split()
 
 # The design system's faces, from files rather than a system lookup, so two machines set the
 # same book. Manrope (OFL) is not vendored anywhere in the fleet, so it is fetched once.
@@ -34,11 +37,13 @@ FONTS = {
     "Geist Mono": os.path.join(DS_FONTS, "GeistMono-VariableFont_wght.ttf"),
     "Manrope": os.path.join(paths.OUT, "fonts", "Manrope[wght].ttf"),
 }
-GEIST_ITALIC = os.path.join(paths.WEBSITE, "ui", "node_modules", "@fontsource-variable", "geist", "files",
-                            "geist-latin-wght-italic.woff2")
+GEIST_ITALIC = os.path.join(
+    paths.WEBSITE, "ui", "node_modules", "@fontsource-variable", "geist", "files", "geist-latin-wght-italic.woff2"
+)
 # Pinned to a commit: `main` moves, and the digest below would then reject a good build.
-MANROPE_URL = ("https://github.com/google/fonts/raw/b31870aff700ab7a1d74fa0c6887d95beb9e0037"
-               "/ofl/manrope/Manrope%5Bwght%5D.ttf")
+MANROPE_URL = (
+    "https://github.com/google/fonts/raw/b31870aff700ab7a1d74fa0c6887d95beb9e0037/ofl/manrope/Manrope%5Bwght%5D.ttf"
+)
 MANROPE_SHA256 = "3ae11c49db0455a3cc33e37d380f20fdb8c7f8b41dc07625c177e3d87a9d6ae6"  # pragma: allowlist secret
 FETCH_TIMEOUT = 60
 
@@ -55,7 +60,9 @@ def fetch_manrope(dest, url=MANROPE_URL, sha256=MANROPE_SHA256):
     tmp = dest + ".part"
     try:
         try:
-            with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+            with urllib.request.urlopen(
+                url, timeout=FETCH_TIMEOUT
+            ) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
                 body = r.read()
         except (OSError, http.client.HTTPException) as e:
             raise SystemExit(f"book: cannot download Manrope from {url}: {e}; place the font at {dest}")
@@ -131,13 +138,17 @@ def font_faces():
     missing = [p for p in FONTS.values() if not os.path.exists(p)]
     if missing:
         raise SystemExit("book: missing font files: " + ", ".join(missing))
-    faces = [f'@font-face {{ font-family: "{name}"; src: url("file://{path}"); font-weight: 100 900; }}'
-             for name, path in FONTS.items()]
+    faces = [
+        f'@font-face {{ font-family: "{name}"; src: url("file://{path}"); font-weight: 100 900; }}'
+        for name, path in FONTS.items()
+    ]
     # The design system ships no italic; the website's Geist package has the drawn one, which
     # beats WeasyPrint slanting the upright.
     if os.path.exists(GEIST_ITALIC):
-        faces.append(f'@font-face {{ font-family: "Geist"; font-style: italic; src: url("file://{GEIST_ITALIC}"); '
-                     f'font-weight: 100 900; }}')
+        faces.append(
+            f'@font-face {{ font-family: "Geist"; font-style: italic; src: url("file://{GEIST_ITALIC}"); '
+            f"font-weight: 100 900; }}"
+        )
     return "\n".join(faces)
 
 
@@ -152,6 +163,7 @@ def table_svg(b, cap):
     if fig_id(b) in _TABLES:
         return _TABLES[fig_id(b)]
     import fitz
+
     HTML = weasy_html()
     rows = b["rows"]
     head = "".join(f"<th>{c['html']}</th>" for c in rows[0])
@@ -163,13 +175,15 @@ def table_svg(b, cap):
             body.append("<tr>" + "".join(f"<td>{c['html']}</td>" for c in r) + "</tr>")
     with open(os.path.join(HERE, "table.css"), encoding="utf-8") as f:
         css = f.read()
-    page = (f'<!doctype html><html lang="en"><head><style>{font_faces()}\n'
-            f'@page {{ size: {TABLE_W}in {TABLE_H}in; margin: 18pt 0 0; '
-            f'@top-left {{ content: "{b["label"]} {b["number"]}"; color: #BA1B45; '
-            'font: 400 6.6pt "Geist Mono"; letter-spacing: 0.1em; text-transform: uppercase; } '
-            '@top-right { content: "Page " counter(page) " of " counter(pages); color: #383D49; '
-            'font: 400 6.6pt "Geist Mono"; } }\n' + css + '</style></head><body>'
-            f'<table><thead><tr>{head}</tr></thead><tbody>{"".join(body)}</tbody></table>{cap}</body></html>')
+    page = (
+        f'<!doctype html><html lang="en"><head><style>{font_faces()}\n'
+        f"@page {{ size: {TABLE_W}in {TABLE_H}in; margin: 18pt 0 0; "
+        f'@top-left {{ content: "{b["label"]} {b["number"]}"; color: #BA1B45; '
+        'font: 400 6.6pt "Geist Mono"; letter-spacing: 0.1em; text-transform: uppercase; } '
+        '@top-right { content: "Page " counter(page) " of " counter(pages); color: #383D49; '
+        'font: 400 6.6pt "Geist Mono"; } }\n' + css + "</style></head><body>"
+        f"<table><thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>{cap}</body></html>"
+    )
     pdf = fitz.open(stream=HTML(string=page).write_pdf(), filetype="pdf")
     out = os.path.join(paths.BUILD, "book")
     os.makedirs(out, exist_ok=True)
@@ -187,21 +201,23 @@ EVIDENCE = {}  # figure-pipeline id -> appendix anchor, filled by render_html
 
 
 def figure(b, max_px=None):
-    label = f'{b["label"]} {b["number"]}'
+    label = f"{b['label']} {b['number']}"
     fid = fig_id(b)
     anchor = EVIDENCE.get(b.get("rid"))
     ptr = f' <a class="evidence-ptr" href="#{anchor}">Evidence</a>' if anchor else ""
     if not anchor:
-        ptr = "".join(f' <a class="evidence-ptr" href="#{EVIDENCE[rid]}">Evidence E{esc(rid)}</a>'
-                      for rid in b.get("evidence_ids", []) if rid in EVIDENCE)
-    cap = (f'<figcaption><span class="fig-label">{esc(label)}</span> {b["caption_html"]}{ptr}</figcaption>')
+        ptr = "".join(
+            f' <a class="evidence-ptr" href="#{EVIDENCE[rid]}">Evidence E{esc(rid)}</a>'
+            for rid in b.get("evidence_ids", [])
+            if rid in EVIDENCE
+        )
+    cap = f'<figcaption><span class="fig-label">{esc(label)}</span> {b["caption_html"]}{ptr}</figcaption>'
     if b["type"] != "table":
-        cap = f'<figcaption>{b["caption_html"]}{ptr}</figcaption>'
+        cap = f"<figcaption>{b['caption_html']}{ptr}</figcaption>"
     title = f'<p class="panel-title">{esc(label)}:</p>'
     if b["type"] == "table":
         alt = esc(md_plain(b["caption_md"]))
-        pages = "".join(f'<div class="table-page"><img src="file://{p}" alt="{alt}"/></div>'
-                        for p in table_svg(b, cap))
+        pages = "".join(f'<div class="table-page"><img src="file://{p}" alt="{alt}"/></div>' for p in table_svg(b, cap))
         return f'<figure class="table-figure" id="{fid}">{pages}</figure>'
 
     files = b.get("files") or {}
@@ -211,8 +227,10 @@ def figure(b, max_px=None):
         return f'<figure class="missing" id="{fid}">{title}<div class="placeholder">{esc(b["ref"])}</div>{cap}</figure>'
     kind = "diagram" if b["type"] in ("diagram", "drawn") else "chart"
     style = f' style="max-height: {max_px:.0f}px"' if max_px else ""
-    return (f'<figure class="{kind}" id="{fid}">{title}<img src="{esc(src)}" alt="{esc(b.get("alt"))}"{style}/>'
-            f'{cap}</figure>')
+    return (
+        f'<figure class="{kind}" id="{fid}">{title}<img src="{esc(src)}" alt="{esc(b.get("alt"))}"{style}/>'
+        f"{cap}</figure>"
+    )
 
 
 def example(b, out):
@@ -220,8 +238,12 @@ def example(b, out):
     if not b.get("example"):
         return out
     cls = " ".join(["example"] + [f.replace("_", "-") for f in ("example_start", "example_end") if b.get(f)])
-    out = re.sub(r'^<(\w+)(?: class="([^"]*)")?',
-                 lambda m: f'<{m.group(1)} class="{m.group(2) + " " if m.group(2) else ""}{cls}"', out, count=1)
+    out = re.sub(
+        r'^<(\w+)(?: class="([^"]*)")?',
+        lambda m: f'<{m.group(1)} class="{m.group(2) + " " if m.group(2) else ""}{cls}"',
+        out,
+        count=1,
+    )
     return (f'<p class="example-title">{EXAMPLE_TITLE}</p>' if b.get("example_start") else "") + out
 
 
@@ -250,17 +272,20 @@ def block_html(b, shrink=None, key=None):
 
 
 def fig_id(b):
-    return f'fig-{b["label"].lower()}-{b["number"].replace(".", "-")}'
+    return f"fig-{b['label'].lower()}-{b['number'].replace('.', '-')}"
 
 
 def mentioned_at(blocks, b):
     """Index of the first block in the section that names the figure by number ("Diagram 5.1"),
     or None. A figure may move up to just after that mention, never above it."""
-    name = f'{b["label"]} {b["number"]}'
+    name = f"{b['label']} {b['number']}"
     pat = re.compile(re.escape(name) + r"(?![\d.])")
     for i, x in enumerate(blocks):
-        if x is not b and x["kind"] in ("p", "quote", "ul", "ol") and pat.search(
-                x.get("html", "") + " ".join(it["html"] for it in x.get("items", []))):
+        if (
+            x is not b
+            and x["kind"] in ("p", "quote", "ul", "ol")
+            and pat.search(x.get("html", "") + " ".join(it["html"] for it in x.get("items", [])))
+        ):
             return i
     return None
 
@@ -298,10 +323,13 @@ def chapter(c, defer, shrink, splits=None):
     splits = splits or {}
     at = {pkey: (fid, cut) for fid, (pkey, cut) in splits.items()}
     import openers
+
     art = openers.svg(c["n"])
-    out = [f'<section class="chapter" id="ch-{c["n"]}">',
-           f'<header class="opener{" with-art" if art else ""}">{art}<p class="chapter-number">Chapter {ONES[c["n"]]}</p>'
-           f'<h1>{title_html(c["title"])}</h1></header>']
+    out = [
+        f'<section class="chapter" id="ch-{c["n"]}">',
+        f'<header class="opener{" with-art" if art else ""}">{art}<p class="chapter-number">Chapter {ONES[c["n"]]}</p>'
+        f"<h1>{title_html(c['title'])}</h1></header>",
+    ]
     figs = {fig_id(b): b for s in c["sections"] for b in s["blocks"] if b["kind"] == "figure"}
     first = True
     for si, s in enumerate(c["sections"]):
@@ -316,16 +344,20 @@ def chapter(c, defer, shrink, splits=None):
             if key in at and at[key][0] in figs:
                 fid, cut = at[key]
                 head, tail = b["html"][:cut].rstrip(), b["html"][cut:].lstrip()
-                blocks.append(example({**b, "example_end": b.get("example_end") and not tail},
-                                      f'<p id="{key}">{head}</p>'))
+                blocks.append(
+                    example({**b, "example_end": b.get("example_end") and not tail}, f'<p id="{key}">{head}</p>')
+                )
                 blocks.append(block(figs[fid], shrink))
                 if tail:
                     blocks.append(example({**b, "example_start": False}, f'<p class="cont">{tail}</p>'))
                 continue
             blocks.append(block(b, shrink, key))
         if first and blocks and blocks[0].startswith("<p") and not blocks[0].startswith("<p class="):
-            blocks[0] = blocks[0].replace("<p ", '<p class="first" ', 1) if blocks[0].startswith("<p ") \
+            blocks[0] = (
+                blocks[0].replace("<p ", '<p class="first" ', 1)
+                if blocks[0].startswith("<p ")
                 else blocks[0].replace("<p>", '<p class="first">', 1)
+            )
         first = False
         out += blocks
     if c.get("further"):
@@ -341,22 +373,31 @@ RUN_IN = re.compile(r"^((?:Finding in the chapter|Finding|Question|Source|Method
 def appendix_entry(e):
     """One curated entry: its heading and chart kept together, then the finding, question, method
     and source. Link-only lines point at repository files and are not printed."""
-    head = esc(e["label"]) if e["label"] else f'Evidence E{esc(e["rid"])}' if e.get("rid") else ""
-    slugs = (f'<span class="entry-slugs">{" · ".join(esc(x) for x in e["slugs"])}</span>' if e["slugs"]
-             else f'<span class="entry-title">{esc(e.get("title") or "")}</span>')
+    head = esc(e["label"]) if e["label"] else f"Evidence E{esc(e['rid'])}" if e.get("rid") else ""
+    slugs = (
+        f'<span class="entry-slugs">{" · ".join(esc(x) for x in e["slugs"])}</span>'
+        if e["slugs"]
+        else f'<span class="entry-title">{esc(e.get("title") or "")}</span>'
+    )
     finding = next((b["md"] for b in e["blocks"] if b["kind"] == "p" and b["md"].startswith("Finding")), "")
-    imgs = [f'<div class="entry-chart n{len(e["charts"])}"><img src="{esc(c["files"].get("png") or c["files"].get("svg"))}" alt="{esc(md_plain(finding))}"/></div>'
-            for c in e["charts"]]
+    imgs = [
+        f'<div class="entry-chart n{len(e["charts"])}"><img src="{esc(c["files"].get("png") or c["files"].get("svg"))}" alt="{esc(md_plain(finding))}"/></div>'
+        for c in e["charts"]
+    ]
     # The heading travels with the first chart only: holding a two-chart entry together as one
     # block leaves most of a page empty whenever it misses the page it starts on.
-    out = [f'<section class="entry" id="{esc(e["anchor"])}"><div class="entry-head">'
-           f'<h4>{f"<span class=entry-label>{head}</span>" if head else ""}{slugs}</h4>'
-           f'{imgs[0] if imgs else ""}</div>'] + imgs[1:]
+    out = [
+        f'<section class="entry" id="{esc(e["anchor"])}"><div class="entry-head">'
+        f"<h4>{f'<span class=entry-label>{head}</span>' if head else ''}{slugs}</h4>"
+        f"{imgs[0] if imgs else ''}</div>"
+    ] + imgs[1:]
     for b in e["blocks"]:
         if b["kind"] == "link":
             continue
         if b["kind"] == "p":
-            out.append("<p>" + RUN_IN.sub(lambda m: f'<span class="run-in">{m.group(1)}</span> ', b["html"], 1) + "</p>")
+            out.append(
+                "<p>" + RUN_IN.sub(lambda m: f'<span class="run-in">{m.group(1)}</span> ', b["html"], 1) + "</p>"
+            )
         else:
             out.append(block(b))
     out.append("</section>")
@@ -367,16 +408,20 @@ def appendix(a):
     if not a or not a.get("parts"):
         return ""
     title = esc(a.get("title", "Evidence"))
-    out = ['<section class="appendix-opener" id="appendix"><header class="opener">'
-           f'<p class="chapter-number">Appendix</p><h1 class="appendix-title" data-running="{title}">{title}</h1></header>']
+    out = [
+        '<section class="appendix-opener" id="appendix"><header class="opener">'
+        f'<p class="chapter-number">Appendix</p><h1 class="appendix-title" data-running="{title}">{title}</h1></header>'
+    ]
     out += [f"<p>{b['html']}</p>" for b in a["intro"]]
     out.append("</section>")
     for part in a["parts"]:
-        out.append(f'<section class="appendix-part" id="appendix-{part["n"]}">'
-                   f'<h2 class="appendix-part-head" data-running="{esc(part["title"])}" '
-                   f'data-bookmark="Chapter {ONES[part["n"]]} · {esc(part["title"])}">'
-                   f'<span class="chapter-number">{title} for Chapter {ONES[part["n"]]}</span>'
-                   f'{esc(part["title"])}</h2>')
+        out.append(
+            f'<section class="appendix-part" id="appendix-{part["n"]}">'
+            f'<h2 class="appendix-part-head" data-running="{esc(part["title"])}" '
+            f'data-bookmark="Chapter {ONES[part["n"]]} · {esc(part["title"])}">'
+            f'<span class="chapter-number">{title} for Chapter {ONES[part["n"]]}</span>'
+            f"{esc(part['title'])}</h2>"
+        )
         for g in part["groups"]:
             if len(part["groups"]) > 1 or g["title"].lower() != "figure evidence":
                 out.append(f'<h3 class="appendix-group">{g["html"]}</h3>')
@@ -392,24 +437,30 @@ def without_appendix(doc):
     """The book and the store edition print no appendix; the findings, methods, study limits and
     case records live in the evidence document (`technical.evidence`). Their "evidence" links go too, or each would point
     at a page that is not printed."""
+
     def unlink(m):
         return ")" if m.group(1) == "; " else ""
 
     def walk(x):
         if isinstance(x, dict):
-            return {k: EVI_REF.sub(unlink, v) if k in ("html", "caption_html") and isinstance(v, str) else walk(v)
-                    for k, v in x.items()}
+            return {
+                k: EVI_REF.sub(unlink, v) if k in ("html", "caption_html") and isinstance(v, str) else walk(v)
+                for k, v in x.items()
+            }
         if isinstance(x, list):
             return [walk(v) for v in x]
         return x
+
     return {**doc, "chapters": walk(doc["chapters"]), "appendix": None}
 
 
 def references(refs):
     if not refs:
         return ""
-    out = ['<section class="references" id="references"><header class="opener">'
-           '<h1 class="references-title">References</h1></header><div class="reference-list">']
+    out = [
+        '<section class="references" id="references"><header class="opener">'
+        '<h1 class="references-title">References</h1></header><div class="reference-list">'
+    ]
     out += [f'<p id="ref-{r["n"]}"><span class="ref-n">[{r["n"]}]</span>{r["html"]}</p>' for r in refs]
     out.append("</div></section>")
     return "\n".join(out)
@@ -420,15 +471,25 @@ def appendix_name(a):
 
 
 def contents(chapters, appendix_title, references_present=False, note_title=None, about_title=None):
-    rows = [f'<li class="toc-appendix"><a href="#preface"><span class="toc-num"></span>{esc(note_title)}</a></li>'] if note_title else []
-    rows += [f'<li><a href="#ch-{c["n"]}"><span class="toc-num">{ONES[c["n"]]}</span>{esc(c["title"])}</a></li>'
-             for c in chapters]
+    rows = (
+        [f'<li class="toc-appendix"><a href="#preface"><span class="toc-num"></span>{esc(note_title)}</a></li>']
+        if note_title
+        else []
+    )
+    rows += [
+        f'<li><a href="#ch-{c["n"]}"><span class="toc-num">{ONES[c["n"]]}</span>{esc(c["title"])}</a></li>'
+        for c in chapters
+    ]
     if appendix_title:
-        rows.append(f'<li class="toc-appendix"><a href="#appendix"><span class="toc-num">Appendix</span>{esc(appendix_title)}</a></li>')
+        rows.append(
+            f'<li class="toc-appendix"><a href="#appendix"><span class="toc-num">Appendix</span>{esc(appendix_title)}</a></li>'
+        )
     if references_present:
         rows.append('<li class="toc-appendix"><a href="#references"><span class="toc-num"></span>References</a></li>')
     if about_title:
-        rows.append(f'<li class="toc-appendix"><a href="#about"><span class="toc-num"></span>{esc(about_title)}</a></li>')
+        rows.append(
+            f'<li class="toc-appendix"><a href="#about"><span class="toc-num"></span>{esc(about_title)}</a></li>'
+        )
     return f'<section class="contents"><p class="contents-title">Contents</p><ol>{"".join(rows)}</ol></section>'
 
 
@@ -437,8 +498,10 @@ def preface(note):
     if not note:
         return ""
     body = "".join(f"<p>{b['html']}</p>" for b in note["blocks"])
-    return (f'<section class="preface" id="preface"><header class="opener"><h1>{esc(note["title"])}</h1></header>'
-            f'{body}</section>')
+    return (
+        f'<section class="preface" id="preface"><header class="opener"><h1>{esc(note["title"])}</h1></header>'
+        f"{body}</section>"
+    )
 
 
 def about(note, meta):
@@ -446,24 +509,31 @@ def about(note, meta):
     if not note:
         return ""
     import pathlib
+
     photo = ""
     if meta.get("about_photo"):
         uri = pathlib.Path(paths.EDITIONS, meta["about_photo"]).as_uri()
         photo = f'<img class="about-photo" src="{esc(uri)}" alt="{esc(meta["author"])}">'
     body = "".join(f"<p>{b['html']}</p>" for b in note["blocks"])
-    return (f'<section class="about" id="about"><header class="opener"><h1>{esc(note["title"])}</h1></header>'
-            f'{photo}{body}</section>')
+    return (
+        f'<section class="about" id="about"><header class="opener"><h1>{esc(note["title"])}</h1></header>'
+        f"{photo}{body}</section>"
+    )
 
 
 BOOK_UTM = "utm_source=book&utm_medium=print&utm_campaign=software-factory"
-X_ICON = ("M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594"
-          "l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z")
-LINKEDIN_ICON = ("M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667"
-                 "H9.351V9h3.414v1.561h.046c.477-.937 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 4.892v6.249z"
-                 "M5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 "
-                 "2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 "
-                 ".774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 "
-                 "0 22.222 0h.003z")
+X_ICON = (
+    "M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594"
+    "l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"
+)
+LINKEDIN_ICON = (
+    "M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667"
+    "H9.351V9h3.414v1.561h.046c.477-.937 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 4.892v6.249z"
+    "M5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 "
+    "2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 "
+    ".774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 "
+    "0 22.222 0h.003z"
+)
 
 
 def author_foot(meta):
@@ -471,24 +541,36 @@ def author_foot(meta):
     profiles to follow on the right. Each piece is left out when its `meta.json` field is."""
     import pathlib
     import segno
+
     photo = ""
     if meta.get("photo"):
         uri = pathlib.Path(paths.EDITIONS, meta["photo"]).as_uri()
         photo = f'<img class="author-photo" src="{esc(uri)}" alt="">'
-    left = [photo, f'<p class="author">{esc(meta["author"])}</p>', f'<p class="email">{esc(meta.get("email"))}</p>',
-            f'<p class="imprint">{esc(meta.get("affiliation"))}</p>']
+    left = [
+        photo,
+        f'<p class="author">{esc(meta["author"])}</p>',
+        f'<p class="email">{esc(meta.get("email"))}</p>',
+        f'<p class="imprint">{esc(meta.get("affiliation"))}</p>',
+    ]
     links = [(icon, meta[key]) for icon, key in ((X_ICON, "x"), (LINKEDIN_ICON, "linkedin")) if meta.get(key)]
     right = [""] * 4
     if links:
         if meta.get("linkedin"):
-            url = f'{meta["linkedin"]}{"&" if "?" in meta["linkedin"] else "?"}{BOOK_UTM}'
-            right[0] = f'<div class="author-qr">{segno.make(url, error="m").svg_inline(border=0, omitsize=True, dark="#11141C")}</div>'
+            url = f"{meta['linkedin']}{'&' if '?' in meta['linkedin'] else '?'}{BOOK_UTM}"
+            right[0] = (
+                f'<div class="author-qr">{segno.make(url, error="m").svg_inline(border=0, omitsize=True, dark="#11141C")}</div>'
+            )
         right[1] = '<p class="follow-cta">Follow me on</p>'
         for i, (icon, url) in enumerate(links, 2):
-            right[i] = (f'<p class="follow-link"><svg viewBox="0 0 24 24"><path d="{icon}"/></svg>'
-                        f'{"@" if icon == X_ICON else ""}{esc(url.rstrip("/").rsplit("/", 1)[-1])}</p>')
+            right[i] = (
+                f'<p class="follow-link"><svg viewBox="0 0 24 24"><path d="{icon}"/></svg>'
+                f"{'@' if icon == X_ICON else ''}{esc(url.rstrip('/').rsplit('/', 1)[-1])}</p>"
+            )
     # A table, not flex: each right-hand line must share a baseline with the left-hand line beside it.
-    rows = "".join(f'<tr class="foot-{i}"><td>{l}</td><td class="follow">{r}</td></tr>' for i, (l, r) in enumerate(zip(left, right)))
+    rows = "".join(
+        f'<tr class="foot-{i}"><td>{lc}</td><td class="follow">{rc}</td></tr>'
+        for i, (lc, rc) in enumerate(zip(left, right))
+    )
     return f'<table class="title-foot-grid">{rows}</table>'
 
 
@@ -504,8 +586,12 @@ def front(meta, chapters, appendix_title=None, note_title=None, references_prese
 </section>
 <section class="copyright">
   <p>{esc(full_title(meta))}{": " + esc(meta["subtitle"]) if meta.get("subtitle") else ""}</p>
-  <p>{esc(meta.get("copyright"))}</p>{f"""
-  <p>ISBN {esc(meta["isbn"])} (paperback)</p>""" if meta.get("isbn") else ""}
+  <p>{esc(meta.get("copyright"))}</p>{
+        f'''
+  <p>ISBN {esc(meta["isbn"])} (paperback)</p>'''
+        if meta.get("isbn")
+        else ""
+    }
   <p>{esc(meta.get("edition"))} edition · {esc(meta.get("date"))}</p>
 </section>
 {contents(chapters, appendix_title, references_present, note_title, about_title)}
@@ -514,26 +600,44 @@ def front(meta, chapters, appendix_title=None, note_title=None, references_prese
 
 def render_html(doc, defer=None, shrink=None, only=None, splits=None):
     import cover
+
     with open(os.path.join(HERE, "book.css"), encoding="utf-8") as f:
         css = f.read().replace("size: TRIM;", f"size: {cover.TRIM_IN[0]}in {cover.TRIM_IN[1]}in;")
     meta = doc["meta"]
     EVIDENCE.clear()
-    EVIDENCE.update({e["rid"]: e["anchor"] for p in (doc.get("appendix") or {}).get("parts", [])
-                     for g in p["groups"] for e in g["entries"] if e["rid"]})
+    EVIDENCE.update(
+        {
+            e["rid"]: e["anchor"]
+            for p in (doc.get("appendix") or {}).get("parts", [])
+            for g in p["groups"]
+            for e in g["entries"]
+            if e["rid"]
+        }
+    )
     if only is not None:
         body = chapter(only, defer or {}, shrink or {}, splits)
     else:
-        body = (front(meta, doc["chapters"], appendix_name(doc.get("appendix")),
-                      (doc.get("preface") or {}).get("title"), bool(doc.get("references")),
-                      (doc.get("about") or {}).get("title"))
-                + preface(doc.get("preface"))
-                + "\n".join(chapter(c, defer or {}, shrink or {}, splits) for c in doc["chapters"])
-                + appendix(doc.get("appendix")) + references(doc.get("references"))
-                + about(doc.get("about"), meta))
-    return (f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{esc(full_title(meta))}</title>'
-            f'<meta name="author" content="{esc(meta["author"])}">'
-            f'<style>{font_faces()}\n{css}</style></head>'
-            f'<body data-title="{esc(full_title(meta))}">{body}</body></html>')
+        body = (
+            front(
+                meta,
+                doc["chapters"],
+                appendix_name(doc.get("appendix")),
+                (doc.get("preface") or {}).get("title"),
+                bool(doc.get("references")),
+                (doc.get("about") or {}).get("title"),
+            )
+            + preface(doc.get("preface"))
+            + "\n".join(chapter(c, defer or {}, shrink or {}, splits) for c in doc["chapters"])
+            + appendix(doc.get("appendix"))
+            + references(doc.get("references"))
+            + about(doc.get("about"), meta)
+        )
+    return (
+        f'<!doctype html><html lang="en"><head><meta charset="utf-8"><title>{esc(full_title(meta))}</title>'
+        f'<meta name="author" content="{esc(meta["author"])}">'
+        f"<style>{font_faces()}\n{css}</style></head>"
+        f'<body data-title="{esc(full_title(meta))}">{body}</body></html>'
+    )
 
 
 TRIES = [0, 1, 2, 3, 4, -1, -2, -3]
@@ -562,14 +666,23 @@ def gaps(document):
     room left, image height, min_scale)}."""
     found = {}
     for i, page in enumerate(document.pages[1:], 1):
-        flow = [b for b in boxes(page._page_box) if getattr(b, "element_tag", "") in ("figure", "h2", "p", "h3")
-                and type(b).__name__ == "BlockBox"]
+        flow = [
+            b
+            for b in boxes(page._page_box)
+            if getattr(b, "element_tag", "") in ("figure", "h2", "p", "h3") and type(b).__name__ == "BlockBox"
+        ]
         if not flow or any(getattr(b, "element_tag", "") == "h1" for b in boxes(page._page_box)):
             continue
         flow.sort(key=lambda b: b.position_y)
         lead = flow[:2] if flow[0].element_tag == "h2" else flow[:1]
-        first = next((b for b in lead if b.element_tag == "figure" and b.element.get("id")
-                      and "table" not in b.element.get("class", "")), None)
+        first = next(
+            (
+                b
+                for b in lead
+                if b.element_tag == "figure" and b.element.get("id") and "table" not in b.element.get("class", "")
+            ),
+            None,
+        )
         if first is None:
             continue
         prev = document.pages[i - 1]._page_box
@@ -580,8 +693,13 @@ def gaps(document):
         if free > GAP and flow[0].position_y - page._page_box.margin_top < 30:
             img = next((b for b in boxes(first) if type(b).__name__ == "BlockReplacedBox"), None)
             room = body_bottom - used - (first.margin_height() - (img.margin_height() if img else 0)) - 6
-            found[first.element.get("id")] = (i + 1, round(free, 2), room, img.height if img else 0,
-                                              min_scale(first, img))
+            found[first.element.get("id")] = (
+                i + 1,
+                round(free, 2),
+                room,
+                img.height if img else 0,
+                min_scale(first, img),
+            )
     return found
 
 
@@ -589,8 +707,12 @@ def float_figures(doc, c, defer, HTML, budget=12):
     """For each figure the moves could not seat, earliest first, try floating it into the text
     after it, or back to the top of the page where its text ends; keep a float only when the
     chapter's total gap shrinks."""
-    para = {f"k{c['n']}-{si}-{bi}": b["html"] for si, s in enumerate(c["sections"])
-            for bi, b in enumerate(s["blocks"]) if b["kind"] == "p"}
+    para = {
+        f"k{c['n']}-{si}-{bi}": b["html"]
+        for si, s in enumerate(c["sections"])
+        for bi, b in enumerate(s["blocks"])
+        if b["kind"] == "p"
+    }
     allowed = allowed_cuts(c)
 
     def layout(sp):
@@ -620,6 +742,7 @@ def float_figures(doc, c, defer, HTML, budget=12):
 def fit_chapter(doc, c, HTML):
     """Moves, then floats, then legibility-bounded shrinking for one chapter, each step kept only
     when it lowers the chapter's total gap. Returns (defer, splits, shrink, before, after)."""
+
     def score(d, sp=None, sh=None):
         _, g, sc = evaluate(doc, c, HTML, d, sp, sh)
         return g, sc
@@ -631,13 +754,18 @@ def fit_chapter(doc, c, HTML):
     # A float can be blocked by the next figure's placement, so the largest remaining gaps each get
     # one more try: float the figure, re-seat the others around it, keep it if the chapter improves.
     # A kept float moves the gap to a later figure, which then gets its own try.
-    para = {f"k{c['n']}-{si}-{bi}": b["html"] for si, s in enumerate(c["sections"])
-            for bi, b in enumerate(s["blocks"]) if b["kind"] == "p"}
+    para = {
+        f"k{c['n']}-{si}-{bi}": b["html"]
+        for si, s in enumerate(c["sections"])
+        for bi, b in enumerate(s["blocks"])
+        if b["kind"] == "p"
+    }
     allowed = allowed_cuts(c)
     tried = set()
     for _ in range(6):
-        fid = next((f for f, _ in sorted(found.items(), key=lambda kv: -kv[1][1])
-                    if f not in splits and f not in tried), None)
+        fid = next(
+            (f for f, _ in sorted(found.items(), key=lambda kv: -kv[1][1]) if f not in splits and f not in tried), None
+        )
         if fid is None:
             break
         tried.add(fid)
@@ -669,6 +797,7 @@ def seat(doc, c, HTML, passes=2, splits=None, start=None, budget=60):
     try moves the figure at the head of the gapped page, since moving one figure reflows everything
     after it. Then refine by coordinate descent, each figure in turn taking the move that leaves the
     least total gap given the others, which catches a gap caused by the figure before it."""
+
     def found(d):
         _, g, sc = evaluate(doc, c, HTML, d, splits)
         return g, sc
@@ -676,8 +805,12 @@ def seat(doc, c, HTML, passes=2, splits=None, start=None, budget=60):
     def score(d):
         return found(d)[1]
 
-    order = [fig_id(b) for s in c["sections"] for b in s["blocks"] if b["kind"] == "figure"
-             and fig_id(b) not in (splits or {})]
+    order = [
+        fig_id(b)
+        for s in c["sections"]
+        for b in s["blocks"]
+        if b["kind"] == "figure" and fig_id(b) not in (splits or {})
+    ]
     if start is None:
         defer, settled, seq = {}, set(), None
         for _ in range(budget):
@@ -731,7 +864,7 @@ def cut_after_token(html_text, n):
                 i = fn
                 continue
             end = html_text.index(">", i)
-            tag = html_text[i + 1:end]
+            tag = html_text[i + 1 : end]
             if not tag.endswith("/") and not tag.startswith(("br", "!")):
                 depth += -1 if tag.startswith("/") else 1
             i = end + 1
@@ -753,8 +886,14 @@ def float_split(document, fid, para, tries=6):
     them. The fit is estimated, so the cuts run back from the last sentence that seems to fit."""
     pages = document.pages
     for n, page in enumerate(pages[1:], 1):
-        fig = next((b for b in boxes(page._page_box) if getattr(b, "element_tag", "") == "figure"
-                    and b.element.get("id") == fid), None)
+        fig = next(
+            (
+                b
+                for b in boxes(page._page_box)
+                if getattr(b, "element_tag", "") == "figure" and b.element.get("id") == fid
+            ),
+            None,
+        )
         if fig is not None:
             break
     else:
@@ -767,7 +906,7 @@ def float_split(document, fid, para, tries=6):
     room -= max(0, fig.position_y - page._page_box.margin_top)
     fig_bottom = fig.position_y + fig.margin_height()
     lines, heads = [], {}
-    for pg in pages[n:n + 2]:
+    for pg in pages[n : n + 2]:
         for b in boxes(pg._page_box):
             if type(b).__name__ == "LineBox" and (pg is not page or b.position_y >= fig_bottom):
                 lines.append(b)
@@ -811,8 +950,7 @@ def float_back(document, fid, para, earliest):
     never lands above the text that introduces it."""
     pages = document.pages
     for n, page in enumerate(pages[1:], 1):
-        if any(getattr(b, "element_tag", "") == "figure" and b.element.get("id") == fid
-               for b in boxes(page._page_box)):
+        if any(getattr(b, "element_tag", "") == "figure" and b.element.get("id") == fid for b in boxes(page._page_box)):
             break
     else:
         return None
@@ -873,8 +1011,11 @@ def violations(document, intro):
             el = getattr(b, "element", None)
             if el is not None and getattr(b, "element_tag", "") in ("p", "figure"):
                 first.setdefault(el.get("id"), i)
-    return [fid for fid, key in intro.items()
-            if key and fid in first and key in first and spread(first[fid]) < spread(first[key])]
+    return [
+        fid
+        for fid, key in intro.items()
+        if key and fid in first and key in first and spread(first[fid]) < spread(first[key])
+    ]
 
 
 # The target is few reported gaps and none over a quarter page, so a gap costs its size, a fixed
@@ -891,8 +1032,7 @@ def evaluate(doc, c, HTML, defer, splits=None, shrink=None):
     """Render one chapter and score it: the summed share of each page a pushed figure leaves empty,
     plus GAP_COUNT per gap, a steep GAP_LARGE charge past LARGE, and VIOLATION for every figure that
     precedes its introduction's spread."""
-    document = HTML(string=render_html(doc, defer, shrink, only=c, splits=splits),
-                    base_url=paths.ASSETS + "/").render()
+    document = HTML(string=render_html(doc, defer, shrink, only=c, splits=splits), base_url=paths.ASSETS + "/").render()
     g = gaps(document)
     bad = violations(document, introducers(c))
     return document, g, cost(g) + VIOLATION * len(bad)
@@ -903,6 +1043,7 @@ def allowed_cuts(c):
     headings, and, when that run ends its section, the next section's first run, since a figure
     left at a section's end would otherwise strand the page before it. Whether the result respects
     the figure's introduction is checked on the layout."""
+
     def run(si, lo, hi):
         bl = c["sections"][si]["blocks"]
         return {f"k{c['n']}-{si}-{i}" for i in range(lo, hi) if bl[i]["kind"] == "p"}
@@ -933,6 +1074,7 @@ def min_scale(fig, img):
     if "chart" in fig.element.get("class", ""):
         try:
             from PIL import Image
+
             src = img.element.get("src", "").replace("file://", "")
             with Image.open(os.path.join(paths.ASSETS, src)) as im:
                 native_in = im.size[0] / (im.info.get("dpi") or (300, 300))[0]
@@ -949,6 +1091,7 @@ def with_cover(interior):
     import fitz
 
     import cover
+
     cover.main()
     out = os.path.join(paths.DIST, "book.pdf")
     doc = fitz.open(os.path.join(paths.BUILD, "cover-trim.pdf"))
@@ -973,8 +1116,10 @@ def main():
         defer.update(d), splits.update(sp), shrink.update(sh)
         _, g, _ = evaluate(doc, c, HTML, d, sp, sh)
         solved[c["n"]] = sorted(round(v[1], 2) for v in g.values())
-        print(f"book: chapter {c['n']}: {len(g)} gaps {solved[c['n']]} "
-              f"({len(d)} moved, {len(sp)} floated, {len(sh)} shrunk)")
+        print(
+            f"book: chapter {c['n']}: {len(g)} gaps {solved[c['n']]} "
+            f"({len(d)} moved, {len(sp)} floated, {len(sh)} shrunk)"
+        )
     html_text = render_html(doc, defer, shrink, splits=splits)
     document = HTML(string=html_text, base_url=paths.ASSETS + "/").render()
     # The solve renders chapters alone; the book is the truth. Each chapter opens on a recto, so the
@@ -984,8 +1129,9 @@ def main():
         whole.setdefault(int(fid.rsplit("-", 2)[-2]), []).append(round(v[1], 2))
     for n, g in solved.items():
         if sorted(whole.get(n, [])) != g:
-            print(f"book: warning: chapter {n} lays out differently in the book {sorted(whole.get(n, []))} "
-                  f"than alone {g}")
+            print(
+                f"book: warning: chapter {n} lays out differently in the book {sorted(whole.get(n, []))} than alone {g}"
+            )
     # A footnote can land one page later in the book than in the chapter rendered alone, which the
     # solve cannot see; a figure it pushes is re-seated here against the book itself.
     if gaps(document):
@@ -1009,8 +1155,14 @@ def main():
         para, allowed = {}, {}
         for c in doc["chapters"]:
             allowed.update(allowed_cuts(c))
-            para.update({f"k{c['n']}-{si}-{bi}": b["html"] for si, s in enumerate(c["sections"])
-                         for bi, b in enumerate(s["blocks"]) if b["kind"] == "p"})
+            para.update(
+                {
+                    f"k{c['n']}-{si}-{bi}": b["html"]
+                    for si, s in enumerate(c["sections"])
+                    for bi, b in enumerate(s["blocks"])
+                    if b["kind"] == "p"
+                }
+            )
         for fid in list(gaps(document)):
             if fid in splits:
                 continue

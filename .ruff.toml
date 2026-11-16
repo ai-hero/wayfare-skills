@@ -1,0 +1,11 @@
+# A dotfile, not ruff.toml or pyproject.toml: PLACE-04 holds the root to entry
+# docs and harness files, and a pyproject.toml would also make `uv run` treat
+# the checkout as a project instead of running each script's PEP 723 block.
+line-length = 120
+target-version = "py312"
+
+[lint]
+# Named, not left to ruff's default: 0.17 widened the default set to some 30
+# rule families, so a version bump alone would fail every commit on code
+# nobody touched.
+select = ["E4", "E7", "E9", "F"]

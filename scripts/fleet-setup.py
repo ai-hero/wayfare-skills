@@ -68,8 +68,7 @@ import time
 import yaml
 
 PLATFORMS = ("macos-arm64",)
-KINDS = ("brew", "cask", "pipx", "installer", "git", "shell", "path",
-         "marketplace", "plugin", "mcp", "person")
+KINDS = ("brew", "cask", "pipx", "installer", "git", "shell", "path", "marketplace", "plugin", "mcp", "person")
 PERSON_WHY = ("password", "browser", "secret", "gui", "choice")
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 PKG_RE = re.compile(r"^[A-Za-z0-9@._+/-]+$")
@@ -172,8 +171,7 @@ def launcher_packages(args):
 
 
 def _check_mcp(errs, where, m):
-    if not _keys(errs, where, m, ("name", "transport"),
-                 ("scope", "command", "args", "url", "secrets")):
+    if not _keys(errs, where, m, ("name", "transport"), ("scope", "command", "args", "url", "secrets")):
         return
     _str(errs, f"{where}.name", m.get("name"), NAME_RE)
     if m.get("scope", "user") != "user":
@@ -222,7 +220,9 @@ def _check_floor(errs, where, item):
     if _keys(errs, where, item, ("name", "min", "why"), ("command",)):
         _str(errs, f"{where}.name", item.get("name"), PKG_RE)
         if not isinstance(item.get("min"), str) or not FLOOR_RE.match(item["min"]):
-            errs.add(f"{where}.min", f"expected a quoted version of digits and dots (\"2026.10.2\"), got {item.get('min')!r}")
+            errs.add(
+                f"{where}.min", f'expected a quoted version of digits and dots ("2026.10.2"), got {item.get("min")!r}'
+            )
         _str(errs, f"{where}.why", item.get("why"))
         if "command" in item:
             _str(errs, f"{where}.command", item["command"], CMD_RE, "a command name")
@@ -233,7 +233,7 @@ def _check_step(errs, where, step, marketplaces):
         got = list(step) if isinstance(step, dict) else type(step).__name__
         errs.add(where, f"a step is a mapping with exactly one of {', '.join(KINDS)}; got {got}")
         return
-    (kind, body), = step.items()
+    ((kind, body),) = step.items()
     w = f"{where}.{kind}"
     if kind not in KINDS:
         errs.add(where, f"unknown step kind {kind!r} (expected: {', '.join(KINDS)})")
@@ -283,7 +283,10 @@ def _check_step(errs, where, step, marketplaces):
         if isinstance(body, list):
             for i, p in enumerate(body):
                 if isinstance(p, str) and "@" in p and p.split("@", 1)[1] not in marketplaces:
-                    errs.add(f"{w}[{i}]", f"marketplace {p.split('@', 1)[1]!r} is not declared by an earlier marketplace step")
+                    errs.add(
+                        f"{w}[{i}]",
+                        f"marketplace {p.split('@', 1)[1]!r} is not declared by an earlier marketplace step",
+                    )
     elif kind == "mcp":
         _check_mcp(errs, w, body)
     elif kind == "person":
@@ -405,8 +408,7 @@ def audit_module():
     the import runs from an empty folder with its stderr dropped."""
     spec = importlib.util.spec_from_file_location("wayfare_audit", HERE / "audit.py")
     mod = importlib.util.module_from_spec(spec)
-    with tempfile.TemporaryDirectory() as d, contextlib.chdir(d), \
-            contextlib.redirect_stderr(io.StringIO()):
+    with tempfile.TemporaryDirectory() as d, contextlib.chdir(d), contextlib.redirect_stderr(io.StringIO()):
         spec.loader.exec_module(mod)
     return mod
 
@@ -417,15 +419,20 @@ def git_env():
     # gate reads while rev-parse still names the reviewed commit, so
     # replacements are off.
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    env.update(GIT_TERMINAL_PROMPT="0", GIT_SSH_COMMAND="ssh -o BatchMode=yes",
-               GIT_NO_REPLACE_OBJECTS="1")
+    env.update(GIT_TERMINAL_PROMPT="0", GIT_SSH_COMMAND="ssh -o BatchMode=yes", GIT_NO_REPLACE_OBJECTS="1")
     return env
 
 
 def git(repo, *args, timeout=120):
     try:
-        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
-                           env=git_env(), timeout=timeout, stdin=subprocess.DEVNULL)
+        r = subprocess.run(
+            ["git", "-C", str(repo), *args],
+            capture_output=True,
+            text=True,
+            env=git_env(),
+            timeout=timeout,
+            stdin=subprocess.DEVNULL,
+        )
     except subprocess.TimeoutExpired:
         return 124, "", f"timed out after {timeout}s"
     except OSError as e:
@@ -493,7 +500,7 @@ def expand(p):
     if p.startswith("~/"):
         return str(home()) + p[1:]
     if p == "$HOME" or p.startswith("$HOME/"):
-        return str(home()) + p[len("$HOME"):]
+        return str(home()) + p[len("$HOME") :]
     return p
 
 
@@ -556,10 +563,15 @@ class Machine:
         try:
             # Output is discarded, not captured: `claude mcp get` prints a
             # server's environment, secret values included.
-            r = subprocess.run([exe, *argv[1:]], env=self.env, timeout=timeout,
-                               stdout=subprocess.DEVNULL if quiet else subprocess.PIPE,
-                               stderr=subprocess.DEVNULL if quiet else subprocess.STDOUT,
-                               stdin=subprocess.DEVNULL, text=True)
+            r = subprocess.run(
+                [exe, *argv[1:]],
+                env=self.env,
+                timeout=timeout,
+                stdout=subprocess.DEVNULL if quiet else subprocess.PIPE,
+                stderr=subprocess.DEVNULL if quiet else subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                text=True,
+            )
         except subprocess.TimeoutExpired:
             return None, f"{argv[0]} timed out after {timeout}s"
         except OSError as e:
@@ -600,8 +612,9 @@ class Machine:
                 if len(parts) >= 2 and parts[0] == name:
                     return parts[1], "pipx"
             return None, "pipx lists no version"
-        got = self.lines(("brew-versions", kind, name),
-                         ["brew", "list", *(["--cask"] if kind == "cask" else []), "--versions", name])
+        got = self.lines(
+            ("brew-versions", kind, name), ["brew", "list", *(["--cask"] if kind == "cask" else []), "--versions", name]
+        )
         if got and got[0].split()[1:]:
             return got[0].split()[-1], "brew"
         return None, "brew lists no version"
@@ -684,8 +697,13 @@ def floor_short(m, kind, item):
     found, where = m.installed_version(kind, item)
     if found is not None and not below(found, item["min"]):
         return None
-    return {"min": item["min"], "why": item["why"], "installed": found, "at": where,
-            "command": UPGRADE[kind].format(item["name"])}
+    return {
+        "min": item["min"],
+        "why": item["why"],
+        "installed": found,
+        "at": where,
+        "command": UPGRADE[kind].format(item["name"]),
+    }
 
 
 def floor_line(f):
@@ -717,7 +735,7 @@ def entries(doc):
     with the id GROUP.KIND:KEY."""
     for g in doc["groups"]:
         for step in g["steps"]:
-            (kind, body), = step.items()
+            ((kind, body),) = step.items()
             items = []
             if kind in ("brew", "cask", "pipx", "plugin"):
                 items = [(kind, x) for x in body]
@@ -757,14 +775,22 @@ def describe(kind, item):
         return f"plugin {item}", f"claude plugin install {item}", None
     if kind == "mcp":
         if item.get("secrets"):
-            return (f"mcp {item['name']} ({item['transport']}, needs {', '.join(s if isinstance(s, str) else s['env'] for s in item['secrets'])})",
-                    secret_script(item),
-                    {"why": "secret", "terminal": "separate",
-                     "title": f"Add the {item['name']} MCP server; it needs a secret only you should type"})
+            return (
+                f"mcp {item['name']} ({item['transport']}, needs {', '.join(s if isinstance(s, str) else s['env'] for s in item['secrets'])})",
+                secret_script(item),
+                {
+                    "why": "secret",
+                    "terminal": "separate",
+                    "title": f"Add the {item['name']} MCP server; it needs a secret only you should type",
+                },
+            )
         return f"mcp {item['name']} ({item['transport']})", mcp_command(item), None
     if kind == "person":
-        return (f"person: {item['title']}", item.get("run", ""),
-                {"why": item["why"], "terminal": item.get("terminal", "session"), "title": item["title"]})
+        return (
+            f"person: {item['title']}",
+            item.get("run", ""),
+            {"why": item["why"], "terminal": item.get("terminal", "session"), "title": item["title"]},
+        )
     raise AssertionError(kind)
 
 
@@ -813,23 +839,39 @@ def build_plan(doc, path, confirmed=()):
     m = machine_for(doc)
     ws = expand(doc["workspace"])
     plan = {
-        "file": str(path), "version": doc["version"], "platform": doc["platform"],
-        "platform_here": platform_now(), "workspace": doc["workspace"],
-        "workspace_path": ws, "workspace_exists": os.path.isdir(ws),
-        "notes": doc.get("notes", []), "groups": [], "verify": doc.get("verify", []),
+        "file": str(path),
+        "version": doc["version"],
+        "platform": doc["platform"],
+        "platform_here": platform_now(),
+        "workspace": doc["workspace"],
+        "workspace_path": ws,
+        "workspace_exists": os.path.isdir(ws),
+        "notes": doc.get("notes", []),
+        "groups": [],
+        "verify": doc.get("verify", []),
     }
     plan["platform_ok"] = plan["platform_here"] == doc["platform"]
     by_name = {}
     for g, eid, kind, item in entries(doc):
         if g["name"] not in by_name:
-            by_name[g["name"]] = {"name": g["name"], "title": g["title"],
-                                  "optional": g.get("optional", False), "ask": g.get("ask"),
-                                  "notes": g.get("notes", []), "steps": []}
+            by_name[g["name"]] = {
+                "name": g["name"],
+                "title": g["title"],
+                "optional": g.get("optional", False),
+                "ask": g.get("ask"),
+                "notes": g.get("notes", []),
+                "steps": [],
+            }
             plan["groups"].append(by_name[g["name"]])
         label, command, person = describe(kind, item)
         done = status(m, kind, item, set(confirmed), eid)
-        e = {"id": eid, "kind": kind, "label": label, "command": command,
-             "status": "present" if done else ("person" if person else "missing")}
+        e = {
+            "id": eid,
+            "kind": kind,
+            "label": label,
+            "command": command,
+            "status": "present" if done else ("person" if person else "missing"),
+        }
         short = floor_short(m, kind, item) if done else None
         if short:
             e["status"], e["command"], e["floor"] = "outdated", short["command"], short
@@ -847,8 +889,10 @@ def print_plan(plan):
     if plan.get("sha"):
         print(f"reviewed: {plan['sha']} (pass apply --at {plan['sha'][:12]})")
     print(f"platform: {'ok' if plan['platform_ok'] else 'MISMATCH, this machine is ' + plan['platform_here']}")
-    print(f"workspace: {plan['workspace']} -> {plan['workspace_path']}"
-          f" ({'exists' if plan['workspace_exists'] else 'missing'})")
+    print(
+        f"workspace: {plan['workspace']} -> {plan['workspace_path']}"
+        f" ({'exists' if plan['workspace_exists'] else 'missing'})"
+    )
     for n in plan["notes"]:
         print(f"note: {n}")
     for g in plan["groups"]:
@@ -867,7 +911,9 @@ def print_plan(plan):
                     print(f"             {ln}")
             if "person" in s and s["status"] != "present":
                 p = s["person"]
-                print(f"             (needs {p['why']}; {'separate terminal' if p['terminal'] == 'separate' else 'this session'})")
+                print(
+                    f"             (needs {p['why']}; {'separate terminal' if p['terminal'] == 'separate' else 'this session'})"
+                )
     if plan["verify"]:
         print()
         print("verify:")
@@ -875,13 +921,21 @@ def print_plan(plan):
             print(f"  - {v['name']}: {v['run']}  (passes: {v['passes']})")
     c = summary(plan)
     print()
-    print(f"summary: {c['present']} present, {c['missing']} to run, {c['person']} person steps open,"
-          f" {c['outdated']} below a version floor; optional groups: {', '.join(c['optional']) or 'none'}")
+    print(
+        f"summary: {c['present']} present, {c['missing']} to run, {c['person']} person steps open,"
+        f" {c['outdated']} below a version floor; optional groups: {', '.join(c['optional']) or 'none'}"
+    )
 
 
 def summary(plan):
-    c = {"present": 0, "missing": 0, "person": 0, "outdated": 0, "required_open": 0,
-         "optional": [g["name"] for g in plan["groups"] if g["optional"]]}
+    c = {
+        "present": 0,
+        "missing": 0,
+        "person": 0,
+        "outdated": 0,
+        "required_open": 0,
+        "optional": [g["name"] for g in plan["groups"] if g["optional"]],
+    }
     for g in plan["groups"]:
         for s in g["steps"]:
             c[s["status"]] += 1
@@ -926,8 +980,7 @@ def run_verify(doc):
     for v in doc.get("verify", []):
         # Pass or fail by exit status alone, output discarded: a check such as
         # `claude mcp list` prints stored keys.
-        out.append({"name": v["name"], "run": v["run"], "passes": v["passes"],
-                    "ok": m.shell_ok(v["run"])})
+        out.append({"name": v["name"], "run": v["run"], "passes": v["passes"], "ok": m.shell_ok(v["run"])})
     return out
 
 
@@ -954,7 +1007,9 @@ def apply_group(doc, group, confirmed):
         if person:
             print(f"[person] {eid:<32} {label}")
             print(f"STOPPED at {eid}: {person['title']}")
-            print(f"needs: {person['why']}; run in {'a separate terminal' if person['terminal'] == 'separate' else 'this session'}")
+            print(
+                f"needs: {person['why']}; run in {'a separate terminal' if person['terminal'] == 'separate' else 'this session'}"
+            )
             if command:
                 print("command:")
                 for ln in command.splitlines():
@@ -992,10 +1047,11 @@ def apply_group(doc, group, confirmed):
 # Claude hook, a link out of the folder) would land in ~ or a checkout, and
 # run there, if the archive were unpacked whole.
 ARCHIVE_KINDS = {
-    "local": (re.compile(r"^(FLEET\.md|[A-Za-z0-9_][A-Za-z0-9._-]*/\.env|[A-Za-z0-9_][A-Za-z0-9._-]*/\.plans(/.+)?)$"),
-              re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]*$")),
-    "memory": (re.compile(r"^\.claude/projects/[^/]+/memory(/.+)?$"),
-               re.compile(r"^\.claude(/projects(/[^/]+)?)?$")),
+    "local": (
+        re.compile(r"^(FLEET\.md|[A-Za-z0-9_][A-Za-z0-9._-]*/\.env|[A-Za-z0-9_][A-Za-z0-9._-]*/\.plans(/.+)?)$"),
+        re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]*$"),
+    ),
+    "memory": (re.compile(r"^\.claude/projects/[^/]+/memory(/.+)?$"), re.compile(r"^\.claude(/projects(/[^/]+)?)?$")),
 }
 
 
@@ -1019,9 +1075,11 @@ def read_archive(path):
         t.getmembers()
     except tarfile.TarError as e:
         return None, [f"{path}: not a tar archive ({e})"]
-    if raw[t.offset:].strip(b"\0"):
-        return None, [f"{path}: unreadable data after byte {t.offset}, where the last member ends; "
-                      "another tar reader could find members there"]
+    if raw[t.offset :].strip(b"\0"):
+        return None, [
+            f"{path}: unreadable data after byte {t.offset}, where the last member ends; "
+            "another tar reader could find members there"
+        ]
     return t, []
 
 
@@ -1074,8 +1132,11 @@ def main(argv=None):
     src = ap.add_mutually_exclusive_group()
     src.add_argument("--fleet", default=".", help="the fleet root (default: here)")
     src.add_argument("--file", help="a working-tree setup.yaml, read without the review gate")
-    ap.add_argument("--unreviewed", action="store_true",
-                    help="let apply run a --file that has not been through the register's review")
+    ap.add_argument(
+        "--unreviewed",
+        action="store_true",
+        help="let apply run a --file that has not been through the register's review",
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("validate")
     p = sub.add_parser("archive")
@@ -1088,8 +1149,11 @@ def main(argv=None):
         if name == "plan":
             p.add_argument("--confirmed", action="append", default=[])
         if name == "check":
-            p.add_argument("--floors-only", action="store_true",
-                           help="only the version floors, without fetching; silent unless one is short")
+            p.add_argument(
+                "--floors-only",
+                action="store_true",
+                help="only the version floors, without fetching; silent unless one is short",
+            )
     p = sub.add_parser("apply")
     p.add_argument("--group", required=True)
     p.add_argument("--at", metavar="SHA", help="the origin/main commit plan showed; required without --file")
@@ -1114,24 +1178,31 @@ def main(argv=None):
                 print(f"{a.path}: refused; the store backend is unusable ({e}); nothing unpacked")
                 return 1
             if backend != "local":
-                print(f"{a.path}: refused; this fleet's store is the server at {backend}, set by WAYFARE_STORE "
-                      "or the URL line in the pin file, so the local store takes no writes; nothing unpacked. "
-                      "Reading the archive still works without --extract. To restore locally, unset "
-                      "WAYFARE_STORE (or set it to local) and delete the URL line from the pin file")
+                print(
+                    f"{a.path}: refused; this fleet's store is the server at {backend}, set by WAYFARE_STORE "
+                    "or the URL line in the pin file, so the local store takes no writes; nothing unpacked. "
+                    "Reading the archive still works without --extract. To restore locally, unset "
+                    "WAYFARE_STORE (or set it to local) and delete the URL line from the pin file"
+                )
                 return 1
         if a.extract:
             done, kept, refused = extract_archive(t, a.extract)
             for r in refused:
                 print(f"REFUSED {r}")
-            print(f"{a.path}: unpacked {done} files into {a.extract}, kept {kept} already there"
-                  f"{f', refused {len(refused)}' if refused else ''} ({a.kind})")
+            print(
+                f"{a.path}: unpacked {done} files into {a.extract}, kept {kept} already there"
+                f"{f', refused {len(refused)}' if refused else ''} ({a.kind})"
+            )
             return 1 if refused else 0
         else:
             print(f"{a.path}: ok ({a.kind})")
         return 0
     if a.file and a.cmd != "validate" and not a.unreviewed:
-        print(f"{a.cmd}: --file runs commands from a file nobody reviewed (person-step checks, verify, "
-              "installs); pass --unreviewed as well to mean it", file=sys.stderr)
+        print(
+            f"{a.cmd}: --file runs commands from a file nobody reviewed (person-step checks, verify, "
+            "installs); pass --unreviewed as well to mean it",
+            file=sys.stderr,
+        )
         return 2
     if a.cmd == "check" and a.floors_only:
         # Advisory, at session start: every refusal is silence and exit 0, so
@@ -1152,8 +1223,9 @@ def main(argv=None):
     try:
         text, source, sha = load_file(a.file) if a.file else load_reviewed(a.fleet)
         if a.cmd == "apply" and sha and not (len(a.at) >= 7 and sha.startswith(a.at.lower())):
-            raise Gate("MOVED", f"origin/main is now {sha[:12]}, not the {a.at} that plan showed; "
-                                "run plan again and show it")
+            raise Gate(
+                "MOVED", f"origin/main is now {sha[:12]}, not the {a.at} that plan showed; run plan again and show it"
+            )
         doc = parse(text, source)
     except Gate as e:
         print(f"GATE {e.code}: {e.detail}", file=sys.stderr)

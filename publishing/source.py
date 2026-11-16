@@ -8,6 +8,7 @@ with the editor's own parser (`deck_html.parse_book`), so a figure line means he
 means in the editor. Nothing here edits the manuscript: a figure that will not resolve is a
 warning and a placeholder, and the fix belongs in the book or its figure pipeline.
 """
+
 import base64
 import glob
 import json
@@ -106,6 +107,7 @@ def card_files(view, name, assets):
         return artwork.prepare({ext: dst}, assets, raster=False, warn=warn)
     if view.get("charts"):
         import charts
+
         return artwork.prepare(charts.draw(view["charts"], os.path.join(assets, name)), assets, warn=warn)
     return {}
 
@@ -113,6 +115,7 @@ def card_files(view, name, assets):
 def load_cards():
     sys.path.insert(0, paths.REPORT)
     import book_pages as B
+
     questions, _, _ = B.load_decks(paths.DECKS)
     return questions
 
@@ -143,10 +146,23 @@ def build_chapter(ch, cards, drawn, results, assets, counters):
             if blk:
                 blocks.append(blk)
         if blocks or s["title"]:
-            sections.append({"title": s["title"], "html": md_html(s["title"]) if s["title"] else "",
-                             "slug": slugify(s["title"]) if s["title"] else "opening", "blocks": blocks})
-    return {"n": n, "slug": ch["slug"], "title": title, "file": ch["book"], "sections": sections,
-            "sources": sources, "defs": defs}
+            sections.append(
+                {
+                    "title": s["title"],
+                    "html": md_html(s["title"]) if s["title"] else "",
+                    "slug": slugify(s["title"]) if s["title"] else "opening",
+                    "blocks": blocks,
+                }
+            )
+    return {
+        "n": n,
+        "slug": ch["slug"],
+        "title": title,
+        "file": ch["book"],
+        "sections": sections,
+        "sources": sources,
+        "defs": defs,
+    }
 
 
 def holders(b):
@@ -216,7 +232,7 @@ def source_ids(md):
     t = TITLE.search(md)
     if t:
         title = re.sub(r"[^a-z0-9]", "", (t.group(1) or t.group(2)).split(":")[0].lower())
-        lead = re.sub(r"\([^)]*\)", "", md[:t.start()].split(",")[0])
+        lead = re.sub(r"\([^)]*\)", "", md[: t.start()].split(",")[0])
         words = re.findall(r"[A-Za-z\u00c0-\u017f]+", lead)
         surname = words[-1].lower() if words else ""
         if len(title) >= 24:
@@ -266,8 +282,10 @@ def build_references(chapters):
         seen = set(c["cite_n"].values())
         c["further"] = [n for n in dict.fromkeys(number(i) for i in further) if n not in seen]
         c["refs"] = sorted(seen | set(c["further"]))
-    return [{"n": n, "md": entries[root], "html": md_html(entries[root])}
-            for root, n in sorted(numbers.items(), key=lambda x: x[1])]
+    return [
+        {"n": n, "md": entries[root], "html": md_html(entries[root])}
+        for root, n in sorted(numbers.items(), key=lambda x: x[1])
+    ]
 
 
 def cite_label(ns):
@@ -279,8 +297,9 @@ def cite_label(ns):
         else:
             runs.append([n, n])
     link = lambda n: f'<a class="cite" href="#ref-{n}">{n}</a>'  # noqa: E731
-    parts = [link(a) if a == b else f"{link(a)}, {link(b)}" if b == a + 1 else f"{link(a)}\u2013{link(b)}"
-             for a, b in runs]
+    parts = [
+        link(a) if a == b else f"{link(a)}, {link(b)}" if b == a + 1 else f"{link(a)}\u2013{link(b)}" for a, b in runs
+    ]
     return "[" + ", ".join(parts) + "]"
 
 
@@ -288,8 +307,9 @@ def resolve_markers(chapters, appendix):
     """Source markers become a bracketed [n] into the book's one reference list, and figure markers
     become a link to the figure and to its appendix entry. `md` keeps the markers (the technical
     edition resolves them itself); `html` is rewritten here. Returns the reference list."""
-    evidence = {sl: e["anchor"] for p in appendix["parts"] for g in p["groups"] for e in g["entries"]
-                for sl in e["slugs"]}
+    evidence = {
+        sl: e["anchor"] for p in appendix["parts"] for g in p["groups"] for e in g["entries"] for sl in e["slugs"]
+    }
     idx = figure_index(chapters)
     texts = {}
     for c in chapters:
@@ -298,8 +318,10 @@ def resolve_markers(chapters, appendix):
             for b in s["blocks"]:
                 for h in holders(b):
                     if CITE_AFTER_PUNCT.search(h["md"]):
-                        ERRORS.append(f"chapter {n}: a source marker follows punctuation in "
-                                      f"\"{CITE_AFTER_PUNCT.search(h['md']).group(0)}\"; write `text [^key].`")
+                        ERRORS.append(
+                            f"chapter {n}: a source marker follows punctuation in "
+                            f'"{CITE_AFTER_PUNCT.search(h["md"]).group(0)}"; write `text [^key].`'
+                        )
                     for m in NOTE_RE.finditer(h["md"]):
                         if m.group(1) not in defs:
                             ERRORS.append(f"chapter {n}: [^{m.group(1)}] is cited but not defined under Sources")
@@ -309,8 +331,10 @@ def resolve_markers(chapters, appendix):
             if k not in order and not k.startswith("note-"):
                 WARN.append(f"chapter {n}: source [^{k}] is defined but never cited")
             if texts.setdefault(k, defs[k]) != defs[k]:
-                WARN.append(f"chapter {n}: source [^{k}] is worded differently than in an earlier chapter; "
-                            "the reference list shows the first wording")
+                WARN.append(
+                    f"chapter {n}: source [^{k}] is worded differently than in an earlier chapter; "
+                    "the reference list shows the first wording"
+                )
         c["order"] = order
     references = build_references(chapters)
     for c in chapters:
@@ -318,19 +342,24 @@ def resolve_markers(chapters, appendix):
 
         def run(m):
             keys = NOTE_RE.findall(m.group(1))
-            notes = "".join(f'<span class="fn" data-key="{k}">{defs[k]}</span>' for k in keys
-                            if k.startswith("note-") and k in defs)
+            notes = "".join(
+                f'<span class="fn" data-key="{k}">{defs[k]}</span>' for k in keys if k.startswith("note-") and k in defs
+            )
             ns = [c["cite_n"][k] for k in keys if k in c["cite_n"]]
             # The space before a [n] is a no-break space, so the bracket never starts a line alone.
             return ("\u00a0" + cite_label(ns) if ns else "") + notes
+
         for s in c["sections"]:
             for b in s["blocks"]:
                 for h in holders(b):
                     for m in PLAIN_DIAGRAM.finditer(XREF_RE.sub("", h["md"])):
-                        warn(f"chapter {n}: plain {m.group(0)!r} names an authored id, not the printed number; "
-                             f"write {{{{diagram:{m.group(1)}}}}}")
-                    h["html"] = md_html(CITE_RUN.sub(run, XREF_RE.sub(lambda m: xref_html(m, idx, evidence, n),
-                                                                      h["md"])))
+                        warn(
+                            f"chapter {n}: plain {m.group(0)!r} names an authored id, not the printed number; "
+                            f"write {{{{diagram:{m.group(1)}}}}}"
+                        )
+                    h["html"] = md_html(
+                        CITE_RUN.sub(run, XREF_RE.sub(lambda m: xref_html(m, idx, evidence, n), h["md"]))
+                    )
         del c["order"]
     return references
 
@@ -367,19 +396,27 @@ def convert_kind(b, n, cards, drawn, results, assets, counters):
     k = b["kind"]
     if k == "p":
         text = b["text"]
-        return {"kind": "p", "md": text, "html": md_html(text),
-                "cites": sorted({D.qkey(m.group(0)) for m in D.Q_RE.finditer(text)})}
+        return {
+            "kind": "p",
+            "md": text,
+            "html": md_html(text),
+            "cites": sorted({D.qkey(m.group(0)) for m in D.Q_RE.finditer(text)}),
+        }
     if k == "h3":
         return {"kind": "h3", "md": b["text"], "html": md_html(b["text"])}
     if k == "quote":
-        ERRORS.append(f"chapter {n}: blockquote \"{b['text'][:50]}...\"; use italics for your own line "
-                      "or double quotes inline for someone else's")
+        ERRORS.append(
+            f'chapter {n}: blockquote "{b["text"][:50]}..."; use italics for your own line '
+            "or double quotes inline for someone else's"
+        )
         return {"kind": "quote", "md": b["text"], "html": md_html(b["text"])}
     if k in ("ul", "ol"):
         return {"kind": k, "items": [{"md": i, "html": md_html(i)} for i in b["items"]]}
     if k == "table":
-        return {"kind": "table", "rows": [[{"md": c, "html": md_html(c)} for c in unescape_pipes(r)]
-                                          for r in b["rows"]]}
+        return {
+            "kind": "table",
+            "rows": [[{"md": c, "html": md_html(c)} for c in unescape_pipes(r)] for r in b["rows"]],
+        }
     if k == "figure":
         return figure(b, n, cards, drawn, results, assets, counters)
     warn(f"chapter {n}: unknown block kind {k}")
@@ -389,8 +426,18 @@ def convert_kind(b, n, cards, drawn, results, assets, counters):
 def figure(b, n, cards, drawn, results, assets, counters):
     ref, caption = b["ref"].strip(), b["caption"]
     kind_word, _, ident = ref.partition(" ")
-    out = {"kind": "figure", "ref": ref, "caption_md": caption, "caption_html": md_html(caption),
-           "files": {}, "alt": "", "source": "", "question": "", "width": None, "height": None}
+    out = {
+        "kind": "figure",
+        "ref": ref,
+        "caption_md": caption,
+        "caption_html": md_html(caption),
+        "files": {},
+        "alt": "",
+        "source": "",
+        "question": "",
+        "width": None,
+        "height": None,
+    }
     if D.qkey(ref):
         counters["figure"] += 1
         key = D.qkey(ref)
@@ -422,22 +469,33 @@ def figure(b, n, cards, drawn, results, assets, counters):
         out.update(type="missing", label=kind_word, number=ident)
         return out
     # Prose and `{{diagram:1.9}}` name the authored kind and id; the printed label is always Figure.
-    out.update(alt=meta.get("alt", ""), source=meta.get("source", ""), width=meta.get("width"),
-               height=meta.get("height"), ref_kind=kind_word.lower())
+    out.update(
+        alt=meta.get("alt", ""),
+        source=meta.get("source", ""),
+        width=meta.get("width"),
+        height=meta.get("height"),
+        ref_kind=kind_word.lower(),
+    )
     for key in ("chart_id", "evidence_ids"):
         if meta.get(key):
             out[key] = meta[key]
     if meta.get("kind") == "table":
         counters["table"] += 1
-        out.update(type="table", label="Table", number=f"{n}.{counters['table']}", id=meta["id"],
-                   rows=[[{"md": c, "html": md_html(c)} for c in r] for r in table_rows(meta)])
+        out.update(
+            type="table",
+            label="Table",
+            number=f"{n}.{counters['table']}",
+            id=meta["id"],
+            rows=[[{"md": c, "html": md_html(c)} for c in r] for r in table_rows(meta)],
+        )
         return out
     # Diagrams and charts share one count in reading order, so a reader meets Figure 2.1, 2.2, 2.3
     # rather than two interleaved series; references use the authored id, never the printed number.
     counters["figure"] += 1
     number = f"{n}.{counters['figure']}"
-    out.update(type="drawn" if meta.get("kind") == "figure" else "diagram", label="Figure", number=number,
-               id=meta["id"])
+    out.update(
+        type="drawn" if meta.get("kind") == "figure" else "diagram", label="Figure", number=number, id=meta["id"]
+    )
     out["files"] = copy_drawn(meta, assets)
     if not out["files"]:
         warn(f"chapter {n}: {ref} has a sidecar but no svg, pdf or png in {paths.DIAGRAMS}")
@@ -460,8 +518,13 @@ def build_appendix(chapters, cards, assets):
     point at files inside this repository (numerical tables, the historical cards) that a reader of
     an edition cannot open, so they are kept as `link` blocks for editions to drop.
     """
-    shown = {b["rid"]: (c["n"], f'{b["label"]} {b["number"]}') for c in chapters for s in c["sections"]
-             for b in s["blocks"] if b["kind"] == "figure" and b.get("rid")}
+    shown = {
+        b["rid"]: (c["n"], f"{b['label']} {b['number']}")
+        for c in chapters
+        for s in c["sections"]
+        for b in s["blocks"]
+        if b["kind"] == "figure" and b.get("rid")
+    }
     parts = []
     for path in sorted(glob.glob(os.path.join(paths.APPENDIX, "[0-9][0-9]-evidence.md"))):
         n = int(os.path.basename(path)[:2])
@@ -482,9 +545,15 @@ def build_appendix(chapters, cards, assets):
                     ch, label = shown.get(rid, (None, None))
                     if rid and not label and not any(f"Q {slug}" in cards for slug in slugs):
                         warn(f"appendix {n}: {rid} has no retained analysis card")
-                    entry = {"rid": rid, "slugs": slugs, "title": title, "label": label,
-                             "anchor": f"evidence-{slugs[0] if slugs else slugify(title)}",
-                             "blocks": [], "charts": []}
+                    entry = {
+                        "rid": rid,
+                        "slugs": slugs,
+                        "title": title,
+                        "label": label,
+                        "anchor": f"evidence-{slugs[0] if slugs else slugify(title)}",
+                        "blocks": [],
+                        "charts": [],
+                    }
                     for slug in slugs:
                         card = cards.get(f"Q {slug}")
                         if not card:
@@ -492,8 +561,9 @@ def build_appendix(chapters, cards, assets):
                             continue
                         files = card_files(card["block"]["views"][0], f"appendix-{slug}", assets)
                         if files:
-                            entry["charts"].append({"slug": slug, "files": files,
-                                                    "question": card["block"].get("question") or ""})
+                            entry["charts"].append(
+                                {"slug": slug, "files": files, "question": card["block"].get("question") or ""}
+                            )
                     group["entries"].append(entry)
                     continue
                 if not group["entries"]:
@@ -505,9 +575,17 @@ def build_appendix(chapters, cards, assets):
             # A `##` section that is only paragraphs is a case record: it carries no `###` entry of its
             # own, so every edition would drop it. It becomes one entry under the section's heading.
             if group.get("intro") and not group["entries"]:
-                group["entries"].append({"rid": None, "slugs": [], "title": "Case record", "label": None,
-                                         "anchor": f"evidence-{slugify(group['title'])}",
-                                         "blocks": group.pop("intro"), "charts": []})
+                group["entries"].append(
+                    {
+                        "rid": None,
+                        "slugs": [],
+                        "title": "Case record",
+                        "label": None,
+                        "anchor": f"evidence-{slugify(group['title'])}",
+                        "blocks": group.pop("intro"),
+                        "charts": [],
+                    }
+                )
             groups.append(group)
         title = next((c["title"] for c in chapters if c["n"] == n), "")
         parts.append({"n": n, "title": title, "groups": groups})
@@ -530,6 +608,7 @@ def plain_figure_text(chapters, appendix):
     owner's and is left as written; tables keep their cells, since there the original names are quoted
     data (and the repository table lists them on purpose). An appendix table's prose cells are mapped; a cell
     holding a JSON list or record is raw data and stays as recorded."""
+
     def fix(d, keys):
         for k in keys:
             if isinstance(d.get(k), str):
@@ -539,6 +618,7 @@ def plain_figure_text(chapters, appendix):
         fix(b, ("alt", "source", "caption_md", "caption_html", "validation"))
         if isinstance(b.get("question"), dict):
             fix(b["question"], ("question", "how", "originally", "notes"))
+
     for c in chapters:
         for s in c["sections"]:
             for b in s["blocks"]:
@@ -568,8 +648,12 @@ def build_note(path, default):
     with open(path, encoding="utf-8") as f:
         text = f.read()
     m = re.search(r"^# (.+)$", text, re.M)
-    blocks = [{"kind": "p", "md": b["text"], "html": md_html(b["text"])}
-              for s in D.parse_book(text) for b in s["blocks"] if b["kind"] == "p"]
+    blocks = [
+        {"kind": "p", "md": b["text"], "html": md_html(b["text"])}
+        for s in D.parse_book(text)
+        for b in s["blocks"]
+        if b["kind"] == "p"
+    ]
     return {"title": m.group(1).strip() if m else default, "blocks": blocks}
 
 
@@ -613,15 +697,25 @@ def main():
     plain_figure_text(chapters, appendix)
     if ERRORS:
         raise SystemExit("source: " + "\n  ".join(["fix these markers:"] + ERRORS))
-    doc = {"meta": meta, "preface": build_preface(), "chapters": chapters, "appendix": appendix,
-           "references": references, "about": build_about(), "words": words, "warnings": WARN}
+    doc = {
+        "meta": meta,
+        "preface": build_preface(),
+        "chapters": chapters,
+        "appendix": appendix,
+        "references": references,
+        "about": build_about(),
+        "words": words,
+        "warnings": WARN,
+    }
     with open(os.path.join(build, "book.json"), "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=1, ensure_ascii=False)
     figs = sum(1 for c in chapters for s in c["sections"] for b in s["blocks"] if b["kind"] == "figure")
     entries = sum(len(g["entries"]) for p in appendix["parts"] for g in p["groups"])
     charts = sum(len(e["charts"]) for p in appendix["parts"] for g in p["groups"] for e in g["entries"])
-    print(f"source: {len(chapters)} chapters, {figs} figures, appendix {entries} entries with {charts} charts, "
-          f"~{words:,} words, {len(WARN)} warnings -> {build}")
+    print(
+        f"source: {len(chapters)} chapters, {figs} figures, appendix {entries} entries with {charts} charts, "
+        f"~{words:,} words, {len(WARN)} warnings -> {build}"
+    )
 
 
 if __name__ == "__main__":

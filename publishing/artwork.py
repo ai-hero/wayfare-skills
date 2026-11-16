@@ -1,5 +1,6 @@
 """Publication colors, plus a hatch per chart series so series still separate in grayscale print, on
 e-ink and for colour-blind readers, applied to the SVG before its PDF and PNG are derived from it."""
+
 import os
 import re
 import sys
@@ -28,10 +29,15 @@ STROKE = {"#c6c9d0": "#666D7B", "#7b8290": "#5A6070", "#e93a61": "#BA1B45"}
 # Ink, white and the background tints are left as they are; any other chart fill is reported.
 NEUTRAL = {"#0b0d14", "#ffffff", "#f4f5f8", "#fef1f4", "#1a1e29"}
 LABEL_INK = {"#0b0d14": "#FFFFFF", "#383d49": "#FFFFFF", "#1a1e29": "#FFFFFF", "#ffffff": "#0B0D14"}
-MOTIFS = {"/": "M-1,1 L1,-1 M0,6 L6,0 M5,7 L7,5",
-          "\\": "M-1,5 L1,7 M0,0 L6,6 M5,-1 L7,1",
-          "-": "M0,3 H6", "=": "M0,1.5 H6 M0,4.5 H6", "|": "M3,0 V6", "+": "M0,3 H6 M3,0 V6",
-          "x": "M0,0 L6,6 M0,6 L6,0"}
+MOTIFS = {
+    "/": "M-1,1 L1,-1 M0,6 L6,0 M5,7 L7,5",
+    "\\": "M-1,5 L1,7 M0,0 L6,6 M5,-1 L7,1",
+    "-": "M0,3 H6",
+    "=": "M0,1.5 H6 M0,4.5 H6",
+    "|": "M3,0 V6",
+    "+": "M0,3 H6 M3,0 V6",
+    "x": "M0,0 L6,6 M0,6 L6,0",
+}
 # Bump when the mapping changes. An SVG carrying an older value cannot be safely mapped again.
 MARKER, VERSION = "data-book-artwork", "3"
 
@@ -44,9 +50,12 @@ if any(k != k.lower() for k in (*DATA, *TEXT, *STROKE, *NEUTRAL, *LABEL_INK)):
 
 def ratio(a, b):
     def lum(color):
-        rgb = [int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
-        return sum(w * (v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4)
-                   for w, v in zip((0.2126, 0.7152, 0.0722), rgb))
+        rgb = [int(color[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+        return sum(
+            w * (v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4)
+            for w, v in zip((0.2126, 0.7152, 0.0722), rgb)
+        )
+
     hi, lo = sorted((lum(a), lum(b)), reverse=True)
     return (hi + 0.05) / (lo + 0.05)
 
@@ -66,17 +75,25 @@ def put(el, name, value):
 
 def pattern(defs, color, motif, key):
     ident = "book-fill-" + key.removeprefix("#")
-    el = ET.SubElement(defs, f"{{{SVG}}}pattern", id=ident, patternUnits="userSpaceOnUse",
-                       width="6", height="6")
+    el = ET.SubElement(defs, f"{{{SVG}}}pattern", id=ident, patternUnits="userSpaceOnUse", width="6", height="6")
     ET.SubElement(el, f"{{{SVG}}}rect", width="6", height="6", fill=color)
     if motif == ".":
         ET.SubElement(el, f"{{{SVG}}}circle", cx="3", cy="3", r="0.85", fill="#FFFFFF")
     elif motif == "o":
-        ET.SubElement(el, f"{{{SVG}}}circle", cx="3", cy="3", r="1.6", fill="none", stroke="#0B0D14",
-                      attrib={"stroke-width": "0.7"})
+        ET.SubElement(
+            el,
+            f"{{{SVG}}}circle",
+            cx="3",
+            cy="3",
+            r="1.6",
+            fill="none",
+            stroke="#0B0D14",
+            attrib={"stroke-width": "0.7"},
+        )
     else:
-        ET.SubElement(el, f"{{{SVG}}}path", d=MOTIFS[motif], fill="none", stroke="#FFFFFF",
-                      attrib={"stroke-width": "0.8"})
+        ET.SubElement(
+            el, f"{{{SVG}}}path", d=MOTIFS[motif], fill="none", stroke="#FFFFFF", attrib={"stroke-width": "0.8"}
+        )
     return f"url(#{ident})"
 
 
@@ -114,8 +131,15 @@ def label_backgrounds(root, bars):
             width = len("".join(el.itertext())) * size * 0.62 + 4
             anchor = style.get("text-anchor") or el.get("text-anchor", "start")
             left = x - {"middle": width / 2, "end": width - 2}.get(anchor, 2)
-            chip = ET.Element(f"{{{SVG}}}rect", x=str(left), y=str(y - size), width=str(width),
-                              height=str(size * 1.3), rx="1", fill=LABEL_INK[fill])
+            chip = ET.Element(
+                f"{{{SVG}}}rect",
+                x=str(left),
+                y=str(y - size),
+                width=str(width),
+                height=str(size * 1.3),
+                rx="1",
+                fill=LABEL_INK[fill],
+            )
             if el.get("transform"):
                 chip.set("transform", el.get("transform"))
             # Before the text: SVG paints in document order, so a later chip would cover the label.
@@ -197,6 +221,7 @@ WELL = "#f4f5f8"
 def text_width():
     from PIL import ImageFont
     import book
+
     faces = {}
 
     def width(text, size, mono, weight, spacing):
@@ -205,6 +230,7 @@ def text_width():
             face.set_variation_by_axes([weight])
             faces[mono, weight] = face
         return faces[mono, weight].getlength(text) * size / 100 + spacing * size * max(len(text) - 1, 0)
+
     return width
 
 
@@ -218,8 +244,11 @@ def legible(svg):
     # On e-ink and in print the design system's sunken well reads as a grey cast over the whole figure.
     whitened = False
     for el in root.iter(f"{{{SVG}}}rect"):
-        if (el.get("fill", "").lower() == WELL and float(el.get("width", 0)) >= W - 1
-                and float(el.get("height", 0)) >= H - 1):
+        if (
+            el.get("fill", "").lower() == WELL
+            and float(el.get("width", 0)) >= W - 1
+            and float(el.get("height", 0)) >= H - 1
+        ):
             el.set("fill", "#FFFFFF")
             whitened = True
     # A label's halo is a stroke in the well's colour; left grey on white it prints as a smudge.
@@ -240,11 +269,20 @@ def legible(svg):
         if not words.strip() or not size or el.get("x") is None or el.get("transform"):
             continue
         spacing = el.get("letter-spacing", "")
-        texts.append({"el": el, "s": words, "x": float(el.get("x")), "y": float(el.get("y")),
-                      "size": float(size[0]), "mono": "Mono" in el.get("font-family", ""),
-                      "weight": int(el.get("font-weight") or 400), "anchor": el.get("text-anchor", "start"),
-                      "hanging": el.get("dominant-baseline") == "hanging",
-                      "spacing": float(spacing[:-2]) if spacing.endswith("em") else 0.0})
+        texts.append(
+            {
+                "el": el,
+                "s": words,
+                "x": float(el.get("x")),
+                "y": float(el.get("y")),
+                "size": float(size[0]),
+                "mono": "Mono" in el.get("font-family", ""),
+                "weight": int(el.get("font-weight") or 400),
+                "anchor": el.get("text-anchor", "start"),
+                "hanging": el.get("dominant-baseline") == "hanging",
+                "spacing": float(spacing[:-2]) if spacing.endswith("em") else 0.0,
+            }
+        )
 
     def bbox(t, size=None, y=None):
         size, y = size or t["size"], t["y"] if y is None else y
@@ -260,14 +298,20 @@ def legible(svg):
         return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
     for t in texts:
-        t["box"] = min((r for r in rects if within(bbox(t), r, -3)),
-                       key=lambda r: (r[2] - r[0]) * (r[3] - r[1]), default=None)
+        t["box"] = min(
+            (r for r in rects if within(bbox(t), r, -3)), key=lambda r: (r[2] - r[0]) * (r[3] - r[1]), default=None
+        )
         t["old"] = bbox(t)
     runs = []
     for t in sorted(texts, key=lambda t: (t["box"] or (0,), t["x"], t["anchor"], t["y"])):
         last = runs[-1][-1] if runs else None
-        if (last and last["box"] == t["box"] and last["x"] == t["x"] and last["anchor"] == t["anchor"]
-                and 0 <= t["y"] - last["y"] <= 2 * max(last["size"], t["size"])):
+        if (
+            last
+            and last["box"] == t["box"]
+            and last["x"] == t["x"]
+            and last["anchor"] == t["anchor"]
+            and 0 <= t["y"] - last["y"] <= 2 * max(last["size"], t["size"])
+        ):
             runs[-1].append(t)
         else:
             runs.append([t])
@@ -288,11 +332,19 @@ def legible(svg):
             if t["box"] is not None:
                 if not within(b, t["box"], 4 if within(t["old"], t["box"], 4) else -3):
                     return False
-            elif b[0] < 0 or b[1] < 0 or b[2] > W or b[3] > H or any(
-                    meets(b, r) and not meets(t["old"], r) for r in rects):
+            elif (
+                b[0] < 0
+                or b[1] < 0
+                or b[2] > W
+                or b[3] > H
+                or any(meets(b, r) and not meets(t["old"], r) for r in rects)
+            ):
                 return False
-        return not any(meets(new[id(a)][2], new[id(c)][2]) and not meets(a["old"], c["old"])
-                       for i, a in enumerate(texts) for c in texts[i + 1:])
+        return not any(
+            meets(new[id(a)][2], new[id(c)][2]) and not meets(a["old"], c["old"])
+            for i, a in enumerate(texts)
+            for c in texts[i + 1 :]
+        )
 
     step = next((f for f in STEPS if fits(f)), None)
     if step:
@@ -323,8 +375,7 @@ def dimensions(svg):
         m = re.fullmatch(r"([\d.]+)(pt|px|in|cm|mm)?", root.get(name, ""))
         if not m:
             raise ValueError(f"artwork: SVG needs an absolute {name}")
-        values.append(float(m[1]) * {None: 0.75, "px": 0.75, "pt": 1, "in": 72,
-                                     "cm": 72 / 2.54, "mm": 72 / 25.4}[m[2]])
+        values.append(float(m[1]) * {None: 0.75, "px": 0.75, "pt": 1, "in": 72, "cm": 72 / 2.54, "mm": 72 / 25.4}[m[2]])
     return values
 
 
@@ -347,8 +398,10 @@ def prepare(files, folder, raster=True, warn=warn_stderr, drawing=False):
     if drawing:
         svg = legible(svg)
     if unmapped:
-        warn(f"artwork: {files['svg']} has chart fills outside the book palette, left unpatterned: "
-             + ", ".join(sorted(unmapped)))
+        warn(
+            f"artwork: {files['svg']} has chart fills outside the book palette, left unpatterned: "
+            + ", ".join(sorted(unmapped))
+        )
     if svg == original and MARKER not in original:
         return files
     import fitz
@@ -357,9 +410,11 @@ def prepare(files, folder, raster=True, warn=warn_stderr, drawing=False):
     width, height = dimensions(svg)
     stem = os.path.splitext(files["svg"])[0]
     out = {**files, "pdf": stem + ".pdf"}
-    markup = (f'<html><style>{book.font_faces()}@page{{size:{width}pt {height}pt;margin:0}}'
-              f'html,body{{margin:0}}svg{{display:block;width:{width}pt;height:{height}pt}}'
-              f'</style><body>{svg}</body></html>')
+    markup = (
+        f"<html><style>{book.font_faces()}@page{{size:{width}pt {height}pt;margin:0}}"
+        f"html,body{{margin:0}}svg{{display:block;width:{width}pt;height:{height}pt}}"
+        f"</style><body>{svg}</body></html>"
+    )
     refused = set(book.REFUSED)
     pdf_path = os.path.join(folder, out["pdf"])
     book.weasy_html()(string=markup).write_pdf(pdf_path)

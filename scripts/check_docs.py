@@ -42,26 +42,54 @@ import sys
 # on it could never be fixed.
 EXCLUDE_DIRS = ("analysis/", "assets/security-audit/")
 
-NUMBER_WORDS = {w: i for i, w in enumerate(
-    "zero one two three four five six seven eight nine ten eleven twelve "
-    "thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty".split())}
+NUMBER_WORDS = {
+    w: i
+    for i, w in enumerate(
+        "zero one two three four five six seven eight nine ten eleven twelve "
+        "thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty".split()
+    )
+}
 
 BANNED = re.compile(
     r"load[- ]bearing|honest take|belt and suspenders|that'?s the unlock|"
-    r"you'?re absolutely right|\bdelve", re.I)
+    r"you'?re absolutely right|\bdelve",
+    re.I,
+)
 PROSE_CHARS = [
     (re.compile("—"), "em dash"),
     (re.compile("–"), "en dash"),
     # Between words only: a compact table's delimiter row is `| -- | -- |`.
     (re.compile(r"(?<=[\w.,;:)!?\"'])\s--\s(?=[\w(\"'])"), "double hyphen used as a dash"),
     (re.compile("[“”‘’]"), "curly quote"),
-    (re.compile("[\U0001F300-\U0001FAFF☀-⛿✀-➿]"), "emoji"),
+    (re.compile("[\U0001f300-\U0001faff☀-⛿✀-➿]"), "emoji"),
 ]
 
 HTML_TAGS = {
-    "a", "b", "br", "code", "details", "div", "em", "hr", "i", "img", "kbd",
-    "li", "ol", "p", "pre", "span", "strong", "sub", "summary", "sup",
-    "table", "td", "th", "tr", "ul",
+    "a",
+    "b",
+    "br",
+    "code",
+    "details",
+    "div",
+    "em",
+    "hr",
+    "i",
+    "img",
+    "kbd",
+    "li",
+    "ol",
+    "p",
+    "pre",
+    "span",
+    "strong",
+    "sub",
+    "summary",
+    "sup",
+    "table",
+    "td",
+    "th",
+    "tr",
+    "ul",
 }
 
 # Links in these files point into the consumer repo the file scaffolds, not
@@ -76,13 +104,13 @@ def error(path, line, check, msg):
 
 
 def tracked(root, pattern):
-    out = subprocess.run(["git", "-C", str(root), "ls-files", pattern],
-                         capture_output=True, text=True, check=True).stdout
+    out = subprocess.run(
+        ["git", "-C", str(root), "ls-files", pattern], capture_output=True, text=True, check=True
+    ).stdout
     # Mid-merge, ls-files lists a conflicted path once per stage.
     out = "\n".join(dict.fromkeys(out.splitlines()))
     # A leftover symlink (CLAUDE.md -> AGENTS.md) would report every finding twice.
-    return [p for p in out.splitlines()
-            if not p.startswith(EXCLUDE_DIRS) and not (root / p).is_symlink()]
+    return [p for p in out.splitlines() if not p.startswith(EXCLUDE_DIRS) and not (root / p).is_symlink()]
 
 
 def prose_lines(text):
@@ -114,8 +142,7 @@ def prose_lines(text):
     # paragraphs, so a code span routinely starts on one line and ends on the
     # next. Blanked lines are empty, so a span cannot reach across a fence.
     joined = "\n".join(ln if k else "" for ln, k in zip(lines, keep))
-    joined = re.sub(r"(`+)(?:(?!\1)[^\n]|\n(?!\n))*?\1",
-                    lambda m: "\n" * m.group(0).count("\n"), joined)
+    joined = re.sub(r"(`+)(?:(?!\1)[^\n]|\n(?!\n))*?\1", lambda m: "\n" * m.group(0).count("\n"), joined)
     for n, (line, k) in enumerate(zip(joined.split("\n"), keep), 1):
         if k:
             yield n, line
@@ -138,13 +165,13 @@ def check_frontmatter(rel, text):
     # Imported here, not at the top: pr_text_lint.py imports this module for
     # its prose rules and runs in consumer repos that may not have pyyaml.
     import yaml
+
     try:
         data = yaml.safe_load(fm)
     except yaml.YAMLError as e:
         mark = getattr(e, "problem_mark", None)
         line = mark.line + 2 if mark else 1
-        error(rel, line, "frontmatter",
-              "does not parse as YAML (quote a value that contains ': ')")
+        error(rel, line, "frontmatter", "does not parse as YAML (quote a value that contains ': ')")
         return
     if not isinstance(data, dict):
         error(rel, 2, "frontmatter", "is not a mapping of keys to values")
@@ -163,8 +190,11 @@ def check_frontmatter(rel, text):
         error(rel, 2, "frontmatter", f"description is {len(desc)} chars; keep it within 50 to 350")
     # A chained stage is never matched against a user's request, so it needs
     # no trigger; everything else is picked by its description.
-    if (isinstance(desc, str) and data.get("user-invocable") is not False
-            and not re.search(r"\bUse (when|for|before|after|to|on|from)\b", desc)):
+    if (
+        isinstance(desc, str)
+        and data.get("user-invocable") is not False
+        and not re.search(r"\bUse (when|for|before|after|to|on|from)\b", desc)
+    ):
         error(rel, 2, "frontmatter", 'description says what, not when: add "Use when ..."')
     if "argument-hint" in keys and keys.index("argument-hint") != 2:
         error(rel, 2, "frontmatter", "argument-hint comes third, after name and description")
@@ -172,6 +202,7 @@ def check_frontmatter(rel, text):
 
 def check_yaml_only(rel, text):
     import yaml
+
     try:
         yaml.safe_load(frontmatter(text)[0])
     except yaml.YAMLError:
@@ -247,8 +278,7 @@ def check_attribution(rel, text):
     # A model name copied into a template is stale the next time a model ships.
     for n, line in enumerate(text.splitlines(), 1):
         if re.search(r"Co-Authored-By:\s*Claude\s+[\w .-]*\d", line, re.I):
-            error(rel, n, "attribution",
-                  "model name in a Co-Authored-By template; say to use the harness's trailer")
+            error(rel, n, "attribution", "model name in a Co-Authored-By template; say to use the harness's trailer")
 
 
 def check_prose(rel, text):
@@ -300,8 +330,7 @@ def check_chains(rel, text, chains):
             if seq[:2] != canon[:2]:
                 continue
             if seq != canon:
-                error(rel, i + 1, "chain",
-                      f"'{' → '.join(seq)}' differs from docs/PIPELINES.md: {' → '.join(canon)}")
+                error(rel, i + 1, "chain", f"'{' → '.join(seq)}' differs from docs/PIPELINES.md: {' → '.join(canon)}")
                 continue
             ln, n = count_word_near(lines, i)
             if n is not None and n != len(canon):
@@ -323,13 +352,11 @@ def check_counts(root):
     kinds_table = kinds_text.split("\n## ", 1)[0]
     facts = {
         "recalibrate": sum(
-            re.search(r"^argument-hint:.*recalibrate", s.read_text(), re.MULTILINE) is not None
-            for s in skills
+            re.search(r"^argument-hint:.*recalibrate", s.read_text(), re.MULTILINE) is not None for s in skills
         ),
         "stage-skills": sum("\nuser-invocable: false" in s.read_text() for s in skills),
         "kinds": len(re.findall(r"^\| `[\w-]+` \|", kinds_table, re.M)),
-        "ship-pr-fields": len(re.findall(r"^wayfare-ship-pr\|",
-                                         (root / "scripts/hero-fields.sh").read_text(), re.M)),
+        "ship-pr-fields": len(re.findall(r"^wayfare-ship-pr\|", (root / "scripts/hero-fields.sh").read_text(), re.M)),
     }
     claims = [
         ("recalibrate", r"\b(\w+) skills (?:accept|carry) (?:the verb|`recalibrate`)"),
@@ -373,14 +400,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=None)
     args = ap.parse_args()
-    root = pathlib.Path(args.root or subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True,
-        check=True).stdout.strip())
+    root = pathlib.Path(
+        args.root
+        or subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=True
+        ).stdout.strip()
+    )
 
     for required in ("docs/PIPELINES.md", "docs/CONNECTIONS.md", "scripts/hero-fields.sh"):
         if not (root / required).is_file():
-            print(f"check_docs: {required} is missing; the chain and count checks read it",
-                  file=sys.stderr)
+            print(f"check_docs: {required} is missing; the chain and count checks read it", file=sys.stderr)
             return 2
     chains = canonical_chains(root)
     for rel in tracked(root, "*.md"):

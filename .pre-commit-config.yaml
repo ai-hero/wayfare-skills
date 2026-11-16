@@ -124,6 +124,19 @@ repos:
         files: \.sh$
 
   # ===========================================================================
+  # Python lint and format
+  # ===========================================================================
+  # Settings live in .ruff.toml so the editor's ruff extension reads the same
+  # ones. analysis/ is research code, out of this gate like the hooks above.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: ef6cf06c079dd6b299dfc720b0f14400c9d168e1  # frozen: v0.17.5
+    hooks:
+      - id: ruff-check
+        exclude: ^analysis/
+      - id: ruff-format
+        exclude: ^analysis/
+
+  # ===========================================================================
   # Commit message convention (conventional commits)
   # ===========================================================================
   # ===========================================================================

@@ -41,7 +41,7 @@ import json
 import pathlib
 import sys
 
-HERE = pathlib.Path(__file__).resolve().parent.parent   # the wayfare plugin
+HERE = pathlib.Path(__file__).resolve().parent.parent  # the wayfare plugin
 
 
 # Columns, ordering and results all come from audit.py at run time — never a
@@ -53,7 +53,7 @@ def short(name):
     in main()."""
     for pre in _prefixes():
         if name.startswith(pre) and len(name) > len(pre):
-            name = name[len(pre):]
+            name = name[len(pre) :]
             break
     return name if len(name) <= 10 else name[:9] + "…"
 
@@ -67,7 +67,6 @@ def _prefixes():
 
 
 _ORG = None
-
 
 
 def load_audit():
@@ -112,8 +111,10 @@ def first_seen(path, cells, today):
                 for d in repos.values():
                     datetime.date.fromisoformat(d)
         except (ValueError, KeyError, TypeError, AttributeError) as e:
-            sys.exit(f"{path}: unreadable first-seen state ({type(e).__name__}: {e}). "
-                     "Restore it from the register's history; deleting it resets every age to today")
+            sys.exit(
+                f"{path}: unreadable first-seen state ({type(e).__name__}: {e}). "
+                "Restore it from the register's history; deleting it resets every age to today"
+            )
     out = {}
     for (cid, repo), st in sorted(cells.items()):
         d = (seen.get(cid) or {}).get(repo)
@@ -164,17 +165,22 @@ def main():
     rows = [(c, [st for st, _d in cells]) for c, cells in matrix]
     today = datetime.date.today()
     STATE = audit.REGISTER / "FIRST_SEEN.json"
-    started, seen = first_seen(
-        STATE, {(c["id"], r): x for c, cells in rows for r, x in zip(repos, cells)}, today)
+    started, seen = first_seen(STATE, {(c["id"], r): x for c, cells in rows for r, x in zip(repos, cells)}, today)
 
     def deadline(c):
         return deadlines[audit.sev_of(c, controls)]
 
-    age = {(c["id"], r): (today - datetime.date.fromisoformat(seen[c["id"]][r])).days
-           for c, cells in rows for r, x in zip(repos, cells) if x == audit.FAIL}
+    age = {
+        (c["id"], r): (today - datetime.date.fromisoformat(seen[c["id"]][r])).days
+        for c, cells in rows
+        for r, x in zip(repos, cells)
+        if x == audit.FAIL
+    }
     by_id = {c["id"]: c for c, _cells in rows}
-    late = sorted((k for k, days in age.items() if days > deadline(by_id[k[0]])),
-                  key=lambda k: (deadline(by_id[k[0]]) - age[k], k))
+    late = sorted(
+        (k for k, days in age.items() if days > deadline(by_id[k[0]])),
+        key=lambda k: (deadline(by_id[k[0]]) - age[k], k),
+    )
     overdue = set(late)
     MARK = audit.MARK
 
@@ -209,8 +215,11 @@ def main():
     L.append("| --- | --- |")
     L.append("| ✅ | complies today |")
     L.append("| ❌ 12d | still drifting, first seen failing 12 days ago |")
-    L.append("| ❌ 40d overdue | past its severity's deadline: "
-             + ", ".join(f"{s} {deadlines[s]} days" for s in audit.SEVERITIES) + " |")
+    L.append(
+        "| ❌ 40d overdue | past its severity's deadline: "
+        + ", ".join(f"{s} {deadlines[s]} days" for s in audit.SEVERITIES)
+        + " |"
+    )
     L.append("| – | doesn't apply (no Go, no UI, no image — or `applies_to` names a group this repo is not in) |")
     L.append("| ? | no automated checker, or the register is unreviewed — needs a human, not a guess |")
     L.append("")
@@ -226,16 +235,20 @@ def main():
         L.append("")
 
     total = len(age)
-    L.append(f"**{total} (check × repo) results failing, {len(late)} past their deadline.** "
-             f"{len(checks)} checks under {len(controls)} controls.")
+    L.append(
+        f"**{total} (check × repo) results failing, {len(late)} past their deadline.** "
+        f"{len(checks)} checks under {len(controls)} controls."
+    )
     L.append("")
     if late:
         L.append("## Past deadline")
         L.append("")
         for cid, r in late:
             c = by_id[cid]
-            L.append(f"- **{cid}** in {r}: failing {age[cid, r]} days, "
-                     f"{audit.sev_of(c, controls)} deadline {deadline(c)} days")
+            L.append(
+                f"- **{cid}** in {r}: failing {age[cid, r]} days, "
+                f"{audit.sev_of(c, controls)} deadline {deadline(c)} days"
+            )
         L.append("")
 
     last = None

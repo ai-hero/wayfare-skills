@@ -6,6 +6,7 @@ offer both field guides close on.
 The copy is `editions/worksheet.json`, beside the guides' copy; the drawing uses the guides' type and
 marks, on US Letter portrait so it prints and fills by hand.
 """
+
 import json
 import os
 
@@ -31,16 +32,23 @@ def fits(what, end, limit):
 
 
 def head(n, title):
-    return (rect(M, 30, 22, 2, ROSE, "none", 0) + mono(M, 22, "Readiness worksheet", 6.6) +
-            mono(W - M, 22, f"{n} / 2", 6.6, anchor="end") + mono(M, H - 22, title, 6, LINE))
+    return (
+        rect(M, 30, 22, 2, ROSE, "none", 0)
+        + mono(M, 22, "Readiness worksheet", 6.6)
+        + mono(W - M, 22, f"{n} / 2", 6.6, anchor="end")
+        + mono(M, H - 22, title, 6, LINE)
+    )
 
 
 def flow_table(k, flow, y, scale):
     """One flow: its name and question, three statements with score boxes and an evidence line, and
     a subtotal box."""
-    out = [circle(M + 9, y - 4, 9, ROSE, "none"), text(M + 9, y - 0.5, str(k), 9.5, "Geist", 500, PAGE, "middle"),
-           text(M + 26, y, flow["name"], 14, "Manrope", 300, INK),
-           text(M + 26 + width(flow["name"], 14, "Manrope") + 10, y, flow["question"], 9, "Geist", 300, QUIET)]
+    out = [
+        circle(M + 9, y - 4, 9, ROSE, "none"),
+        text(M + 9, y - 0.5, str(k), 9.5, "Geist", 500, PAGE, "middle"),
+        text(M + 26, y, flow["name"], 14, "Manrope", 300, INK),
+        text(M + 26 + width(flow["name"], 14, "Manrope") + 10, y, flow["question"], 9, "Geist", 300, QUIET),
+    ]
     sx = W - M - 3 * 26 - 4
     for j, lab in enumerate(scale):
         out.append(mono(sx + j * 26 + 9, y, lab.split()[0], 6.4, QUIET, "middle"))
@@ -118,8 +126,10 @@ def page_two(c):
 
 
 def svg(body):
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W:g} {H:g}" width="{W:g}" height="{H:g}">'
-            f'{rect(0, 0, W, H, PAGE, "none", 0)}{"".join(body)}</svg>')
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W:g} {H:g}" width="{W:g}" height="{H:g}">'
+        f"{rect(0, 0, W, H, PAGE, 'none', 0)}{''.join(body)}</svg>"
+    )
 
 
 def main(argv=None):
@@ -129,16 +139,20 @@ def main(argv=None):
         c = json.load(f)
     missing = [k for k in REQUIRED if k not in c]
     if missing or len(c["flows"]) != 5 or any(len(f["statements"]) != 3 for f in c["flows"]):
-        raise SystemExit(f"worksheet.json: needs {', '.join(REQUIRED)}, five flows of three statements each"
-                         + (f"; missing {', '.join(missing)}" if missing else ""))
+        raise SystemExit(
+            f"worksheet.json: needs {', '.join(REQUIRED)}, five flows of three statements each"
+            + (f"; missing {', '.join(missing)}" if missing else "")
+        )
     os.makedirs(paths.DIST, exist_ok=True)
     out = os.path.join(paths.DIST, c["file"])
     page = os.path.splitext(out)[0] + ".html"
     with open(page, "w", encoding="utf-8") as f:
-        f.write(f'<!doctype html><html><head><meta charset="utf-8"><style>{font_css()}'
-                f'@page{{size:{W:g}pt {H:g}pt;margin:0}}html,body{{margin:0}}'
-                f'svg{{display:block;width:{W:g}pt;height:{H:g}pt;break-after:page}}</style></head>'
-                f'<body>{svg(page_one(c))}{svg(page_two(c))}</body></html>')
+        f.write(
+            f'<!doctype html><html><head><meta charset="utf-8"><style>{font_css()}'
+            f"@page{{size:{W:g}pt {H:g}pt;margin:0}}html,body{{margin:0}}"
+            f"svg{{display:block;width:{W:g}pt;height:{H:g}pt;break-after:page}}</style></head>"
+            f"<body>{svg(page_one(c))}{svg(page_two(c))}</body></html>"
+        )
     print_page(page, out, 6000)
     os.remove(page)
     with fitz.open(out) as doc:

@@ -3010,7 +3010,13 @@ hero_srv_cli() { # ROOT SUBCOMMAND [ARGS...]
   case "$secs" in ''|*[!0-9]*|0) secs=30 ;; esac
   if command -v timeout >/dev/null 2>&1; then bound=(timeout "$secs")
   elif command -v gtimeout >/dev/null 2>&1; then bound=(gtimeout "$secs")
-  elif command -v perl >/dev/null 2>&1; then bound=(perl -e 'alarm shift; exec @ARGV' "$secs")
+  # Fork and kill the process group, not `alarm; exec`: that kills only the
+  # CLI, and a child it started keeps $(...)'s pipe open until it exits.
+  elif command -v perl >/dev/null 2>&1; then
+    bound=(perl -e 'my $s = shift; my $p = fork; defined $p or exit 1;
+      if (!$p) { setpgrp(0, 0); exec @ARGV or exit 127 }
+      setpgrp($p, $p); $SIG{ALRM} = sub { kill "KILL", -$p; exit 142 }; alarm $s;
+      waitpid($p, 0); exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$secs")
   else bound=(); echo "hero: no timeout, gtimeout or perl on PATH; the wayfare CLI call runs with no time bound" >&2; fi
   out=$(WAYFARE_URL="$origin" WAYFARE_WORKSPACE="$ws" ${bound[@]+"${bound[@]}"} "$cli" "$@" 2>"$err"); rc=$?
   if [ "$rc" -eq 124 ] || [ "$rc" -eq 142 ] || [ "$rc" -eq 137 ]; then

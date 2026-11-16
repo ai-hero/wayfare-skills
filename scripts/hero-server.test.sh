@@ -705,7 +705,8 @@ check "backend: and says to run from inside the fleet or set WAYFARE_STORE" "1" 
 reset
 cat > "$TMP/slowcli" <<'EOS'
 #!/usr/bin/env bash
-exec sleep 30
+sleep 30
+echo '{}'
 EOS
 chmod +x "$TMP/slowcli"
 T0=$SECONDS

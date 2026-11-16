@@ -1,6 +1,7 @@
 """The print book: book.json set as a colour book at the cover.TRIM_IN trim through WeasyPrint.
 
-    ./publish book          -> $PUBLISH_OUT/dist/book.pdf
+    ./publish book          -> $PUBLISH_OUT/dist/book.pdf (on screen, cover first)
+                            -> $PUBLISH_OUT/dist/book-interior.pdf (the file printers get)
 
 Layout lives in `book/book.css`; this module writes the HTML (with an inline max-height on shrunk
 figures), solves figure placement against rendered pages, restricts WeasyPrint's fetches to local
@@ -123,7 +124,8 @@ def esc(s):
 
 
 def font_faces():
-    # A file left by the unpinned fetch this replaced is checked too, not trusted for existing.
+    # An existing font file is re-hashed, never trusted for being there: a file from an unpinned fetch passes
+    # os.path.exists and would otherwise be embedded unchecked.
     if not os.path.exists(FONTS["Manrope"]) or sha256_of(FONTS["Manrope"]) != MANROPE_SHA256:
         fetch_manrope(FONTS["Manrope"])
     missing = [p for p in FONTS.values() if not os.path.exists(p)]

@@ -844,15 +844,11 @@ def sh(cwd, cmd):
     try:
         # dev tooling; cmd is a literal in this file (or the fleet's checkers), or interpolates
         # only regex-pinned tokens (ARCH-02: 40 hex chars) — never raw external input
+        # fmt: off
         p = subprocess.run(
-            cmd,
-            cwd=cwd,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=60,
-            env=_ENV,  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true
+            cmd, cwd=cwd, shell=True, capture_output=True, text=True, timeout=60, env=_ENV  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true
         )
+        # fmt: on
         return p.returncode, p.stdout.strip()
     except Exception:
         return 1, ""
@@ -861,15 +857,11 @@ def sh(cwd, cmd):
 def sh3(cwd, cmd):
     """sh() with stderr. Raises on the failure classes sh() hides (timeout,
     missing cwd) so a caller inside run_matrix reports ERROR, never PASS."""
+    # fmt: off
     p = subprocess.run(
-        cmd,
-        cwd=cwd,
-        shell=True,
-        capture_output=True,
-        text=True,
-        timeout=60,
-        env=_ENV,  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true
+        cmd, cwd=cwd, shell=True, capture_output=True, text=True, timeout=60, env=_ENV  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true
     )
+    # fmt: on
     return p.returncode, p.stdout.strip(), p.stderr.strip()
 
 

@@ -60,10 +60,10 @@ def fetch_manrope(dest, url=MANROPE_URL, sha256=MANROPE_SHA256):
     tmp = dest + ".part"
     try:
         try:
-            with urllib.request.urlopen(
-                url, timeout=FETCH_TIMEOUT
-            ) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+            # fmt: off
+            with urllib.request.urlopen(url, timeout=FETCH_TIMEOUT) as r:  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
                 body = r.read()
+            # fmt: on
         except (OSError, http.client.HTTPException) as e:
             raise SystemExit(f"book: cannot download Manrope from {url}: {e}; place the font at {dest}")
         got = hashlib.sha256(body).hexdigest()

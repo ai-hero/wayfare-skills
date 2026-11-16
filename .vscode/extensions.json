@@ -7,6 +7,8 @@
     "davidanson.vscode-markdownlint",
     "streetsidesoftware.code-spell-checker",
     "skellock.just",
+    "ms-python.python",
+    "charliermarsh.ruff",
     "anthropic.claude-code"
   ],
   "unwantedRecommendations": [

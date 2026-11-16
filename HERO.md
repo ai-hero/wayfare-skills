@@ -11,6 +11,7 @@
 - merge-method: squash
 - auto-delete-branches: true
 - task-runner: just
+- published-files: plugin.json
 
 ## CI/CD
 

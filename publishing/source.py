@@ -1,7 +1,7 @@
 """Build the one source every edition renders from: the manuscript parsed, every figure resolved
 to a static file, and the metadata.
 
-    ./publish source
+    scripts/publish.sh source
 
 Writes `$PUBLISH_OUT/build/book.json` and `$PUBLISH_OUT/build/assets/`. The manuscript is read
 with the editor's own parser (`deck_html.parse_book`), so a figure line means here exactly what it

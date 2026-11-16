@@ -1,7 +1,10 @@
 #!/bin/sh
-# ./publish all | source | book | technical | web | guides | worksheet | slides | cover | kindle | qa
+# Copyright (c) 2026 A.I. Hero, Inc.
+# All Rights Reserved.
+
+# scripts/publish.sh all | source | book | technical | web | guides | worksheet | slides | cover | kindle | qa
 set -eu
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 PY=${PUBLISH_PYTHON:-"$ROOT/.analysis/publish-env/bin/python3"}
 if [ ! -x "$PY" ]; then
     echo "missing $PY; run: uv venv .analysis/publish-env && uv pip install --python .analysis/publish-env -r publishing/requirements.txt" >&2

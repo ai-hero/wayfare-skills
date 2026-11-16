@@ -1,10 +1,10 @@
 """The Kindle edition: book.json as a reflowable EPUB 3 for Kindle Direct Publishing.
 
-    ./publish kindle        -> $PUBLISH_OUT/dist/book.epub
+    scripts/publish.sh kindle        -> $PUBLISH_OUT/dist/book.epub
 
 The same text, figures and references as the print book (no appendix: `book.without_appendix`), one XHTML file per
 chapter. `editions/kindle.json`, when present, overrides fields of `meta.json` for this edition
-only. The cover is `dist/cover-ebook.png`, which `./publish cover` draws.
+only. The cover is `dist/cover-ebook.png`, which `scripts/publish.sh cover` draws.
 """
 
 import datetime
@@ -538,7 +538,7 @@ def visible_text(markup):
 
 def cover_jpeg():
     if not os.path.exists(COVER):
-        raise SystemExit(f"kindle: no {COVER}; run ./publish cover first")
+        raise SystemExit(f"kindle: no {COVER}; run scripts/publish.sh cover first")
     from PIL import Image
 
     buf = io.BytesIO()

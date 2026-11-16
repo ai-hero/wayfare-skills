@@ -1,6 +1,6 @@
 """The book's cover, drawn in code: front, ebook, full print wrap and an animated web version.
 
-    ./publish cover        -> $PUBLISH_OUT/dist/cover-front.{pdf,png}, cover-ebook.png,
+    scripts/publish.sh cover        -> $PUBLISH_OUT/dist/cover-front.{pdf,png}, cover-ebook.png,
                               cover-wrap.pdf, cover-animated.svg
 
 The art is the website's factory line (SoftwareFactoryDiagram.tsx: an isometric software box, an
@@ -880,7 +880,7 @@ def main():
     book = os.path.join(d, "book-interior.pdf")
     if not os.path.exists(book) or os.path.getmtime(book) < os.path.getmtime(paths.SOURCE):
         raise SystemExit(
-            f"cover: {book} is missing or older than the source; run ./publish book, which draws the cover"
+            f"cover: {book} is missing or older than the source; run scripts/publish.sh book, which draws the cover"
         )
     pages = len(fitz.open(book))
     wsvg, ww, wh, spine = wrap_svg(meta, pages)

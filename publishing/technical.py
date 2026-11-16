@@ -1,6 +1,6 @@
 """The technical edition: the manuscript as a numbered research paper, compiled with tectonic.
 
-    ./publish technical
+    scripts/publish.sh technical
 
 Chapters become sections, figures and diagrams one numbered figure series, and the chapters' Sources
 one deduplicated bibliography. The paper prints what the book prints, so it has no appendix: the

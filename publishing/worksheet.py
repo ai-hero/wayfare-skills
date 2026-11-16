@@ -1,7 +1,7 @@
 """The Software Factory Readiness Worksheet: a two-page printable scorecard on the five flows, the
 offer both field guides close on.
 
-    ./publish worksheet   -> $PUBLISH_OUT/dist/software-factory-readiness-worksheet.pdf
+    scripts/publish.sh worksheet   -> $PUBLISH_OUT/dist/software-factory-readiness-worksheet.pdf
 
 The copy is `editions/worksheet.json`, beside the guides' copy; the drawing uses the guides' type and
 marks, on US Letter portrait so it prints and fills by hand.

@@ -1,6 +1,6 @@
 """Two illustrated field guides, landscape PDFs for LinkedIn document posts.
 
-    ./publish guides      -> $PUBLISH_OUT/dist/guide-01-inside-a-software-factory.pdf
+    scripts/publish.sh guides      -> $PUBLISH_OUT/dist/guide-01-inside-a-software-factory.pdf
                              $PUBLISH_OUT/dist/guide-02-what-surprised-me.pdf
 
 The copy is `editions/guides.json` (gitignored with the other editions: it carries the findings);

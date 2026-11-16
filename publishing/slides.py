@@ -1,6 +1,6 @@
 """The talk: a .pptx built on the A.I. Hero template (`.analysis/A.I. Hero.potx`), from a manifest.
 
-    ./publish slides
+    scripts/publish.sh slides
 
 The manifest, `$PUBLISH_OUT/editions/slides.json`, is the deck's source: an ordered list of slides,
 each naming a template layout and pointing at the book by chapter, section, figure and verbatim
@@ -9,7 +9,7 @@ sentence. It lives beside the build (gitignored) because it quotes the findings.
 
 Every slide is a template layout with its placeholders filled; the theme does the styling. Slide
 text is the author's words, and speaker notes carry the paragraph each slide stands for.
-`dist/slides.pdf` is converted by LibreOffice for review (`./publish qa slides`).
+`dist/slides.pdf` is converted by LibreOffice for review (`scripts/publish.sh qa slides`).
 """
 
 import json

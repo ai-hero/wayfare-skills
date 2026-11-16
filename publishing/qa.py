@@ -1,4 +1,4 @@
-"""Render built editions to images for visual review: `./publish qa [book|technical|guide-01|guide-02|worksheet|slides] [pages]`.
+"""Render built editions to images for visual review: `scripts/publish.sh qa [book|technical|guide-01|guide-02|worksheet|slides] [pages]`.
 
 Pages land in `$PUBLISH_OUT/qa/<edition>/`: `p012.png` for page 12, `s012-013.png` for the book's
 facing pages (even on the left, as bound). With no page list, slides, the field guides and the worksheet render every page; the other

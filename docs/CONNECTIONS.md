@@ -254,8 +254,9 @@ machine pin and never from a `reach:` line, because `HERO.md` is one of the
 records that moves to the server and a switch stored in the thing it switches
 cannot be read first. A fleet on the server backend needs the reach available to
 read its store at all; a fleet on the local backend needs it only for a
-connection that names it. The server backend is the design and not built yet, so
-nothing resolves a `reach: wayfare` today beyond this check.
+connection that names it. The store functions reach the server through the
+`wayfare` CLI (`hero_srv_cli`), not through a `reach:` line, so nothing resolves
+a `reach: wayfare` beyond this check.
 
 ## `at` names a fleet row when the connection is a repo
 

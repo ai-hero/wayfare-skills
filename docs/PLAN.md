@@ -751,7 +751,9 @@ messages cross repos and a fleet split between backends would drop them.
 
 A value that is neither `local` nor an http(s) URL with no whitespace is an
 error, never a silent `local`: a fleet that meant the server would keep writing
-files the server never sees.
+files the server never sees. So is a pin file holding URL lines that cannot be
+read, or a fleet map above the folder that cannot be read: either way the switch
+cannot be read, and reading it as `local` writes files the server never sees.
 
 Local is the default, so nothing changes until a person flips it. The skills
 call the same functions either way (`hero_ready_items`, `hero_item_field`,
@@ -784,9 +786,26 @@ it), `hero_item_file`, `hero_item_set`, `hero_item_log` and
 `hero_config_file` (`hero_field` and its siblings), `hero_plan_field`,
 `hero_fleet_repos`, `hero_fleet_repo_field`, `hero_fleet_field` (fleet) and
 `hero_audit_record`. Server data is rendered into a read-only cache in the local
-file shapes, so one parser answers both backends. The server's own spelling is
-kept where the local one differs: `hero_msg_find` prints thread ids, not inbox
-paths, and matches `about` against the thread's item number or its subject.
+file shapes, so one parser answers both backends. The cache is under
+`${XDG_CACHE_HOME:-~/.cache}/wayfare-srv`, mode 700 and refused when it is not a
+directory the user owns; each listing is a new directory, so a second reader
+never empties the first. The renderer turns a control character in a value into
+a space (a newline in a title would write a field of its own) and refuses an
+item number that is not a whole number (it names a file). The server's own
+spelling is kept where the local one differs: `hero_msg_find` prints thread ids,
+not inbox paths. `hero_msg_send` takes the sender's `about` last, an item number
+or else the subject itself (the default), and sends a number as the thread's
+`about`, so `hero_msg_find` finds what was sent on both backends.
+
+An answer the server could not give is never an empty one. A CLI failure, a
+reply that is not JSON, or one missing the key a caller reads is an error naming
+the server; `hero_msg_find` returns 2 ("could not probe") for it, never 1 ("not
+sent"), which would send twice. The config readers return 2 when the source
+could not be asked and 1 only when there is no config or no such field, and the
+skills' Step 0 stops on 2: read as "no HERO.md", an outage sends a configured
+repo to `wayfare-init-repo`. `hero_item_set` checks a value before routing, so
+both backends accept and refuse the same ones, and quotes it locally by the
+renderer's rule; `blocked_on` stamps `blocked_since` locally.
 
 build-task's item writes follow the server's own moves. A claim sets a task
 active, `link_pr` and the merge verdict carry review and done, and the server
@@ -798,9 +817,11 @@ status first and the logged one as `logged:`; `new`, `accepted` and `ready` are
 a person's marks and refused. `update_item` takes no branch and an agent cannot
 edit a ready item's description, where its checklist lives, so `branch:` is a
 `branch` log line and a tick a `tick` log line; the rendered item shows the
-newest `branch` line as `branch:` (an active task in the store cache is read
-whole for it, the listing carries no log) and every box a `tick` line names as
-`- [x]`. A box cannot be unticked on the server.
+newest `branch` line as `branch:` (in the store cache, open goals and active or
+review tasks are read whole, since the listing carries no log and no
+description) and every box a `tick` line names as `- [x]`. A box cannot be
+unticked on the server, so build-task logs a DoD line that no longer holds as a
+`mistake` rather than unticking it.
 
 A function never reads the local files in place of the server. What the server
 has no value for fails, naming the key: `hero_plan_field` keys other than

@@ -73,7 +73,8 @@ is also where `sync` takes the host and owner it clones from, never the map's
 `org:`.
 
 The same file holds the store switch. A line whose second field is an
-`http(s)://` URL, `FLEET_ROOT https://app.example`, is the fleet's Wayfare
+`http(s)://` URL ending in the workspace id,
+`FLEET_ROOT https://app.example.com/<workspace id>`, is the fleet's Wayfare
 server, and `hero_store_backend` reads it. It sits beside the register line for
 the same root and is never a register: `hero_register_pin` and `audit.py`'s
 `pinned_register()` skip it, so the audit never takes a URL for a register's

@@ -124,10 +124,15 @@ If wayfare-build-task did not leave an open PR for the branch, invoke
 
 ```bash
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
-gh pr list --head "$BRANCH" --state open --json url --jq '.[0].url'
+PR_URL=$(gh pr list --head "$BRANCH" --state open --json url --jq '.[0].url // empty') \
+  || { echo "work-task: gh could not list this branch's PRs; the build may have finished"; exit 1; }
+printf '%s\n' "${PR_URL:-NO_PR}"
 ```
 
-No PR URL means the build did not finish: take **Failure**.
+A failed `gh` call is not "no PR": an expired login or a network error would
+otherwise release the claim and comment "build failed" on a task whose PR is
+open. STOP and say so, holding the claim. `NO_PR` means the build did not
+finish: take **Failure**.
 
 ### Step 4: Link the PR and report
 
@@ -165,8 +170,9 @@ or no PR exists:
   fields of the task `read` returns.
 - A tool call without the instance handle succeeds and quietly becomes a new
   instance, so a dropped handle shows up only as `report` refusing the claim.
-- The `wayfare` CLI drops the handle, so claim, report and release go through
-  the MCP tools and never through the CLI.
+- A claim belongs to the MCP session's instance. A `wayfare` CLI run is a new
+  instance unless it passes `--instance` with the handle the claim ran under, so
+  claim, report and release go through the MCP tools, which hold it.
 - `read` with `claimable: true` leaves out a task a person has not ready-marked,
   one at a gate, and one with a dependency undone. A blocked task can still be
   claimed by id; do not.

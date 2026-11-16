@@ -60,18 +60,23 @@ The mailbox is a store like the plan, with the same two backends
 described below. On the **Wayfare server** backend the app holds inbox messages
 and they are not files, so nothing in this document that names a path applies to
 them: the deposit, the claim and the reply are the server's, reached through the
-`wayfare` CLI (`hero_msg_send`, `hero_msg_reply`, `hero_msg_close` and
-`hero_inbox_count`; docs/PLAN.md, *Two stores*, lists what is built). A server
-request is unread while its thread is open; a notice is closed on arrival, so
-the local twin writes a notice already settled.
+`wayfare` CLI (`hero_msg_send`, `hero_msg_reply`, `hero_msg_close`,
+`hero_msg_find` and `hero_inbox_count`; docs/PLAN.md, *Two stores*, lists what
+is built). `hero_msg_send` takes the sender's `about` as its last argument, an
+item number or else the subject itself, and `hero_msg_find` matches it on both
+backends, so a resumed sender finds what it already sent. A server request is
+unread while its thread is open; a notice is closed on arrival, so the local
+twin writes a notice already settled.
 
 Messages cross repos, so one switch covers the whole fleet. A fleet half on
 files and half on the server would drop every message sent across the line,
 which is why `hero_store_backend` is read per fleet and never per repo. Once the
 backend is a server, the local deposit refuses (`hero_msg_deposit`, through
 `hero_store_require_local`): a file written into an inbox the server never reads
-is a message nobody gets. The refusal names the switch and how to flip back, and
-`hero_inbox_count` and the other reads still work on files already on disk.
+is a message nobody gets. The refusal names the switch and how to flip back.
+`hero_inbox_count` and `hero_msg_find` on the live store ask the server; only a
+reader handed an explicit file or a store path other than `.plans` reads the
+files already on disk.
 
 The rest of this document describes the local backend.
 

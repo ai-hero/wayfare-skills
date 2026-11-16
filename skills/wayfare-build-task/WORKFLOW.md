@@ -174,7 +174,7 @@ HERO_LIB="$WAYFARE_ROOT/scripts/hero-lib.sh"
 . "$HERO_LIB" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT — export WAYFARE_ROOT as the plugin root"; exit 1; }
 
 ROOT=$(hero_root)
-hero_config_show "$ROOT" 2>/dev/null || echo "NO_HERO_CONFIG"
+hero_config_show "$ROOT" || { [ $? -eq 1 ] || exit 1; echo "NO_HERO_CONFIG"; }
 hero_check_staleness
 hero_fleet_step0 || exit 1
 # Mail from a sibling repo (docs/MESSAGES.md), and deploy probes whose runs
@@ -561,8 +561,8 @@ Rows are first-match, top to bottom.
 | `$ARGUMENTS` matches a **blocked** item whose only unmet dependencies are `[committed dep: ID]` ids, this invocation carries `commit only: goal GOAL_ID branch GOAL_BRANCH`, and every one of those ids is a member of goal GOAL_ID | That item is the plan → 1c. Those commits are already on GOAL_BRANCH, which is checked out, so the tree has what the item depends on. This row is above the general blocked row because a goal's tasks land in member order and the second one onward is routinely blocked this way; without it the goal would be told to wait for itself. An id outside that goal, or any other unmet dependency, falls through to the row below. |
 | `$ARGUMENTS` matches a **blocked** item | STOP: print the item's unmet `depends_on` ids and their titles. Do not implement past a dependency. A row annotated `[on: TEXT, since DATE]` is blocked on something outside the store (`blocked_on:`, docs/PLAN.md): print the text and date, say a person clears it through `wayfare-sync-plan`'s blocked lane, and never build around it. A `[committed dep: ID]` annotation on the row names a dependency committed on a goal branch and not yet merged: building on it produces a change against a tree that lacks what it depends on, so name the goal that holds that id and wait for it to ship. |
 | `$ARGUMENTS` matches a **suspended** item | STOP: it waits on a sibling repo's reply (`awaiting:`). Say which message and since when; `wayfare-sync-plan`'s inbox stage is what un-suspends it. |
-| `$ARGUMENTS` matches a **plan** (planning) item | STOP: the item awaits the user's ready-mark. Show its title and `success` criteria and ask whether to mark it ready; on yes, `hero_item_set_status ID ready` (it stamps `ready_marked:`) and it is the plan → 1c. For a task, first confirm `## Approach`, `## Subtasks`, and `## Definition of Done` are non-empty. A planning run that died before writing them leaves a hollow plan; route that to wayfare-grill-idea instead of flipping it. Do NOT re-grill a filled item; that writes a duplicate. **A member of a goal that carries `## Plan`** (the item has `parent`, and the goal's file, the item in `hero_items_dir` whose `id` is that `parent`, has a `## Plan` section) has no `## Approach` to confirm: its "how" is its `### Task N` slice in the goal. The hollow check is `hero_member_planned ITEM_FILE GOAL_FILE` instead: rc 0 is planned; rc 1 is hollow, and its stderr names the missing part (`slice`, `definition-of-done`, `subtasks`), routed to wayfare-grill-idea as above; rc 2 (a `parent` that is not that goal, an unreadable file) is a store defect, routed to `wayfare-sync-plan`. Its ready-mark is the goal's, not its own: one approval covers the goal's `## Plan` and every member's DoD (`docs/PLAN.md`, *Goal-only sections*), so ask it about the goal, and on yes run `hero_item_set_status ID ready` on every planning member that passes the same check; this item is then the plan → 1c. A member of a goal with no `## Plan` is checked as any other task, on its own `## Approach`. |
-| `$ARGUMENTS` matches a **new** item (`status: new`, or no status line) | STOP: the item was created and nobody has triaged it. Say so and ask whether to move it to `accepted`. Never build or grill an untriaged item. The `new` default exists so a jotted-down item cannot reach here by accident. |
+| `$ARGUMENTS` matches a **plan** (planning) item | STOP: the item awaits the user's ready-mark. Show its title and `success` criteria and ask whether to mark it ready; on yes, `hero_item_set_status ID ready` (it stamps `ready_marked:`; local only, since on the server the person marks it in the app and the call refuses) and it is the plan → 1c. For a task, first confirm `## Approach`, `## Subtasks`, and `## Definition of Done` are non-empty. A planning run that died before writing them leaves a hollow plan; route that to wayfare-grill-idea instead of flipping it. Do NOT re-grill a filled item; that writes a duplicate. **A member of a goal that carries `## Plan`** (the item has `parent`, and the goal's file, the item in `hero_items_dir` whose `id` is that `parent`, has a `## Plan` section) has no `## Approach` to confirm: its "how" is its `### Task N` slice in the goal. The hollow check is `hero_member_planned ITEM_FILE GOAL_FILE` instead: rc 0 is planned; rc 1 is hollow, and its stderr names the missing part (`slice`, `definition-of-done`, `subtasks`), routed to wayfare-grill-idea as above; rc 2 (a `parent` that is not that goal, an unreadable file) is a store defect, routed to `wayfare-sync-plan`. Its ready-mark is the goal's, not its own: one approval covers the goal's `## Plan` and every member's DoD (`docs/PLAN.md`, *Goal-only sections*), so ask it about the goal, and on yes run `hero_item_set_status ID ready` on every planning member that passes the same check; this item is then the plan → 1c. A member of a goal with no `## Plan` is checked as any other task, on its own `## Approach`. |
+| `$ARGUMENTS` matches a **new** item (`status: new`, or no status line) | STOP: the item was created and nobody has triaged it. Say so and ask whether to move it to `accepted` (`hero_item_set_status ID accepted`, local only: on the server the person triages it in the app). Never build or grill an untriaged item. The `new` default exists so a jotted-down item cannot reach here by accident. |
 | `$ARGUMENTS` matches an **anti-feature** (`type: anti-feature`, the listing's `anti` row) | STOP: it records a decision not to build, so there is nothing to build. Print its title and `## Context` as the citation. Reversing the decision is a person's, through `wayfare:wayfare-grill-idea`, which writes the reversal on the anti-feature. Never build past it. |
 | `$ARGUMENTS` matches a **goal** row (`type: goal`) | STOP: a goal is a set of tasks, not a unit of work. Suggest `wayfare:wayfare-start-goal` (to authorize and run it) or `wayfare:wayfare-advance-item GOAL_ID` (one turn of it). |
 | `$ARGUMENTS` matches a **feedback** row (`type: signal`) | STOP: a signal is delivered, never built. Suggest `wayfare:wayfare-sync-plan`, whose feedback finding delivers it. |
@@ -646,14 +646,13 @@ implementing, which is the outcome this step exists to prevent. An empty result
 must never stand in for a negative one.
 
 When the unevaluable check is waiting on something outside the store (a
-credential, an answer, an upstream release), offer to write `blocked_on:` on the
-item with the reason and `blocked_since:` today, add a `note` line with
-`hero_item_log ID note "..."`, and stop. Quote a reason that contains `#`
-(`blocked_on: "#42 upstream"`): unquoted, the `#` opens a YAML comment and the
-item lists READY. The item keeps its status and drops out of READY until a
-person clears the field. The offer is a question like the rest of this row;
-under a goal turn's commit-only mode it is `stop: awaiting-human` and nothing is
-written.
+credential, an answer, an upstream release), offer to block the item with
+`hero_item_set ID blocked_on "REASON"`, add a `note` line with
+`hero_item_log ID note "..."`, and stop. The function quotes a reason that needs
+it (`#42 upstream`) and stamps `blocked_since:` today locally; the server stamps
+its own. The item keeps its status and drops out of READY until a person clears
+the field. The offer is a question like the rest of this row; under a goal
+turn's commit-only mode it is `stop: awaiting-human` and nothing is written.
 
 State the verdict explicitly before advancing, as in "verified outstanding:
 SUCCESS_CRITERION does not hold", so a wrong resolution is visible rather than
@@ -980,12 +979,11 @@ Five rules that make a carve honest:
 
    **A prerequisite that is not an item is a block, not a new item.** When what
    this item needs is an answer, a decision, a credential or a release nobody
-   here can produce, do not invent an item to depend on. Write `blocked_on:`
-   with the reason (quoted when it contains `#`, which unquoted opens a YAML
-   comment) and `blocked_since:` today on this item, add a `note` line with
-   `hero_item_log ID note "..."`, and stop the same way, leaving the tree as it
-   is. The item keeps its status and leaves READY until a person clears the
-   field in `wayfare-sync-plan`'s blocked lane.
+   here can produce, do not invent an item to depend on. Block it with
+   `hero_item_set ID blocked_on "REASON"` (quoted and dated by the function),
+   add a `note` line with `hero_item_log ID note "..."`, and stop the same way,
+   leaving the tree as it is. The item keeps its status and leaves READY until a
+   person clears the field in `wayfare-sync-plan`'s blocked lane.
 
    **The edge points one way only.** This case *replaces* the
    child-`depends_on`-parent default above; the two are mutually exclusive.
@@ -1432,10 +1430,13 @@ Step 0.5 set it, otherwise the item Step 1 resolved.
    Step 2. Every `## Definition of Done` line is also verified against the
    merged code and checked off, including lines Step 2 already ticked in
    progress: those were verified against a working tree that has since been
-   simplified, reviewed, and rebased, so re-verify them here and untick any that
-   no longer hold, with a `## Log` line either way. A DoD line that cannot be
-   verified is a finding to report, not a box to tick; leave the task at
-   `review` and say which criterion failed. A planned task whose
+   simplified, reviewed, and rebased, so re-verify them here. A line that no
+   longer holds is never unticked (the server keeps a tick as a log line, which
+   nothing can take back): log it with
+   `hero_item_log ID mistake "DoD: LINE no longer holds: WHY"`, and the gate
+   fails on that line. Log a passing re-verification as a `note`. A DoD line
+   that cannot be verified is a finding to report, not a box to tick; leave the
+   task at `review` and say which criterion failed. A planned task whose
    `## Definition of Done` section is **missing or empty** also fails the gate:
    zero lines is not a vacuous pass; for a legacy task that predates the
    sections, confirm the close-out with the user instead.

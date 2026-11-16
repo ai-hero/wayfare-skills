@@ -100,7 +100,7 @@ compaction, which loaded skills may not.
 ```bash
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 . "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
-hero_config_exists "$ROOT" && echo "EXISTS" || echo "NEW"
+hero_config_exists "$ROOT"; case $? in 0) echo "EXISTS" ;; 1) echo "NEW" ;; *) exit 1 ;; esac
 hero_fleet_step0 || exit 1
 ```
 

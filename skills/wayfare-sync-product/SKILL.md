@@ -61,10 +61,13 @@ The backend picks the form:
 
 - `local`: the description is `PRODUCT.md` at `$ROOT`.
 - A URL: the description is a set of `idea` items filed through the `wayfare`
-  CLI. Check `wayfare projects` answers before anything else. If the CLI is
-  missing or refuses, STOP and say which. Do not write `PRODUCT.md` when the
-  fleet's store is a server: it would become a second copy the server never
-  sees.
+  CLI. Every call goes through `hero_srv_cli "$ROOT" ...`, which points the CLI
+  at the server and workspace the switch names; a bare `wayfare` call uses
+  whatever the shell exports, which may be another workspace. Check the project
+  resolves before anything else:
+  `PROJECT=$(hero_srv_project "$ROOT") || exit 1`. If it fails, STOP and say
+  what it printed. Do not write `PRODUCT.md` when the fleet's store is a server:
+  it would become a second copy the server never sees.
 
 If the store switch is `BAD`, STOP and print what `hero_store_backend` said.
 
@@ -89,13 +92,14 @@ for a description, not an audit, so stop when each feature is nameable.
    and flows no entry point serves yet say what is planned:
 
    ```bash
-   STORE=$(hero_work_store "$ROOT" 2>/dev/null) || echo "NO_PLAN_STORE"
-   hero_items_dir "$ROOT"
+   ITEMS=$(hero_items_dir "$ROOT") || echo "NO_PLAN_STORE"
    ```
 
-   Read the `type: goal` items there for their title, status and `success`. A
-   missing store is not a problem: describe the product from the code alone and
-   say statuses rest on code evidence only.
+   Read the `type: goal` items in `$ITEMS` for their title, status and
+   `success`. `NO_PLAN_STORE` with no message above it is a repo with no store:
+   describe the product from the code alone and say statuses rest on code
+   evidence only. With a message (the server refused, or the switch is
+   unusable), STOP and print it: an outage is not a product with no plans.
 
 Apply the status rules in `docs/PRODUCT-MD.md`. `shipped` needs code that
 exists, never a roadmap item alone. Where the evidence is thin, record `partial`
@@ -140,24 +144,29 @@ uncommitted: the person reviews it and commits it.
 **On the server.** File each confirmed feature as an idea the person accepts:
 
 ```bash
-wayfare create-item --project-id PROJECT --type idea --title "FEATURE_NAME" \
-  --origin wayfare-sync-product \
-  --description "STATEMENT
-
-Status: STATUS
-Gap: GAP
-Where: DIRECTORIES"
+DESC=$(printf '%s\n\nStatus: %s\nGap: %s\nWhere: %s' "STATEMENT" "STATUS" "GAP" "DIRECTORIES")
+hero_srv_cli "$ROOT" create-item --json "$(jq -n --arg p "$PROJECT" --arg t "FEATURE_NAME" --arg d "$DESC" \
+  '{project_id: $p, type: "idea", title: $t, origin: "wayfare-sync-product", description: $d}')"
 ```
 
-Omit `Gap:` unless the status is `partial`, and `Where:` when there is none.
-Before each create, list the ideas the project already holds
-(`wayfare items --project-id PROJECT --type idea`) and match by title. Reuse a
-match rather than filing a twin. A match this skill filed
+The arguments go as one `--json` body built with `jq --arg`: a flag value the
+CLI can parse as JSON is sent as JSON, so a feature named `2026` or `true` would
+reach the server as a number or a boolean. Omit the `Gap:` line unless the
+status is `partial`, and `Where:` when there is none. Before each create, list
+the ideas the project already holds and match by title:
+
+```bash
+hero_srv_cli "$ROOT" items --json "$(jq -n --arg p "$PROJECT" '{project_id: $p, type: "idea"}')" \
+  | jq -r '.items[] | "\(.number)\t\(.origin // "")\t\(.status)\t\(.title)"'
+```
+
+Reuse a match rather than filing a twin. A match this skill filed
 (`origin: wayfare-sync-product`) and not yet accepted is updated with
-`wayfare update-item`. A match a person wrote, accepted or promoted is left
-alone and reported, because the person already decided about it. Append a dated
-`wayfare log --tag note` line to each idea you create or change. Never accept,
-decline or promote an idea: that is the person's.
+`hero_srv_cli "$ROOT" update-item --json ...` built the same way. A match a
+person wrote, accepted or promoted is left alone and reported, because the
+person already decided about it. Log each idea you create or change with
+`hero_item_log NUMBER note "TEXT" "$ROOT"`. Never accept, decline or promote an
+idea: that is the person's.
 
 ### Step 4: Update, when a description exists
 

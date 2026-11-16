@@ -62,13 +62,15 @@ file as a permissions problem, never as an absent one.
 The backend decides where the description is read from:
 
 - `local`: read `PRODUCT.md` at `$ROOT`.
-- A URL: the description is the `idea` items the `wayfare` CLI lists with
-  `origin: wayfare-sync-product`. Run `wayfare projects` to find the project,
-  then `wayfare items --project-id PROJECT --type idea`, then
-  `wayfare item --project-id PROJECT --number N` for each one filed by this
-  skill. If the CLI is missing or refuses, STOP and say which. Never fall back
-  to a local `PRODUCT.md` when the fleet's store is a server, and never write
-  anything.
+- A URL: the description is the `idea` items with
+  `origin: wayfare-sync-product`. Read them through the store layer, which
+  points the CLI at the server and workspace the switch names (a bare `wayfare`
+  call uses whatever the shell exports):
+  `PROJECT=$(hero_srv_project "$ROOT") || exit 1`, then
+  `hero_srv_cli "$ROOT" items --json "$(jq -n --arg p "$PROJECT" '{project_id: $p, type: "idea"}')"`,
+  then `hero_item_file N "$ROOT"` for each one wayfare-sync-product filed. If
+  any of them fails, STOP and print what it said. Never fall back to a local
+  `PRODUCT.md` when the fleet's store is a server, and never write anything.
 
 **A missing description is itself the finding.** Report `MISSING` (no
 `PRODUCT.md` locally, no filed ideas on the server), never "holds", and point at

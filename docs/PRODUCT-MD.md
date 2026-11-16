@@ -103,7 +103,7 @@ in the project, through the `wayfare` CLI (`create-item --type idea`), so a
 person reads the proposed features in the app and accepts or declines each one.
 
 An idea is the thinnest item (`docs/PLAN.md`, `idea`): a title and a
-`## Context` body, no Definition of Done. A feature maps onto it like this:
+description, no Definition of Done. A feature maps onto it like this:
 
 | Feature part | Idea field |
 | -- | -- |
@@ -122,8 +122,10 @@ promoting it to a task. The skills file and update ideas they filed (the ones
 whose `origin` is `wayfare-sync-product`), and never touch one a person wrote,
 accepted, or promoted.
 
-The server surface is the `wayfare` CLI and MCP tools of aihero-wayfare goal 308
-(`items`, `item`, `create-item`, `update-item`, `log`). `PRODUCT.md` is the
+The skills reach the server through the store layer (`hero_srv_project`,
+`hero_srv_cli` with a `--json` body, `hero_item_file`, `hero_item_log`), which
+calls the `wayfare` CLI's `projects`, `items`, `item`, `create-item`,
+`update-item` and `log` under the server the switch names. `PRODUCT.md` is the
 local backend's form of the same description: when the store switches to the
 server, the file is read for the archive and is never written again.
 

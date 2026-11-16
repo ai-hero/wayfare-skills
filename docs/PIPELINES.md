@@ -196,12 +196,11 @@ Owner: `wayfare:wayfare-init-repo`. Four steps:
    deploy
 2. `confirm`, present findings as a numbered list and ask the user to
    confirm/correct
-3. `write`, write HERO.md, update AGENTS.md summary sections (CLAUDE.md is a
-   symlink to it), and (if the user opted in during `confirm`) install
-   `.github/workflows/auto-approve.yaml` via Step 6a and the design-system
-   enforcement layer via Step 6b
-4. `commit`, stage and commit HERO.md + AGENTS.md + the CLAUDE.md symlink (and
-   the auto-approve workflow / design-system rule + hook if installed this run)
+3. `write`, write HERO.md, update AGENTS.md summary sections, and (if the user
+   opted in during `confirm`) install `.github/workflows/auto-approve.yaml` via
+   Step 6a and the design-system enforcement layer via Step 6b
+4. `commit`, stage and commit HERO.md + AGENTS.md (and the auto-approve workflow
+   / design-system rule + hook if installed this run)
 
 Run by itself (`wayfare:wayfare-init-repo` or
 `wayfare:wayfare-init-repo recalibrate`) or as the third step of Pipeline 1.

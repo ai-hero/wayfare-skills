@@ -176,6 +176,19 @@ printf '# Hero\n\n## Connections\n\n### issues\n\n- type: self\n' > "$PF/self/HE
 OUT_PF3=$(run_pipeline "$PF/self")
 check_absent "type self is a known tracker, not an unknown one" "unknown issue tracker" "$OUT_PF3"
 
+# Claude Code older than v2.1.277 does not load AGENTS.md; a stub claude on
+# PATH stands in for the installed version.
+CCV="$TMP/ccver"; mkdir -p "$CCV/bin" "$CCV/home"
+for v in 2.1.276 2.1.277 2.2.0 10.0.0; do
+  printf '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "%s (Claude Code)"; fi\n' "$v" > "$CCV/bin/claude"
+  chmod +x "$CCV/bin/claude"
+  OUT_CC=$(HOME="$CCV/home" PATH="$CCV/bin:$PATH" "$SCRIPT" --bucket tooling 2>&1)
+  case "$v" in
+    2.1.276) check "claude $v: warns AGENTS.md will not load" "AGENTS.md will not load" "$OUT_CC" ;;
+    *) check_absent "claude $v: no AGENTS.md warning" "AGENTS.md will not load" "$OUT_CC" ;;
+  esac
+done
+
 echo ""
 echo "preflight.test.sh: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

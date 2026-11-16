@@ -267,6 +267,17 @@ check_tooling() {
     emit WARN "tooling: cannot detect playwright MCP — push-pr's test-phase UI smoke may skip. Install: claude mcp add playwright npx @playwright/mcp@latest"
   fi
 
+  # 4b. Claude Code before v2.1.277 reads CLAUDE.md only, so a repo that
+  #     dropped the CLAUDE.md symlink loads no instructions there. The first
+  #     line of `claude --version` is "X.Y.Z (Claude Code)".
+  if command -v claude >/dev/null 2>&1; then
+    local cc_ver
+    cc_ver=$(claude --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    if [ -n "$cc_ver" ] && [ "$(printf '%s\n2.1.277\n' "$cc_ver" | sort -V | head -1)" != "2.1.277" ]; then
+      emit WARN "tooling: Claude Code v$cc_ver is older than v2.1.277 — AGENTS.md will not load; update Claude Code"
+    fi
+  fi
+
   # 5. pr-review-toolkit plugin. A marketplace install never lands at either
   #    legacy directory (it writes to plugins/cache/MARKETPLACE/PLUGIN/SHA),
   #    so check installed_plugins.json first, the marketplace's own record,

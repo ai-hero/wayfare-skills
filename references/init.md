@@ -10,13 +10,11 @@ two decisions a person should have to sequence themselves.
 
 ## Step 1: Establish AGENTS.md as the Agent Instructions File
 
-**House standard: `AGENTS.md` is the real file; `CLAUDE.md` is a symlink to
-it.**
+**House standard: `AGENTS.md` is the only agent instructions file.**
 
 `AGENTS.md` is the cross-agent open standard (agents.md), which Cursor, Copilot,
-and others read. Claude Code reads `CLAUDE.md`. A symlink means one file serves
-every agent with zero duplication and no drift between them. **Always write
-content to `AGENTS.md`, never to `CLAUDE.md`.**
+and others read, and Claude Code v2.1.277 and later reads it too. Never create a
+`CLAUDE.md`, and write content to `AGENTS.md`.
 
 Detect the current state. Note that `-L` must be tested *before* `-f`, since
 `-f` is true for a symlink pointing at an existing file:
@@ -26,8 +24,7 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "$ROOT"
 
 if [ -L CLAUDE.md ]; then
-  TARGET=$(readlink CLAUDE.md)
-  [ "$TARGET" = "AGENTS.md" ] && echo "STATE=CORRECT" || echo "STATE=SYMLINK_WRONG_TARGET target=$TARGET"
+  echo "STATE=SYMLINK target=$(readlink CLAUDE.md)"
 elif [ -f CLAUDE.md ] && [ -f AGENTS.md ]; then
   echo "STATE=BOTH_REGULAR_FILES"
 elif [ -f CLAUDE.md ]; then
@@ -44,12 +41,11 @@ preserved in `AGENTS.md`.**
 
 | State | Action |
 | -- | -- |
-| `CORRECT` | Nothing to do. Edit `AGENTS.md` in Step 5. |
-| `NEITHER` | Create `AGENTS.md` with the scaffold below, then `ln -s AGENTS.md CLAUDE.md`. |
-| `AGENTS_ONLY` | Create the symlink: `ln -s AGENTS.md CLAUDE.md`. |
-| `CLAUDE_ONLY` | Rename, then link: `git mv CLAUDE.md AGENTS.md && ln -s AGENTS.md CLAUDE.md`. Content is preserved by the rename, so nothing is lost. |
-| `BOTH_REGULAR_FILES` | **Stop and ask the user.** Two independent files exist. Show a diff, propose merging `CLAUDE.md`'s unique content into `AGENTS.md`, and only replace `CLAUDE.md` with a symlink once the user confirms the merge. Never silently discard either file. |
-| `SYMLINK_WRONG_TARGET` | Report it and ask. Do not repoint a symlink the user aimed somewhere deliberately. |
+| `AGENTS_ONLY` | Nothing to do. Edit `AGENTS.md` in Step 5. |
+| `NEITHER` | Create `AGENTS.md` with the scaffold below. Create no `CLAUDE.md`. |
+| `CLAUDE_ONLY` | Rename: `git mv CLAUDE.md AGENTS.md`. Content is preserved by the rename, so nothing is lost. |
+| `BOTH_REGULAR_FILES` | **Stop and ask the user.** Two independent files exist. Show a diff, propose merging `CLAUDE.md`'s unique content into `AGENTS.md`, and only `git rm CLAUDE.md` once the user confirms the merge. Never silently discard either file. |
+| `SYMLINK` | Offer to remove it with `git rm CLAUDE.md`, and say Claude Code older than v2.1.277 will then not load `AGENTS.md`. Leave it if the user declines; `check-agents-md.sh` only warns. If it points somewhere other than `AGENTS.md`, report it and ask first. |
 
 For `CLAUDE_ONLY`, use `git mv` when the file is tracked so history follows the
 rename; fall back to plain `mv` if git reports it is untracked.
@@ -58,8 +54,6 @@ Scaffold for a new `AGENTS.md` (content is filled in during Step 5):
 
 ```markdown
 # AGENTS.md
-
-<!-- CLAUDE.md is a symlink to this file. Edit AGENTS.md, never CLAUDE.md. -->
 
 ## Tech Stack
 <!-- Auto-managed by wayfare:wayfare-init-repo. See HERO.md for full configuration. -->
@@ -84,16 +78,12 @@ See [HERO.md](./HERO.md) for coding conventions detected from the codebase.
 - **Do not** remove or overwrite content the user wrote. Only add the pointer if
   it is absent.
 
-**Windows note:** symlinks need Developer Mode or elevated privileges. If
-`ln -s` fails, fall back to a regular `CLAUDE.md` containing the single line
-`See [AGENTS.md](./AGENTS.md).` and tell the user why.
-
-**Why this matters:** `AGENTS.md`/`CLAUDE.md` is loaded into context at
-conversation start. Without a HERO.md reference, Claude won't consult HERO.md
-for tech stack decisions (OpenTofu vs Terraform) or coding conventions
-(snake_case, structured logging, no DB mocks). The pointer ensures the agent
-reads HERO.md for authoritative configuration, and it survives a context
-compaction, which loaded skills may not.
+**Why this matters:** `AGENTS.md` is loaded into context at conversation start.
+Without a HERO.md reference, Claude won't consult HERO.md for tech stack
+decisions (OpenTofu vs Terraform) or coding conventions (snake_case, structured
+logging, no DB mocks). The pointer ensures the agent reads HERO.md for
+authoritative configuration, and it survives a context compaction, which loaded
+skills may not.
 
 ## Step 2: Check for Existing HERO.md Configuration
 
@@ -953,7 +943,7 @@ After the user responds, merge confirmed findings + user answers and write
 - primary: claude-code # or cursor, windsurf, copilot, aider
 - agents: AGENT_LIST # list all if team uses multiple
 - hooks: true # or false — whether the agent supports pre-commit/hook integration
-- rules-file: AGENTS.md # CLAUDE.md is a symlink to it; or .cursorrules, .windsurfrules, copilot-instructions.md
+- rules-file: AGENTS.md # or .cursorrules, .windsurfrules, copilot-instructions.md
 <!-- HERO.md is refreshed on demand by `wayfare:wayfare-init-repo recalibrate`.
      Skills detect when HERO.md is stale (project config newer than HERO.md)
      and prompt the user to run the refresh themselves. There is no
@@ -1204,9 +1194,8 @@ etc., omit those sections entirely rather than filling them with "none". Keep it
 clean.
 
 **Also update `AGENTS.md` Tech Stack and Best Practices sections** (never write
-to `CLAUDE.md`, which is a symlink) with a human-readable summary of the key
-findings. This ensures Claude has immediate context without needing to parse
-HERO.md. Example:
+to `CLAUDE.md`) with a human-readable summary of the key findings. This ensures
+Claude has immediate context without needing to parse HERO.md. Example:
 
 ```markdown
 ## Tech Stack
@@ -1415,13 +1404,11 @@ already-up-to-date paths). When the installer returned exit 2 (`EXISTS`, drift
 detected), the working file is still the user's original, and committing it now
 would falsely claim `wayfare:wayfare-init-repo` installed the new version.
 
-**Stage `AGENTS.md`, not just `CLAUDE.md`.** `CLAUDE.md` is a symlink, so
-staging it alone commits the link and silently drops every content change,
-because those live in `AGENTS.md`. Stage both: the symlink itself needs
-committing the first time it is created.
+**Stage `AGENTS.md`.** If Step 1 removed a `CLAUDE.md`, `git rm` already staged
+the deletion.
 
 ```bash
-FILES_TO_ADD=("HERO.md" "AGENTS.md" "CLAUDE.md")
+FILES_TO_ADD=("HERO.md" "AGENTS.md")
 # Whichever spelling the installer adopted — hardcoding .yml stages nothing
 # in a .yaml repo, so the workflow silently never reaches the commit.
 if [ "${INSTALL_OK:-false}" = "true" ]; then
@@ -1444,8 +1431,8 @@ covers `.env` before committing anything.
 
 When `recalibrate` is passed:
 
-1. Read existing `HERO.md` and `AGENTS.md`, and re-check the CLAUDE.md symlink
-   state from Step 1
+1. Read existing `HERO.md` and `AGENTS.md`, and re-check the CLAUDE.md state
+   from Step 1
 2. Re-run full investigation (Step 3, all sub-steps)
 3. Compare findings against the current config, flagging what changed, what is
    new, and what was removed

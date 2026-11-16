@@ -125,30 +125,23 @@ rules() {
   find "$ROOT/.claude/rules" -name '*.md' -type f -print0
 }
 
-# --- R1: one file, symlinked -----------------------------------------------
+# --- R1: one file, AGENTS.md ------------------------------------------------
+# A CLAUDE.md symlink only warns: erroring would break every consumer's
+# pre-commit the day this ships. Claude Code v2.1.277+ loads AGENTS.md itself.
 echo "check-agents-md: $ROOT"
 TARGET=""
 if [[ -L "$ROOT/CLAUDE.md" ]]; then
-  link=$(readlink "$ROOT/CLAUDE.md")
-  if [[ "${link#./}" == "AGENTS.md" || "$ROOT/CLAUDE.md" -ef "$ROOT/AGENTS.md" ]]; then
-    [[ -f "$ROOT/AGENTS.md" ]] || die 2 "R1: CLAUDE.md -> AGENTS.md, but AGENTS.md is missing"
-    TARGET="$ROOT/AGENTS.md"
-  else
-    error "R1: CLAUDE.md is a symlink to '$link', not AGENTS.md" "ln -sf AGENTS.md CLAUDE.md"
-    [[ -f "$ROOT/AGENTS.md" ]] || die 2 "R1: no AGENTS.md to check"
-    TARGET="$ROOT/AGENTS.md"
-  fi
+  [[ -f "$ROOT/AGENTS.md" ]] || die 2 "R1: CLAUDE.md is a symlink, but AGENTS.md is missing"
+  warn "R1: CLAUDE.md is a symlink — Claude Code loads AGENTS.md itself" "git rm CLAUDE.md"
+  TARGET="$ROOT/AGENTS.md"
 elif [[ -f "$ROOT/CLAUDE.md" && -f "$ROOT/AGENTS.md" ]]; then
   error "R1: AGENTS.md and CLAUDE.md are both regular files — edits will diverge" \
-    "Merge CLAUDE.md into AGENTS.md, then: rm CLAUDE.md && ln -s AGENTS.md CLAUDE.md"
+    "Merge CLAUDE.md into AGENTS.md, then git rm CLAUDE.md"
   TARGET="$ROOT/AGENTS.md"
 elif [[ -f "$ROOT/AGENTS.md" ]]; then
-  warn "R1: AGENTS.md exists but CLAUDE.md is missing — Claude Code will not load it" \
-    "ln -s AGENTS.md CLAUDE.md"
   TARGET="$ROOT/AGENTS.md"
 elif [[ -f "$ROOT/CLAUDE.md" ]]; then
-  warn "R1: only CLAUDE.md — other agents read AGENTS.md" \
-    "git mv CLAUDE.md AGENTS.md && ln -s AGENTS.md CLAUDE.md"
+  warn "R1: only CLAUDE.md — other agents read AGENTS.md" "git mv CLAUDE.md AGENTS.md"
   TARGET="$ROOT/CLAUDE.md"
 else
   die 2 "no AGENTS.md or CLAUDE.md in $ROOT"

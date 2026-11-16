@@ -3544,11 +3544,11 @@ _hero_item_max_id() { # DIR
 # so two spellings never disagree): an optional frontmatter block, then the
 # sections. `status:` defaults to planning (new for an idea, anti-feature or
 # signal). The id is the highest one in the store plus one, read here and never
-# cached, and the file is linked into place so an existing path is refused, not
-# overwritten. The server has no create-item yet, so there it refuses and
+# cached, and the file is linked into place under a lock so an existing path is
+# refused, not overwritten. The server has no create-item yet, so there it refuses and
 # files nothing.
 hero_item_create() { # TYPE TITLE BODY_FILE [ROOT]
-  local root dir type title body slug n f tmp max k st fm r pad
+  local root dir type title body slug n f tmp max k st fm r rc
   type=${1:-}; title=${2:-}; body=${3:-}
   case "$type" in task|signal|goal|idea|anti-feature) ;; *) echo "hero_item_create: TYPE '$type' is not task, signal, goal, idea or anti-feature" >&2; return 2 ;; esac
   [ -n "$title" ] || { echo "hero_item_create: TITLE is required" >&2; return 2; }
@@ -3573,39 +3573,36 @@ hero_item_create() { # TYPE TITLE BODY_FILE [ROOT]
   slug=$(printf '%s' "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]\{1,\}/-/g; s/^-//; s/-$//' | cut -c1-60 | sed 's/-$//')
   [ -n "$slug" ] || slug=item
   case "$type" in idea|anti-feature|signal) st=new ;; *) st=planning ;; esac
-  for _ in 1 2 3 4 5; do
-    max=$(_hero_item_max_id "$dir") || return 1
-    n=$((max + 1))
-    pad=$(printf '%03d' "$n")
-    f="$dir/$pad-$slug.md"
-    tmp=$(mktemp "$dir/.create.XXXXXX") || return 1
-    {
-      printf -- '---\nid: %s\ntype: %s\ntitle: %s\n' "$n" "$type" "$(_hero_yaml_scalar "$title")"
-      if [ -n "$fm" ]; then
-        printf '%s\n' "$fm" | grep -qE '^status:' || printf 'status: %s\n' "$st"
-        printf '%s\n' "$fm"
-        printf -- '---\n'
-        awk 'NR == 1 { next } !done && /^---[[:space:]]*$/ { done = 1; next } done { print }' "$body"
-      else
-        printf 'status: %s\n---\n' "$st"
-        cat "$body"
-      fi
-    } > "$tmp" || { rm -f "$tmp"; return 1; }
-    if ln "$tmp" "$f" 2>/dev/null; then
-      rm -f "$tmp"
-      # A concurrent creator with another slug takes the same id; the loser backs out.
-      if [ "$(find "$dir" -maxdepth 1 -name "$pad-*.md" | wc -l | tr -d ' ')" -gt 1 ]; then
-        rm -f "$f"; continue
-      fi
-      printf '%s\n' "$n"
-      return 0
+  # Two creators that read the same highest id would both take the next one
+  # under different slugs, and ln only refuses the same path; the lock makes
+  # read-and-link one step.
+  hero_pending_lock "$dir/.create" || return 1
+  max=$(_hero_item_max_id "$dir") || { hero_pending_unlock "$dir/.create"; return 1; }
+  n=$((max + 1))
+  f="$dir/$(printf '%03d' "$n")-$slug.md"
+  tmp=$(mktemp "$dir/.create.XXXXXX") || { hero_pending_unlock "$dir/.create"; return 1; }
+  {
+    printf -- '---\nid: %s\ntype: %s\ntitle: %s\n' "$n" "$type" "$(_hero_yaml_scalar "$title")"
+    if [ -n "$fm" ]; then
+      printf '%s\n' "$fm" | grep -qE '^status:' || printf 'status: %s\n' "$st"
+      printf '%s\n' "$fm"
+      printf -- '---\n'
+      awk 'NR == 1 { next } !done && /^---[[:space:]]*$/ { done = 1; next } done { print }' "$body"
+    else
+      printf 'status: %s\n---\n' "$st"
+      cat "$body"
     fi
-    rm -f "$tmp"
-    [ ! -e "$f" ] || { echo "hero_item_create: $f already exists; refusing to overwrite" >&2; return 1; }
-  done
-  echo "hero_item_create: could not allocate an id after 5 tries" >&2
-  return 1
+  } > "$tmp" && ln "$tmp" "$f" 2>/dev/null; rc=$?
+  rm -f "$tmp"
+  hero_pending_unlock "$dir/.create"
+  if [ "$rc" -ne 0 ]; then
+    if [ -e "$f" ]; then echo "hero_item_create: $f already exists; refusing to overwrite" >&2
+    else echo "hero_item_create: could not write $f" >&2; fi
+    return 1
+  fi
+  printf '%s\n' "$n"
 }
+
 # ----- messages
 
 # Open a message to repo TO and print its id. KIND is request (expects an

@@ -301,6 +301,13 @@ reset
 E=$(srv hero_item_set 2 status "done" "$APP" 2>&1 >/dev/null)
 case "$E" in *hero_item_set_status*) check "loud: the status refusal points at hero_item_set_status" ok ok ;; *) check "loud: the status refusal points at hero_item_set_status" "names it" "$E" ;; esac
 check "loud: none of them reached the server" "" "$(calls)"
+printf -- '---\nshape: docs\n---\n\n## Context\n\nx\n' > "$TMP/create-body.md"
+BEFORE=$(find "$APP/.plans" -type f | wc -l | tr -d ' ')
+reset
+E=$(srv hero_item_create task "New item" "$TMP/create-body.md" "$APP" 2>&1 >/dev/null); RC=$?
+check "create: a server WAYFARE_STORE returns 1" "1" "$RC"
+case "$E" in *"no create-item yet"*) check "create: the refusal names create-item" ok ok ;; *) check "create: the refusal names create-item" "names it" "$E" ;; esac
+check "create: no file is written and the server is not called" "$BEFORE " "$(find "$APP/.plans" -type f | wc -l | tr -d ' ') $(calls)"
 
 # ---------- plan fields ---------------------------------------------------------
 

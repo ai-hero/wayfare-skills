@@ -1,7 +1,10 @@
 # The work-item format
 
 What `wayfare:wayfare-grill-idea` writes, read at its Step 4 before any item is
-emitted. One markdown file per item at `.plans/items/NNN-slug.md`:
+emitted. One markdown file per item at `.plans/items/NNN-slug.md`, filed by
+`hero_item_create TYPE TITLE BODY_FILE` (store-writes.md, *Creating an item*),
+which writes the `id`, `type` and `title` lines itself: a BODY_FILE holds the
+rest. The block below is the finished file:
 
 ```markdown
 ---

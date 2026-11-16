@@ -164,7 +164,8 @@ severity when `confirmed`, the smallest fix, and the path to the run directory.
 
 Search `.plans/items/` for the fingerprint first. Update a matching item in
 place (a `needs_validation` that is now `confirmed` gains its severity, and the
-run path goes in its log) and write a new item only when none matches.
+run path goes in its log) and file a new item with `hero_item_create` only when
+none matches.
 
 `FINDINGS-DETAIL.md` holds plaintext reproductions. Neither it nor text copied
 from it goes in `.plans`, a ticket, a PR or the wayfare-skills repo. The same

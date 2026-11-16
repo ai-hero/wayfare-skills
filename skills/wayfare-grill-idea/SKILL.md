@@ -313,28 +313,26 @@ Wait for the user's yes. Do not emit anything before it.
 ### Step 4: Emit work-items
 
 Break the understood work into the smallest units that each deliver something
-testable and can be reviewed on their own. For each, write one file to `.plans/`
-(see _The work-item format_ below) with `status: planning`. **Every item is a
-wayfare item**: `type: task` with `shape: story`, or `shape: structural` when
-the unit is a structural change rather than a story, with
-`origin: wayfare-grill-idea`. There is no plain shape any more: one lifecycle,
-one set of sections, one thing for wayfare-build-task to build, whether or not
-the repo has a `## Wayfare` block or a design target. A task can have no target.
-In that case, omit `target:` and `anchors.target`. Set `depends_on` to encode
-the real order. Dependencies make the required order explicit. Flag any
-one-way-door item with `one_way_door: true`. Ask once, at write time, what
-priority the person wants on the set (`p0` to `p3` in `docs/PLAN.md`, where
-absent is unranked): one question for the set with a per-item override, never
-one per item, and write it only when they name one. It is the owner's call on
-when, not `severity`.
+testable and can be reviewed on their own. For each, file one item with
+`hero_item_create task TITLE BODY_FILE`
+([store-writes.md](../../references/store-writes.md), _Creating an item_), its
+body drafted in _The work-item format_ below with `status: planning`. **Every
+item is a wayfare item**: `type: task` with `shape: story`, or
+`shape: structural` when the unit is a structural change rather than a story,
+with `origin: wayfare-grill-idea`. There is no plain shape any more: one
+lifecycle, one set of sections, one thing for wayfare-build-task to build,
+whether or not the repo has a `## Wayfare` block or a design target. A task can
+have no target. In that case, omit `target:` and `anchors.target`. Set
+`depends_on` to encode the real order. Dependencies make the required order
+explicit. Flag any one-way-door item with `one_way_door: true`. Ask once, at
+write time, what priority the person wants on the set (`p0` to `p3` in
+`docs/PLAN.md`, where absent is unranked): one question for the set with a
+per-item override, never one per item, and write it only when they name one. It
+is the owner's call on when, not `severity`.
 
-Number items sequentially from the highest existing `id` in `.plans/`,
-re-checked immediately before writing (not cached from earlier in the session).
-This does not eliminate a collision between two truly concurrent writers, but it
-closes the common case of a stale count from a session that has been running a
-while. Use a plain integer for the `id` frontmatter field. Zero-pad only the
-**filename** prefix (`007-slug.md`) so `ls` sorts them. `depends_on` references
-the plain integer id.
+`hero_item_create` allocates the `id` (a plain integer, re-read at call time),
+zero-pads the filename and prints the id. `depends_on` references the plain
+integer id.
 
 Before writing, verify every `depends_on` id actually exists in `.plans/`.
 reference ids, never titles. `hero_ready_items` names a dangling reference
@@ -381,10 +379,10 @@ answering.
 
 ## The work-item format
 
-One markdown file per item at `.plans/items/NNN-slug.md`. **Read
-`../../references/work-item-format.md` before Step 4 writes one**: it holds the
-canonical frontmatter block (the status enum, `ready_marked:`, `awaiting`) and
-which sections each item must carry.
+One markdown file per item at `.plans/items/NNN-slug.md`, filed by
+`hero_item_create`. **Read `../../references/work-item-format.md` before Step 4
+drafts one**: it holds the canonical frontmatter block (the status enum,
+`ready_marked:`, `awaiting`) and which sections each item must carry.
 
 ## "What's ready": the one query that matters
 

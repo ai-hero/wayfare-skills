@@ -770,11 +770,15 @@ The refusal names the switch and how to flip back. Reads stay possible, because
 the cutover imports from the local files and the dry run compares against them.
 A hand edit of a `.plans/` file does not pass through a function and is not
 refused, which is why a skill writes its item through `hero_item_set_status`,
-`hero_item_set`, `hero_item_tick` and `hero_item_log` instead.
-wayfare-build-task, wayfare-drop-item, wayfare-grill-idea, wayfare-one-shot and
-wayfare-write-handoff do, and `validate.sh` fails their prose, and every file in
-`references/`, if it tells the agent to set `status:` or `branch:` by hand.
-Other skills join that check as they are routed.
+`hero_item_set`, `hero_item_tick` and `hero_item_log` instead, and files a new
+item with `hero_item_create TYPE TITLE BODY_FILE`, which returns 1 and writes
+nothing on a server backend until the server has a create-item command.
+wayfare-build-task, wayfare-drop-item, wayfare-grill-idea, wayfare-one-shot,
+wayfare-write-handoff, wayfare-sync-plan, wayfare-audit-security,
+wayfare-audit-compliance and wayfare-audit-deep do, and `validate.sh` fails
+their prose, and every file in `references/`, if it tells the agent to set
+`status:` or `branch:` or write an item file by hand. Other skills join that
+check as they are routed.
 
 The server backend is the store functions calling the `wayfare` CLI
 (`WAYFARE_CLI`, else `wayfare` on PATH), with the URL's one path segment as the

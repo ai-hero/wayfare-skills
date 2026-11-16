@@ -421,11 +421,11 @@ existing item whose `pr:` is this PR. Print one table:
 `#N  package  from → to  class  severity  CI  mergeState  age  item`. Propose
 one item per PR that has none (the dependency-with-`bot:` format under *Item
 formats*, `status: accepted`, `severity` from the alert or `none` / `unknown`),
-reuse the existing one otherwise with its `## Log` intact, and write on
-confirmation. A PR harden's batch (its A4) supersedes is noted on the item and
-left `accepted` with a `note` line naming the batch item. The batch's recipe
-closes the bot's PR after its own merge, so the two never race. No open bot PRs
-→ `(–)` and one line saying so.
+reuse the existing one otherwise with its `## Log` intact, and file on
+confirmation with `hero_item_create`. A PR harden's batch (its A4) supersedes is
+noted on the item and left `accepted` with a `note` line naming the batch item.
+The batch's recipe closes the bot's PR after its own merge, so the two never
+race. No open bot PRs → `(–)` and one line saying so.
 
 **The `unshipped` stage: work built and never merged.** A goal branch abandoned
 mid-run, a session that died mid-build, a person's side branch: each is work
@@ -550,11 +550,12 @@ No branch besides the default → `(–)` and one line saying so.
    depends on it, and leave the cell `-` when nothing supports a guess. The
    person confirms or changes it with the rest of the row, and a `-` is written
    as an absent field, which lists last. On the user's confirmation of the list
-   (edits welcome: drop rows, reword, re-scope, re-rank), write each task in the
-   format below with its confirmed `priority`: `status: accepted`,
-   `anchors.target` = the target head resolved in step 2 (self-review mode
-   resolved no target head, so leave it absent). Ids continue the store's single
-   sequence (wayfare-grill-idea's numbering rules).
+   (edits welcome: drop rows, reword, re-scope, re-rank), file each task with
+   `hero_item_create task TITLE BODY_FILE` ([store-writes.md](store-writes.md),
+   *Creating an item*) in the format below with its confirmed `priority`:
+   `status: accepted`, `anchors.target` = the target head resolved in step 2
+   (self-review mode resolved no target head, so leave it absent).
+   `hero_item_create` allocates the id.
 
 6. **Plan the set: the postflight.** See *Plan the set* below. `sync` is not
    finished when the rows are written; it is finished when every task that needs
@@ -1048,28 +1049,29 @@ So the pass runs across the roadmap:
      absorbed is the chain reaction this stage is trying not to start.
 
    Each proposal goes through the same confirm flow as any other row, and is
-   written in **the full goal item format** (*Item formats* below), not the
-   subset this paragraph happens to discuss. The sync decides five of its
-   values: `status: accepted`, `parent` on each member with `rank` in dependency
-   order, `depends_on` as derived above, `budget` = the member count,
-   `budget_max` = `2 * budget`, and the `cut` line that opens the goal's
-   `## Log`. The rest of the format is not optional. `anchors.source` and
-   `anchors.target` are anchored here, from the heads this run already resolved:
-   a non-`done` item with no `anchors.target` is a store defect the *next* sync
-   reports **when `$DESIGN_PROJECT` is a project id**, the same carve-out the
-   store-defects finding uses, since self-review mode resolves no target head to
-   anchor. So a pass that omits `anchors.target` while a design project is
-   configured writes defects it had the values to prevent. `## Stop conditions`
-   gets the documented defaults; it is the one per-goal brake on a loop that
-   pre-authorizes merges, and a turn reads it every time. `## Permissions` gets
-   the documented defaults too. It is what `wayfare-start-goal`'s gate reads
-   aloud and the user authorizes, and a goal with none is a goal whose gate
-   cannot say what it is asking for. The `## Definition of Done` spans the
-   group. Concatenating the tasks' own DoDs is not that: it asserts only what
-   each task already asserts alone. Exclude any task whose `parent` is another
-   goal: one `parent`, so a task is in one goal or none. A goal Roadmap mode
-   forms in step 2 is written to this same format with these same values, plus
-   its `## Plan`, whose `### Requirements` this DoD is the checkable form of.
+   filed with `hero_item_create goal TITLE BODY_FILE` in **the full goal item
+   format** (*Item formats* below), not the subset this paragraph happens to
+   discuss. The sync decides five of its values: `status: accepted`, `parent` on
+   each member with `rank` in dependency order, `depends_on` as derived above,
+   `budget` = the member count, `budget_max` = `2 * budget`, and the `cut` line
+   that opens the goal's `## Log`. The rest of the format is not optional.
+   `anchors.source` and `anchors.target` are anchored here, from the heads this
+   run already resolved: a non-`done` item with no `anchors.target` is a store
+   defect the *next* sync reports **when `$DESIGN_PROJECT` is a project id**,
+   the same carve-out the store-defects finding uses, since self-review mode
+   resolves no target head to anchor. So a pass that omits `anchors.target`
+   while a design project is configured writes defects it had the values to
+   prevent. `## Stop conditions` gets the documented defaults; it is the one
+   per-goal brake on a loop that pre-authorizes merges, and a turn reads it
+   every time. `## Permissions` gets the documented defaults too. It is what
+   `wayfare-start-goal`'s gate reads aloud and the user authorizes, and a goal
+   with none is a goal whose gate cannot say what it is asking for. The
+   `## Definition of Done` spans the group. Concatenating the tasks' own DoDs is
+   not that: it asserts only what each task already asserts alone. Exclude any
+   task whose `parent` is another goal: one `parent`, so a task is in one goal
+   or none. A goal Roadmap mode forms in step 2 is written to this same format
+   with these same values, plus its `## Plan`, whose `### Requirements` this DoD
+   is the checkable form of.
 
    **The sync writes the item and stops there. It never authorizes.** The
    approval that grants a goal's `## Permissions` is typed by a person at
@@ -1092,9 +1094,8 @@ implementation time*, not batching the work.
 `sync`'s trailing context, or during confirmation) is a row added to the
 proposal table: investigate its source paths and target design first, because a
 task captures conclusions rather than guesses, and it is written with the same
-confirm flow, same format, same `status: accepted`. Ids continue the store's
-sequence per wayfare-grill-idea's numbering rules, re-checked immediately before
-writing; zero-pad only the filename.
+confirm flow, same format, same `status: accepted`, filed with
+`hero_item_create`, which allocates the id.
 
 **A batch is exploded before any of it is judged.** When what the user brings is
 a list (a pasted bug report, QA notes, review findings, a spreadsheet export),

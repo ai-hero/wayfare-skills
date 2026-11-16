@@ -883,11 +883,15 @@ done < <(find "$PLUGIN_ROOT/scripts" -maxdepth 1 -type f -name '*.py' 2>/dev/nul
 # Under a server backend the item file is a read-only render, so prose that
 # tells the agent to set `status:` or `branch:` by hand writes nowhere. A skill
 # joins ITEM_WRITES_ROUTED once its item writes call hero_item_set_status,
-# hero_item_set, hero_item_tick and hero_item_log; the rest still edit by hand.
+# hero_item_set, hero_item_tick and hero_item_log, and files a new item with
+# hero_item_create; the rest still edit by hand.
 # Every references/*.md is scanned, because a skill's prose is run from them.
-ITEM_WRITES_ROUTED="wayfare-build-task wayfare-drop-item wayfare-grill-idea wayfare-one-shot wayfare-write-handoff"
+ITEM_WRITES_ROUTED="wayfare-build-task wayfare-drop-item wayfare-grill-idea wayfare-one-shot wayfare-write-handoff wayfare-sync-plan wayfare-audit-security wayfare-audit-compliance wayfare-audit-deep"
 item_hand_writes() { # FILE -> prints "LINE: text" per instruction to edit a field by hand
   grep -nE '(^|[^[:alnum:]_])([Ss]et|[Ff]lip[a-z]*( it| the item| the task)? to|[Ww]rite|[Mm]ark( it| the item| the task)?) `(status|branch): ' "$1" || true
+  # A new item is filed by hero_item_create; a hand-written file lands where a server never reads it.
+  grep -nE '(^|[^[:alnum:]_])([Ww]rite|[Ww]rote|[Cc]r[e]ate|[Ee]mit)s? [^.]{0,40}`?\.plans/items/(NNN|[0-9]{3}|ID)' "$1" || true
+  grep -nE '(^|[^[:alnum:]_])[Ww]rite (one|each|the)[a-z ]{0,20} (file|item|task)s? (to|in|at) `?\.plans/' "$1" || true
 }
 ITEM_WRITE_ERRORS=0
 for s in $ITEM_WRITES_ROUTED; do
@@ -897,7 +901,7 @@ for s in $ITEM_WRITES_ROUTED; do
     ITEM_WRITE_ERRORS=$((ITEM_WRITE_ERRORS + 1))
     error "tells the agent to set an item field by hand" \
       "${f#"$PLUGIN_ROOT/"}" "$(printf '%s' "$hits" | head -1 | cut -d: -f1)" \
-      "Call hero_item_set_status ID STATUS or hero_item_set ID branch BRANCH (scripts/hero-lib.sh)"
+      "Call hero_item_set_status ID STATUS, hero_item_set ID branch BRANCH, or hero_item_create TYPE TITLE BODY_FILE for a new item (scripts/hero-lib.sh)"
   done < <(find "$SKILLS_DIR/$s" -type f -name '*.md' 2>/dev/null)
 done
 while IFS= read -r f; do
@@ -906,7 +910,7 @@ while IFS= read -r f; do
   ITEM_WRITE_ERRORS=$((ITEM_WRITE_ERRORS + 1))
   error "tells the agent to set an item field by hand" \
     "${f#"$PLUGIN_ROOT/"}" "$(printf '%s' "$hits" | head -1 | cut -d: -f1)" \
-    "Call hero_item_set_status ID STATUS or hero_item_set ID branch BRANCH (scripts/hero-lib.sh)"
+    "Call hero_item_set_status ID STATUS, hero_item_set ID branch BRANCH, or hero_item_create TYPE TITLE BODY_FILE for a new item (scripts/hero-lib.sh)"
 done < <(find "$PLUGIN_ROOT/references" -maxdepth 1 -type f -name '*.md' 2>/dev/null)
 [[ $ITEM_WRITE_ERRORS -eq 0 ]] && pass "routed skills and references write their item through the store layer"
 

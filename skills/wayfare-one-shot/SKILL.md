@@ -75,9 +75,9 @@ test the standard uses for its no-planning-run path.
 
 ### Step 3: draft the one task
 
-Write `.plans/items/NNN-slug.md` at `status: planning`. The id is the highest
-existing `id` in `.plans/` plus one, **re-checked immediately before writing**,
-because a collision surfaces only as a `duplicate id` line on stderr.
+File the item with `hero_item_create task TITLE BODY_FILE`
+(`../../references/store-writes.md`, *Creating an item*) at `status: planning`.
+It allocates the id, so none is written into the body.
 
 - `type: task`, and a `shape` inferred from the standard's table in
   `../../docs/PLAN.md`: a rename with docs is `structural` or `docs`, a

@@ -24,6 +24,25 @@ dropped. The server has no field for it, so there it is a `replaced_by` log
 line. On a server `ready`, `accepted` and `new` are a person's marks and the
 status call refuses them.
 
+## Creating an item
+
+A new item is filed with `hero_item_create TYPE TITLE BODY_FILE`, never by
+writing `.plans/items/NNN-slug.md` with an editor: it prints the new id, and
+under a Wayfare server a hand-written file lands in a store the server never
+reads. TYPE is `task`, `signal`, `goal`, `idea` or `anti-feature`. BODY_FILE is
+the item without its `id:`, `type:` and `title:` lines (the function writes
+those, and a body that carries one is refused): an optional frontmatter block of
+the other fields, then the sections. `status` defaults to `planning`, or `new`
+for an idea, anti-feature or signal. The id is the highest in the store plus
+one, read when the function runs, so none is carried from earlier in a session.
+A path that already exists and a symlinked items directory are refused.
+
+On a server backend the function returns 1 and files nothing: the server has no
+create-item yet (aihero-wayfare). Report that the item was not filed, name the
+work it carried, and stop there; hand-writing the file is the failure this
+refusal exists to stop. `scripts/validate.sh` fails a routed skill or reference
+that tells the agent to write an item file by hand.
+
 ## The DESIGN.md channel
 
 `DESIGN.md` changes only in a commit on a branch that a live item owns. A skill
@@ -70,7 +89,7 @@ nothing, bootstrap included. The task's `## Context` holds the review findings,
 its DoD holds the confirmed claims (for a bootstrap, the confirmed outline, one
 line per section), and its Subtask is to apply them to `DESIGN.md` on its own
 branch, which is where `Source ref` is stamped. Filing an item is a store write
-like any other, so it follows the item channel above.
+like any other, so it follows the channels above.
 
 `wayfare:wayfare-review-architecture` reports the case that slipped through: a
 `DESIGN.md` modified in the working tree on a branch no live item owns is an

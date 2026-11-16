@@ -459,6 +459,28 @@ printf '\nAn item at `status: dropped` is closed.\n' >> "$d/references/drop.md"
 run_validate "$d"
 check "a reference naming a status without setting it: not reported" "" "$(printf '%s' "$OUT" | grep -o 'tells the agent to set an item field by hand' || true)"
 
+d=$(fixture item-create-by-hand)
+printf '\nWrite `.plans/items/NNN-slug.md` at planning.\n' >> "$d/skills/wayfare-one-shot/SKILL.md"
+run_validate "$d"
+check "routed skill writes an item file by hand: rc" "1" "$RC"
+check_contains "routed skill writes an item file by hand: reported" "$OUT" "tells the agent to set an item field by hand"
+check_contains "routed skill writes an item file by hand: names the file" "$OUT" "skills/wayfare-one-shot/SKILL.md"
+
+d=$(fixture item-create-by-hand-audit)
+printf '\nWrite each unit as a work item in `.plans/` by hand.\n' >> "$d/skills/wayfare-audit-security/SKILL.md"
+run_validate "$d"
+check "audit skill writes items by hand: rc" "1" "$RC"
+
+d=$(fixture item-create-reference-by-hand)
+printf '\nCreate `.plans/items/007-x.md` for the finding.\n' >> "$d/references/sync.md"
+run_validate "$d"
+check "a reference writes an item file by hand: rc" "1" "$RC"
+
+d=$(fixture item-create-routed)
+printf '\nFile it with `hero_item_create task TITLE BODY_FILE`; it lands at `.plans/items/NNN-slug.md`.\n' >> "$d/skills/wayfare-one-shot/SKILL.md"
+run_validate "$d"
+check "routed skill filing through hero_item_create: not reported" "" "$(printf '%s' "$OUT" | grep -o 'tells the agent to set an item field by hand' || true)"
+
 # ---------- DESIGN.md is written only on a live item's branch ---------------
 
 d=$(fixture design-grill-offers-append)

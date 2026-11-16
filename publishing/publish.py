@@ -1,4 +1,4 @@
-"""Build the editions. `./publish all` runs every target but `cover` and `kindle`, in order; each
+"""Build the editions. `./publish all` runs every target but `cover`, `kindle` and `slides`, in order; each
 target can run alone once `source` has run, and `all` always rebuilds `source` first so no edition
 reads a stale one."""
 import importlib

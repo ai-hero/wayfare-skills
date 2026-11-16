@@ -229,16 +229,18 @@ ignore is left behind rather than restored.
 ```bash
 FLEET_ROOT=$(pwd -P)
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
 (cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/fleet-setup.py archive --kind local --extract ~/fleet-restore LOCAL_ARCHIVE) || exit 1
+PLANS=$(hero_store_name)
 cd "$FLEET_ROOT"
 for repo in */; do
   repo=${repo%/}
   [ -d "$repo/.git" ] || continue
   mkdir -p "$repo/.git/info"
-  for p in .plans/ .test-output/ .worktrees/; do
+  for p in "$PLANS/" .test-output/ .worktrees/; do
     grep -qxF "$p" "$repo/.git/info/exclude" 2>/dev/null || echo "$p" >> "$repo/.git/info/exclude"
   done
-  [ -d ~/fleet-restore/"$repo"/.plans ] && cp -Rn ~/fleet-restore/"$repo"/.plans "$repo/"
+  [ -d ~/fleet-restore/"$repo/$PLANS" ] && cp -Rn ~/fleet-restore/"$repo/$PLANS" "$repo/"
   if [ -f ~/fleet-restore/"$repo"/.env ]; then
     if git -C "$repo" check-ignore -q .env; then
       cp -n ~/fleet-restore/"$repo"/.env "$repo/.env"
@@ -269,6 +271,7 @@ so it does not fan out to subagents. Collect each repo's summary for the report.
 ```bash
 FLEET_ROOT=$(pwd -P)
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
 (cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/fleet-setup.py --fleet "$FLEET_ROOT" verify)
 for f in ~/fleet-local.tgz ~/claude-memory.tgz ~/fleet-restore ~/Downloads/fleet-local.tgz ~/Downloads/claude-memory.tgz; do
   [ -e "$f" ] && echo "SECRETS ARCHIVE STILL PRESENT: $f"
@@ -277,7 +280,7 @@ cd "$FLEET_ROOT"
 for repo in */; do
   repo=${repo%/}
   [ -d "$repo/.git" ] || continue
-  git -C "$repo" check-ignore -q .plans/ || echo "PLANS NOT IGNORED: $repo"
+  git -C "$repo" check-ignore -q "$(hero_store_name)/" || echo "PLANS NOT IGNORED: $repo"
 done
 ```
 

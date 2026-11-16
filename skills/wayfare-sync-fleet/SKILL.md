@@ -43,7 +43,7 @@ else
   # anti-pattern.
   CAND=$(git rev-parse --show-toplevel 2>/dev/null); CAND="${CAND:+$(dirname "$CAND")}"; CAND="${CAND:-$PWD}"
   echo "NO_FLEET candidate=$CAND"
-  if [ -e "$CAND/.fleet/.git" ]; then echo "REGISTER=$CAND/.fleet"; else echo "NO_REGISTER"; fi
+  if REG=$(hero_register_checkout "$CAND"); then echo "REGISTER=$REG"; else echo "NO_REGISTER"; fi
   "$SCAN" "$CAND" --list
 fi
 ```

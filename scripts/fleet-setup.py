@@ -440,10 +440,10 @@ def load_reviewed(fleet, fetch=True):
     working tree is never read: a branch checked out to review a register PR,
     or an unpushed edit, would otherwise choose what this machine installs."""
     root = pathlib.Path(fleet).resolve()
-    reg = root / ".fleet"
+    audit = audit_module()
+    reg = audit.register_dir(root)
     if not (reg / ".git").exists():
         raise Gate("NO_REGISTER", f"{reg} is not a git checkout")
-    audit = audit_module()
     pin = audit.pinned_register(root)
     if pin is None:
         raise Gate("NO_PIN", f"this machine pins no register for {root} ({audit.pin_file()})")
@@ -1104,6 +1104,21 @@ def main(argv=None):
         if bad:
             print(f"{a.path}: refused ({a.kind}); nothing unpacked")
             return 1
+        if a.extract and a.kind == "local":
+            # `.plans` is local store content: a restore under a server
+            # backend would diverge the two stores. A malformed backend
+            # refuses too, never reads as local.
+            try:
+                backend = audit_module().store_backend(a.fleet)
+            except ValueError as e:
+                print(f"{a.path}: refused; the store backend is unusable ({e}); nothing unpacked")
+                return 1
+            if backend != "local":
+                print(f"{a.path}: refused; this fleet's store is the server at {backend}, set by WAYFARE_STORE "
+                      "or the URL line in the pin file, so the local store takes no writes; nothing unpacked. "
+                      "Reading the archive still works without --extract. To restore locally, unset "
+                      "WAYFARE_STORE (or set it to local) and delete the URL line from the pin file")
+                return 1
         if a.extract:
             done, kept, refused = extract_archive(t, a.extract)
             for r in refused:

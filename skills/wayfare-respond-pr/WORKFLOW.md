@@ -42,9 +42,9 @@ as wrong. Do not ask about a row that already has the correct value.
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 . "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
+hero_config_show "$ROOT" || { [ $? -eq 1 ] || exit 1; echo "NO_HERO_CONFIG"; }
 hero_fleet_step0 || exit 1
 ```
 
@@ -594,11 +594,14 @@ passed `--loop` or confirms they want to loop, enter the iterative review loop.
 #### Loop Setup
 
 ```bash
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+# shellcheck source=/dev/null
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
 ITERATION=1
 MAX_ITERATIONS=5
-REVIEW_AGENT=$(grep '^\- agent:' "$ROOT/HERO.md" | sed 's/- agent: //' | head -1)
-TRIGGER=$(grep '^\- trigger:' "$ROOT/HERO.md" | sed 's/- trigger: //' | head -1)
-POLL_METHOD=$(grep '^\- poll-method:' "$ROOT/HERO.md" | sed 's/- poll-method: //' | head -1)
+REVIEW_AGENT=$(hero_field_raw agent "$ROOT")
+TRIGGER=$(hero_field_raw trigger "$ROOT")
+POLL_METHOD=$(hero_field_raw poll-method "$ROOT")
 ```
 
 Report to user:

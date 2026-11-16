@@ -98,9 +98,9 @@ compaction, which loaded skills may not.
 ## Step 2: Check for Existing HERO.md Configuration
 
 ```bash
-ls "$ROOT/HERO.md" 2>/dev/null && echo "EXISTS" || echo "NEW"
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 . "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
+hero_config_exists "$ROOT"; case $? in 0) echo "EXISTS" ;; 1) echo "NEW" ;; *) exit 1 ;; esac
 hero_fleet_step0 || exit 1
 ```
 
@@ -289,16 +289,19 @@ probe and expensive to guess, and the answer that matters most is which of the
 three states it is in: unset, `type: none`, or set.
 
 ```bash
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+# shellcheck source=/dev/null
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
 # reference — the template this repo was cloned from
 git log --reverse --format='%s' | head -3          # a template's initial commit often survives
-grep -n '^- template:' ../.fleet/FLEET.md 2>/dev/null   # the fleet names its template row
+hero_fleet_field template 2>/dev/null   # the fleet names its template row
 
 # architecture — is the record here, or somewhere else?
 ls DESIGN.md docs/architecture* 2>/dev/null
 
 # infrastructure — IaC in this repo, or a sibling that holds it
 ls -d terraform infra deploy k8s helm charts 2>/dev/null
-grep -n '^### ' ../.fleet/FLEET.md 2>/dev/null | head -20
+hero_fleet_repos 2>/dev/null | cut -f1 | head -20   # the fleet's rows
 ```
 
 **What to look for:**

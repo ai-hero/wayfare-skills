@@ -182,7 +182,6 @@ emit() {
 # ---------- shared context -------------------------------------------------
 
 ROOT=$(hero_root)
-HERO="$ROOT/HERO.md"
 DEFAULT_BRANCH=$(hero_default_branch "$ROOT")
 
 # Lazy gh-auth probe, set on first call, cached for the rest of the run.
@@ -337,12 +336,14 @@ check_repo() {
   ensure_gh_auth_probed
 
   # 1. HERO.md present
-  if [ -f "$HERO" ]; then
-    emit OK "repo: HERO.md present"
-  else
-    emit BLOCKER "repo: HERO.md missing — run wayfare:wayfare-init-repo"
-    return 0  # downstream checks read HERO.md; bail this bucket
-  fi
+  hero_config_exists "$ROOT"
+  case $? in
+    0) emit OK "repo: HERO.md present" ;;
+    1) emit BLOCKER "repo: HERO.md missing — run wayfare:wayfare-init-repo"
+       return 0 ;;  # downstream checks read HERO.md; bail this bucket
+    *) emit BLOCKER "repo: HERO.md could not be read from its store (see stderr) — not a missing config"
+       return 0 ;;
+  esac
 
   # 2. HERO.md staleness. Fast subset of scripts/check-hero-staleness.sh,
   # intentionally diverged: that script carries a longer pattern list
@@ -350,7 +351,7 @@ check_repo() {
   # Keep this list deliberately tight; the standalone script is the one
   # that grows. See check-hero-staleness.sh's header for the rationale.
   local hero_time config_time
-  hero_time=$(git -C "$ROOT" log -1 --format=%ct -- HERO.md 2>/dev/null | grep -E '^[0-9]+$' || echo "")
+  hero_time=$(hero_config_commit_time "$ROOT" | grep -E '^[0-9]+$' || echo "")
   config_time=$(git -C "$ROOT" log -1 --format=%ct -- \
     pyproject.toml ':(glob)**/pyproject.toml' \
     package.json ':(glob)**/package.json' \
@@ -359,7 +360,9 @@ check_repo() {
     .github/workflows .pre-commit-config.yaml \
     CLAUDE.md Makefile justfile Taskfile.yml 2>/dev/null \
     | grep -E '^[0-9]+$' || echo "")
-  if [ -z "$hero_time" ] && [ -z "$config_time" ]; then
+  if [ -z "$hero_time" ] && [ "$(hero_srv_route_root "$ROOT" 2>/dev/null)" = server ]; then
+    emit SKIP "repo: HERO.md is on the Wayfare server, which keeps no commit time — staleness unknown"
+  elif [ -z "$hero_time" ] && [ -z "$config_time" ]; then
     emit SKIP "repo: cannot read git history (empty repo?) — staleness unknown"
   elif [ "${config_time:-0}" -gt "${hero_time:-0}" ]; then
     emit WARN "repo: HERO.md may be stale — run wayfare:wayfare-init-repo recalibrate"
@@ -422,7 +425,9 @@ check_repo() {
 # Parses HERO.md projects[] into the PROJECTS array. Each entry is a single
 # line `name|path|port|dependency-file|dev-command`. Missing fields are empty.
 parse_hero_projects() {
-  awk '
+  local cfg
+  cfg=$(hero_config_show "$ROOT") || return 1
+  printf '%s\n' "$cfg" | awk '
     /^## Projects/        { in_projects = 1; next }
     in_projects && /^## / { in_projects = 0 }
     !in_projects          { next }
@@ -439,17 +444,20 @@ parse_hero_projects() {
     END {
       if (name != "") print name "|" path "|" port "|" depfile "|" devcmd
     }
-  ' "$HERO" 2>/dev/null
+  '
 }
 
 check_runtime() {
-  [ -f "$HERO" ] || { emit SKIP "runtime: HERO.md missing — cannot scope checks"; return 0; }
+  hero_config_exists "$ROOT" || { emit SKIP "runtime: HERO.md missing — cannot scope checks"; return 0; }
 
-  local projects=()
+  local projects=() parsed
+  # Read once and checked: a failed read piped into the parser is zero
+  # projects, which reads as "nothing to check" and passes.
+  parsed=$(parse_hero_projects) || { emit BLOCKER "runtime: HERO.md could not be read to scope the checks (see stderr)"; return 0; }
   while IFS= read -r line; do
     [ -z "$line" ] && continue
     projects+=("$line")
-  done < <(parse_hero_projects)
+  done <<< "$parsed"
 
   if [ "${#projects[@]}" -eq 0 ]; then
     emit SKIP "runtime: no projects[] section in HERO.md"

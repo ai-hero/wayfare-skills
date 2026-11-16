@@ -266,8 +266,8 @@ TO_PATH=$(hero_fleet_repos | awk -F'\t' -v n="$TO_ROW" '$1 == n { print $2 }')
 # remote URL, so an ext:: transport helper is not reachable from here.
 TO_ROOT=$(git -C "$TO_PATH" rev-parse --show-toplevel 2>/dev/null) \
   || { echo "fleet row '$TO_ROW' is not a git checkout — STOP" >&2; exit 1; }
-[ -d "$TO_ROOT/.plans/inbox" ] \
-  || { echo "'$TO_ROW' has no .plans/inbox/ — packet path" >&2; }
+hero_inbox_exists "$TO_ROOT" \
+  || { echo "'$TO_ROW' has no inbox — packet path" >&2; }
 
 # The sender's own row: the one whose path resolves to THIS root. `fleet` is
 # reserved for a fleet-root run and is never borrowed, and a row name guessed
@@ -316,7 +316,7 @@ already been promoted no longer sits in the inbox, and a message still sitting
 there has not been promoted yet:
 
 ```bash
-hero_msg_find "$TO_ROOT/.plans" "$FROM_ROW" "$ITEM_ID"   # 1 = not sent yet
+hero_msg_find "$(hero_store_path "$TO_ROOT")" "$FROM_ROW" "$ITEM_ID"   # 1 = not sent yet
 ```
 
 - **A live message** with this `(from, about)` → already delivered. Reuse it;
@@ -425,7 +425,7 @@ Then deposit, one message at a time, capturing each `msg_id`. It is the
 precondition for that item's status change below:
 
 ```bash
-hero_msg_deposit "$TO_ROOT/.plans" "$MSG_ID" "$STORE/.feedback/.body-$MSG_ID.md"
+hero_msg_deposit "$(hero_store_path "$TO_ROOT")" "$MSG_ID" "$STORE/.feedback/.body-$MSG_ID.md"
 ```
 
 Write the body file under `$STORE/.feedback/`, never at the store root: a stray

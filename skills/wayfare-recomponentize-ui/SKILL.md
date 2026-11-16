@@ -83,14 +83,14 @@ the repo consume its own output.
 
 ```bash
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
 # Reads a whole BLOCK, not a scalar field — hero_connection cannot express this.
 # Both spellings: the connection block, and the `## Design System` section an
 # unmigrated repo still carries. Matching only the first returns empty on those
 # repos, and `sed` exits 0 on empty, so the `||` fallback never fires and the
 # run reads as "no registry configured" for a repo that has one.
-sed -n -e '/^### design-system/,/^#\{2,3\} /p' -e '/^## Design System/,/^## /p' "$ROOT/HERO.md" 2>/dev/null `# hero-lint: allow-inline` | grep . || echo "NO_DESIGN_SYSTEM_CONFIG"
-WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
-. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
+hero_config_design_system "$ROOT" 2>/dev/null | grep . || echo "NO_DESIGN_SYSTEM_CONFIG"
 hero_fleet_step0 || exit 1
 ```
 

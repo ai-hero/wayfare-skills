@@ -545,6 +545,9 @@ procedures:
 | `wayfare:wayfare-review-fleet` | Report drift between `FLEET.md` and the checkouts beside it: rows not cloned here (informational), folders that are not checkouts, port collisions. Writes nothing |
 | `wayfare:wayfare-check-audit-claim` | Check a compliance tool's claim against what the auditor was told and against the systems, before it is reported. Calls named read tools only, and can compare the tool's tests, the register checks and the tickets. Writes nothing |
 | `wayfare:wayfare-audit-deep` | Run Cloudflare's security audit on one repo, on a person's explicit request: a wrapper over an MIT-licensed copy pinned and hash-checked under `assets/security-audit/`. Started by name. Needs a budget, is source-only by default, keeps run output outside every checkout, and files no ticket. Does not replace `wayfare-audit-security`'s dependency and image scanning |
+| `wayfare:wayfare-sync-product` | Write the whiteboard view of the product: what it is, its features with shipped, partial or planned status, and one statement each, with no restated code. Locally it writes `PRODUCT.md` ([docs/PRODUCT-MD.md](./docs/PRODUCT-MD.md)); on the Wayfare server it files the features as ideas a person accepts. Writes only what you confirm |
+| `wayfare:wayfare-review-product` | Report where `PRODUCT.md` (or the filed feature ideas) and the code have drifted: stale claims, wrong statuses, features nobody described. Writes nothing |
+| `wayfare:wayfare-work-task` | Pick up a ready task from the Wayfare server over MCP: claim it, build it through `wayfare-build-task`, open the PR, link it to the task, then report and comment. Releases the claim and says why when the build fails. Never reviews or merges its own task |
 | `wayfare:wayfare-write-handoff` | Distill the current conversation into one self-contained work-item for a downstream agent (optionally filed to the tracker, or to **another repo** with `--repo OWNER/NAME`) |
 
 ### Utilities
@@ -641,8 +644,8 @@ detect the staleness and remind you to run
 `wayfare:wayfare-init-repo recalibrate` to refresh. There is no auto-pre-commit
 hook for this. It was too slow. Run the refresh on demand.
 
-**`recalibrate` is on ten skills, and is a skill of its own.** When a skill does
-the wrong thing because its config is wrong, you fix it where you noticed:
+**`recalibrate` is on eleven skills, and is a skill of its own.** When a skill
+does the wrong thing because its config is wrong, you fix it where you noticed:
 `wayfare:wayfare-ship-pr recalibrate` asks about the fifteen fields
 `wayfare-ship-pr` reads across Repository, CI/CD, Deployment and the `issues`
 connection, writes what you confirm, commits, and stops. It does not then ship.

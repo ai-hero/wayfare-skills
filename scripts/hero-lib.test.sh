@@ -421,6 +421,90 @@ XDG_CONFIG_HOME="$PX" hero_register_pin "$F" >/dev/null; check "register-pin: a 
 printf '%s github.com/acme/fleet-register\n' "$TMP/flink" > "$PX/wayfare/registers"
 XDG_CONFIG_HOME="$PX" hero_register_pin "$F" >/dev/null; check "register-pin: a pin written through a symlink does not pin" "1" "$?"
 rm -f "$TMP/flink" "$TMP/pins.bak"
+
+# hero_store_backend: WAYFARE_STORE, else the pin's URL line, else local. The
+# env var is cleared per case so the caller's own setting never leaks in.
+sb() { ( unset WAYFARE_STORE; "$@" ); }
+rm -rf "$PX"; mkdir -p "$PX/wayfare"
+check "store-backend: no pin file and no override is local" "local" "$(XDG_CONFIG_HOME="$PX" sb hero_store_backend "$F/web")"
+printf '%s github.com/acme/fleet-register\n' "$F" > "$PX/wayfare/registers"
+check "store-backend: a register-only pin is local" "local" "$(XDG_CONFIG_HOME="$PX" sb hero_store_backend "$F/web")"
+printf '%s github.com/acme/fleet-register\n%s https://App.Example.com/ # prod\n' "$F" "$F" > "$PX/wayfare/registers"
+check "store-backend: the pin's URL line is the backend, trailing slash gone" \
+  "https://App.Example.com" "$(XDG_CONFIG_HOME="$PX" sb hero_store_backend "$F/web")"
+check "store-backend: the register line beside a URL line still reads as the register" \
+  "github.com/acme/fleet-register" "$(XDG_CONFIG_HOME="$PX" hero_register_pin "$F")"
+printf '%s https://app.example.com\n' "$F" > "$PX/wayfare/registers"
+XDG_CONFIG_HOME="$PX" hero_register_pin "$F" >/dev/null; check "store-backend: a URL line alone is not a register pin" "1" "$?"
+check "store-backend: WAYFARE_STORE=local wins over the pin" "local" "$(XDG_CONFIG_HOME="$PX" WAYFARE_STORE=local hero_store_backend "$F/web")"
+check "store-backend: WAYFARE_STORE URL wins over the pin" \
+  "http://127.0.0.1:33008" "$(XDG_CONFIG_HOME="$PX" WAYFARE_STORE=http://127.0.0.1:33008/ hero_store_backend "$F/web")"
+check "store-backend: WAYFARE_STORE URL applies with no pin file" \
+  "https://t.example.com" "$(XDG_CONFIG_HOME="$TMP/no-such-xdg" WAYFARE_STORE=https://t.example.com hero_store_backend "$TMP/nofleet/repo")"
+check "store-backend: an empty WAYFARE_STORE falls through to the pin" \
+  "https://app.example.com" "$(XDG_CONFIG_HOME="$PX" WAYFARE_STORE='' hero_store_backend "$F/web")"
+check "store-backend: another fleet's URL line is not this fleet's" "local" \
+  "$(printf '%s https://app.example.com\n' "$TMP/nofleet" > "$PX/wayfare/registers"; XDG_CONFIG_HOME="$PX" sb hero_store_backend "$F/web")"
+printf '%s ftp://app.example.com\n' "$F" > "$PX/wayfare/registers"
+XDG_CONFIG_HOME="$PX" sb hero_store_backend "$F/web" >/dev/null 2>&1; check "store-backend: a non-http pin URL is an error, not local" "1" "$?"
+XDG_CONFIG_HOME="$PX" WAYFARE_STORE=sever hero_store_backend "$F/web" >/dev/null 2>&1; check "store-backend: a malformed WAYFARE_STORE is an error, not local" "1" "$?"
+printf '%s https://app.example.com\n' "$F" > "$PX/wayfare/registers"
+XDG_CONFIG_HOME="$PX" sb hero_store_require_local "$F/web" >/dev/null 2>&1; check "store-guard: a server backend refuses a local write" "1" "$?"
+XDG_CONFIG_HOME="$PX" WAYFARE_STORE=local hero_store_require_local "$F/web" >/dev/null 2>&1; check "store-guard: local passes" "0" "$?"
+ERR=$(XDG_CONFIG_HOME="$PX" sb hero_store_require_local "$F/web" 2>&1 >/dev/null)
+GOT=""
+for w in WAYFARE_STORE registers https://app.example.com unset; do
+  case "$ERR" in *"$w"*) GOT="$GOT${GOT:+ }yes" ;; *) GOT="$GOT${GOT:+ }no" ;; esac
+done
+check "store-guard: the refusal names the switch, the pin file, the URL and the way back" "yes yes yes yes" "$GOT"
+
+# Reads keep resolving the local store under a server backend; only writes
+# refuse. The store is made first, on the local backend.
+SW="$TMP/srvw"; mkdir -p "$SW"; git init -q "$SW" 2>/dev/null
+( unset WAYFARE_STORE; hero_work_store "$SW" >/dev/null 2>&1 )
+mkdir -p "$SW/.plans/items"
+printf -- '---\nid: 1\ntype: task\nstatus: ready\n---\n' > "$SW/.plans/items/001-x.md"
+srv() { ( unset WAYFARE_STORE; export XDG_CONFIG_HOME="$PX" WAYFARE_STORE=https://app.example.com; "$@" ); }
+check "store-guard: hero_work_store still resolves the store under a server backend" "$SW/.plans" "$(srv hero_work_store "$SW" 2>/dev/null)"
+check "store-guard: an item read still works under a server backend" "ready" "$(srv hero_item_status "$SW/.plans/items/001-x.md")"
+rm -rf "$SW/.plans/inbox"
+srv hero_work_store "$SW" >/dev/null 2>&1
+check "store-guard: hero_work_store under a server backend creates nothing" "no" "$([ -e "$SW/.plans/inbox" ] && echo yes || echo no)"
+SN="$TMP/srvnone"; mkdir -p "$SN"; git init -q "$SN" 2>/dev/null
+srv hero_work_store "$SN" >/dev/null 2>&1; check "store-guard: hero_work_store under a server backend does not create a missing store" "1 no" "$? $([ -e "$SN/.plans" ] && echo yes || echo no)"
+
+mkdir -p "$SW/.plans/inbox"
+printf -- '---\nmsg_id: m-aa0001\nstatus: new\n---\nhi\n' > "$TMP/srvmsg.md"
+srv hero_msg_deposit "$SW/.plans" m-aa0001 "$TMP/srvmsg.md" >/dev/null 2>&1; check "store-guard: hero_msg_deposit refuses under a server backend" "1 no" "$? $([ -e "$SW/.plans/inbox/m-aa0001.md" ] && echo yes || echo no)"
+# build-task's item writes: local edits the file, a server backend never does.
+printf -- '---\nid: 3\ntype: task\nstatus: ready\n---\n\n## Subtasks\n\n- [ ] write the parser\n- [x] wire it up\n1. [ ] number one  \n\n## Definition of Done\n\n- [ ] write the parser\n\n## Log\n' > "$SW/.plans/items/003-w.md"
+check "item-write: set_status writes the status" "status: active" "$(sb hero_item_set_status 3 active "" "$SW")"
+sb hero_item_set_status 3 ready "" "$SW" >/dev/null
+check "item-write: ready also stamps ready_marked today" "$(date +%Y-%m-%d)" "$(hero_item_field "$SW/.plans/items/003-w.md" ready_marked)"
+check "item-write: committed is a local status" "status: committed" "$(sb hero_item_set_status 3 committed "" "$SW")"
+sb hero_item_set_status 3 "done" shipped "$SW" >/dev/null
+check "item-write: done takes its resolution" "done shipped" "$(hero_item_field "$SW/.plans/items/003-w.md" status) $(hero_item_field "$SW/.plans/items/003-w.md" resolution)"
+check "item-write: branch is a field write" "branch: feat/x" "$(sb hero_item_set 3 branch feat/x "$SW")"
+check "item-write: tick prints the box" "tick: write the parser" "$(sb hero_item_tick 3 "write the parser" "$SW")"
+check "item-write: every box with that text is ticked, the others left" "2 1" \
+  "$(grep -c '^- \[x\] write the parser$' "$SW/.plans/items/003-w.md") $(grep -c '^1\. \[ \] number one' "$SW/.plans/items/003-w.md")"
+check "item-write: a numbered box with trailing space ticks by its text" "tick: number one" "$(sb hero_item_tick 3 "number one" "$SW")"
+check "item-write: an already-ticked box is not an error" "tick: wire it up" "$(sb hero_item_tick 3 "wire it up" "$SW")"
+sb hero_item_tick 3 "write the" "$SW" >/dev/null 2>&1; check "item-write: a prefix is not the box (rc 1)" "1" "$?"
+SUM=$(cksum < "$SW/.plans/items/003-w.md")
+for c in "hero_item_set_status 3 active ''" "hero_item_set 3 branch feat/y" "hero_item_tick 3 wire"; do
+  ERR=$(eval "srv $c \"\$SW\"" 2>&1 >/dev/null); RC=$?
+  case "$ERR" in *https://app.example.com*) N=names ;; *) N="$ERR" ;; esac
+  check "item-write: '${c%% *}' under a server backend fails naming the server, file untouched" "1 names $SUM" "$RC $N $(cksum < "$SW/.plans/items/003-w.md")"
+done
+
+SHA=$(printf 'a%.0s' $(seq 40))
+srv hero_deploy_pending_add "$SW/.plans" "$SHA" 7 >/dev/null 2>&1; check "store-guard: hero_deploy_pending_add refuses under a server backend" "1 no" "$? $([ -e "$SW/.plans/.deploy-pending" ] && echo yes || echo no)"
+( unset WAYFARE_STORE; hero_deploy_pending_add "$SW/.plans" "$SHA" 7 ) >/dev/null 2>&1
+srv hero_deploy_pending_clear "$SW/.plans" "$SHA" >/dev/null 2>&1; check "store-guard: hero_deploy_pending_clear refuses and keeps the entry" "1 1" "$? $(wc -l < "$SW/.plans/.deploy-pending" | tr -d ' ')"
+check "store-guard: hero_deploy_pending still reads under a server backend" "$SHA" "$(srv hero_deploy_pending "$SW/.plans" | cut -f1)"
+( unset WAYFARE_STORE; hero_msg_deposit "$SW/.plans" m-aa0001 "$TMP/srvmsg.md" >/dev/null 2>&1 ); check "store-guard: the same deposit lands on the local backend" "yes" "$([ -e "$SW/.plans/inbox/m-aa0001.md" ] && echo yes || echo no)"
+( cd "$SW" && srv bash "$(dirname "$LIB")/migrate-plan.sh" >/dev/null 2>&1 ); check "store-guard: migrate-plan refuses under a server backend" "1" "$?"
 rm -rf "$PX"
 
 # The walk covers ancestors, not just the folder holding .fleet/.
@@ -2473,6 +2557,51 @@ check "local skills: unknown hook is named on stderr" "yes" "$(hero_local_skills
 check "local skills: no skills dir is empty, rc 0"    "yes" "$(hero_local_skills "$TMP/w" >/dev/null 2>&1 && echo yes || echo no)"
 W="$TMP/w/.plans"
 
+# ---------- store layer: config, store name, register ----------------------
+
+mkdir -p "$TMP/layer/.git" "$TMP/layer/.plans/inbox" "$TMP/nolayer"
+cat > "$TMP/layer/HERO.md" <<'EOF'
+# Hero Configuration
+
+## Repository
+
+- agent: coderabbit
+- trigger: post "@bot review # now"
+
+## Deployment
+
+- platform: fly
+- health-endpoint: https://a.example/healthz
+- health-endpoint: https://b.example/healthz
+
+## Wayfare
+
+- source-repo: none
+EOF
+
+check "config_exists: present" "yes" "$(hero_config_exists "$TMP/layer" && echo yes || echo no)"
+check "config_exists: absent" "no" "$(hero_config_exists "$TMP/nolayer" && echo yes || echo no)"
+check "config_show: prints the file" "# Hero Configuration" "$(hero_config_show "$TMP/layer" | head -1)"
+hero_config_show "$TMP/nolayer" >/dev/null 2>&1; check "config_show: absent is rc 1" "1" "$?"
+check "config_sections: heading and body" "## Deployment|- platform: fly" \
+  "$(hero_config_sections "$TMP/layer" 'Deployment' | sed -n '1p;3p' | paste -sd'|' -)"
+check "config_sections: stops at the next section" "" \
+  "$(hero_config_sections "$TMP/layer" 'Repository|Deployment' | grep -F 'source-repo')"
+check "config_section_body: heading excluded" "- source-repo: none" \
+  "$(hero_config_section_body "$TMP/layer" Wayfare | grep .)"
+check "field_all: every repeat" "2" "$(hero_field_all health-endpoint "$TMP/layer" | wc -l | tr -d ' ')"
+check "field_raw: keeps the # and quotes hero_field would strip" \
+  'post "@bot review # now"' "$(hero_field_raw trigger "$TMP/layer")"
+check "field_in: block-scoped read" "fly" "$(hero_field_in "$TMP/layer" platform '## Deployment')"
+check "store_name: the store directory" ".plans" "$(hero_store_name)"
+check "inbox_exists: present" "yes" "$(hero_inbox_exists "$TMP/layer" && echo yes || echo no)"
+check "inbox_exists: absent" "no" "$(hero_inbox_exists "$TMP/nolayer" && echo yes || echo no)"
+mkdir -p "$TMP/fl/.fleet/.git" "$TMP/fl/repo/deep"
+check "register_find: walks up to the folder holding .fleet/" "$(cd "$TMP/fl" && pwd -P)" \
+  "$(hero_register_find "$TMP/fl/repo/deep")"
+hero_register_find "$TMP/nolayer" >/dev/null 2>&1; check "register_find: none above is rc 1" "1" "$?"
+check "register_checkout: names the checkout" "$TMP/fl/.fleet" "$(hero_register_checkout "$TMP/fl")"
+
 if [ "$FAIL" -gt 0 ]; then
   echo "hero-lib: $PASS passed, $FAIL FAILED"
   exit 1
@@ -2488,7 +2617,7 @@ fi
 # floor with a hundred cases of slack protects nothing, which is how this
 # suite came to run 365 against a floor of 210. Raise it with every block you
 # add, and read the CI number rather than the local one when you do.
-MIN_CASES=475
+MIN_CASES=490
 if [ "$PASS" -lt "$MIN_CASES" ]; then
   echo "hero-lib: only $PASS cases ran, expected >= $MIN_CASES — a block stopped executing" >&2
   exit 1

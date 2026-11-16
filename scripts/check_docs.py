@@ -323,9 +323,7 @@ def check_counts(root):
     kinds_table = kinds_text.split("\n## ", 1)[0]
     facts = {
         "recalibrate": sum(
-            "\n## `recalibrate`" in "\n".join(
-                p.read_text() for p in (s, s.with_name("WORKFLOW.md")) if p.exists()
-            )
+            re.search(r"^argument-hint:.*recalibrate", s.read_text(), re.MULTILINE) is not None
             for s in skills
         ),
         "stage-skills": sum("\nuser-invocable: false" in s.read_text() for s in skills),

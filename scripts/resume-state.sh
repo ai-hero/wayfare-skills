@@ -80,7 +80,7 @@ case "$HF_RC" in
   0) hero_is_valid_branch "$DEFAULT_BRANCH" || { DEFAULT_BRANCH=main; fail_source "default-branch-invalid"; } ;;
   2) DEFAULT_BRANCH=main; fail_source "default-branch-rejected" ;;
   *) DEFAULT_BRANCH=main
-     [ -r "$(hero_root)/HERO.md" ] || fail_source "no-hero-md" ;;
+     hero_config_exists; case $? in 0) ;; 1) fail_source "no-hero-md" ;; *) fail_source "config-unreadable" ;; esac ;;
 esac
 
 CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)
@@ -253,14 +253,18 @@ ITEM_FILE=""
 SUBTASKS_OPEN=""; SUBTASKS_TOTAL=""; DOD_OPEN=""; DOD_TOTAL=""
 
 STORE=$(hero_store_path 2>/dev/null)
+# Under the server the store is the app, and a checkout may hold no .plans at
+# all: guarding on the local directory read as "nothing in flight".
+ROUTE=$(hero_srv_route_root "$(hero_root)") || { ROUTE=""; fail_source "store-backend"; }
+[ "$ROUTE" = server ] && STORE=.plans
 # Items live in `.plans/items/` under schema 1 (docs/PLAN.md); the listing
 # prints bare filenames, so every read below joins them to ITEMS, not STORE.
-ITEMS="$STORE/items"
+ITEMS=$(hero_items_dir) || { ITEMS=""; fail_source "store"; }
 # The guard is on the store, never on `items/`: an unmigrated store has no
 # such directory, and skipping the block for it read as "nothing in flight"
 # on every consumer the day schema 1 shipped. hero_ready_items refuses such a
 # store with rc=1, which is the `work-store` failure below.
-if [ -n "$STORE" ] && [ -d "$STORE" ]; then
+if [ -n "$ITEMS" ] && [ -n "$STORE" ] && { [ "$ROUTE" = server ] || [ -d "$STORE" ]; }; then
   # stderr stays visible: it carries hero_ready_items' reason for each invalid
   # row, and the caller's eval consumes stdout only.
   if ROWS=$(hero_ready_items "$STORE"); then

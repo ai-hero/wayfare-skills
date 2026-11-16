@@ -10,10 +10,13 @@ handoff, wayfare-grill-idea, wayfare-build-task and harden author items too and
 each stamps its name in `origin`. Every skill that touches work touches it
 through here.
 
-The store is local and private (`.git/info/exclude`, via `hero_exclude_add`). It
-is **also the reference model for the server-side store**, so every field below
-names the column it becomes. A shape that only works as loose Markdown files is
-a shape that has to be redesigned twice.
+A store has two backends behind the same `hero_*` functions: **local**, the
+files below, private to the checkout (`.git/info/exclude`, via
+`hero_exclude_add`), and **the Wayfare server**, which holds the same records in
+the app. `hero_store_backend` says which one a fleet uses (*Two stores*, below).
+The local store is **also the reference model for the server's**, so every field
+below names the column it becomes. A shape that only works as loose Markdown
+files is a shape that has to be redesigned twice.
 
 ## The principle
 
@@ -731,10 +734,126 @@ planned against, so it is stale from exactly the same head.
 Absent anchors mean legacy or unmigrated. `wayfare-sync-plan` backfills them and
 never computes staleness from an absent value.
 
+## Two stores
+
+One switch picks the backend for a whole fleet, never one repo, because inbox
+messages cross repos and a fleet split between backends would drop them.
+`hero_store_backend` prints `local` or the server's URL, in this order:
+
+1. `WAYFARE_STORE`, `local` or an `http(s)://` URL. It wins, so a rehearsal can
+   run against a test fleet without touching the machine's pin.
+2. A `FLEET_ROOT https://...` line in the pin file
+   `${XDG_CONFIG_HOME:-~/.config}/wayfare/registers`, beside the root's register
+   line (`docs/FLEET-MD.md`, *The register is pinned per machine*). The switch
+   is not in `HERO.md` or `FLEET.md` because both are records the server holds:
+   a switch stored in the thing it switches cannot be read before it is chosen.
+3. `local`.
+
+A value that is neither `local` nor an http(s) URL with no whitespace is an
+error, never a silent `local`: a fleet that meant the server would keep writing
+files the server never sees. So is a pin file holding URL lines that cannot be
+read, or a fleet map above the folder that cannot be read: either way the switch
+cannot be read, and reading it as `local` writes files the server never sees.
+
+Local is the default, so nothing changes until a person flips it. The skills
+call the same functions either way (`hero_ready_items`, `hero_item_field`,
+`hero_msg_deposit` and the rest), and no skill reads a store file directly;
+`scripts/validate.sh` fails one that does.
+
+Once the pin or `WAYFARE_STORE` names a server, the local backend **refuses
+writes** through `hero_store_require_local`: a write would put a record in files
+the server never sees, and the two stores would drift apart without an error.
+The refusal names the switch and how to flip back. Reads stay possible, because
+the cutover imports from the local files and the dry run compares against them.
+A hand edit of a `.plans/` file does not pass through a function and is not
+refused, which is why a skill writes its item through `hero_item_set_status`,
+`hero_item_set`, `hero_item_tick` and `hero_item_log` instead.
+wayfare-build-task does; `validate.sh` fails its prose if it tells the agent to
+set `status:` or `branch:` by hand, and other skills join that check as they are
+routed.
+
+The server backend is the store functions calling the `wayfare` CLI
+(`WAYFARE_CLI`, else `wayfare` on PATH), with the URL's one path segment as the
+workspace (`https://app.example.com/<workspace id>`) and a repo mapped to the
+project whose slug is its directory name. Built: `hero_ready_items`,
+`hero_idea_count`, `hero_goal_members` and `hero_goal_candidates` (items),
+`hero_items_dir` (a read-only cache directory; every caller only reads through
+it), `hero_item_file`, `hero_item_set`, `hero_item_log` and
+`hero_item_transition` (one item; a status moves by transition, never by
+`hero_item_set`), `hero_item_set_status` and `hero_item_tick` (below),
+`hero_msg_send`, `hero_msg_reply`, `hero_msg_close`, `hero_msg_find`,
+`hero_inbox_exists` and `hero_inbox_count` (messages), the config readers behind
+`hero_config_file` (`hero_field` and its siblings), `hero_plan_field`,
+`hero_fleet_repos`, `hero_fleet_repo_field`, `hero_fleet_field` (fleet) and
+`hero_audit_record`. Server data is rendered into a read-only cache in the local
+file shapes, so one parser answers both backends. The cache is under
+`${XDG_CACHE_HOME:-~/.cache}/wayfare-srv`, mode 700 and refused when it is not a
+directory the user owns; each listing is a new directory, so a second reader
+never empties the first. The renderer turns a control character in a value into
+a space (a newline in a title would write a field of its own) and refuses an
+item number that is not a whole number (it names a file). The server's own
+spelling is kept where the local one differs: `hero_msg_find` prints thread ids,
+not inbox paths. `hero_msg_send` takes the sender's `about` last, an item number
+or else the subject itself (the default), and sends a number as the thread's
+`about`, so `hero_msg_find` finds what was sent on both backends.
+
+An answer the server could not give is never an empty one. A CLI failure, a
+reply that is not JSON, or one missing the key a caller reads is an error naming
+the server; `hero_msg_find` returns 2 ("could not probe") for it, never 1 ("not
+sent"), which would send twice. The config readers return 2 when the source
+could not be asked and 1 only when there is no config or no such field, and the
+skills' Step 0 stops on 2: read as "no HERO.md", an outage sends a configured
+repo to `wayfare-init-repo`. `hero_item_set` checks a value before routing, so
+both backends accept and refuse the same ones, and quotes it locally by the
+renderer's rule; `blocked_on` stamps `blocked_since` locally.
+
+build-task's item writes follow the server's own moves. A claim sets a task
+active, `link_pr` and the merge verdict carry review and done, and the server
+refuses an agent's transition on a claimed task. So `hero_item_set_status` asks
+nothing for `active` on an item already active (else transitions it),
+transitions `planning`, `dropped` and an obsolete `done`, and logs `review`,
+`committed` and a shipped `done` as a `status` line, printing the server's
+status first and the logged one as `logged:`; `new`, `accepted` and `ready` are
+a person's marks and refused. `update_item` takes no branch and an agent cannot
+edit a ready item's description, where its checklist lives, so `branch:` is a
+`branch` log line and a tick a `tick` log line; the rendered item shows the
+newest `branch` line as `branch:` (in the store cache, open goals and active or
+review tasks are read whole, since the listing carries no log and no
+description) and every box a `tick` line names as `- [x]`. A box cannot be
+unticked on the server, so build-task logs a DoD line that no longer holds as a
+`mistake` rather than unticking it.
+
+A function never reads the local files in place of the server. What the server
+has no value for fails, naming the key: `hero_plan_field` keys other than
+`schema`, `source.head` and `target.head` (no `next_id`, `repo`,
+`default_branch`, `initialized`, `source.root`, `target.project`,
+`target.snapshot`); `hero_fleet_field` keys other than `org`, `template` and
+`port-range` (no `name`, `template-port`, `register`, `register-repo`);
+`hero_fleet_repo_field` keys other than `path`, `group`, `port` and `what`.
+`hero_config_commit_time` prints nothing and `hero_check_staleness` stays silent
+under a server: the config has no commit time there, and comparing none to a
+repo file's time would call every config stale. `preflight.sh` reports SKIP and
+`check-hero-staleness.sh` exits 0 for the same reason. A CLI failure is an error
+naming the server, never an empty result.
+
+Mapping that does not round-trip, so no skill depends on it: priority has
+`high`, `medium` and `low` on the server and `p0` to `p3` locally. `p1` to `p3`
+map to high, medium and low and back; `p0` has no server value, is sent as
+`high` and reads back `p1`, so the urgency a `p0` carried is lost under a
+server. `awaiting`, `replaced_by` and `channel` have no server field and read as
+absent, so under a server `hero_goal_candidates` cannot skip an item suspended
+on a message. The server's derived `blocked` flag is not written into an item
+file: `blocked_on` and `blocked_since` are, and the listing derives blocked from
+them and from `depends_on` as it does locally. A notice is closed on arrival. A
+fleet repo's path is `FLEET_ROOT/NAME`; the server holds none.
+
+Files stay untouched until the cutover: import, compare with the dry run, flip
+the pin. Deleting them and the local backend is a later change.
+
 ## The server-side mapping
 
-The store moves behind an API. This is the shape it lands in, and it is why the
-local format looks the way it does.
+The store is the app's. This is the shape it lands in, and it is why the local
+format looks the way it does.
 
 | Local | Server |
 | -- | -- |
@@ -742,7 +861,7 @@ local format looks the way it does.
 | `.plans/items/NNN-slug.md` frontmatter | one `items` row; `id` is unique per plan, not global |
 | `type` | enum column: the discriminator, five values |
 | `shape`, `channel` | nullable enum columns, valid only for their type |
-| `priority` | nullable enum column (`p0` to `p3`), valid on every type; null is unranked |
+| `priority` | nullable enum column (`p0` to `p3`), valid on every type; null is unranked. The app's has high, medium and low only, so `p0` is lost there (*Two stores*) |
 | `status` | enum column |
 | `resolution` | enum column, valid per type (shipped task; delivered, rejected signal; promoted idea, anti-feature; obsolete any); null until `done` |
 | `depends_on` | `item_dependencies` join table |
@@ -753,10 +872,15 @@ local format looks the way it does.
 | `## Log` lines | `item_events` rows: item, date, actor, tag, body |
 | `## Context` … `## Definition of Done` | text columns; DoD and Subtasks as ordered checklist rows |
 | `next_id` | the authoritative sequence, which it is not locally |
+| `.plans/inbox/` messages | message rows addressed to a project (`docs/MESSAGES.md`) |
+| the fleet map and its files (`.fleet/`) | fleet rows in the app, with the register's records (`setup.yaml`, `CONTROLS.yaml`, `CHECKS.yaml`, `CONSISTENCY.md`) beside them (`docs/FLEET-MD.md`) |
+| `HERO.md` | the project's config, read field by field through `hero_field` and its siblings |
 
-Two things stay local by design and never move: `.plans/inbox/`, which is a
-machine-local mailbox between sibling checkouts and is supposed to die with the
-folder (`docs/MESSAGES.md`), and the fleet register at `.fleet/`.
+The server is where inbox messages and the fleet map end up, not somewhere they
+were meant to stay out of. On the local backend they stay what they are today:
+`.plans/inbox/` is a mailbox between sibling checkouts that dies with the
+folder, and `.fleet/` is the register checkout. The column names for the rows
+are aihero-wayfare's contract, not this standard's.
 
 ## Migrating from the nine-kind schema
 

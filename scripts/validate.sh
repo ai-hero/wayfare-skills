@@ -566,13 +566,15 @@ fi
 # `.plans/inbox/` rather than routing through handoff, because handoff
 # distills the *current conversation* and would carry this session's state
 # into the sibling's inbox.
+# `wayfare-review-product` is here because wayfare-sync-product's update mode
+# chains it, and new-skill.sh scaffolds `disable-model-invocation: true`.
 # `wayfare-audit-security` is here because re-adding `disable-model-invocation: true` would
 # break every sync at its harden stage.
 # `wayfare-one-shot` is here because build-task's Step 1d chains it, and
 # new-skill.sh scaffolds `disable-model-invocation: true` by default.
 # `wayfare-check-preflight` is intentionally absent, wayfare-build-task runs
 # it via scripts/preflight.sh, not through the skill mechanism, so it may stay user-only.
-CHAINED_SKILLS="wayfare-grill-idea wayfare-push-pr wayfare-review-pr wayfare-respond-pr wayfare-ship-pr wayfare-build-task wayfare-review-architecture wayfare-sync-architecture wayfare-audit-security wayfare-one-shot"
+CHAINED_SKILLS="wayfare-grill-idea wayfare-push-pr wayfare-review-pr wayfare-respond-pr wayfare-ship-pr wayfare-build-task wayfare-review-architecture wayfare-sync-architecture wayfare-review-product wayfare-audit-security wayfare-one-shot"
 for chained in $CHAINED_SKILLS; do
   chained_file="$SKILLS_DIR/$chained/SKILL.md"
   # A missing chained skill silently breaks the calling pipeline at that step, so error
@@ -823,6 +825,81 @@ while IFS= read -r f; do
     "Source hero-lib.sh with the sanctioned WAYFARE_ROOT line and use Step 0's one form: hero_fleet_step0 || exit 1"
 done < <(find "$SKILLS_DIR" "$PLUGIN_ROOT/references" "$PLUGIN_ROOT/scripts/new-skill.sh" -type f 2>/dev/null)
 [[ $INLINE_FLEET_ERRORS -eq 0 ]] && pass "no inline fleet-root test in skills/, references/ or new-skill.sh"
+
+# ── store layer: nothing outside it reads a store file by name ─────
+# Plans, the fleet map, the config and the inbox are reached through hero-lib.sh,
+# hero-fields.sh and fleet-scan.sh (and audit.py for the scripts that are
+# Python). A skill, reference, hook or script that cat/greps/tests one of them
+# directly cannot follow the store to another backend: the fork only shows
+# when the backend changes, and then every such site reads the wrong place.
+#
+# Checks the code a skill runs, not prose about it: fenced blocks in
+# skills/ and references/, every line of hooks/*.sh and scripts/*.sh. Comment
+# lines are skipped. There is no opt-out marker: a read that has no function
+# yet gets one in hero-lib.sh.
+store_direct_reads() { # FILE MODE(md|sh) -> prints "LINE: text" per offending line
+  awk -v mode="$2" '
+    mode == "md" && /^[[:space:]]*```/ { fence = !fence; next }
+    mode == "md" && !fence             { next }
+    /^[[:space:]]*#/                   { next }
+    {
+      line = $0
+      sub(/[[:space:]]#[[:space:]].*$/, "", line)
+      tok = "(HERO\\.md|FLEET\\.md|\\.plans|\\.fleet|/inbox)"
+      cmd = "(^|[^[:alnum:]_.-])(cat|grep|egrep|fgrep|sed|awk|head|tail|ls|find|cp|mv|rm|tee|wc|stat|diff|sort)[[:space:]]"
+      if ((line ~ cmd && line ~ tok) || line ~ ("[<>][[:space:]]*[^[:space:]]*" tok) || line ~ ("\\[ -[a-z] [^]]*" tok))
+        print NR ": " $0
+    }
+  ' "$1"
+}
+STORE_DIRECT_ERRORS=0
+while IFS= read -r f; do
+  case "$f" in
+    */scripts/hero-lib.sh|*/scripts/hero-fields.sh|*/scripts/fleet-scan.sh|*/scripts/validate.sh|*.test.sh) continue ;;
+  esac
+  case "$f" in *.md) mode=md ;; *) mode="sh" ;; esac
+  hits=$(store_direct_reads "$f" "$mode")
+  [ -z "$hits" ] && continue
+  STORE_DIRECT_ERRORS=$((STORE_DIRECT_ERRORS + 1))
+  error "reads a store file directly, outside the store layer" \
+    "${f#"$PLUGIN_ROOT/"}" "$(printf '%s' "$hits" | head -1 | cut -d: -f1)" \
+    "Source scripts/hero-lib.sh and call a hero_* function (hero_config_show, hero_field, hero_items_dir, hero_fleet_repos, ...), or add one there"
+done < <({ find "$SKILLS_DIR" "$PLUGIN_ROOT/references" -type f -name '*.md'; find "$PLUGIN_ROOT/hooks" "$PLUGIN_ROOT/scripts" -maxdepth 1 -type f -name '*.sh'; } 2>/dev/null)
+
+# The Python scripts: a path join naming a store file belongs to audit.py's
+# config_path, register_dir and fleet_map, which every other script calls.
+while IFS= read -r f; do
+  case "$f" in */scripts/audit.py|*_test.py) continue ;; esac
+  hits=$(grep -nE '/ *"(HERO\.md|FLEET\.md|\.plans|\.fleet|inbox)"' "$f" || true)
+  [ -z "$hits" ] && continue
+  STORE_DIRECT_ERRORS=$((STORE_DIRECT_ERRORS + 1))
+  error "joins a store file's path directly, outside the store layer" \
+    "${f#"$PLUGIN_ROOT/"}" "$(printf '%s' "$hits" | head -1 | cut -d: -f1)" \
+    "Use audit.config_path, audit.register_dir or audit.fleet_map, or add the function to audit.py"
+done < <(find "$PLUGIN_ROOT/scripts" -maxdepth 1 -type f -name '*.py' 2>/dev/null)
+[[ $STORE_DIRECT_ERRORS -eq 0 ]] && pass "no store file is read outside the store layer"
+
+# ── store layer: a routed skill writes its item through it ─────────
+# Under a server backend the item file is a read-only render, so prose that
+# tells the agent to set `status:` or `branch:` by hand writes nowhere. A skill
+# joins ITEM_WRITES_ROUTED once its item writes call hero_item_set_status,
+# hero_item_set, hero_item_tick and hero_item_log; the rest still edit by hand.
+ITEM_WRITES_ROUTED="wayfare-build-task"
+item_hand_writes() { # FILE -> prints "LINE: text" per instruction to edit a field by hand
+  grep -nE '(^|[^[:alnum:]_])([Ss]et|[Ff]lip[a-z]*( it| the item| the task)? to|[Ww]rite|[Mm]ark( it| the item| the task)?) `(status|branch): ' "$1" || true
+}
+ITEM_WRITE_ERRORS=0
+for s in $ITEM_WRITES_ROUTED; do
+  while IFS= read -r f; do
+    hits=$(item_hand_writes "$f")
+    [ -z "$hits" ] && continue
+    ITEM_WRITE_ERRORS=$((ITEM_WRITE_ERRORS + 1))
+    error "tells the agent to set an item field by hand" \
+      "${f#"$PLUGIN_ROOT/"}" "$(printf '%s' "$hits" | head -1 | cut -d: -f1)" \
+      "Call hero_item_set_status ID STATUS or hero_item_set ID branch BRANCH (scripts/hero-lib.sh)"
+  done < <(find "$SKILLS_DIR/$s" -type f -name '*.md' 2>/dev/null)
+done
+[[ $ITEM_WRITE_ERRORS -eq 0 ]] && pass "routed skills write their item through the store layer"
 
 # ── work-item store: producers must have a consumer ────────────────
 # wayfare-grill-idea, handoff, and harden all WRITE work-items into .plans/

@@ -29,7 +29,9 @@ ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null) || exit 0
 HERO_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/hero-lib.sh"
 # shellcheck source=/dev/null
 . "$HERO_LIB" 2>/dev/null || exit 0
-[ -d "$(hero_store_path "$ROOT")" ] || exit 0
+STORE_PATH=$(hero_store_path "$ROOT")
+[ -d "$STORE_PATH" ] || exit 0
+STORE_NAME=$(hero_store_name)
 
 TRANSCRIPT=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null)
 [ -f "$TRANSCRIPT" ] || exit 0
@@ -51,10 +53,11 @@ TURN=$(jq -c -s '
 # A turn that wrote to the store already filed something; trust it. Only a
 # write counts: a Read or grep of .plans/ is how an agent checks for an item,
 # and counting it waved through the very turn that looked and filed nothing.
-printf '%s' "$TURN" | jq -e '
-  def store_path: test("(^|/)\\.plans/");
+printf '%s' "$TURN" | jq -e --arg dir "$STORE_NAME" '
+  ($dir | gsub("\\."; "\\.")) as $d
+  | def store_path: test("(^|/)" + $d + "/");
   def store_write:
-    test("(>>?|\\btee\\b(\\s+-a)?)\\s*[\"'"'"']?[^\\s|;&]*(\\.plans/|STORE|hero_store_path|hero_work_store|hero_items_dir)")
+    test("(>>?|\\btee\\b(\\s+-a)?)\\s*[\"'"'"']?[^\\s|;&]*(" + $d + "/|STORE|hero_store_path|hero_work_store|hero_items_dir)")
     or test("\\bhero_(msg_deposit|deploy_pending_add|deploy_pending_clear)\\b|migrate-plan\\.sh");
   any(.[]; .type == "assistant"
       and any(.message.content[]?; .type == "tool_use"
@@ -73,7 +76,7 @@ fi
 [ -n "$MESSAGE" ] || exit 0
 
 # A message that names an item already points at where the work is filed.
-printf '%s' "$MESSAGE" | grep -qiE '\bitems? #?[0-9]+|(^|[^[:alnum:]&/])#[0-9]+\b|\.plans/items/' && exit 0
+printf '%s' "$MESSAGE" | grep -qiE '\bitems? #?[0-9]+|(^|[^[:alnum:]&/])#[0-9]+\b|'"${STORE_NAME//./\\.}"'/items/' && exit 0
 
 # Bare "follow-up" and "deferred" stay off this list: wayfare's own reports say
 # "follow-up ground" (references/goals.md) and "mark-ready deferred to caller"

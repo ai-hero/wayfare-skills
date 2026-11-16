@@ -36,7 +36,8 @@ hero_connections "$ROOT"; rc=$?
 # below and a repo that set it to something odd should show that here.
 # Gate on CONTENT, not awk's exit code: awk exits 0 with empty output when
 # HERO.md exists but has no such block, so `|| echo` would never fire.
-WF_BLOCK=$(awk '/^## Wayfare/{f=1;next} /^## /{f=0} f' "$ROOT/HERO.md" 2>/dev/null) # hero-lint: allow-inline — display only; values are read via the readers below
+# rc 2 is a backend that could not be asked: an outage, never "unconfigured".
+WF_BLOCK=$(hero_config_section_body "$ROOT" Wayfare) || [ $? -eq 1 ] || exit 1
 [ -n "$WF_BLOCK" ] && printf '%s\n' "$WF_BLOCK" || echo "NO_HERO_CONFIG"
 # Guard the store before anything derives a path from it: hero_work_store can
 # fail (non-repo root, symlinked store), and an empty $STORE would put the

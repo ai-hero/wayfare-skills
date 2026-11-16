@@ -119,9 +119,103 @@ hero_md_field() {
 # the CI/CD value answers a Deployment question. `health-endpoint` repeats
 # within a section and needs its own scan (see ship-pr).
 hero_field() {
-  local root
+  local root f
   root="${2:-$(hero_root)}"
-  hero_md_field "$root/HERO.md" "$1"
+  f=$(hero_config_file "$root") || return 2
+  hero_md_field "$f" "$1"
+}
+
+# The store layer for HERO.md. A skill, reference, hook or script never opens
+# the file by name: it asks one of these, so what answers (the file, or the
+# server's rendered copy) changes in one place. validate.sh fails a direct
+# read. rc 1 is "no config" or "no such field"; rc 2 is "could not ask" (the
+# backend switch is unusable, or the server refused or failed). Read as rc 1,
+# an outage sends a configured repo to wayfare-init-repo.
+
+# One field from a named block of the config, as hero_md_field reads it:
+# `platform` repeats across sections, so a bare hero_field answers the wrong one.
+hero_field_in() { # ROOT KEY BLOCK [PARENT]
+  local f
+  f=$(hero_config_file "$1") || return 2
+  hero_md_field "$f" "$2" "$3" "${4:-}"
+}
+
+# Path of the config source. Only for a caller that must hand a path to another
+# tool; a caller that wants content uses hero_config_show.
+hero_config_file() { # [ROOT]
+  local root b
+  root="${1:-$(hero_root)}"
+  b=$(hero_srv_route_root "$root") || return 1
+  [ "$b" = local ] || { hero_srv_config_file "$root"; return; }
+  printf '%s' "$root/HERO.md"
+}
+
+# Whether a readable config exists: rc 0 yes, 1 no, 2 could not ask.
+hero_config_exists() { # [ROOT]
+  local f
+  f=$(hero_config_file "${1:-}") || return 2
+  [ -r "$f" ]
+}
+
+# The whole config on stdout; rc 1 and no output when there is none, rc 2 when
+# the source could not be asked.
+hero_config_show() { # [ROOT]
+  local f
+  f=$(hero_config_file "${1:-}") || return 2
+  [ -r "$f" ] || return 1
+  cat "$f"
+}
+
+# Unix time of the config's last commit; prints nothing when it has none.
+hero_config_commit_time() { # [ROOT]
+  local r
+  r=$(hero_srv_route_root "${1:-}") || return 1
+  [ "$r" = server ] && return 0
+  git -C "${1:-$(hero_root)}" log -1 --format=%ct -- HERO.md 2>/dev/null
+}
+
+# Every `## NAME` section whose NAME matches the ERE, heading included, through
+# the line before the next `## `. Prints nothing when none match, so gate on
+# content, not rc: awk exits 0 on no match.
+hero_config_sections() { # ROOT NAME_ERE
+  local f
+  f=$(hero_config_file "$1") || return 2
+  [ -r "$f" ] || return 1
+  awk -v re="^## ($2)[[:space:]]*$" '/^## /{f = ($0 ~ re)} f' "$f"
+}
+
+# The body of the first `## NAME` section, heading excluded.
+hero_config_section_body() { # ROOT NAME
+  local f
+  f=$(hero_config_file "$1") || return 2
+  [ -r "$f" ] || return 1
+  awk -v n="## $2" 'index($0, n) == 1 {f=1; next} /^## /{f=0} f' "$f"
+}
+
+# The design-system block in both spellings: the `### design-system` connection
+# block and the `## Design System` section an unmigrated repo still carries.
+# Matching only the first returns empty on those repos.
+hero_config_design_system() { # [ROOT]
+  local f
+  f=$(hero_config_file "${1:-}") || return 2
+  [ -r "$f" ] || return 1
+  sed -n -e '/^### design-system/,/^#\{2,3\} /p' -e '/^## Design System/,/^## /p' "$f"
+}
+
+# Every value of a repeating `- KEY: value` line, one per line, unprocessed.
+# hero_field returns only the first; `health-endpoint` legitimately repeats.
+hero_field_all() { # KEY [ROOT]
+  local f
+  f=$(hero_config_file "${2:-}") || return 2
+  [ -r "$f" ] || return 1
+  awk -v k="- $1:" 'index($0, k) == 1 {sub(/^[^:]*: */, ""); print}' "$f"
+}
+
+# The first `- KEY: value` as written: no comment or quote stripping, unlike
+# hero_field. For a value that legitimately holds `#` or quotes, such as a
+# trigger comment's text.
+hero_field_raw() { # KEY [ROOT]
+  hero_field_all "$@" | head -1
 }
 
 # One field from a connection block in HERO.md (docs/CONNECTIONS.md):
@@ -208,17 +302,17 @@ hero_connection_guard() { # KIND KEY VALUE [TYPE]
 hero_connection() { # KIND KEY [ROOT]
   local root value ctype
   root="${3:-$(hero_root)}" || return 1
-  value=$(hero_md_field "$root/HERO.md" "$2" "### $1" "## Connections") || return $?
+  value=$(hero_md_field "$(hero_config_file "$root")" "$2" "### $1" "## Connections") || return $?
   # The block's own `type` decides what shape `at` may take. Read straight from
   # hero_md_field, never back through hero_connection, which would recurse.
   # The compliance route's names are judged against the route's own type,
   # which defaults to the main one.
   case "$2" in
     at|compliance-type)
-      ctype=$(hero_md_field "$root/HERO.md" type "### $1" "## Connections" 2>/dev/null) ;;
+      ctype=$(hero_md_field "$(hero_config_file "$root")" type "### $1" "## Connections" 2>/dev/null) ;;
     compliance-team|compliance-project|compliance-label)
-      ctype=$(hero_md_field "$root/HERO.md" compliance-type "### $1" "## Connections" 2>/dev/null) ||
-        ctype=$(hero_md_field "$root/HERO.md" type "### $1" "## Connections" 2>/dev/null) ;;
+      ctype=$(hero_md_field "$(hero_config_file "$root")" compliance-type "### $1" "## Connections" 2>/dev/null) ||
+        ctype=$(hero_md_field "$(hero_config_file "$root")" type "### $1" "## Connections" 2>/dev/null) ;;
   esac
   hero_connection_guard "$1" "$2" "$value" "${ctype:-}" || return 2
   printf '%s' "$value"
@@ -376,7 +470,7 @@ hero_connection_repo() { # KIND [ROOT]
 hero_connections() { # [ROOT]
   local root
   root="${1:-$(hero_root)}" || return 1
-  [ -r "$root/HERO.md" ] || return 1
+  hero_config_exists "$root" || return 1
   awk '
     # \034, not a tab, for the reason hero_fleet_repos gives (see its awk).
     # No apostrophe anywhere in this program: it is single-quoted, and one
@@ -405,7 +499,7 @@ hero_connections() { # [ROOT]
       else if (k == "reach" && r == "") r = v
     }
     END { flush() }
-  ' "$root/HERO.md" | {
+  ' "$(hero_config_file "$root")" | {
     local kind t a r v reason seen nbad
     seen=" "; nbad=0
     while IFS=$'\034' read -r kind t a r; do
@@ -572,6 +666,8 @@ hero_default_branch_verbose() {
 hero_check_staleness() {
   local root hero_time config_time
   root="${1:-$(hero_root)}"
+  hero_time=$(hero_srv_route_root "$root") || return 1
+  [ "$hero_time" = server ] && return 0
   [ -r "$root/HERO.md" ] || return 0
   hero_time=$(git -C "$root" log -1 --format=%ct -- HERO.md 2>/dev/null | grep -E '^[0-9]+$' || echo 0)
   config_time=$(git -C "$root" log -1 --format=%ct -- \
@@ -732,6 +828,8 @@ hero_fleet_step0() { # [DIR]
   return 0
 }
 
+hero_pin_file() { printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"; }
+
 # The register HOST/OWNER/NAME this machine pins for FLEET_ROOT, or return 1.
 # The pin file is ${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers: one line
 # per fleet, the root's absolute physical path, whitespace, HOST/OWNER/NAME
@@ -740,12 +838,15 @@ hero_fleet_step0() { # [DIR]
 # read as github.com/OWNER/NAME. It lives outside the register on purpose: the
 # map's own register-repo is written from inside the checkout it vouches for.
 # scripts/audit.py's pinned_register() reads the same file the same way.
+# A line whose second field holds `://` is an app URL (hero_store_backend), not
+# a register: both readers skip it, so one root may carry both lines and a URL
+# is never handed on as a register identity.
 hero_register_pin() { # FLEET_ROOT
   local root file v
   root=$(cd "$1" 2>/dev/null && pwd -P) || return 1
-  file="${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"
+  file=$(hero_pin_file)
   [ -r "$file" ] || return 1
-  v=$(awk -v want="$root" '{ sub(/#.*/, "") } NF == 2 && $1 == want { print tolower($2); found = 1; exit } END { exit !found }' "$file") || return 1
+  v=$(awk -v want="$root" '{ sub(/#.*/, "") } NF == 2 && $1 == want && $2 !~ /:\/\// { print tolower($2); found = 1; exit } END { exit !found }' "$file") || return 1
   v=${v%/}; v=${v%.git}
   case "$v" in file*) ;; */*/*) ;; */*) v="github.com/$v" ;; esac
   printf '%s\n' "$v"
@@ -761,7 +862,7 @@ hero_require_register_pin() { # FLEET_ROOT
   local root file
   hero_register_pin "$1" && return 0
   root=$(cd "$1" 2>/dev/null && pwd -P) || root=$1
-  file="${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/registers"
+  file=$(hero_pin_file)
   case "$root" in
     *[[:space:]]*)
       echo "hero_require_register_pin: this machine pins no register for $root, and a path with whitespace cannot be pinned; move the fleet folder to a path without it" >&2
@@ -783,9 +884,11 @@ hero_require_register_pin() { # FLEET_ROOT
 # A fleet-level `- key: value` from the `## Fleet` section.
 #   hero_fleet_field name
 hero_fleet_field() { # KEY [FLEET_ROOT]
-  local root
+  local root r
   local map
   root="${2:-$(hero_fleet_root)}" || return 1
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = server ]; then hero_srv_fleet_field "$1" "$root"; return; fi
   map=$(hero_fleet_map "$root") || return
   hero_md_field "$map" "$1" "## Fleet"
 }
@@ -793,9 +896,11 @@ hero_fleet_field() { # KEY [FLEET_ROOT]
 # One `- key: value` from a repo's `### NAME` block under `## Repos`.
 #   hero_fleet_repo_field auth port
 hero_fleet_repo_field() { # NAME KEY [FLEET_ROOT]
-  local root
+  local root r
   local map
   root="${3:-$(hero_fleet_root)}" || return 1
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = server ]; then hero_srv_fleet_repo_field "$1" "$2" "$root"; return; fi
   map=$(hero_fleet_map "$root") || return
   hero_md_field "$map" "$2" "### $1" "## Repos"
 }
@@ -833,8 +938,10 @@ hero_fleet_repo_field() { # NAME KEY [FLEET_ROOT]
 # empties the PATH-tied array and awk becomes "command not found", leaving an empty
 # registry with rc 0.
 hero_fleet_repos() { # [FLEET_ROOT]
-  local root map rc
+  local root map rc r
   root="${1:-$(hero_fleet_root)}" || return 1
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = server ]; then hero_srv_fleet_repos "$root"; return; fi
   map=$(hero_fleet_map "$root"); rc=$?
   case "$rc" in 0) ;; 2) return 2 ;; *) echo "hero_fleet_repos: no fleet map under $root (.fleet/FLEET.md)" >&2; return 1 ;; esac
   [ -r "$map" ] || { echo "hero_fleet_repos: cannot read $map" >&2; return 1; }
@@ -1101,6 +1208,91 @@ hero_store_path() { # [ROOT]
   printf '%s' "$root/.plans"
 }
 
+# The store directory's name inside a repo, for a caller that must name it in a
+# pattern, an exclude list or a tar member rather than open it.
+hero_store_name() {
+  printf '%s' '.plans'
+}
+
+# Whether ROOT's store has an inbox a message can be deposited into.
+hero_inbox_exists() { # [ROOT]
+  local r root
+  root=$(hero_srv_root "${1:-}")
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = server ]; then hero_srv_project "$root" >/dev/null; return; fi
+  [ -d "$(hero_store_path "${1:-}")/inbox" ]
+}
+
+# The register checkout under fleet folder DIR: prints its path and returns 0
+# when it is a git checkout, returns 1 when there is none.
+hero_register_checkout() { # DIR
+  [ -e "$1/.fleet/.git" ] || return 1
+  printf '%s' "$1/.fleet"
+}
+
+# The nearest folder at or above START (default: the cwd) that holds a `.fleet/`
+# register checkout, or rc 1. Looser than hero_fleet_root on purpose: the
+# SessionStart hook only needs the register, and must stay silent when the map
+# is unreadable.
+hero_register_find() { # [START]
+  local d
+  d=$(cd "${1:-$PWD}" 2>/dev/null && pwd -P) || return 1
+  while [ ! -d "$d/.fleet/.git" ]; do
+    [ "$d" = / ] && return 1
+    d=$(dirname "$d")
+  done
+  printf '%s' "$d"
+}
+
+# Which store backend this fleet runs on: prints `local` or the app's URL.
+# WAYFARE_STORE (`local` or a URL) wins, for rehearsal runs; else the pin file's
+# URL line for the fleet root (`FLEET_ROOT https://app.example.com/<workspace
+# id>`, beside any register line for the same root); else `local`. A value
+# that is neither `local` nor an http(s) URL is an error (rc 1, stderr), and so
+# is a pin file holding URL lines that cannot be read or a fleet map that
+# cannot be read: none of them is a silent fall back to local, since a fleet
+# that meant the server would keep writing files the server never sees.
+hero_store_backend() { # [DIR]
+  local v file root rc
+  v=${WAYFARE_STORE:-}
+  if [ -z "$v" ]; then
+    file=$(hero_pin_file)
+    [ -e "$file" ] || { echo local; return 0; }
+    [ -r "$file" ] || { echo "hero_store_backend: cannot read the pin file $file, so whether this fleet's store is the server is unknown" >&2; return 1; }
+    grep -q '://' "$file" 2>/dev/null || { echo local; return 0; }
+    root=$(hero_fleet_root "${1:-$PWD}" 2>/dev/null); rc=$?
+    case "$rc" in
+      0) ;;
+      1) echo local; return 0 ;;
+      *) hero_fleet_root "${1:-$PWD}" >/dev/null
+         echo "hero_store_backend: the fleet map above ${1:-$PWD} cannot be read, so whether this fleet's store is the server is unknown; fix the map" >&2
+         return 1 ;;
+    esac
+    v=$(awk -v want="$root" '{ sub(/#.*/, "") } NF == 2 && $1 == want && $2 ~ /:\/\// { print $2; exit }' "$file")
+    [ -n "$v" ] || { echo local; return 0; }
+  fi
+  case "$v" in
+    local) echo local ;;
+    http://?*|https://?*)
+      case "$v" in *[[:space:]]*) ;; *) printf '%s\n' "${v%/}"; return 0 ;; esac
+      echo "hero_store_backend: '$v' is not a usable store URL (whitespace)" >&2; return 1 ;;
+    *) echo "hero_store_backend: '$v' is neither 'local' nor an http(s) URL; fix WAYFARE_STORE or the pin file" >&2; return 1 ;;
+  esac
+}
+
+# The write guard every local store write passes through. Reads of local files
+# stay possible under a server backend (the archive is read from them); a write
+# would diverge the two stores silently, so it stops here, names the switch and
+# says how to flip back. An unusable backend value stops too, never reads as
+# local.
+hero_store_require_local() { # [DIR] [WHAT]
+  local b
+  b=$(hero_store_backend "${1:-}") || return 1
+  [ "$b" = local ] && return 0
+  echo "hero: refusing to write the local store${2:+ ($2)}: this fleet's store is the server at $b, set by WAYFARE_STORE or the URL line in the pin file ($(hero_pin_file)). Local reads still work. To write locally again, unset WAYFARE_STORE (or set WAYFARE_STORE=local to rehearse) and delete the URL line from the pin file" >&2
+  return 1
+}
+
 # Absolute path to the work-item store, created and git-ignored on first use.
 # A dot-directory: tool-private state, like `.beads/`. It keeps the repo root
 # clean and is far less likely to collide with a real project directory.
@@ -1110,9 +1302,17 @@ hero_store_path() { # [ROOT]
 # the new name.
 # shellcheck disable=SC2120  # optional arg; callers usually rely on the default
 hero_work_store() {
-  local root store legacy link
+  local root store legacy link b
   store=$(hero_store_path "${1:-}")
   root=${store%/.plans}
+  b=$(hero_store_backend "$root") || return 1
+  # Under a server backend this is a read: the local store is resolved where
+  # it already is, and nothing is created, migrated or excluded.
+  if [ "$b" != local ]; then
+    [ -d "$store" ] && [ ! -L "$store" ] || { echo "hero_work_store: no local store at '$store' to read; the backend is the server at $b" >&2; return 1; }
+    printf '%s' "$store"
+    return 0
+  fi
 
   # Establish we can actually ignore the store BEFORE creating or migrating
   # anything. Doing it after meant a non-git directory got a store created and
@@ -1332,6 +1532,8 @@ hero_item_channel() {
 # previous head on every run.
 hero_plan_field() { # KEY [STORE]
   local store
+  store=$(hero_srv_route_store "${2:-}") || return 1
+  if [ "$store" = server ]; then hero_srv_plan_field "$1" "${2:-}"; return; fi
   store="${2:-$(hero_store_path)}"
   [ -f "$store/PLAN.md" ] || return 1
   case "$1" in
@@ -1353,6 +1555,12 @@ hero_plan_field() { # KEY [STORE]
 # lists as a malformed item.
 # shellcheck disable=SC2120  # optional arg; callers usually rely on the default
 hero_items_dir() { # [ROOT]
+  local r store
+  r=$(hero_srv_route_root "${1:-}") || return 1
+  if [ "$r" = server ]; then
+    store=$(hero_srv_store "$(hero_srv_root "${1:-}")") || return 1
+    printf '%s' "$store/items"; return
+  fi
   printf '%s' "$(hero_store_path "${1:-}")/items"
 }
 
@@ -1364,8 +1572,9 @@ hero_items_dir() { # [ROOT]
 # The listing itself still emits an `idea` row per item, because a caller
 # parsing rows must see every item; the collapsing is presentation.
 hero_idea_count() { # [STORE]
-  local items f n=0
-  items="${1:-$(hero_store_path)}/items"
+  local items f n=0 store
+  store=$(hero_srv_store_for "${1:-}" "$(hero_store_path)") || return 1
+  items="$store/items"
   [ -d "$items" ] || { printf 0; return 0; }
   ( cd "$items" 2>/dev/null || { printf 0; exit 0; }
     setopt localoptions nullglob 2>/dev/null || true
@@ -1393,7 +1602,8 @@ hero_idea_count() { # [STORE]
 hero_goal_members() { # GOAL_ID [STORE]
   local items f id parent rank
   [ -n "$1" ] || { echo "hero_goal_members: empty GOAL_ID" >&2; return 2; }
-  items="${2:-$(hero_store_path)}/items"
+  items=$(hero_srv_store_for "${2:-}" "$(hero_store_path)") || return 1
+  items="$items/items"
   [ -d "$items" ] || return 1
   ( cd "$items" 2>/dev/null || return 1
     setopt localoptions nullglob 2>/dev/null || true
@@ -1540,7 +1750,9 @@ hero_member_planned() { # ITEM_FILE GOAL_FILE
 # with no inbox/ is 0; an `inbox` that is a file, not a directory, is a
 # defect named on stderr, since a deposit into it would fail.
 hero_inbox_count() { # STORE [claimed]
-  local n=0 f st
+  local n=0 f st r
+  r=$(hero_srv_route_store "${1:-}") || return 1
+  if [ "$r" = server ]; then hero_srv_inbox_count "$1" "${2:-}"; return; fi
   if [ -e "$1/inbox" ] && [ ! -d "$1/inbox" ]; then
     echo "hero_inbox_count: $1/inbox is not a directory; no message can land here" >&2
   fi
@@ -1629,6 +1841,11 @@ hero_is_msg_id() { # ID
 # instead (docs/MESSAGES.md, Sending step 2).
 hero_msg_find() { # STORE FROM ABOUT
   local f n=0 st exp today
+  case "$(hero_srv_route_store "${1:-}")" in
+    server) hero_srv_msg_find "$1" "${2:-}" "${3:-}"; return ;;
+    local) ;;
+    *) return 2 ;;
+  esac
   # rc 2, not 1: there is no mailbox to read, so this probe did not run. Read
   # as 1 ("not sent yet") the sender deposits into a store it has never been
   # able to check, which is the double-dispatch the probe exists to prevent.
@@ -1698,6 +1915,7 @@ hero_msg_deposit() { # TARGET_STORE MSG_ID BODY_FILE
   # `[ -L store/ ]` follows the link and answers false, so a trailing slash
   # would slip a linked store past the refusal below.
   set -- "${1%/}" "$2" "$3"
+  hero_store_require_local "$1" hero_msg_deposit || return 1
   [ -r "$3" ] || { echo "hero_msg_deposit: cannot read $3" >&2; return 1; }
   hero_is_msg_id "$2" || { echo "hero_msg_deposit: '$2' is not a message id (m- plus six lowercase hex)" >&2; return 1; }
   body_id=$(hero_item_field "$3" msg_id)
@@ -1839,6 +2057,7 @@ hero_pending_unlock() { # FILE
 # present is a no-op. A re-run of the same merge must not queue it twice.
 hero_deploy_pending_add() { # STORE SHA PR
   local f="$1/.deploy-pending"
+  hero_store_require_local "${1:-}" hero_deploy_pending_add || return 1
   [ -d "${1:-}" ] || { echo "hero_deploy_pending_add: no store at '${1:-}'" >&2; return 1; }
   # 40-hex, matching what the rest of the store means by a SHA. An abbreviated
   # sha would be added but never cleared, because hero_deploy_pending_clear matches
@@ -1884,6 +2103,7 @@ hero_deploy_pending() { # STORE
 # answered is how a DEGRADED deploy disappears with no record.
 hero_deploy_pending_clear() { # STORE SHA
   local f="$1/.deploy-pending" tmp rc
+  hero_store_require_local "${1:-}" hero_deploy_pending_clear || return 1
   [ -f "$f" ] || return 0
   # The destructive half validates what the additive half validates. `$2` is
   # interpolated into a BRE, so an unvalidated `.*` matches every line and the
@@ -2048,7 +2268,7 @@ hero_ready_items() (
   local store items f d raw deps ready title id state itype row all_ids done_ids
   local open_goals parent committed_ids committed missing awaiting blocked_on since enum
   local idea_ids anti_ids shape channel resolution replaced_ids dropped_ids replaced rb new
-  store="${1:-$(hero_work_store)}" || return 1
+  store=$(hero_srv_store_for "${1:-}") || return 1
 
   # An unmigrated store lists NOTHING rather than listing wrong. Every item in
   # it still carries `kind`, which schema 1 does not read, so a permissive pass
@@ -2474,7 +2694,7 @@ hero_goal_candidates() ( # GOAL_ID [STORE]
   local paths p bad deps dep dstate cands next changed out
   [ -n "$1" ] || { echo "hero_goal_candidates: empty GOAL_ID" >&2; return 2; }
   goal=$(hero_norm_id "$1")
-  store="${2:-$(hero_work_store)}" || return 1
+  store=$(hero_srv_store_for "${2:-}") || return 1
   cd "$store/items" 2>/dev/null || { echo "hero_goal_candidates: no item directory at $store/items" >&2; return 1; }
   setopt localoptions nullglob 2>/dev/null || true
 
@@ -2678,4 +2898,799 @@ ISSUE ID — when the task starts with an issue ID matching
   Linear's GitHub automation moves a ticket named there to Done at merge.
   It goes in the `Relates to:` trailer only.
 POLICY
+}
+
+# ---------- the server backend ---------------------------------------------
+#
+# Under `hero_store_backend` = a URL, the functions below answer from the
+# Wayfare server through the `wayfare` CLI (WAYFARE_CLI, else PATH). Server
+# data is rendered into a read-only cache in the shapes the local readers
+# already parse (an items/NNN-slug.md file, a HERO.md, a store with PLAN.md),
+# so one parser answers both backends and the two cannot drift.
+#
+# A function never falls through to the local files under a server: it answers
+# from the server or fails, naming what the server lacks. A failed CLI call is
+# an error naming the server, never an empty result.
+#
+# Only fields the server has no value for fail there: hero_plan_field keys
+# other than schema, source.head and target.head, and hero_fleet_field keys
+# other than org, template and port-range. hero_config_commit_time prints
+# nothing and hero_check_staleness is silent under a server: the server keeps
+# no commit time for a config, and comparing nothing to a repo file's time
+# reads as stale on every run.
+# hero_deploy_pending keeps reading its file under a server, and its writes
+# are refused there like every local store write: a deploy check ship-pr
+# defers is not recorded, and ship-pr says so. A path-taking reader
+# (hero_item_field and the rest) is backend-free: it parses whatever file it
+# is handed, and hero_item_file hands it the server's item.
+
+# The URL the backend names, split: prints `ORIGIN WORKSPACE`. The workspace is
+# the URL's one path segment (`https://app.example.com/<workspace id>`); a URL
+# without it is an error naming the switch, never a guess.
+hero_srv_target() { # [DIR]
+  local b rest p
+  b=$(hero_store_backend "${1:-}") || return 1
+  [ "$b" != local ] || { echo "hero_srv_target: the backend is local" >&2; return 1; }
+  rest=${b#*://}
+  case "$rest" in */*) p=${rest#*/} ;; *) p= ;; esac
+  case "$p" in ''|*/*)
+    echo "hero: the server URL '$b' must end in the workspace id (<origin>/<workspace id>); fix WAYFARE_STORE or the URL line in the pin file" >&2
+    return 1 ;;
+  esac
+  printf '%s %s' "${b%%://*}://${rest%%/*}" "$p"
+}
+
+# `local` or `server` for a repo or fleet root. A pin file with no URL line and
+# no WAYFARE_STORE answers local without walking to the fleet root, because
+# every config read comes through here.
+hero_srv_route_root() { # [ROOT]
+  local b file
+  file=$(hero_pin_file)
+  if [ -z "${WAYFARE_STORE:-}" ] && { [ ! -r "$file" ] || ! grep -q '://' "$file" 2>/dev/null; }; then
+    echo local; return 0
+  fi
+  b=$(hero_store_backend "${1:-$(hero_root)}") || return 1
+  if [ "$b" = local ]; then echo local; else echo server; fi
+}
+
+# The repo root a store argument means: `.plans` (or ROOT/.plans) is the live
+# store, and a worktree resolves to its primary checkout.
+hero_srv_root() { # [ROOT_OR_STORE]
+  local s=${1:-}
+  case "$s" in
+    '') s=$(hero_root) ;;
+    .plans) s=. ;;
+    */.plans) s=${s%/.plans} ;;
+  esac
+  s=$(hero_store_path "$s"); printf '%s' "${s%/.plans}"
+}
+
+# `local` or `server` for a STORE argument. Only the live store (empty, or a
+# path ending `.plans`) follows the backend; any other path is a directory the
+# caller named (a cache, a fixture, an extracted archive) and is read as given.
+hero_srv_route_store() { # [STORE]
+  case "${1:-}" in
+    ''|.plans|*/.plans) hero_srv_route_root "$(hero_srv_root "${1:-}")" ;;
+    *) echo local ;;
+  esac
+}
+
+# Run one wayfare CLI subcommand against ROOT's server, printing its JSON. A
+# non-zero exit, a missing binary or non-JSON output is rc 1 with an error that
+# names the server and carries the CLI's own reason.
+hero_srv_cli() { # ROOT SUBCOMMAND [ARGS...]
+  local root t b origin ws cli out err rc
+  root=$1; shift
+  t=$(hero_srv_target "$root") || return 1
+  b=$(hero_store_backend "$root")
+  origin=${t% *}; ws=${t#* }
+  cli=${WAYFARE_CLI:-wayfare}
+  command -v "$cli" >/dev/null 2>&1 || { echo "hero: the Wayfare server at $b needs the wayfare CLI, and '$cli' is not on PATH (set WAYFARE_CLI)" >&2; return 1; }
+  command -v jq >/dev/null 2>&1 || { echo "hero: the Wayfare server at $b needs jq on PATH" >&2; return 1; }
+  err=$(mktemp "${TMPDIR:-/tmp}/wayfare-cli-err.XXXXXX") || return 1
+  out=$(WAYFARE_URL="$origin" WAYFARE_WORKSPACE="$ws" "$cli" "$@" 2>"$err"); rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "hero: the Wayfare server at $b refused or failed 'wayfare $1' (exit $rc): $(head -c 600 "$err")" >&2
+    rm -f "$err"; return 1
+  fi
+  rm -f "$err"
+  printf '%s' "$out" | jq -e . >/dev/null 2>&1 || { echo "hero: the Wayfare server at $b answered 'wayfare $1' with something that is not JSON" >&2; return 1; }
+  printf '%s' "$out"
+}
+
+# The server's project id for a repo: the project whose slug is the repo's
+# directory name, or the explicit SLUG.
+hero_srv_project() { # ROOT [SLUG]
+  local slug json id b
+  slug=${2:-${1##*/}}
+  json=$(hero_srv_cli "$1" projects) || return 1
+  printf '%s' "$json" | jq -e '.projects | type == "array"' >/dev/null || { _hero_srv_shape "$1" projects; return 1; }
+  id=$(printf '%s' "$json" | jq -r --arg s "$slug" '[.projects[] | select(.slug == $s)][0].id // empty')
+  if [ -z "$id" ]; then
+    b=$(hero_store_backend "$1")
+    echo "hero: the Wayfare server at $b has no project for repo '$slug' (a repo maps to the project whose slug is its directory name; a person creates projects in the app)" >&2
+    return 1
+  fi
+  printf '%s' "$id"
+}
+
+# Where server data is rendered for ROOT: under the user's own cache, in a
+# directory only this user can enter. A shared /tmp path is predictable, so
+# another local user could create it first and swap a rendered HERO.md whose
+# test-command push-pr then runs.
+hero_srv_cache() { # ROOT
+  local t base d
+  t=$(hero_srv_target "$1") || return 1
+  base="${XDG_CACHE_HOME:-$HOME/.cache}/wayfare-srv"
+  mkdir -p "${base%/*}" 2>/dev/null; [ -e "$base" ] || [ -L "$base" ] || mkdir -m 700 "$base" 2>/dev/null
+  if [ -L "$base" ] || [ ! -d "$base" ] || [ ! -O "$base" ]; then
+    echo "hero: the server cache $base is not a directory this user owns; remove it and run again" >&2; return 1
+  fi
+  chmod 700 "$base" || return 1
+  d="$base/${t#* }/${1##*/}"
+  mkdir -p "$d" || return 1
+  printf '%s' "$d"
+}
+
+# Name the server and the answer that lacked the fields a caller reads. A
+# missing or renamed key read as empty is a message never seen, or one sent
+# twice.
+_hero_srv_shape() { # ROOT SUB
+  echo "hero: the Wayfare server at $(hero_store_backend "$1" 2>/dev/null) answered 'wayfare $2' without the fields it carries; is the CLI older than the server?" >&2
+}
+
+# jq definitions that render a server item as the item file the local readers
+# parse. `q` quotes only a value the readers would misread (a leading quote or
+# `#`, a ` #`, or edge whitespace), and turns a control character into a space:
+# a title or log line holding a newline would otherwise write a frontmatter
+# field of its own (`status: ready` on an item no person marked). An item
+# number names a file, so anything but a whole number is an error, never a
+# path (`../../x`). Priority is the server's high/medium/low
+# against the local p1/p2/p3 (p0 has no server spelling, so a p0 reads back p1).
+# The server's shape `slice` is the local `story`; the other shapes match.
+_HERO_SRV_JQ='
+def clean: gsub("[[:cntrl:]]"; " ");
+def q: if type == "array" then "[" + (map(tostring | clean) | join(", ")) + "]"
+  elif type == "string" then clean |
+    (if test("^[\"'"'"'#[:space:]]|[[:space:]]#|[[:space:]]$|^$") then
+       (if contains("\"") then "'"'"'" + . + "'"'"'" else "\"" + . + "\"" end) else . end)
+  else tostring end;
+def pri: ({"high":"p1","medium":"p2","low":"p3"}[.]) // .;
+def shp: if . == "slice" then "story" else . end;
+def logged($tag): [(.log // [])[] | select(.tag == $tag) | .body];
+def branch_of: (logged("branch") | last) // .branch;
+def box_re: "^[ \t]*([-*]|[0-9]+\\.)[ \t]+\\[[ xX]\\][ \t]+";
+def box_text: sub(box_re; "") | sub("[ \t]+$"; "");
+def desc_ticked: logged("tick") as $t | (.description // "") | split("\n")
+  | map(if test("^[ \t]*([-*]|[0-9]+\\.)[ \t]+\\[ \\]") and (box_text as $x | any($t[]; . == $x))
+        then sub("\\[ \\]"; "[x]") else . end) | join("\n");
+def opt($k; $v): if $v == null or $v == "" or $v == 0 or $v == [] then "" else "\($k): \($v | q)\n" end;
+def inum: if type == "number" and . == floor and . >= 0 then . else error("not an item number: \(tojson)") end;
+def item_name:
+  (.number | inum | tostring) as $n
+  | (if ($n | length) < 3 then ("000" + $n)[-3:] else $n end) + "-"
+    + ((.title // "" | ascii_downcase | gsub("[^a-z0-9]+"; "-") | ltrimstr("-") | .[0:40] | rtrimstr("-"))
+       | if . == "" then "item" else . end) + ".md";
+def item_fm:
+  "---\nid: \(.number | inum)\n" + opt("type"; .type) + opt("title"; .title)
+  + "status: \(.status // "new" | if . == "" then "new" else . end)\n"
+  + opt("resolution"; .resolution) + opt("priority"; ((.priority // "") | pri)) + opt("severity"; .severity)
+  + opt("shape"; ((.shape // "") | shp)) + opt("channel"; .channel) + opt("parent"; .goal_number) + opt("rank"; .rank)
+  + opt("depends_on"; .depends_on) + opt("blocked_on"; .blocked_on) + opt("blocked_since"; ((.blocked_since // "")[0:10]))
+  + opt("source"; .sources) + opt("target"; .targets) + opt("bot"; .bot) + opt("success"; .success) + opt("origin"; .origin)
+  + opt("pr"; .pr) + opt("branch"; branch_of) + opt("discovered_from"; .discovered_from) + "---\n";
+def log_line: "- \((.at // "")[0:10] | clean) (\(.by // "agent" | clean)) \(.tag // "" | clean): \(.body // "" | clean)";
+def item_md: item_fm + "\n" + desc_ticked + "\n\n## Log\n\n" + ((.log // []) | map(log_line) | join("\n")) + "\n";
+def val: if type == "array" then "[" + (map(tostring) | join(", ")) + "]" else tostring end;
+'
+
+# A store holding the server's items, for the readers that take a store: PLAN.md
+# at schema 1 and one items/NNN-slug.md per item, read-only. A new directory
+# on every call: a stale cache is a wrong roadmap, and one rebuilt in place is
+# emptied under a second reader. Open goals and active or review tasks are
+# rendered whole (description and log): resume-state.sh counts their
+# checklists, a goal's `## Plan` is read from it, and their `branch:` is a log
+# line the listing does not carry. Every other item is its frontmatter.
+hero_srv_store() { # ROOT
+  local pid json cache dir line one f num form d
+  pid=$(hero_srv_project "$1") || return 1
+  json=$(hero_srv_cli "$1" items --project-id "$pid") || return 1
+  printf '%s' "$json" | jq -e '.items | type == "array"' >/dev/null || { _hero_srv_shape "$1" items; return 1; }
+  cache=$(hero_srv_cache "$1") || return 1
+  for d in "$cache"/store.*; do
+    [ -d "$d" ] || continue
+    [ -n "$(find "$d" -maxdepth 0 -mmin +60 2>/dev/null)" ] || continue
+    chmod -R u+w "$d" 2>/dev/null; rm -rf "$d"
+  done
+  dir=$(mktemp -d "$cache/store.XXXXXX") || return 1
+  mkdir "$dir/items" || return 1
+  printf -- '---\nschema: 1\n---\n' > "$dir/PLAN.md" || return 1
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    num=$(printf '%s' "$line" | jq -r "$_HERO_SRV_JQ"' .number | inum') || return 1
+    form=item_fm
+    if printf '%s' "$line" | jq -e '(.type == "task" and (.status == "active" or .status == "review"))
+        or (.type == "goal" and .status != "done" and .status != "dropped")' >/dev/null; then
+      one=$(hero_srv_cli "$1" item --project-id "$pid" --number "$num") || return 1
+      line=$(printf '%s' "$one" | jq -ec '.item | objects') || { _hero_srv_shape "$1" item; return 1; }
+      form=item_md
+    fi
+    f=$(printf '%s' "$line" | jq -r "$_HERO_SRV_JQ"' item_name') || return 1
+    printf '%s' "$line" | jq -r "$_HERO_SRV_JQ $form" > "$dir/items/$f" || return 1
+  done <<EOF2
+$(printf '%s' "$json" | jq -c '.items[]')
+EOF2
+  chmod -R a-w "$dir"
+  printf '%s' "$dir"
+}
+
+# The store a reader should read: an explicit path that is not a live `.plans`
+# as given; otherwise the local store (DEFAULT, else hero_work_store) or, under
+# the server, the rendered cache.
+hero_srv_store_for() { # [STORE] [DEFAULT]
+  local r
+  r=$(hero_srv_route_store "${1:-}") || return 1
+  if [ "$r" = server ]; then hero_srv_store "$(hero_srv_root "${1:-}")"; return; fi
+  if [ -n "${1:-}" ]; then printf '%s' "$1"; elif [ -n "${2:-}" ]; then printf '%s' "$2"; else hero_work_store; fi
+}
+
+# An item's file: the local one, or the server's item rendered with its
+# description and `## Log`. Read it with hero_item_field and the other readers.
+hero_item_file() { # NUMBER [ROOT]
+  local root r n pid json cache f dir pad name tmp
+  case "${1:-}" in ''|*[!0-9]*) echo "hero_item_file: '${1:-}' is not an item number" >&2; return 2 ;; esac
+  n=$((10#$1))
+  root=$(hero_srv_root "${2:-}")
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = local ]; then
+    pad=$(printf '%03d' "$n")
+    dir="$(hero_store_path "$root")/items"
+    setopt localoptions nullglob 2>/dev/null || true
+    for f in "$dir/$pad"-*.md; do
+      [ -e "$f" ] && { printf '%s' "$f"; return 0; }
+    done
+    echo "hero_item_file: no item $n under $dir" >&2; return 1
+  fi
+  pid=$(hero_srv_project "$root") || return 1
+  json=$(hero_srv_cli "$root" item --project-id "$pid" --number "$n") || return 1
+  printf '%s' "$json" | jq -e '.item | objects' >/dev/null || { _hero_srv_shape "$root" item; return 1; }
+  cache=$(hero_srv_cache "$root") || return 1
+  mkdir -p "$cache/item" || return 1
+  name=$(printf '%s' "$json" | jq -r "$_HERO_SRV_JQ"' .item | item_name') || return 1
+  f="$cache/item/$name"
+  tmp=$(mktemp "$cache/item/.render.XXXXXX") || return 1
+  printf '%s' "$json" | jq -r "$_HERO_SRV_JQ"' .item | item_md' > "$tmp" || { rm -f "$tmp"; return 1; }
+  chmod a-w "$tmp"
+  _hero_replace "$tmp" "$f" || return 1
+  printf '%s' "$f"
+}
+
+# An item NUMBER argument as an integer, or rc 2 naming FUNC. Checked before
+# any arithmetic: `$((10#abc))` is a fatal expansion error in bash and zsh, so
+# a guard written as `n=$((...)) || return 2` ends the caller's shell instead.
+_hero_item_num() { # FUNC VALUE
+  case "${2:-}" in ''|*[!0-9]*) echo "$1: '${2:-}' is not an item number" >&2; return 2 ;; esac
+  printf '%d' "$((10#$2))"
+}
+
+# VALUE as a frontmatter scalar hero_item_field reads back whole: quoted when
+# it opens with a quote, `#` or space, holds ` #`, ends in space, or is empty
+# (the same rule as the server renderer's `q`). Unquoted, `#42 upstream`
+# reads as an empty comment. A control character is rc 2: a newline would
+# start a field of its own.
+_hero_yaml_scalar() { # VALUE
+  case "$1" in *[[:cntrl:]]*) return 2 ;; esac
+  case "$1" in
+    ''|[\"\'#[:space:]]*|*[[:space:]]'#'*|*[[:space:]])
+      case "$1" in *\"*) printf "'%s'" "$1" ;; *) printf '"%s"' "$1" ;; esac ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+# Replace FILE's contents with TMP's by rename, so a reader never sees a
+# half-written item. TMP must be in FILE's directory.
+_hero_replace() { # TMP FILE
+  mv -f "$1" "$2" || { rm -f "$1"; return 1; }
+}
+
+# Replace KEY's frontmatter line in FILE, or add it before the closing fence.
+# The value goes through ENVIRON: awk -v would read a backslash as an escape.
+_hero_local_set() { # FILE KEY VALUE
+  local tmp rc
+  tmp=$(mktemp "$1.XXXXXX") || return 1
+  K="$2" V="$3" awk '
+    /^---[[:space:]]*$/ { fence++; if (fence == 2 && !done) { print ENVIRON["K"] ": " ENVIRON["V"]; done = 1 } print; next }
+    fence == 1 && !done && index($0, ENVIRON["K"] ":") == 1 { print ENVIRON["K"] ": " ENVIRON["V"]; done = 1; next }
+    { print }' "$1" > "$tmp"; rc=$?
+  [ "$rc" -eq 0 ] || { rm -f "$tmp"; return "$rc"; }
+  _hero_replace "$tmp" "$1"
+}
+
+# Append LINE to the end of FILE's `## SECTION`, creating the section last when
+# it is absent. The section is not assumed to be the file's last.
+_hero_local_append() { # FILE SECTION LINE
+  local tmp rc
+  tmp=$(mktemp "$1.XXXXXX") || return 1
+  S="$2" L="$3" awk '
+    function drain(  i) { print ENVIRON["L"]; for (i = 1; i <= nb; i++) print blank[i]; nb = 0; done = 1 }
+    BEGIN { sec = "## " ENVIRON["S"] }
+    /^## / { if (insec && !done) drain(); insec = ($0 == sec); if (insec) seen = 1; print; next }
+    insec && /^[[:space:]]*$/ { blank[++nb] = $0; next }
+    { for (i = 1; i <= nb; i++) print blank[i]; nb = 0; print }
+    END { if (insec && !done) drain(); else if (!seen) { print ""; print sec; print ""; print ENVIRON["L"] } }
+  ' "$1" > "$tmp"; rc=$?
+  [ "$rc" -eq 0 ] || { rm -f "$tmp"; return "$rc"; }
+  _hero_replace "$tmp" "$1"
+}
+
+# Write one field of an item, then print `KEY: VALUE` as the store now holds
+# it. Local edits the frontmatter; the server takes `update-item`, except
+# `branch`, which update-item does not store (a `branch` log line, read back as
+# `branch:`). A status moves by hero_item_set_status. Values are checked here,
+# before routing, so both backends accept and refuse the same ones. Setting
+# `blocked_on` locally also stamps `blocked_since` when the item has none; the
+# server stamps its own.
+hero_item_set() { # NUMBER KEY VALUE [ROOT]
+  local root r n pid skey kind body json f val sv
+  n=$(_hero_item_num hero_item_set "${1:-}") || return 2
+  case "$2" in
+    title|priority|severity|shape|blocked_on|success|origin|branch) kind=str ;;
+    rank|parent) kind=int ;;
+    depends_on) kind=ints ;;
+    source|target) kind=list ;;
+    *) echo "hero_item_set: '$2' is not a field this writes (title priority severity shape rank parent depends_on blocked_on source target success origin branch); a status moves by hero_item_set_status" >&2; return 2 ;;
+  esac
+  case "${3:-}" in *[[:cntrl:]]*) echo "hero_item_set: a $2 holds no control characters; a newline would start a field of its own" >&2; return 2 ;; esac
+  val=${3:-}
+  case "$kind:$2" in
+    str:priority)
+      case "$val" in p0|p1|p2|p3) ;; high) val=p1 ;; medium) val=p2 ;; low) val=p3 ;;
+        *) echo "hero_item_set: priority '$3' is not p0-p3 or high/medium/low" >&2; return 2 ;; esac ;;
+    str:shape)
+      case "$val" in slice) val=story ;; story|structural|visual|defect|dependency|docs) ;;
+        *) echo "hero_item_set: shape '$3' is not story, structural, visual, defect, dependency or docs" >&2; return 2 ;; esac ;;
+    int:*)
+      case "$val" in ''|*[!0-9]*) echo "hero_item_set: '$3' is not a valid $2" >&2; return 2 ;; esac ;;
+    ints:*)
+      val=$(printf '%s' "$val" | awk '{ gsub(/[][[:space:]]/, ""); n = split($0, a, ","); o = ""
+        for (i = 1; i <= n; i++) { if (a[i] == "") continue; if (a[i] !~ /^[0-9]+$/) exit 3; o = o (o == "" ? "" : ", ") a[i] }
+        print "[" o "]" }') || { echo "hero_item_set: '$3' is not a valid $2" >&2; return 2; } ;;
+    list:*)
+      val=$(printf '%s' "$val" | awk '{ sub(/^[[:space:]]*\[/, ""); sub(/\][[:space:]]*$/, ""); n = split($0, a, ","); o = ""
+        for (i = 1; i <= n; i++) { gsub(/^[[:space:]"\047]+|[[:space:]"\047]+$/, "", a[i]); if (a[i] == "") continue; o = o (o == "" ? "" : ", ") a[i] }
+        print "[" o "]" }') ;;
+  esac
+  root=$(hero_srv_root "${4:-}")
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = local ]; then
+    hero_store_require_local "$root" hero_item_set || return 1
+    f=$(hero_item_file "$n" "$root") || return 1
+    sv=$val
+    [ "$kind" != str ] || sv=$(_hero_yaml_scalar "$val") || return 2
+    _hero_local_set "$f" "$2" "$sv" || return 1
+    if [ "$2" = blocked_on ] && [ -n "$val" ] && [ -z "$(hero_item_field "$f" blocked_since)" ]; then
+      _hero_local_set "$f" blocked_since "$(date +%Y-%m-%d)" || return 1
+    fi
+    printf '%s: %s\n' "$2" "$(hero_item_field "$f" "$2")"
+    return 0
+  fi
+  if [ "$2" = branch ]; then
+    hero_item_log "$n" branch "$val" "$root" >/dev/null || return 1
+    f=$(hero_item_file "$n" "$root") || return 1
+    printf 'branch: %s\n' "$(hero_item_field "$f" branch)"
+    return 0
+  fi
+  skey=$2
+  case "$2" in parent) skey=goal_number ;; source) skey=sources ;; target) skey=targets ;; esac
+  case "$2:$val" in
+    priority:p0|priority:p1) val=high ;; priority:p2) val=medium ;; priority:p3) val=low ;;
+    shape:story) val=slice ;;
+  esac
+  pid=$(hero_srv_project "$root") || return 1
+  body=$(jq -n --arg pid "$pid" --argjson n "$n" --arg k "$skey" --arg v "$val" --arg kind "$kind" '
+    {project_id: $pid, number: $n} + {($k): (
+      if $kind == "int" then ($v | tonumber)
+      elif $kind == "ints" then ($v | gsub("[\\[\\]\\s]"; "") | split(",") | map(select(. != "") | tonumber))
+      elif $kind == "list" then ($v | gsub("[\\[\\]]"; "") | split(",") | map(gsub("^\\s+|\\s+$"; "")) | map(select(. != "")))
+      else $v end)}') || { echo "hero_item_set: '$3' is not a valid $2" >&2; return 2; }
+  json=$(hero_srv_cli "$root" update-item --json "$body") || return 1
+  printf '%s' "$json" | jq -er --arg k "$2" "$_HERO_SRV_JQ"'
+    .item | objects | ({"parent": .goal_number, "priority": ((.priority // "") | pri), "shape": ((.shape // "") | shp), "source": .sources, "target": .targets}[$k] // .[$k]) as $v
+    | "\($k): \($v // "" | val)"' || { _hero_srv_shape "$root" update-item; return 1; }
+}
+
+# Append a dated line to an item's `## Log` and print `TAG: TEXT`. The author is
+# WAYFARE_AGENT locally; the server records the calling agent itself.
+hero_item_log() { # NUMBER TAG TEXT [ROOT]
+  local root r n f pid body json
+  n=$(_hero_item_num hero_item_log "${1:-}") || return 2
+  [ -n "${2:-}" ] && [ -n "${3:-}" ] || { echo "hero_item_log: TAG and TEXT are required" >&2; return 2; }
+  root=$(hero_srv_root "${4:-}")
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = local ]; then
+    hero_store_require_local "$root" hero_item_log || return 1
+    f=$(hero_item_file "$n" "$root") || return 1
+    _hero_local_append "$f" Log "- $(date +%Y-%m-%d) (${WAYFARE_AGENT:-agent}) $2: $3" || return 1
+    printf '%s: %s\n' "$2" "$3"
+    return 0
+  fi
+  pid=$(hero_srv_project "$root") || return 1
+  body=$(jq -n --arg pid "$pid" --argjson n "$n" --arg tag "$2" --arg text "$3" '{project_id: $pid, number: $n, tag: $tag, text: $text}')
+  json=$(hero_srv_cli "$root" log --json "$body") || return 1
+  printf '%s' "$json" | jq -er '.item.log[-1] | objects | "\(.tag): \(.body)"' || { _hero_srv_shape "$root" log; return 1; }
+}
+
+# One key of the server's plan, as hero_plan_field reads it from PLAN.md: the
+# plan row holds `schema` (always 1 here), the source head and the design head.
+# Every other key (repo, default_branch, initialized, next_id, source.root,
+# target.project, target.snapshot) is not on the plan row and fails, naming it.
+hero_srv_plan_field() { # KEY [STORE]
+  local root pid json
+  case "$1" in
+    schema) printf '1'; return 0 ;;
+    source.head|target.head) ;;
+    *) echo "hero_plan_field: '$1' is not on the Wayfare server's plan (schema, source.head, target.head); the plan row has no such field" >&2; return 1 ;;
+  esac
+  root=$(hero_srv_root "${2:-}")
+  pid=$(hero_srv_project "$root") || return 1
+  json=$(hero_srv_cli "$root" plan --project-id "$pid") || return 1
+  printf '%s' "$json" | jq -e '.plan | objects' >/dev/null || { _hero_srv_shape "$root" plan; return 1; }
+  printf '%s' "$json" | jq -j --arg k "${1//./_}" '.plan[$k] // ""'
+}
+
+# hero_msg_find under the server: the ids, one per line, of live threads from
+# repo FROM to this store's repo whose item number or subject is ABOUT (the
+# local `about:` is an item id or a subject token). Live is open or claimed,
+# not past its `expires`. rc 1 none, rc 2 the probe could not run, as locally.
+hero_srv_msg_find() { # STORE FROM ABOUT
+  local root tpid fpid json out
+  [ -n "${3:-}" ] || { echo "hero_msg_find: ABOUT is empty; an about-less probe matches every about-less message; pass a subject token" >&2; return 2; }
+  root=$(hero_srv_root "${1:-}")
+  tpid=$(hero_srv_project "$root") || return 2
+  fpid=$(hero_srv_project "$root" "$2") || return 2
+  json=$(hero_srv_cli "$root" messages --project-id "$tpid") || return 2
+  printf '%s' "$json" | jq -e '.threads | type == "array"' >/dev/null || { _hero_srv_shape "$root" messages; return 2; }
+  out=$(printf '%s' "$json" | jq -r --arg t "$tpid" --arg f "$fpid" --arg a "$3" --arg today "$(date +%Y%m%d)" '
+    .threads[]
+    | select(.to_project_id == $t and .from_project_id == $f)
+    | select((.status | ascii_downcase) as $s | $s == "open" or $s == "claimed")
+    | select((((.about.item_number // "") | tostring) == $a) or (.subject == $a))
+    | select(((.expires // "")[0:10] | gsub("-"; "")) as $d | ($d | test("^[0-9]{8}$") | not) or ($d | tonumber) >= ($today | tonumber))
+    | .id') || return 2
+  [ -n "$out" ] || return 1
+  printf '%s\n' "$out"
+}
+
+# A `## Fleet` value from the server's fleet settings: org, template and
+# port-range (MIN-MAX, absent when both are 0). name, template-port, register
+# and register-repo are not on the settings (a fleet is a workspace, named by
+# the issuer; the register is the app's), so they fail, naming the key.
+hero_srv_fleet_field() { # KEY ROOT
+  local json v
+  case "$1" in org|template|port-range) ;;
+    *) echo "hero_fleet_field: '$1' is not on the Wayfare server's fleet settings (org, template, port-range)" >&2; return 1 ;; esac
+  json=$(hero_srv_cli "$2" fleet) || return 1
+  printf '%s' "$json" | jq -e '.data | objects' >/dev/null || { _hero_srv_shape "$2" fleet; return 1; }
+  v=$(printf '%s' "$json" | jq -r --arg k "$1" '
+    .data.settings // {} | if $k == "org" then (.org // "")
+      elif $k == "template" then (.template // "")
+      elif (.port_min // 0) == 0 and (.port_max // 0) == 0 then ""
+      else "\(.port_min // 0)-\(.port_max // 0)" end')
+  [ -n "$v" ] || return 1
+  _hero_srv_safe_value hero_fleet_field "$1" "$v" || return 2
+  printf '%s' "$v"
+}
+
+# The local readers' value checks, for a value from the server: a leading `-`
+# reads as an option on the git or gh command line it reaches, and a control
+# character breaks every line-oriented reader. rc 2, as hero_md_field.
+_hero_srv_safe_value() { # FUNC KEY VALUE
+  case "$3" in
+    -*) echo "$1: refusing '$2' from the Wayfare server; it starts with '-' and would be read as a command-line option" >&2; return 2 ;;
+    *[[:cntrl:]]*) echo "$1: refusing '$2' from the Wayfare server; it holds control characters" >&2; return 2 ;;
+  esac
+}
+
+# Move an item to status TO, with a REASON and, for done, a RESOLUTION; prints
+# `status: TO` and, with one, `resolution: R`. Local writes the frontmatter and
+# a `status` log line; the server takes `transition`, which
+# enforces its own gates (ready and accepted are a person's, a task ships by the
+# merge verdict) and logs the move itself, so the log text differs between them.
+hero_item_transition() { # NUMBER TO REASON [RESOLUTION] [ROOT]
+  local root r n f pid body json
+  n=$(_hero_item_num hero_item_transition "${1:-}") || return 2
+  case "${2:-}" in new|accepted|planning|ready|active|review|committed|done|dropped) ;;
+    *) echo "hero_item_transition: '${2:-}' is not a status (new accepted planning ready active review committed done dropped)" >&2; return 2 ;; esac
+  [ -n "${3:-}" ] || { echo "hero_item_transition: REASON is required" >&2; return 2; }
+  case "${4:-}" in ''|shipped|delivered|rejected|promoted|obsolete) ;;
+    *) echo "hero_item_transition: '${4:-}' is not a resolution (shipped delivered rejected promoted obsolete)" >&2; return 2 ;; esac
+  [ "$2" = "done" ] || [ -z "${4:-}" ] || { echo "hero_item_transition: a resolution goes with done only" >&2; return 2; }
+  root=$(hero_srv_root "${5:-}")
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = local ]; then
+    hero_store_require_local "$root" hero_item_transition || return 1
+    f=$(hero_item_file "$n" "$root") || return 1
+    _hero_local_set "$f" status "$2" || return 1
+    [ -z "${4:-}" ] || _hero_local_set "$f" resolution "$4" || return 1
+    _hero_local_append "$f" Log "- $(date +%Y-%m-%d) (${WAYFARE_AGENT:-agent}) status: $2: $3" || return 1
+    printf 'status: %s\n' "$(hero_item_field "$f" status)"
+    [ -z "${4:-}" ] || printf 'resolution: %s\n' "$(hero_item_field "$f" resolution)"
+    return 0
+  fi
+  pid=$(hero_srv_project "$root") || return 1
+  body=$(jq -n --arg pid "$pid" --argjson n "$n" --arg to "$2" --arg why "$3" --arg res "${4:-}" \
+    '{project_id: $pid, number: $n, to: $to, reason: $why} + (if $res == "" then {} else {resolution: $res} end)')
+  json=$(hero_srv_cli "$root" transition --json "$body") || return 1
+  printf '%s' "$json" | jq -e '.item.status | strings' >/dev/null || { _hero_srv_shape "$root" transition; return 1; }
+  printf '%s' "$json" | jq -r '.item | "status: \(.status)", (if (.resolution // "") == "" then empty else "resolution: \(.resolution)" end)'
+}
+
+# Set an item's status as build-task moves it, and print `status: S` as the
+# store now holds it. Local writes the frontmatter (ready adds `ready_marked:`
+# today, done takes a RESOLUTION). The server moves a task by its own events
+# (a claim sets active, link_pr and the merge verdict carry review and done)
+# and refuses a transition on a claimed task, so here: active is a no-op when
+# the item already reads active, else a transition; planning, dropped and
+# done/obsolete are transitions; review, committed and done otherwise are a
+# `status` log line, printed after the server's status as `logged: S`; new,
+# accepted and ready are a person's marks and refused.
+hero_item_set_status() { # NUMBER STATUS [RESOLUTION] [ROOT]
+  local root r n f pid json cur why
+  n=$(_hero_item_num hero_item_set_status "${1:-}") || return 2
+  case "${2:-}" in new|accepted|planning|ready|active|review|committed|done|dropped) ;;
+    *) echo "hero_item_set_status: '${2:-}' is not a status (new accepted planning ready active review committed done dropped)" >&2; return 2 ;; esac
+  case "${3:-}" in ''|shipped|delivered|rejected|promoted|obsolete) ;;
+    *) echo "hero_item_set_status: '${3:-}' is not a resolution (shipped delivered rejected promoted obsolete)" >&2; return 2 ;; esac
+  [ "$2" = "done" ] || [ -z "${3:-}" ] || { echo "hero_item_set_status: a resolution goes with done only" >&2; return 2; }
+  root=$(hero_srv_root "${4:-}")
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = local ]; then
+    hero_store_require_local "$root" hero_item_set_status || return 1
+    f=$(hero_item_file "$n" "$root") || return 1
+    _hero_local_set "$f" status "$2" || return 1
+    [ "$2" != ready ] || _hero_local_set "$f" ready_marked "$(date +%Y-%m-%d)" || return 1
+    [ -z "${3:-}" ] || _hero_local_set "$f" resolution "$3" || return 1
+    printf 'status: %s\n' "$(hero_item_field "$f" status)"
+    return 0
+  fi
+  why="set by ${WAYFARE_AGENT:-wayfare-build-task}"
+  case "$2" in
+    new|accepted|ready)
+      echo "hero_item_set_status: $2 is a person's mark on the Wayfare server; set it there, not from a skill" >&2; return 1 ;;
+    planning|dropped)
+      hero_item_transition "$n" "$2" "$why" "" "$root"; return ;;
+    done)
+      if [ "${3:-}" = obsolete ]; then hero_item_transition "$n" "done" "$why" obsolete "$root"; return; fi ;;
+  esac
+  pid=$(hero_srv_project "$root") || return 1
+  json=$(hero_srv_cli "$root" item --project-id "$pid" --number "$n") || return 1
+  cur=$(printf '%s' "$json" | jq -er '.item.status | strings') || { _hero_srv_shape "$root" item; return 1; }
+  if [ "$2" = active ]; then
+    [ "$cur" = active ] && { printf 'status: active\n'; return 0; }
+    hero_item_transition "$n" active "$why" "" "$root"; return
+  fi
+  hero_item_log "$n" status "$2${3:+ ($3)}" "$root" >/dev/null || return 1
+  printf 'status: %s\nlogged: %s\n' "$cur" "$2${3:+ ($3)}"
+}
+
+# Tick the checklist box whose text is TEXT (every such box), and print
+# `tick: TEXT`. An already-ticked box is not an error; no box with that text
+# is rc 1. Local edits the item file. The server keeps the tick as a `tick` log
+# line, which the rendered item shows as `- [x]`: an agent cannot edit the
+# description of a ready item, and the boxes live there.
+hero_item_tick() { # NUMBER TEXT [ROOT]
+  local root r n f pid json tmp rc has
+  n=$(_hero_item_num hero_item_tick "${1:-}") || return 2
+  [ -n "${2:-}" ] || { echo "hero_item_tick: TEXT is required" >&2; return 2; }
+  root=$(hero_srv_root "${3:-}")
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = local ]; then
+    hero_store_require_local "$root" hero_item_tick || return 1
+    f=$(hero_item_file "$n" "$root") || return 1
+    tmp=$(mktemp "$f.XXXXXX") || return 1
+    T="$2" awk '
+      BEGIN { re = "^[ \t]*([-*]|[0-9]+\\.)[ \t]+\\[[ xX]\\][ \t]+" }
+      match($0, re) { x = substr($0, RLENGTH + 1); sub(/[ \t]+$/, "", x)
+        if (x == ENVIRON["T"]) { found = 1; if ($0 ~ /\[ \]/) sub(/\[ \]/, "[x]") } }
+      { print }
+      END { exit found ? 0 : 3 }' "$f" > "$tmp"; rc=$?
+    if [ "$rc" -eq 3 ]; then rm -f "$tmp"; echo "hero_item_tick: item $n has no checklist box '$2'" >&2; return 1; fi
+    [ "$rc" -eq 0 ] || { rm -f "$tmp"; return 1; }
+    _hero_replace "$tmp" "$f" || return 1
+    printf 'tick: %s\n' "$2"
+    return 0
+  fi
+  pid=$(hero_srv_project "$root") || return 1
+  json=$(hero_srv_cli "$root" item --project-id "$pid" --number "$n") || return 1
+  printf '%s' "$json" | jq -e '.item | objects' >/dev/null || { _hero_srv_shape "$root" item; return 1; }
+  has=$(printf '%s' "$json" | jq -r --arg x "$2" "$_HERO_SRV_JQ"' .item | (.description // "") | split("\n")
+    | map(select(test(box_re)) | box_text) | any(.[]; . == $x)')
+  [ "$has" = true ] || { echo "hero_item_tick: item $n has no checklist box '$2'" >&2; return 1; }
+  if ! printf '%s' "$json" | jq -e --arg x "$2" "$_HERO_SRV_JQ"' .item | any(logged("tick")[]; . == $x)' >/dev/null; then
+    hero_item_log "$n" tick "$2" "$root" >/dev/null || return 1
+  fi
+  printf 'tick: %s\n' "$2"
+}
+
+# ----- messages
+
+# Open a message to repo TO and print its id. KIND is request (expects an
+# answer) or notice (closed on arrival, so it never counts as unread). Local
+# deposits a file in TO's inbox (docs/MESSAGES.md); the server opens a thread.
+# ABOUT is what hero_msg_find matches before a resend: the sender's item
+# number, or else the SUBJECT itself (the default). The server keeps an item
+# number as the thread's `about` and matches a token on the subject, so a token
+# other than SUBJECT would never be found there and is refused on both.
+hero_msg_send() { # TO KIND SUBJECT BODY [ROOT] [ABOUT]
+  local root r from fr tpath id tmp st aw pid tpid body json about rc subj
+  case "${2:-}" in request|notice) ;; *) echo "hero_msg_send: KIND is request or notice, not '${2:-}'" >&2; return 2 ;; esac
+  [ -n "${1:-}" ] && [ -n "${3:-}" ] && [ -n "${4:-}" ] || { echo "hero_msg_send: TO, SUBJECT and BODY are required" >&2; return 2; }
+  about=${6:-$3}
+  case "$about" in
+    *[!0-9]*) [ "$about" = "$3" ] || { echo "hero_msg_send: ABOUT is an item number or the SUBJECT itself, not '$about'" >&2; return 2; } ;;
+  esac
+  subj=$(_hero_yaml_scalar "$3") || { echo "hero_msg_send: SUBJECT holds a control character" >&2; return 2; }
+  root=$(hero_srv_root "${5:-}"); from=${root##*/}
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = local ]; then
+    hero_store_require_local "$root" hero_msg_send || return 1
+    if [ "$1" = "$from" ]; then tpath=$root; else
+      fr=$(hero_fleet_root "$root") || { echo "hero_msg_send: no fleet above $root to address '$1' in" >&2; return 1; }
+      tpath=$(hero_fleet_repos "$fr") || [ $? -eq 3 ] || { echo "hero_msg_send: cannot read the fleet map under $fr" >&2; return 1; }
+      tpath=$(printf '%s\n' "$tpath" | awk -F'\t' -v n="$1" '$1 == n { print $2 }')
+      [ -n "$tpath" ] || { echo "hero_msg_send: '$1' is not a row of the fleet map" >&2; return 1; }
+    fi
+    id=$(hero_msg_id) || return 1
+    tmp=$(mktemp "${TMPDIR:-/tmp}/wayfare-msg.XXXXXX") || return 1
+    if [ "$2" = request ]; then st=new; aw=true; else st=answered; aw=false; fi
+    printf -- '---\nmsg_id: %s\ntype: ask\nfrom: %s\nto: %s\nsent: %s\nsubject: %s\nabout: %s\nawaited: %s\nstatus: %s\n---\n\n## Ask\n\n%s\n\n## Comments\n' \
+      "$id" "$from" "$1" "$(date +%Y-%m-%d)" "$subj" "$(_hero_yaml_scalar "$about")" "$aw" "$st" "$4" > "$tmp"
+    hero_msg_deposit "$(hero_store_path "$tpath")" "$id" "$tmp" >/dev/null; rc=$?
+    rm -f "$tmp"; [ "$rc" -eq 0 ] || return 1
+    printf '%s\n' "$id"; return 0
+  fi
+  pid=$(hero_srv_project "$root") || return 1
+  tpid=$(hero_srv_project "$root" "$1") || return 1
+  body=$(jq -n --arg f "$pid" --arg t "$tpid" --arg k "$2" --arg s "$3" --arg b "$4" --arg a "$about" '
+    {from_project_id: $f, to_project_id: $t, kind: $k, subject: $s, body: $b}
+    + (if ($a | test("^[0-9]+$")) then {about: {project_id: $f, item_number: ($a | tonumber)}} else {} end)')
+  json=$(hero_srv_cli "$root" send --json "$body") || return 1
+  printf '%s' "$json" | jq -er '.thread.id | strings' || { _hero_srv_shape "$root" send; return 1; }
+}
+
+# The inbox file of message ID in ROOT's own store, or rc 1.
+_hero_local_msg() { # ROOT ID
+  local f
+  hero_is_msg_id "$2" || { echo "hero: '$2' is not a message id (m- plus six lowercase hex)" >&2; return 1; }
+  f="$(hero_store_path "$1")/inbox/$2.md"
+  [ -f "$f" ] || { echo "hero: no message $2 in $(hero_store_path "$1")/inbox" >&2; return 1; }
+  printf '%s' "$f"
+}
+
+# Post BODY on message ID as ROOT's repo, and print ID.
+hero_msg_reply() { # ID BODY [ROOT]
+  local root r f pid json
+  [ -n "${2:-}" ] || { echo "hero_msg_reply: BODY is required" >&2; return 2; }
+  root=$(hero_srv_root "${3:-}")
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = local ]; then
+    hero_store_require_local "$root" hero_msg_reply || return 1
+    f=$(_hero_local_msg "$root" "$1") || return 1
+    _hero_local_append "$f" Comments "- $(date +%Y-%m-%d) (${root##*/}): $2" || return 1
+    printf '%s\n' "$1"; return 0
+  fi
+  pid=$(hero_srv_project "$root") || return 1
+  json=$(hero_srv_cli "$root" reply --json "$(jq -n --arg p "$pid" --arg t "$1" --arg b "$2" '{project_id: $p, thread_id: $t, body: $b}')") || return 1
+  printf '%s' "$json" | jq -er '.thread.id | strings' || { _hero_srv_shape "$root" reply; return 1; }
+}
+
+# Settle message ID as answered or declined, with a reason; prints `ID OUTCOME`.
+hero_msg_close() { # ID OUTCOME REASON [ROOT]
+  local root r f pid json
+  case "${2:-}" in answered|declined) ;; *) echo "hero_msg_close: OUTCOME is answered or declined, not '${2:-}'" >&2; return 2 ;; esac
+  [ -n "${3:-}" ] || { echo "hero_msg_close: REASON is required" >&2; return 2; }
+  root=$(hero_srv_root "${4:-}")
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = local ]; then
+    hero_store_require_local "$root" hero_msg_close || return 1
+    f=$(_hero_local_msg "$root" "$1") || return 1
+    _hero_local_set "$f" status "$2" || return 1
+    _hero_local_append "$f" Comments "- $(date +%Y-%m-%d) (${root##*/}): $2: $3" || return 1
+    printf '%s %s\n' "$1" "$2"; return 0
+  fi
+  pid=$(hero_srv_project "$root") || return 1
+  json=$(hero_srv_cli "$root" close --json "$(jq -n --arg p "$pid" --arg t "$1" --arg o "$2" --arg r "$3" '{project_id: $p, thread_id: $t, outcome: $o, reason: $r}')") || return 1
+  printf '%s' "$json" | jq -er '.thread | select((.id | type) == "string" and (.status | type) == "string") | "\(.id) \(.status | ascii_downcase)"' \
+    || { _hero_srv_shape "$root" close; return 1; }
+}
+
+# hero_inbox_count under the server: threads sent to this repo that are open
+# (unread), or with `claimed`, claimed.
+hero_srv_inbox_count() { # STORE [claimed]
+  local root pid json want
+  root=$(hero_srv_root "${1:-}")
+  pid=$(hero_srv_project "$root") || return 1
+  json=$(hero_srv_cli "$root" messages --project-id "$pid") || return 1
+  printf '%s' "$json" | jq -e '.threads | type == "array"' >/dev/null || { _hero_srv_shape "$root" messages; return 1; }
+  want=open; [ "${2:-}" = claimed ] && want=claimed
+  printf '%s' "$json" | jq -j --arg p "$pid" --arg w "$want" '[.threads[] | select(.to_project_id == $p and (.status | ascii_downcase) == $w)] | length'
+}
+
+# ----- config, fleet, audit
+
+# The server's HERO.md for ROOT, rendered where the config readers can open it.
+# A repo with no config there prints a path that is never written, which reads
+# as "no config" through hero_config_exists, as a repo with no HERO.md does.
+hero_srv_config_file() { # ROOT
+  local pid json cache tmp
+  pid=$(hero_srv_project "$1") || return 1
+  json=$(hero_srv_cli "$1" config --project-id "$pid") || return 1
+  printf '%s' "$json" | jq -e '.data | objects' >/dev/null || { _hero_srv_shape "$1" config; return 1; }
+  cache=$(hero_srv_cache "$1") || return 1
+  if [ "$(printf '%s' "$json" | jq -r '.data.exists // false')" != true ]; then
+    printf '%s' "$cache/no-HERO.md"; return 0
+  fi
+  tmp=$(mktemp "$cache/.HERO.XXXXXX") || return 1
+  printf '%s' "$json" | jq -j '.data.markdown // ""' > "$tmp" || { rm -f "$tmp"; return 1; }
+  chmod a-w "$tmp"
+  _hero_replace "$tmp" "$cache/HERO.md" || return 1
+  printf '%s' "$cache/HERO.md"
+}
+
+# The fleet map's rows as hero_fleet_repos prints them: NAME PATH GROUP PORT,
+# tab-separated. PATH is FLEET_ROOT/NAME (the server holds no checkout paths),
+# GROUP is the group's lowercased name or `none`, PORT is digits or empty.
+hero_srv_fleet_repos() { # FLEET_ROOT
+  local json
+  json=$(hero_srv_cli "$1" fleet) || return 1
+  printf '%s' "$json" | jq -e '.data.rows | type == "array"' >/dev/null || { _hero_srv_shape "$1" fleet; return 1; }
+  printf '%s' "$json" | jq -r --arg root "${1%/}" '
+    (.data.groups // []) as $g
+    | .data.rows[] | .project as $p
+    | select(($p.slug | type) == "string" and ($p.slug | test("^[A-Za-z0-9._-]+$")) and $p.slug != "." and $p.slug != "..")
+    | [$p.slug, "\($root)/\($p.slug)",
+       (if ($p.group_id // "") == "" then "none" else ([$g[] | select(.id == $p.group_id) | .name][0] // "none" | ascii_downcase) end),
+       (if ($p.port // 0) == 0 then "" else ($p.port | tostring) end)] | @tsv'
+}
+
+# One value of a repo's row: `path`, `group` (the name as written, as
+# hero_fleet_repo_field reads it from the map; the row list lowercases it),
+# `port` or `what`. Another key is not on the server's row.
+hero_srv_fleet_repo_field() { # NAME KEY ROOT
+  local json v
+  case "$2" in path|group|port|what) ;;
+    *) echo "hero_fleet_repo_field: '$2' is not on the Wayfare server's fleet row (path, group, port, what)" >&2; return 1 ;; esac
+  json=$(hero_srv_cli "$3" fleet) || return 1
+  printf '%s' "$json" | jq -e '.data.rows | type == "array"' >/dev/null || { _hero_srv_shape "$3" fleet; return 1; }
+  v=$(printf '%s' "$json" | jq -r --arg n "$1" --arg k "$2" --arg root "${3%/}" '
+    (.data.groups // []) as $g
+    | [.data.rows[] | .project | select(.slug == $n)][0] // empty | . as $p
+    | if $k == "path" then "\($root)/\(.slug)"
+      elif $k == "what" then (.what // "")
+      elif $k == "port" then (if (.port // 0) == 0 then "" else (.port | tostring) end)
+      else ([$g[] | select(.id == ($p.group_id // ""))] | .[0].name // "") end')
+  [ -n "$v" ] || return 1
+  [ "$2" = what ] || _hero_srv_safe_value hero_fleet_repo_field "$2" "$v" || return 2
+  printf '%s' "$v"
+}
+
+# Record one repo's audit results. RESULTS is a JSON array of
+# {check_id, state, first_seen?}. Prints `{"recorded":N,"failing":M}`. The local
+# backend has no register to record into (the audit run's output is its
+# record), so it only counts, and says so on stderr.
+hero_audit_record() { # REPO RESULTS_JSON [ROOT]
+  local root r json
+  [ -n "${1:-}" ] && [ -n "${2:-}" ] || { echo "hero_audit_record: REPO and RESULTS are required" >&2; return 2; }
+  printf '%s' "$2" | jq -e 'type == "array" and all(.[]; (.check_id | type) == "string" and .check_id != "" and (.state | type) == "string")' >/dev/null 2>&1 \
+    || { echo "hero_audit_record: RESULTS must be a JSON array of {check_id, state}" >&2; return 2; }
+  root=$(hero_srv_root "${3:-}")
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" = local ]; then
+    echo "hero_audit_record: the local backend records nothing; counted only" >&2
+    printf '%s' "$2" | jq -c '{recorded: length, failing: ([.[] | select(.state == "fail")] | length)}'
+    return 0
+  fi
+  json=$(hero_srv_cli "$root" report-results --json "$(jq -n --arg r "$1" --argjson res "$2" '{repo: $r, results: $res}')") || return 1
+  printf '%s' "$json" | jq -ec 'select((.recorded | type) == "number") | {recorded: .recorded, failing: (.failing // 0)}' \
+    || { _hero_srv_shape "$root" report-results; return 1; }
 }

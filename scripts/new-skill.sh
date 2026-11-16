@@ -85,7 +85,7 @@ WAYFARE_ROOT="\${CLAUDE_PLUGIN_ROOT:-\${WAYFARE_ROOT:-\$HOME/.claude/plugins/way
 . "\$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from \$WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
 hero_fleet_step0 || exit 1
 ROOT=\$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-cat "\$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
+hero_config_show "\$ROOT" || { [ \$? -eq 1 ] || exit 1; echo "NO_HERO_CONFIG"; }
 \`\`\`
 
 If \`FLEET_ROOT\` printed, this folder is a fleet, not a repo: stop and follow **At the fleet root** in [docs/FLEET-MD.md](../../docs/FLEET-MD.md).

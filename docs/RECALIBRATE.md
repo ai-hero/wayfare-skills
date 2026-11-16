@@ -1,6 +1,6 @@
 # The recalibrate verb
 
-Ten skills accept `recalibrate`, and `wayfare-recalibrate-config` is the verb
+Eleven skills accept `recalibrate`, and `wayfare-recalibrate-config` is the verb
 itself: ask me the questions that decide how this skill works, and write the
 answers. `scripts/hero-fields.sh` holds the map of which skill reads which
 fields, and `scripts/hero-fields.test.sh` ties the map and the skills to each

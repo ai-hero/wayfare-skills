@@ -65,7 +65,7 @@ HERO_LIB="$WAYFARE_ROOT/scripts/hero-lib.sh"
 . "$HERO_LIB" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT — export WAYFARE_ROOT as the plugin root"; exit 1; }
 
 ROOT=$(hero_root)
-cat "$ROOT/HERO.md" 2>/dev/null || echo "NO_HERO_CONFIG"
+hero_config_show "$ROOT" || { [ $? -eq 1 ] || exit 1; echo "NO_HERO_CONFIG"; }
 
 # Same store wayfare-grill-idea and handoff emit into — one plate per repo,
 # git-ignored via .git/info/exclude so no tracked file is ever dirtied.
@@ -417,8 +417,9 @@ Before printing the Step 4 summary, verify the Hard Rule actually held. Do not
 just assert it:
 
 ```bash
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
 git diff --stat --exit-code || echo "VIOLATION: tracked files were modified — this run broke the read-only contract"
-git status --porcelain | grep -v '^?? \.plans/' && echo "VIOLATION: unexpected changes outside .plans/"
+git status --porcelain | grep -vF "?? $(. "$WAYFARE_ROOT/scripts/hero-lib.sh" && hero_store_name)/" && echo "VIOLATION: unexpected changes outside the store"
 ```
 
 If either check reports a violation, do not print "Source files modified: NONE".

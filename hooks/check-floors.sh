@@ -24,13 +24,11 @@ INPUT=$(cat)
 
 CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 [ -n "$CWD" ] || CWD=$PWD
-FLEET=$(cd "$CWD" 2>/dev/null && pwd -P) || exit 0
-while [ ! -d "$FLEET/.fleet/.git" ]; do
-  [ "$FLEET" = / ] && exit 0
-  FLEET=$(dirname "$FLEET")
-done
-
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=/dev/null
+. "$PLUGIN_ROOT/scripts/hero-lib.sh" 2>/dev/null || { echo "check-floors: cannot load $PLUGIN_ROOT/scripts/hero-lib.sh; the floors check did not run" >&2; exit 0; }
+FLEET=$(hero_register_find "$CWD") || exit 0
+
 # --offline: a cold uv cache must not turn into a download at session start;
 # it fails, and failing here is silence.
 OUT=$(cd "$PLUGIN_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT \

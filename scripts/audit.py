@@ -150,6 +150,19 @@ def in_git_worktree(d):
     return any((p / ".git").exists() for p in (d, *d.parents) if p != home)
 
 
+# The local backend's names for the store files this engine reads. Every other
+# script asks these (or fleet_map and read_fleet below) instead of joining
+# "HERO.md" or ".fleet" itself, which validate.sh enforces for scripts/*.py.
+def config_path(repo):
+    """The file holding repo's HERO.md config."""
+    return pathlib.Path(repo) / "HERO.md"
+
+
+def register_dir(root):
+    """The register checkout under fleet folder root."""
+    return pathlib.Path(root) / ".fleet"
+
+
 class FleetMapError(Exception):
     """.fleet/FLEET.md exists but cannot be read as a file: a directory, a
     dangling link, no read permission. Never "no map": a baseline-only run
@@ -209,7 +222,7 @@ def fleet_root(start=None):
             found, err = fleet_map(d, quiet=True), None
         except FleetMapError as e:
             found, err = True, e
-        if found and not (d / "HERO.md").is_file():
+        if found and not config_path(d).is_file():
             if not in_git_worktree(d):
                 if err:
                     raise err
@@ -224,6 +237,12 @@ def read_fleet(root):
     """FLEET.md's `## Fleet` keys and `## Repos` rows, mirroring hero-lib's
     hero_fleet_field / hero_fleet_repos. Fenced blocks are skipped and a
     trailing `# comment` is stripped from every value."""
+    try:
+        backend = store_backend(root)
+    except ValueError as e:
+        sys.exit(str(e))
+    if backend != "local":
+        return _server_fleet(root)
     fields, repos, sec, cur, fence = {}, [], None, None, False
     seen = set()
     try:
@@ -272,6 +291,38 @@ def read_fleet(root):
             # An empty group is `none`, as hero_fleet_repos reads it: a
             # half-filled row must not join the family by accident.
             cur[key] = (val.lower() or "none") if key == "group" else val
+    return fields, repos
+
+
+def _server_fleet(root):
+    """read_fleet under a server backend, from the `fleet` tool: the settings'
+    org, template and port range (MIN-MAX, absent when both are 0) and one row
+    per project. A row's path is left empty, so it defaults to ROOT/NAME as a
+    map row with no `path` does. name, template-port, register and
+    register-repo are not on the server's settings and read as absent."""
+    try:
+        data = server_cli("fleet", {}, root).get("data")
+    except ServerError as e:
+        sys.exit(str(e))
+    # A missing key read as empty is a fleet of no repos, and the audit then
+    # passes everything it never checked.
+    if not isinstance(data, dict) or not isinstance(data.get("rows"), list):
+        sys.exit(f"the Wayfare server at {store_backend(root)} answered 'wayfare fleet' without its rows")
+    st = data.get("settings") or {}
+    fields = {k: st[k] for k in ("org", "template") if st.get(k)}
+    if st.get("port_min") or st.get("port_max"):
+        fields["port-range"] = f"{st.get('port_min', 0)}-{st.get('port_max', 0)}"
+    groups = {g.get("id"): g.get("name", "") for g in data.get("groups") or []}
+    repos = []
+    for row in data["rows"]:
+        p = row.get("project") or {}
+        name = p.get("slug", "")
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", name) or name in (".", ".."):
+            print(f"read_fleet: skipping '{name}' — a repo name is [A-Za-z0-9._-] only", file=sys.stderr)
+            continue
+        group = (groups.get(p.get("group_id", ""), "") or "").lower() if p.get("group_id") else ""
+        repos.append({"name": name, "group": group or "none", "path": "",
+                      "port": str(p["port"]) if p.get("port") else ""})
     return fields, repos
 
 
@@ -331,7 +382,8 @@ def pinned_register(root):
     fleet: the fleet root's absolute physical path, whitespace, the register
     as remote_identity() spells it. `#` starts a comment. A path with
     whitespace in it cannot be pinned. hero_register_pin reads it the same
-    way."""
+    way. A value holding `://` is an app URL (hero_store_backend), not a
+    register, and is skipped."""
     try:
         lines = pathlib.Path(pin_file()).read_text().splitlines()
     except (OSError, UnicodeDecodeError):
@@ -339,9 +391,100 @@ def pinned_register(root):
     want = str(pathlib.Path(root).resolve())
     for line in lines:
         parts = line.split("#", 1)[0].split()
-        if len(parts) == 2 and parts[0] == want:
+        if len(parts) == 2 and parts[0] == want and "://" not in parts[1]:
             return _pin_value(parts[1])
     return None
+
+
+def store_backend(start=None):
+    """`local` or the app's URL: WAYFARE_STORE, else the pin file's URL line for
+    the fleet root above `start`, else `local`. hero_store_backend answers the
+    same question for the shell and the two must agree. A value that is neither
+    `local` nor an http(s) URL raises ValueError, and so does a pin file holding
+    URL lines that cannot be read or a fleet map that cannot be read: none of
+    them reads as local, since a fleet that meant the server would keep writing
+    files the server never sees."""
+    v = os.environ.get("WAYFARE_STORE") or ""
+    if not v:
+        pin = pathlib.Path(pin_file())
+        if not pin.exists():
+            return "local"
+        try:
+            text = pin.read_text()
+        except (OSError, UnicodeDecodeError) as e:
+            raise ValueError(f"cannot read the pin file {pin} ({e}), so whether this fleet's store "
+                             "is the server is unknown") from None
+        if "://" not in text:
+            return "local"
+        try:
+            root = fleet_root(start)
+        except FleetMapError as e:
+            raise ValueError(f"the fleet map cannot be read ({e}), so whether this fleet's store "
+                             "is the server is unknown; fix the map") from None
+        lines = text.splitlines() if root else []
+        for line in lines:
+            parts = line.split("#", 1)[0].split()
+            if len(parts) == 2 and parts[0] == str(root) and "://" in parts[1]:
+                v = parts[1]
+                break
+        if not v:
+            return "local"
+    if v == "local":
+        return v
+    if re.match(r"^https?://\S+$", v):
+        return v.rstrip("/")
+    raise ValueError(f"'{v}' is neither 'local' nor an http(s) URL; fix WAYFARE_STORE or the pin file")
+
+
+class ServerError(RuntimeError):
+    """A server-backend call that did not complete. The message names the
+    server; it is never swallowed into an empty result."""
+
+
+def server_cli(sub, args, start=None):
+    """Run `wayfare SUB --json ARGS` against the server store_backend names and
+    return its JSON. The backend URL is `<origin>/<workspace id>`, the same
+    split hero_srv_target makes. The CLI is WAYFARE_CLI, else `wayfare` on PATH;
+    it reads the token itself, so none passes through here."""
+    backend = store_backend(start)
+    if backend == "local":
+        raise ServerError("the backend is local; there is no server to call")
+    m = re.match(r"^(https?://[^/\s]+)/([^/\s]+)$", backend)
+    if not m:
+        raise ServerError(f"the server URL '{backend}' must end in the workspace id "
+                          "(<origin>/<workspace id>); fix WAYFARE_STORE or the URL line in the pin file")
+    cli = os.environ.get("WAYFARE_CLI") or "wayfare"
+    env = {**os.environ, "WAYFARE_URL": m.group(1), "WAYFARE_WORKSPACE": m.group(2)}
+    try:
+        r = subprocess.run([cli, sub, "--json", json.dumps(args)], capture_output=True, text=True,
+                           env=env, timeout=130, check=False)
+    except FileNotFoundError:
+        raise ServerError(f"the Wayfare server at {backend} needs the wayfare CLI, and '{cli}' was not "
+                          "found (set WAYFARE_CLI)") from None
+    if r.returncode != 0:
+        raise ServerError(f"the Wayfare server at {backend} refused or failed 'wayfare {sub}' "
+                          f"(exit {r.returncode}): {r.stderr.strip()[:600]}")
+    try:
+        return json.loads(r.stdout)
+    except ValueError:
+        raise ServerError(f"the Wayfare server at {backend} answered 'wayfare {sub}' with something "
+                          "that is not JSON") from None
+
+
+_RESULT_STATE = {PASS: "pass", FAIL: "fail", NA: "n/a", MANUAL: "manual"}
+
+
+def record_results(repo, results, start=None):
+    """Record one repo's audit results on the server: `results` is
+    (check_id, status) pairs. An ERROR cell is a broken checker, not a result,
+    and is not sent. Returns (recorded, failing). The server refuses a check id
+    its register lacks, and that refusal raises."""
+    sent = [{"check_id": c, "state": _RESULT_STATE[st]} for c, st in results if st in _RESULT_STATE]
+    out = server_cli("report-results", {"repo": repo, "results": sent}, start)
+    if not isinstance(out.get("recorded"), int):
+        raise ServerError(f"the Wayfare server at {store_backend(start)} answered 'wayfare report-results' "
+                          "without a count of what it recorded")
+    return out["recorded"], out.get("failing", 0)
 
 
 def pin_file():
@@ -415,7 +558,7 @@ def configure(root=None, load_overlay=True, no_fleet=False, no_fleet_flag=True):
     # Anything else lets a register PR point `register:` at a sibling whose
     # main its author controls, plus a matching register-repo, and the audit
     # would import that sibling's checkers.py as reviewed.
-    if REGISTER != (root / ".fleet").resolve():
+    if REGISTER != register_dir(root).resolve():
         sys.exit(f"FLEET.md register: {reg} must be .fleet/ — the map lives in {root / '.fleet'}, "
                  "which is the register; delete the key or set it to .fleet/")
     TEMPLATE = fields.get("template") or None
@@ -728,7 +871,7 @@ def published_files(repo):
     unsafe, which the FAIL detail carries: otherwise a declaration that had no
     effect looks like one that was never written."""
     refused = []
-    v = hero_md_field(repo / "HERO.md", "published-files", "## Repository", refused) or ""
+    v = hero_md_field(config_path(repo), "published-files", "## Repository", refused) or ""
     names = (p.strip(_AWK_SPACE) for p in v.split(","))
     return sorted({p for p in names if p and "/" not in p}), "; ".join(refused)
 
@@ -4266,6 +4409,8 @@ def main():
     ap.add_argument("--no-fleet", action="store_true",
                     help="audit the current repo alone against the baseline, even when it declares a fleet")
     ap.add_argument("--json", action="store_true", help="one JSON object per failing (check x repo) cell, for skills")
+    ap.add_argument("--record", action="store_true",
+                    help="also record every repo's results on the Wayfare server (needs a server backend)")
     a = ap.parse_args()
     if a.cwd:
         try:
@@ -4313,6 +4458,14 @@ def main():
         else:
             with snapshot_family(a.ref, repos):
                 rows, fails, errors = run_matrix(checks, repos)
+
+    if a.record:
+        try:
+            for i, rn in enumerate(repos):
+                rec, failing = record_results(rn, [(c["id"], cells[i][0]) for c, cells in rows])
+                print(f"recorded {rec} results for {rn} on the server ({failing} failing)", file=sys.stderr)
+        except (ServerError, ValueError) as e:
+            sys.exit(f"--record: {e}")
 
     w = max(len(r) for r in repos) + 2
     print(f"engine: {engine_note()}\nassets: {assets_note}\nregister: {register_source()[2]}\n",

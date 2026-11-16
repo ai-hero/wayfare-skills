@@ -80,9 +80,7 @@ while IFS= read -r CAND; do
 done < <(rev "$TRANSCRIPT" 2>/dev/null | grep -n '"type":"user"' | grep -v -e '"type":"tool_result"' -e '"isMeta":true')
 
 if [ "$BACK" -gt 0 ]; then
-  # head closing the pipe early makes rev die of SIGPIPE, which pipefail
-  # would report as a failure of a slice that is complete.
-  SLICE=$(set +o pipefail; rev "$TRANSCRIPT" 2>/dev/null | head -n "$BACK" | rev) || exit 0
+  SLICE=$(tail -n "$BACK" "$TRANSCRIPT" 2>/dev/null) || exit 0
   [ -n "$SLICE" ] || exit 0
 else
   SLICE=$(cat "$TRANSCRIPT" 2>/dev/null) || exit 0

@@ -1080,11 +1080,11 @@ if [[ -n "$HOOK_FILES" ]]; then
     # `. "$PLUGIN_ROOT/scripts/X.sh"`, HERO_LIB=...scripts/X.sh and `uv run`
     # forms alike.
     HOOK_DEPS=()
-    while IFS= read -r hook_file; do
-      while IFS= read -r dep; do
-        [[ -n "$dep" ]] && HOOK_DEPS+=("$dep")
-      done < <(grep -v '^[[:space:]]*#' "$hook_file" | grep -oE 'scripts/[A-Za-z0-9_.-]+\.(sh|py)' | sort -u)
-    done <<< "$HOOK_FILES"
+    while IFS= read -r dep; do
+      [[ -n "$dep" ]] && HOOK_DEPS+=("$dep")
+    done < <(while IFS= read -r hook_file; do
+      grep -v '^[[:space:]]*#' "$hook_file" | grep -oE 'scripts/[A-Za-z0-9_.-]+\.(sh|py)'
+    done <<< "$HOOK_FILES" | sort -u)
 
     # Worklist: each .py found is read for siblings it loads by path, and a
     # sibling found is read in turn.

@@ -724,11 +724,11 @@ rather than reporting clean, the same rule the Upstream lane above follows):
   the person says they no longer want, offered in the ordinary confirm flow with
   two answers: accept (`new` becomes `accepted`) or drop. Drop calls the same
   write as `wayfare-drop-item` (`references/drop.md`, *Marking the item*): ask
-  for the reason, set `status: dropped`, append
-  `- DATE (wayfare-sync-plan) decision: dropped: REASON`, keep the file. An item
-  with no branch touches no git state, so nothing here needs a checkout. A
-  `ready` or later item is out of this lane: it carries a plan the ready-mark
-  bought, and dropping it is the verb's call, not a roundup's.
+  for the reason, run `hero_item_set_status ID dropped`, log
+  `hero_item_log ID decision "dropped: REASON"`, keep the file. An item with no
+  branch touches no git state, so nothing here needs a checkout. A `ready` or
+  later item is out of this lane: it carries a plan the ready-mark bought, and
+  dropping it is the verb's call, not a roundup's.
 
 - **store defects**: every stderr line `hero_ready_items` prints (the script
   checks those and nothing below); plus, checked by this finding itself since
@@ -1126,14 +1126,15 @@ the ordinary confirm flow:
 
 - **Promote** → it becomes one or more items, written with the full format and
   the usual investigation, each carrying `discovered_from: IDEA_ID`. The idea
-  then goes `status: done`, `resolution: promoted`, with a `## Log` line naming
-  the ids it became. A promoted idea that became a group of tasks is a candidate
-  for a goal at the goals stage like any other.
-- **Park with intent** → `new` becomes `accepted`: we mean to do this, just not
-  yet. This is the only edit that leaves it in the lot.
-- **Bin it** → `status: dropped`. Keep the file. "We considered this and said
-  no" is the history that stops it being raised again next quarter, and it is
-  the same reason a `rejected` signal is kept.
+  then goes `hero_item_set_status IDEA_ID done promoted`, with a
+  `hero_item_log IDEA_ID note "..."` line naming the ids it became. A promoted
+  idea that became a group of tasks is a candidate for a goal at the goals stage
+  like any other.
+- **Park with intent** → `hero_item_set_status ID accepted`: we mean to do this,
+  just not yet. This is the only edit that leaves it in the lot.
+- **Bin it** → `hero_item_set_status ID dropped`. Keep the file. "We considered
+  this and said no" is the history that stops it being raised again next
+  quarter, and it is the same reason a `rejected` signal is kept.
 
 **Never promote an idea unasked, and never count one as coverage.** An idea
 credited as coverage suppresses the `uncovered` finding for ground nobody has

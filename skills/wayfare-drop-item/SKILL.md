@@ -51,16 +51,17 @@ that store and names the migrator.
 **Read `../../references/drop.md`.** Resolve the id before selecting the
 procedure. For a task with a branch, create a named stash only after
 confirmation. Then switch away from the branch. For an item without a branch,
-change no git state. In both cases, write `status: dropped` and a dated reason.
+change no git state. In both cases, run `hero_item_set_status ID dropped` and
+log the reason with `hero_item_log ID decision "dropped: REASON"`.
 
 Record the dropped status so an abandoned item does not remain `active`.
 `dropped` does not satisfy a dependency. The listing must continue to report
 dependent items as blocked.
 
 With `replaced-by NEW`, refuse a NEW that is missing, is ID itself, or is
-dropped or done. Write `replaced_by: NEW` with the status, then offer to move
-every dependent's `depends_on` from ID to NEW. Rewrite only on the user's yes,
-and log each rewrite on the dependent.
+dropped or done. Run `hero_item_set ID replaced_by NEW` after the status, then
+offer to move every dependent's `depends_on` from ID to NEW. Rewrite only on the
+user's yes, and log each rewrite on the dependent.
 
 ## Next steps
 

@@ -3229,16 +3229,18 @@ _hero_local_append() { # FILE SECTION LINE
 # `branch:`). A status moves by hero_item_set_status. Values are checked here,
 # before routing, so both backends accept and refuse the same ones. Setting
 # `blocked_on` locally also stamps `blocked_since` when the item has none; the
-# server stamps its own.
+# server stamps its own. `replaced_by` is accepted only on an item already at
+# `dropped` (so the status moves first), and the server has no field for it, so
+# there it is a `replaced_by` log line.
 hero_item_set() { # NUMBER KEY VALUE [ROOT]
   local root r n pid skey kind body json f val sv
   n=$(_hero_item_num hero_item_set "${1:-}") || return 2
   case "$2" in
     title|priority|severity|shape|blocked_on|success|origin|branch) kind=str ;;
-    rank|parent) kind=int ;;
+    rank|parent|replaced_by) kind=int ;;
     depends_on) kind=ints ;;
     source|target) kind=list ;;
-    *) echo "hero_item_set: '$2' is not a field this writes (title priority severity shape rank parent depends_on blocked_on source target success origin branch); a status moves by hero_item_set_status" >&2; return 2 ;;
+    *) echo "hero_item_set: '$2' is not a field this writes (title priority severity shape rank parent depends_on blocked_on source target success origin branch replaced_by); a status moves by hero_item_set_status" >&2; return 2 ;;
   esac
   case "${3:-}" in *[[:cntrl:]]*) echo "hero_item_set: a $2 holds no control characters; a newline would start a field of its own" >&2; return 2 ;; esac
   val=${3:-}
@@ -3262,6 +3264,15 @@ hero_item_set() { # NUMBER KEY VALUE [ROOT]
   esac
   root=$(hero_srv_root "${4:-}")
   r=$(hero_srv_route_root "$root") || return 1
+  if [ "$2" = replaced_by ]; then
+    f=$(hero_item_file "$n" "$root") || return 1
+    [ "$(hero_item_field "$f" status)" = dropped ] || { echo "hero_item_set: replaced_by is set only on a dropped item; item $n is '$(hero_item_field "$f" status)'. Drop it first with hero_item_set_status $n dropped" >&2; return 2; }
+    if [ "$r" != local ]; then
+      hero_item_log "$n" replaced_by "$val" "$root" >/dev/null || return 1
+      printf 'replaced_by: %s\n' "$val"
+      return 0
+    fi
+  fi
   if [ "$r" = local ]; then
     hero_store_require_local "$root" hero_item_set || return 1
     f=$(hero_item_file "$n" "$root") || return 1

@@ -12,6 +12,18 @@ Wayfare server the item file is a read-only render.
 `hero_item_tick ID "LINE TEXT"` ticks a Subtask or DoD line, and
 `hero_item_log ID TAG "TEXT"` appends a dated `## Log` line.
 
+Every status, `resolution`, `branch:` and `replaced_by` change goes through
+those calls, in prose as in practice: an instruction to edit a `status:` or
+`branch:` line by hand is the one the store layer exists to replace, and
+`scripts/validate.sh` fails it in the routed skills and in `references/*.md`. A
+resolution rides the status call (`hero_item_set_status ID done shipped`;
+`promoted` and `obsolete` close an idea or anti-feature). `replaced_by` is set
+with `hero_item_set ID replaced_by NEW`, only after
+`hero_item_set_status ID dropped`, because it refuses an item that is not yet
+dropped. The server has no field for it, so there it is a `replaced_by` log
+line. On a server `ready`, `accepted` and `new` are a person's marks and the
+status call refuses them.
+
 ## The DESIGN.md channel
 
 `DESIGN.md` changes only in a commit on a branch that a live item owns. A skill

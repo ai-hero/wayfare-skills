@@ -353,13 +353,13 @@ between turns:
    resumed session or a fresh one, do not prompt from inside a turn: in a
    headless run that hangs. Stop with `stop: reauthorize`, and say to run
    `wayfare-start-goal` again: it re-authorizes and runs the turn. When present,
-   and the goal is still `accepted`, write `status: active`. This is the one
-   writer of that transition. Then every launch below that can reach a gate
-   carries the permissions line from *Permissions*. Those are step 7's hand-off
-   and a bot item's *Carrying a bot's PR*. Build, fix and simplify agents only
-   commit and reach no gate, so they never get the line: a grant pasted into a
-   prompt that cannot use it is one more copy of merge authority for an agent to
-   misread. The line is
+   and the goal is still `accepted`, run `hero_item_set_status GOAL_ID active`.
+   This is the one writer of that transition. Then every launch below that can
+   reach a gate carries the permissions line from *Permissions*. Those are step
+   7's hand-off and a bot item's *Carrying a bot's PR*. Build, fix and simplify
+   agents only commit and reach no gate, so they never get the line: a grant
+   pasted into a prompt that cannot use it is one more copy of merge authority
+   for an agent to misread. The line is
    `gates pre-authorized in-session for goal 7: mark-ready, respond, auto-approve, merge, deploy=verify`,
    built from the set granted at this session's gate, never re-read from the
    file (the file may only narrow it; a wider file is `stop: reauthorize`), and
@@ -387,14 +387,14 @@ between turns:
 
 4. **Make sure the goal branch exists, then build one task at a time.** The
    branch name lives in the goal's `branch:` frontmatter field, written by the
-   first turn and read by every later one. It is `feat/goal-GOAL_ID-SLUG`, where
-   SLUG is the goal's title slugified the way `hero_branch_policy` slugifies a
-   subject. The `feat/` prefix is required: consumer repos'
-   `no-commit-to-branch` hook carries a branch-name allowlist
-   (`ci|chore|docs|feat|task|fix|refactor|test`), so a bare `goal/` branch
-   cannot take a commit there. Do not run `hero_branch_policy` for it: that
-   function derives TYPE and SLUG from a diff or a description, and a goal's are
-   fixed. On the first turn, cut it from the base:
+   first turn (`hero_item_set GOAL_ID branch BRANCH`) and read by every later
+   one. It is `feat/goal-GOAL_ID-SLUG`, where SLUG is the goal's title slugified
+   the way `hero_branch_policy` slugifies a subject. The `feat/` prefix is
+   required: consumer repos' `no-commit-to-branch` hook carries a branch-name
+   allowlist (`ci|chore|docs|feat|task|fix|refactor|test`), so a bare `goal/`
+   branch cannot take a commit there. Do not run `hero_branch_policy` for it:
+   that function derives TYPE and SLUG from a diff or a description, and a
+   goal's are fixed. On the first turn, cut it from the base:
 
    ```bash
    git checkout -b "$GOAL_BRANCH" "origin/$BASE"
@@ -895,18 +895,18 @@ between turns:
    back to Step 5. A `mark-ready` grant on the permissions line is answered at
    Step 6, never earlier.
 
-   When that returns merged, write `status: done` on every member task at
-   `committed` and rewrite its `[goal-commit:]` marker from `unmerged` to
-   `merged in PR_URL`. Until that happens every task lists as `committed`, which
-   is what `sync` reports and what the dependency check in *Advancing one item*
-   refuses to build against. A `merged, not deployed` stop leaves them
-   `committed` as well: `done` means the deploy was verified. Then run step 8,
-   then write `status: done` on the goal, and only if step 8 admitted nothing.
-   Admitted work is work this goal still owes, so a goal that absorbed an item
-   is not done; it stays `active` for the next turn. A STOP from
-   wayfare-build-task (a declined gate, REQUEST_CHANGES, a failed workflow) is
-   the turn's stop too, reported with the gate it rested at; the goal stays
-   `active` and the next turn resumes from the same branch.
+   When that returns merged, run `hero_item_set_status ID done shipped` on every
+   member task at `committed` and rewrite its `[goal-commit:]` marker from
+   `unmerged` to `merged in PR_URL`. Until that happens every task lists as
+   `committed`, which is what `sync` reports and what the dependency check in
+   *Advancing one item* refuses to build against. A `merged, not deployed` stop
+   leaves them `committed` as well: `done` means the deploy was verified. Then
+   run step 8, then run `hero_item_set_status GOAL_ID done shipped` on the goal,
+   and only if step 8 admitted nothing. Admitted work is work this goal still
+   owes, so a goal that absorbed an item is not done; it stays `active` for the
+   next turn. A STOP from wayfare-build-task (a declined gate, REQUEST_CHANGES,
+   a failed workflow) is the turn's stop too, reported with the gate it rested
+   at; the goal stays `active` and the next turn resumes from the same branch.
 
 8. **Admit what the turn discovered, before deciding the goal is done.** Each
    task's run reports the items its Step 2a wrote, each with the goal DoD line
@@ -922,8 +922,9 @@ between turns:
      later turn builds it as another commit on that same branch, like any other
      task.
    - **The turn merged at step 7.** That PR is gone, so the goal cuts a fresh
-     branch for the remainder and ships a second PR. Write the new name to
-     `branch:`, replacing the merged one.
+     branch for the remainder and ships a second PR. Run
+     `hero_item_set GOAL_ID branch NEW_BRANCH` with the new name, replacing the
+     merged one.
 
    **One PR per goal is the default, not a guarantee the goal will contort to
    keep.** A goal ships a second PR when what is left is a *different changeset*

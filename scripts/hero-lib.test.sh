@@ -485,6 +485,13 @@ check "item-write: committed is a local status" "status: committed" "$(sb hero_i
 sb hero_item_set_status 3 "done" shipped "$SW" >/dev/null
 check "item-write: done takes its resolution" "done shipped" "$(hero_item_field "$SW/.plans/items/003-w.md" status) $(hero_item_field "$SW/.plans/items/003-w.md" resolution)"
 check "item-write: branch is a field write" "branch: feat/x" "$(sb hero_item_set 3 branch feat/x "$SW")"
+printf -- '---\nid: 4\ntype: task\nstatus: active\n---\n\n## Log\n' > "$SW/.plans/items/004-r.md"
+sb hero_item_set 4 replaced_by 3 "$SW" >/dev/null 2>&1; check "item-write: replaced_by on an item that is not dropped is rc 2" "2" "$?"
+check "item-write: and the item keeps no replaced_by" "" "$(hero_item_field "$SW/.plans/items/004-r.md" replaced_by)"
+sb hero_item_set_status 4 dropped "" "$SW" >/dev/null
+check "item-write: replaced_by beside dropped is written" "replaced_by: 3" "$(sb hero_item_set 4 replaced_by 3 "$SW")"
+check "item-write: and read back from the file" "3" "$(hero_item_field "$SW/.plans/items/004-r.md" replaced_by)"
+sb hero_item_set 4 replaced_by abc "$SW" >/dev/null 2>&1; check "item-write: a replaced_by that is not an id is rc 2" "2" "$?"
 check "item-write: tick prints the box" "tick: write the parser" "$(sb hero_item_tick 3 "write the parser" "$SW")"
 check "item-write: every box with that text is ticked, the others left" "2 1" \
   "$(grep -c '^- \[x\] write the parser$' "$SW/.plans/items/003-w.md") $(grep -c '^1\. \[ \] number one' "$SW/.plans/items/003-w.md")"

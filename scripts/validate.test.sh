@@ -437,6 +437,28 @@ printf '\nAn item at `status: committed` is already built.\n' >> "$d/skills/wayf
 run_validate "$d"
 check "routed skill naming a status without setting it: not reported" "" "$(printf '%s' "$OUT" | grep -o 'tells the agent to set an item field by hand' || true)"
 
+d=$(fixture item-write-routed-skill-added)
+printf '\nThen set `status: dropped` on the item.\n' >> "$d/skills/wayfare-drop-item/SKILL.md"
+run_validate "$d"
+check "drop-item sets status by hand: rc" "1" "$RC"
+check_contains "drop-item sets status by hand: names the file" "$OUT" "skills/wayfare-drop-item/SKILL.md"
+
+d=$(fixture item-write-reference-by-hand)
+printf '\nThen set `status: dropped` on the item.\n' >> "$d/references/drop.md"
+run_validate "$d"
+check "a reference sets status by hand: rc" "1" "$RC"
+check_contains "a reference sets status by hand: names the file" "$OUT" "references/drop.md"
+
+d=$(fixture item-write-reference-branch-by-hand)
+printf '\nWrite `branch: NEW_BRANCH` on the goal.\n' >> "$d/references/goals.md"
+run_validate "$d"
+check_contains "a reference writes branch by hand: reported" "$OUT" "tells the agent to set an item field by hand"
+
+d=$(fixture item-write-reference-reads-status)
+printf '\nAn item at `status: dropped` is closed.\n' >> "$d/references/drop.md"
+run_validate "$d"
+check "a reference naming a status without setting it: not reported" "" "$(printf '%s' "$OUT" | grep -o 'tells the agent to set an item field by hand' || true)"
+
 # ---------- DESIGN.md is written only on a live item's branch ---------------
 
 d=$(fixture design-grill-offers-append)

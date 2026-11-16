@@ -276,8 +276,8 @@ Downstream pickup (after the ready-mark):
 ```
 
 A handoff usually wants immediate pickup, so end by offering the flip: "Mark it
-ready for pickup now? [y/N]" On yes, set `status: ready` and add `ready_marked:`
-with the date.
+ready for pickup now? [y/N]" On yes, run `hero_item_set_status ID ready`, which
+also stamps `ready_marked:`.
 
 For a `--repo` handoff, report both sides so it's clear what left the building:
 

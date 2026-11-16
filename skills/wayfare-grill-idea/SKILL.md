@@ -120,10 +120,10 @@ Review reports findings. Sync writes confirmed changes to the one root file.
 Everything else is an idea or task to think through.
 
 **Feature mode:** if `$ARGUMENTS` resolves to an existing `task` by id, filename
-slug, or title, plan that task **in place**. Change `status: accepted` to
-`planning` before the interview. Resume a task already at `planning`. Refuse
-`ready` and later statuses. Route replanning of those tasks through
-`wayfare-sync-plan`.
+slug, or title, plan that task **in place**. Run
+`hero_item_set_status ID planning` before the interview. Resume a task already
+at `planning`. Refuse `ready` and later statuses. Route replanning of those
+tasks through `wayfare-sync-plan`.
 
 **Check existing premises before planning.** Read `## Context`, `## Approach`,
 and inherited `## Subtasks` (for a goal member with no `## Approach`, its slice:
@@ -275,9 +275,9 @@ listing's `anti` rows are anti-features: things this repo looked at and chose
 not to build. Read each one's `title` and `## Context` against the ask. On an
 overlap, stop: print the item (id, title, its Context) and ask whether to
 reverse the decision. Only a yes continues, and the reversal is written on the
-anti-feature, not remembered: append a dated `note:` line to its `## Log` saying
-who reversed it and why, and set it `done` with `resolution: promoted` when Step
-4 writes what it became, which carries `discovered_from: ANTI_FEATURE_ID`. A no
+anti-feature, not remembered: `hero_item_log ID note "..."` says who reversed it
+and why, and `hero_item_set_status ID done promoted` closes it when Step 4
+writes what it became, which carries `discovered_from: ANTI_FEATURE_ID`. A no
 ends the run, with the item cited as the reason. Planning it anyway is how a
 decision made once gets re-litigated every quarter, and the store's only record
 of it goes on saying "declined" beside a task that builds it.
@@ -360,16 +360,16 @@ Read `../../references/store-writes.md` (_The DESIGN.md channel_) for the shape.
 
 Emitted items are `planning`: shaped, but not yet approved to implement. The
 ready-mark is the **user's act, never yours**: ask which items to mark ready,
-flip only the confirmed ones to `status: ready` and append `ready_marked:` with
-the date, leaving the rest in `planning` for a later session. Never flip an item
-unprompted, and never batch beyond what the user named. An unmarked item is
-invisible to `wayfare:wayfare-build-task` by design.
+run `hero_item_set_status ID ready` on only the confirmed ones (it stamps
+`ready_marked:`), leaving the rest in `planning` for a later session. Never flip
+an item unprompted, and never batch beyond what the user named. An unmarked item
+is invisible to `wayfare:wayfare-build-task` by design.
 
 **A goal's members are marked once, on the goal's plan.** Ask about the goal; on
-yes, write `status: ready` + `ready_marked:` on every `planning` member that
-passes `hero_member_planned ITEM_FILE GOAL_FILE` (wayfare-build-task's Step 1
-check for the same mark), and name each that fails with the part it lacks. The
-goal stays `accepted`: `wayfare-start-goal`'s gate authorizes it.
+yes, run `hero_item_set_status ID ready` on every `planning` member that passes
+`hero_member_planned ITEM_FILE GOAL_FILE` (wayfare-build-task's Step 1 check for
+the same mark), and name each that fails with the part it lacks. The goal stays
+`accepted`: `wayfare-start-goal`'s gate authorizes it.
 
 **In Feature mode under `wayfare-sync-plan`, the mark ends this task's grill,
 not the pass.** Flip the task to `ready`, then hand control back to wayfare,

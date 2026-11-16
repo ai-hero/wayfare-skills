@@ -105,10 +105,11 @@ The standard reserves `ready` for the person, explicitly. The yes to Step 3's
 question is that act. Nothing else counts: not the description, not a
 permissions line, not a file.
 
-- **Yes:** set `status: ready` and `ready_marked:` to today, append a `## Log`
-  line saying the person confirmed it, then run `hero_ready_items` and confirm
-  the item is listed READY. Not listed means the write is wrong: fix it and say
-  so, rather than building around it.
+- **Yes:** run `hero_item_set_status ID ready` (it stamps `ready_marked:`), add
+  a `## Log` line saying the person confirmed it with
+  `hero_item_log ID note "..."`, then run `hero_ready_items` and confirm the
+  item is listed READY. Not listed means the write is wrong: fix it and say so,
+  rather than building around it.
 - **No, or anything else:** leave the item at `planning`, print its path, and
   stop. Never flip it on a maybe.
 

@@ -285,10 +285,13 @@ whose unmet dependency carries the field lists as `[replaced dep: OLD → NEW]`.
 That dependent stays blocked until its `depends_on` is rewritten, and the
 listing never rewrites it: `wayfare-drop-item OLD replaced-by NEW` offers the
 rewrite at the drop, and `wayfare-sync-plan` offers it for any replaced dep it
-finds. The field at any other status, or naming the item itself, an id no item
-carries, or an item that is `done` or `dropped`, is a store defect the listing
-warns about. It is not `promoted`, which is an idea or a reversed anti-feature
-becoming work; a task re-cut as a different task is a drop with a replacement.
+finds. `hero_item_set ID replaced_by NEW` writes it and refuses an item that is
+not yet `dropped`, so the status moves first; under a server it is a
+`replaced_by` log line, since the server has no field. The field at any other
+status, or naming the item itself, an id no item carries, or an item that is
+`done` or `dropped`, is a store defect the listing warns about. It is not
+`promoted`, which is an idea or a reversed anti-feature becoming work; a task
+re-cut as a different task is a drop with a replacement.
 
 Not every item visits every state. A `signal` runs
 `new → accepted → ready → active → done` (no plan to write, no branch to commit
@@ -768,9 +771,10 @@ the cutover imports from the local files and the dry run compares against them.
 A hand edit of a `.plans/` file does not pass through a function and is not
 refused, which is why a skill writes its item through `hero_item_set_status`,
 `hero_item_set`, `hero_item_tick` and `hero_item_log` instead.
-wayfare-build-task does; `validate.sh` fails its prose if it tells the agent to
-set `status:` or `branch:` by hand, and other skills join that check as they are
-routed.
+wayfare-build-task, wayfare-drop-item, wayfare-grill-idea, wayfare-one-shot and
+wayfare-write-handoff do, and `validate.sh` fails their prose, and every file in
+`references/`, if it tells the agent to set `status:` or `branch:` by hand.
+Other skills join that check as they are routed.
 
 The server backend is the store functions calling the `wayfare` CLI
 (`WAYFARE_CLI`, else `wayfare` on PATH), with the URL's one path segment as the

@@ -894,16 +894,6 @@ item_hand_writes() { # FILE -> prints "LINE: text" per instruction to edit a fie
   grep -nE '(^|[^[:alnum:]_])[Ww]rite (one|each|the)[a-z ]{0,20} (file|item|task)s? (to|in|at) `?\.plans/' "$1" || true
 }
 ITEM_WRITE_ERRORS=0
-for s in $ITEM_WRITES_ROUTED; do
-  while IFS= read -r f; do
-    hits=$(item_hand_writes "$f")
-    [ -z "$hits" ] && continue
-    ITEM_WRITE_ERRORS=$((ITEM_WRITE_ERRORS + 1))
-    error "tells the agent to set an item field by hand" \
-      "${f#"$PLUGIN_ROOT/"}" "$(printf '%s' "$hits" | head -1 | cut -d: -f1)" \
-      "Call hero_item_set_status ID STATUS, hero_item_set ID branch BRANCH, or hero_item_create TYPE TITLE BODY_FILE for a new item (scripts/hero-lib.sh)"
-  done < <(find "$SKILLS_DIR/$s" -type f -name '*.md' 2>/dev/null)
-done
 while IFS= read -r f; do
   hits=$(item_hand_writes "$f")
   [ -z "$hits" ] && continue
@@ -911,7 +901,10 @@ while IFS= read -r f; do
   error "tells the agent to set an item field by hand" \
     "${f#"$PLUGIN_ROOT/"}" "$(printf '%s' "$hits" | head -1 | cut -d: -f1)" \
     "Call hero_item_set_status ID STATUS, hero_item_set ID branch BRANCH, or hero_item_create TYPE TITLE BODY_FILE for a new item (scripts/hero-lib.sh)"
-done < <(find "$PLUGIN_ROOT/references" -maxdepth 1 -type f -name '*.md' 2>/dev/null)
+done < <(
+  for s in $ITEM_WRITES_ROUTED; do find "$SKILLS_DIR/$s" -type f -name '*.md' 2>/dev/null; done
+  find "$PLUGIN_ROOT/references" -maxdepth 1 -type f -name '*.md' 2>/dev/null
+)
 [[ $ITEM_WRITE_ERRORS -eq 0 ]] && pass "routed skills and references write their item through the store layer"
 
 # ── DESIGN.md is written only on a branch a live item owns ─────────

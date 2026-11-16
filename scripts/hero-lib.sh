@@ -3526,11 +3526,12 @@ hero_item_tick() { # NUMBER TEXT [ROOT]
 # The highest item id under DIR, from each file's `id:` and its filename's
 # number, so an item whose frontmatter is unreadable still holds its number.
 _hero_item_max_id() { # DIR
-  local f id max=0
+  local f b id max=0
   setopt localoptions nullglob 2>/dev/null || true
   for f in "$1"/*.md; do
     [ -e "$f" ] || continue
-    for id in "$(hero_item_field "$f" id)" "$(basename "$f" | sed 's/^\([0-9]*\).*/\1/')"; do
+    b=${f##*/}
+    for id in "$(hero_item_field "$f" id)" "${b%%[!0-9]*}"; do
       case "$id" in ''|*[!0-9]*) continue ;; esac
       [ $((10#$id)) -le "$max" ] || max=$((10#$id))
     done
@@ -3547,7 +3548,7 @@ _hero_item_max_id() { # DIR
 # overwritten. The server has no create-item yet, so there it refuses and
 # files nothing.
 hero_item_create() { # TYPE TITLE BODY_FILE [ROOT]
-  local root dir type title body slug n f tmp max k st fm r
+  local root dir type title body slug n f tmp max k st fm r pad
   type=${1:-}; title=${2:-}; body=${3:-}
   case "$type" in task|signal|goal|idea|anti-feature) ;; *) echo "hero_item_create: TYPE '$type' is not task, signal, goal, idea or anti-feature" >&2; return 2 ;; esac
   [ -n "$title" ] || { echo "hero_item_create: TITLE is required" >&2; return 2; }
@@ -3575,7 +3576,8 @@ hero_item_create() { # TYPE TITLE BODY_FILE [ROOT]
   for _ in 1 2 3 4 5; do
     max=$(_hero_item_max_id "$dir") || return 1
     n=$((max + 1))
-    f="$dir/$(printf '%03d' "$n")-$slug.md"
+    pad=$(printf '%03d' "$n")
+    f="$dir/$pad-$slug.md"
     tmp=$(mktemp "$dir/.create.XXXXXX") || return 1
     {
       printf -- '---\nid: %s\ntype: %s\ntitle: %s\n' "$n" "$type" "$(_hero_yaml_scalar "$title")"
@@ -3592,7 +3594,7 @@ hero_item_create() { # TYPE TITLE BODY_FILE [ROOT]
     if ln "$tmp" "$f" 2>/dev/null; then
       rm -f "$tmp"
       # A concurrent creator with another slug takes the same id; the loser backs out.
-      if [ "$(find "$dir" -maxdepth 1 -name "$(printf '%03d' "$n")-*.md" | wc -l | tr -d ' ')" -gt 1 ]; then
+      if [ "$(find "$dir" -maxdepth 1 -name "$pad-*.md" | wc -l | tr -d ' ')" -gt 1 ]; then
         rm -f "$f"; continue
       fi
       printf '%s\n' "$n"

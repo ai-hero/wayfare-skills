@@ -10,8 +10,8 @@ on:
   issue_comment:
     types: [created]
 
-permissions:
-  contents: read
+# Nothing at the top level; the job below declares what it needs.
+permissions: {}
 
 jobs:
   auto-approve:

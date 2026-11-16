@@ -5,7 +5,7 @@ change. The behaviour marked **measured** comes from `mongo:8` on 2026-11-07.
 
 ## The model
 
-Five rules, stated for any store. This file gives the MongoDB mechanics.
+Four rules, stated for any store. This file gives the MongoDB mechanics.
 
 1. **Every migration works with the release before it, including after a
    rollback.** The rollout starts the new task before it stops the old one, and
@@ -17,8 +17,6 @@ Five rules, stated for any store. This file gives the MongoDB mechanics.
    migrates.** Steps stay idempotent anyway.
 4. **A backfill is a background job, never part of boot.** Boot creates indexes
    and does fast shape fixes only.
-5. **The rule belongs to the store, not to MongoDB.** A SQL store would change
-   the mechanics below and keep the five rules.
 
 Migrations are ordered, named Go steps. A failed step stops the boot of the API
 role. There is no down step in most repos.
@@ -41,9 +39,8 @@ A lease is one document in a small collection, for example `migration_lock` with
 - Expiry means two holders can overlap in principle, for example after a long
   pause. That is why each step stays idempotent.
 
-Only the API entrypoint calls the runner. Use the repo's existing role switch.
-Do not invent an environment variable for it. Workers, cron tasks and other
-roles wait for the schema through their own readiness check and never migrate.
+Use the repo's existing role switch; do not invent an environment variable for
+it. Other roles wait for the schema through their own readiness check.
 
 Add a step in the repo's existing mechanism. If the repo has separate baseline
 indexes and a migration list, follow its comments about which one to use. Do not
@@ -103,20 +100,13 @@ still work if the next release rolls back to it.
 Do not combine these into one release if old and new code overlap during deploy.
 Read the repo's deploy file before you assume they do not overlap.
 
-The rollback case: if the expand release fails its rollout, the old image comes
-back with the new field or index still in place. It must ignore them. If the
-backfill release rolls back, the converted rows must still read under the old
-code, which is why expand writes both shapes first. The contract release is the
-one that cannot be rolled back, so it is the one that waits for the marker.
-
 The same order applies to a wire contract. A field removed from a protobuf
 message follows the same three releases, and `buf breaking` is the check that
 the new schema still reads the previous release's messages.
 
 ## Backfill rules
 
-A backfill never runs at boot. It is a resumable background job that starts
-after the server listens.
+A backfill is a resumable background job that starts after the server listens.
 
 - Filter so a finished row does not match, for example
   `{field: {$ne: desired}}`. A second run must match nothing, and a restart
@@ -133,8 +123,8 @@ after the server listens.
 ## Destructive steps
 
 A destructive step is a drop, a delete, `$unset`, `$rename`, a new unique index
-or `collMod`. Each carries a comment in this form, because it cannot be undone
-by rolling back the image:
+or `collMod`. Each carries a comment in this form, because rolling back the
+image cannot undo it:
 
 ```go
 // contract: v1.42.0 is the last release that reads the old shape

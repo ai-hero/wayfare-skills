@@ -10,7 +10,6 @@ on:
   issue_comment:
     types: [created]
 
-# Nothing at the top level; the job below declares what it needs.
 permissions: {}
 
 jobs:

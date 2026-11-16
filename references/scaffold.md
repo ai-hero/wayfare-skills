@@ -157,7 +157,7 @@ npx tsc --init
 ## Step 5: Create AGENTS.md
 
 House standard: `AGENTS.md` is the only instructions file; create no
-`CLAUDE.md`. Write `AGENTS.md`.
+`CLAUDE.md`.
 
 `wayfare:wayfare-init-repo` (Step 1) fills in the Tech Stack / Best Practices /
 Coding Conventions sections after it investigates, so leave them out here.
@@ -276,7 +276,7 @@ next-steps lead there once it passes.
 
 ## Notes
 
-- Always creates AGENTS.md and no CLAUDE.md. Uses uv for all Python projects.
+- Uses uv for all Python projects.
 - Frontend UI comes from the design-system registry in HERO.md when one is
   configured, else stock shadcn. Run `wayfare:wayfare-recomponentize-ui` after
   scaffolding to establish the atomic component layers.

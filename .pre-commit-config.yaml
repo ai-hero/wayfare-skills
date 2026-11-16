@@ -162,9 +162,8 @@ repos:
         # above; its raw-SQL and dynamic-import findings fail the push
         # otherwise. Its SHA1 findings are stored label-cache keys:
         # autofixing one re-labels every cached row, so lifting the exclusion
-        # must not autofix them. Running semgrep by hand needs the same exclusion
-        # plus the CLAUDE.md symlink, which pre-commit already filters out and
-        # semgrep treats as a fatal scanning root.
+        # must not autofix them. Running semgrep by hand needs the same
+        # exclusion.
         exclude: ^analysis/
         # --error fails the hook on a rule timeout as well as a finding, and
         # scripts/audit.py is large enough that a rule runs past semgrep's 5s

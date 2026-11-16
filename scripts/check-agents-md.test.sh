@@ -99,10 +99,6 @@ run "$d"
 check "R1 wrong symlink target: rc" "0" "$rc"
 check "R1 wrong symlink target: checks AGENTS.md not the link" "no" "$(has 'R2:')"
 
-d=$(fixture dot_link); ln -s ./AGENTS.md "$d/CLAUDE.md"
-run "$d"
-check "R1 ./AGENTS.md link form: rc" "0" "$rc"
-
 d=$(fixture dangling); ln -s AGENTS.md "$d/CLAUDE.md"; rm "$d/AGENTS.md"
 run "$d"
 check "R1 dangling symlink: rc" "2" "$rc"

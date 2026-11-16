@@ -448,6 +448,10 @@ hooks/hooks.json|the hook registry
 hooks/check-deferrals.sh|the Stop hook
 hooks/new-hook.sh|a hook added later
 scripts/hero-lib.sh|sourced by the Stop hook
+scripts/fleet-setup.py|run by the SessionStart hook
+scripts/audit.py|loaded by fleet-setup.py
+.github/workflows/pr-check.yaml|this repo's CI
+Justfile|the commands CI runs
 .claude-plugin/plugin.json|the Claude Code manifest
 .claude-plugin/marketplace.json|the marketplace source
 .agents/plugins/marketplace.json|the agents marketplace

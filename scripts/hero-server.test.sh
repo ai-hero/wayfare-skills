@@ -672,6 +672,9 @@ check "https: localhost with a port is accepted" "http://localhost:8080/ws-1" "$
 check "https: 127.0.0.1 is accepted" "http://127.0.0.1:8080/ws-1" "$(WAYFARE_STORE=http://127.0.0.1:8080/ws-1 hero_store_backend)"
 check "https: [::1] is accepted" "http://[::1]:8080/ws-1" "$(WAYFARE_STORE="http://[::1]:8080/ws-1" hero_store_backend)"
 WAYFARE_STORE=http://localhost.evil.com/ws-1 hero_store_backend >/dev/null 2>&1; check "https: a host that only starts with localhost is rc 1" "1" "$?"
+for u in "http://localhost:80@evil.com/ws-1" "http://127.0.0.1:1@evil.com/ws-1" "http://[::1]:1@evil.com/ws-1" "https://wf.test@evil.com/ws-1"; do
+  WAYFARE_STORE=$u hero_store_backend >/dev/null 2>&1; check "https: userinfo before the host is rc 1 ($u)" "1" "$?"
+done
 
 # A status holding a newline never adds frontmatter lines, and one outside the
 # enum is refused rather than rendered.

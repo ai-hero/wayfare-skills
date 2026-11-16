@@ -1258,7 +1258,7 @@ hero_register_find() { # [START]
 # cannot be read: none of them is a silent fall back to local, since a fleet
 # that meant the server would keep writing files the server never sees.
 hero_store_backend() { # [DIR]
-  local v file root rc
+  local v file root rc a
   v=${WAYFARE_STORE:-}
   if [ -z "$v" ]; then
     file=$(hero_pin_file)
@@ -1282,6 +1282,10 @@ hero_store_backend() { # [DIR]
     http://?*|https://?*)
       case "$v" in *[[:space:]]*) echo "hero_store_backend: '$v' is not a usable store URL (whitespace)" >&2; return 1 ;; esac
       # The CLI sends a bearer token to this URL; cleartext is for loopback only.
+      # Userinfo is refused first: http://localhost:80@evil.com matches the
+      # loopback globs below while its host is evil.com.
+      a=${v#*://}; a=${a%%/*}
+      case "$a" in *@*) echo "hero_store_backend: '$v' carries userinfo (@) before its host; give the bare https URL; fix WAYFARE_STORE or the pin file" >&2; return 1 ;; esac
       case "$v" in
         http://localhost|http://localhost[:/]*|http://127.0.0.1|http://127.0.0.1[:/]*|http://\[::1\]|http://\[::1\][:/]*) ;;
         http://*) echo "hero_store_backend: '$v' is http; only https is accepted (http is allowed for localhost, 127.0.0.1 and [::1] only); fix WAYFARE_STORE or the pin file" >&2; return 1 ;;

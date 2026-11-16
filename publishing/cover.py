@@ -1,7 +1,7 @@
 """The book's cover, drawn in code: front, ebook, full print wrap and an animated web version.
 
     scripts/publish.sh cover        -> $PUBLISH_OUT/dist/cover-front.{pdf,png}, cover-ebook.png,
-                              cover-wrap.pdf, cover-animated.svg
+                                       cover-wrap.pdf, cover-animated.svg
 
 The art is the website's factory line (SoftwareFactoryDiagram.tsx: an isometric software box, an
 arm etching a shape, a ticket in and a version out) repeated into a factory: four cells of six

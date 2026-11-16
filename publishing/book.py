@@ -1,7 +1,7 @@
 """The print book: book.json set as a colour book at the cover.TRIM_IN trim through WeasyPrint.
 
     scripts/publish.sh book          -> $PUBLISH_OUT/dist/book.pdf (on screen, cover first)
-                            -> $PUBLISH_OUT/dist/book-interior.pdf (the file printers get)
+                                     -> $PUBLISH_OUT/dist/book-interior.pdf (the file printers get)
 
 Layout lives in `book/book.css`; this module writes the HTML (with an inline max-height on shrunk
 figures), solves figure placement against rendered pages, restricts WeasyPrint's fetches to local

@@ -82,9 +82,11 @@ hero_check_staleness
 If it prints `COMMANDS_UNAPPROVED`, the server's HERO.md holds command fields
 (`task-runner`, `test-command`, `dev-command`) that no person has approved on
 this machine, and the test phase would run them. The fields are on stderr: show
-them to the person and ask. On a yes, run `hero_srv_commands_approve "$ROOT"`
-and repeat Step 0; on a no, STOP. Headless, STOP and name the fields: never
-approve on a person's behalf.
+them to the person and ask. On a yes, run
+`hero_srv_commands_approve "$ROOT" SHA` with the sha256 the same stderr printed,
+and repeat Step 0; rc 3 there means the fields changed since they were shown, so
+show the new ones and ask again; on a no, STOP. Headless, STOP and name the
+fields: never approve on a person's behalf.
 
 If the command prints `FLEET_ROOT`, stop this repo procedure. Follow **At the
 fleet root** in `docs/FLEET-MD.md`.

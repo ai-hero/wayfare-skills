@@ -26,7 +26,7 @@ CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // empty' 2>/dev/null)
 [ -n "$CWD" ] || CWD=$PWD
 PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=/dev/null
-. "$PLUGIN_ROOT/scripts/hero-lib.sh" 2>/dev/null || exit 0
+. "$PLUGIN_ROOT/scripts/hero-lib.sh" 2>/dev/null || { echo "check-floors: cannot load $PLUGIN_ROOT/scripts/hero-lib.sh; the floors check did not run" >&2; exit 0; }
 FLEET=$(hero_register_find "$CWD") || exit 0
 
 # --offline: a cold uv cache must not turn into a download at session start;

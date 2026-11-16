@@ -89,7 +89,10 @@ else
 fi
 
 OWNED=""
-for f in "$(hero_items_dir "$ROOT")"/*.md; do
+# A failed listing must not read as "no item owns a branch": every in-flight
+# branch would lose its owner and could be classed a leftover.
+ITEMS_DIR=$(hero_items_dir "$ROOT") || { ITEMS_DIR=""; fail_source store; }
+for f in ${ITEMS_DIR:+"$ITEMS_DIR"/*.md}; do
   [ -f "$f" ] || continue
   # A finished item keeps its `branch:`; counting it would hide that branch
   # from every other class for good.

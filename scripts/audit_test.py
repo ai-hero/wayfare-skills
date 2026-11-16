@@ -1354,6 +1354,28 @@ class Configured(unittest.TestCase):
             os.environ["WAYFARE_STORE"] = "sever"
             with self.assertRaises(ValueError):
                 audit.store_backend(self.root / "fx")
+            os.environ.pop("WAYFARE_STORE", None)
+            broken = self.root / "broken"
+            (broken / ".fleet" / "FLEET.md").mkdir(parents=True)
+            pins.write_text(f"{broken} https://wf.test/ws-1\n")
+            with self.assertRaises(ValueError, msg="an unreadable map under a server pin is never local"):
+                audit.store_backend(broken)
+
+    def test_store_backend_agrees_with_the_shell(self):
+        """audit.store_backend and hero_store_backend give the same answer, or
+        both refuse, for the same WAYFARE_STORE."""
+        lib = pathlib.Path(__file__).resolve().parent / "hero-lib.sh"
+        for v in ["local", "https://app.example.com/ws-1", "https://app.example.com/ws-1/", "https://",
+                  "https://a b", "ftp://x", "sever"]:
+            with mock.patch.dict(os.environ, {"WAYFARE_STORE": v}):
+                try:
+                    py = audit.store_backend(self.root)
+                except ValueError:
+                    py = None
+                r = subprocess.run(["bash", "-c", f". '{lib}'; hero_store_backend '{self.root}'"],
+                                   capture_output=True, text=True, check=False)
+                sh = r.stdout.strip() if r.returncode == 0 else None
+                self.assertEqual(py, sh, f"WAYFARE_STORE={v!r}")
 
     def _stub_cli(self, body):
         stub = self.root / "stub-wayfare"
@@ -1396,6 +1418,10 @@ class Configured(unittest.TestCase):
             os.environ["WAYFARE_STORE"] = "local"
             with self.assertRaises(audit.ServerError):
                 audit.record_results("app", [], self.root / "fx")
+        stub = self._stub_cli("echo '{\"failing\":0}'\n")
+        with mock.patch.dict(os.environ, {"WAYFARE_STORE": "https://wf.test/ws-1", "WAYFARE_CLI": str(stub)}):
+            with self.assertRaises(audit.ServerError, msg="an answer with no count is never 'recorded 0'"):
+                audit.record_results("app", [("A-1", audit.PASS)], self.root / "fx")
 
     def test_read_fleet_over_the_cli_equals_the_map(self):
         """read_fleet under a server reads the `fleet` tool and returns what the
@@ -1428,6 +1454,10 @@ class Configured(unittest.TestCase):
                 audit.read_fleet(self.root)
             self.assertIn("https://wf.test/ws-1", str(cm.exception))
             self.assertIn("boom: token rejected", str(cm.exception))
+        stub = self._stub_cli("echo '{\"data\":{\"settings\":{}}}'\n")
+        with mock.patch.dict(os.environ, {"WAYFARE_STORE": "https://wf.test/ws-1", "WAYFARE_CLI": str(stub)}):
+            with self.assertRaises(SystemExit, msg="an answer with no rows is never a fleet of no repos"):
+                audit.read_fleet(self.root)
 
     def test_register_pin(self):
         fleet_fixture(self.root, "## Fleet\n- name: fx\n")

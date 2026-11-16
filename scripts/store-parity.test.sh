@@ -94,7 +94,7 @@ EOF
   printf -- '---\nschema: 1\nrepo: acme/check\nnext_id: 20\nsource:\n  root: .\n  head: aaaa1111\ntarget:\n  project: D\n  head: bbbb2222\n---\n' > "$d/.plans/PLAN.md"
   printf -- '---\nid: 1\ntype: task\ntitle: Parity bootstrap\nstatus: done\nresolution: shipped\nshape: structural\npriority: p2\nparent: 9\nrank: 1\nsource: [src/one.go]\n---\n' > "$i/001-parity-bootstrap.md"
   printf -- '---\nid: 2\ntype: task\ntitle: Parity ready one\nstatus: ready\nshape: story\npriority: p2\nparent: 9\nrank: 2\ndepends_on: [1]\nsource: [src/two.go]\n---\n' > "$i/002-parity-ready-one.md"
-  printf -- '---\nid: 3\ntype: task\ntitle: Parity ready two\nstatus: ready\nshape: story\npriority: p2\nparent: 9\nrank: 3\ndepends_on: [2]\nsource: [src/three.go]\n---\n' > "$i/003-parity-ready-two.md"
+  printf -- '---\nid: 3\ntype: task\ntitle: Parity ready two\nstatus: ready\nshape: story\npriority: p2\nparent: 9\nrank: 3\ndepends_on: [2]\nsource: [src/three.go]\n---\n\n## Subtasks\n\n- [ ] parity box\n' > "$i/003-parity-ready-two.md"
   printf -- '---\nid: 4\ntype: idea\ntitle: Parity parked idea\nstatus: accepted\n---\n' > "$i/004-parity-parked-idea.md"
   printf -- '---\nid: 5\ntype: task\ntitle: Parity wait on vendor\nstatus: ready\nshape: story\npriority: p2\nparent: 9\nrank: 5\nblocked_on: vendor review\nblocked_since: 2026-11-10\nsource: [src/five.go]\n---\n' > "$i/005-parity-wait-on-vendor.md"
   printf -- '---\nid: 9\ntype: goal\ntitle: Parity goal\nstatus: accepted\n---\n' > "$i/009-parity-goal.md"
@@ -169,10 +169,7 @@ sc_log() {
 }
 
 # A thread to oneself is `within` on the server and a deposit in the repo's
-# own inbox locally. The server only lets an agent speak for a project it holds
-# work in, so a refusal for that reason files one task there (once, found by
-# title) and sends again; that task stays.
-# The server lets an agent send only from a project where it holds a live
+# own inbox locally. The server lets an agent send only from a project where it holds a live
 # claim or a task it planned; create_item writes as the agent's owner and does
 # not count. Item 2 is claimed (its dependency is done) and released after the
 # thread closes. Each CLI run is a new instance, so the release passes the
@@ -240,7 +237,21 @@ sc_audit() {
   echo "rc=${PIPESTATUS[0]}"
 }
 
-SCENARIOS="ready item_fields write_item log messages hero_fields fleet audit"
+# build-task's item writes: a status, a box and a branch, read back through
+# the rendered item. The server logs `review` instead of moving the task (a
+# claim and link_pr move it), so only whether the status was taken compares.
+sc_build() {
+  local f out
+  out=$(hero_item_set_status 3 review "" "$ROOT" 2>&1)
+  echo "status review: rc=$? $(printf '%s\n' "$out" | grep -c review)"
+  echo "tick: $(hero_item_tick 3 "parity box" "$ROOT" 2>&1)"
+  echo "set branch: $(hero_item_set 3 branch "feat/parity-$NONCE" "$ROOT" 2>&1)"
+  f=$(hero_item_file 3 "$ROOT") || { echo "read: failed"; return; }
+  echo "read branch: $(hero_item_field "$f" branch)"
+  echo "box: $(grep -E '^[-*] \[[ xX]\] parity box' "$f")"
+}
+
+SCENARIOS="ready item_fields write_item log messages hero_fields fleet audit build"
 
 # run_backend LABEL BACKEND : the scenarios on one backend, into $TMP/out/LABEL
 run_backend() {
@@ -316,7 +327,8 @@ case $sub in
     jq -c --argjson n "$n" '{item: (.[] | select(.number == $n))}' "$S/items.json" ;;
   log)
     n=$(printf '%s' "$payload" | jq '.number')
-    [ "$STUB_MUTATE" = log ] && payload=$(printf '%s' "$payload" | jq -c '.text |= ascii_upcase')
+    [ "$STUB_MUTATE" = log ] && payload=$(printf '%s' "$payload" | jq -c 'if .tag == "note" then .text |= ascii_upcase else . end')
+    [ "$STUB_MUTATE" = build ] && payload=$(printf '%s' "$payload" | jq -c 'if .tag == "tick" then .tag = "note" else . end')
     jq -c --argjson n "$n" --argjson p "$payload" 'map(if .number == $n then .log += [{at: "2026-11-14T10:00:00Z", by: "agent", tag: $p.tag, body: $p.text}] else . end)' "$S/items.json" | save items.json
     jq -c --argjson n "$n" '{item: (.[] | select(.number == $n))}' "$S/items.json" ;;
   messages) jq -c '{threads: .}' "$S/threads.json" ;;
@@ -355,7 +367,7 @@ cat > "$STUB/items.json" <<'EOF'
 [
 {"number":1,"type":"task","title":"Parity bootstrap","status":"done","resolution":"shipped","shape":"structural","priority":"medium","goal_number":9,"rank":1,"sources":["src/one.go"],"depends_on":[],"description":"","log":[]},
 {"id":"t-2","number":2,"type":"task","title":"Parity ready one","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":2,"sources":["src/two.go"],"depends_on":[1],"description":"","log":[]},
-{"number":3,"type":"task","title":"Parity ready two","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":3,"sources":["src/three.go"],"depends_on":[2],"description":"","log":[]},
+{"number":3,"type":"task","title":"Parity ready two","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":3,"sources":["src/three.go"],"depends_on":[2],"description":"## Subtasks\n\n- [ ] parity box","log":[]},
 {"number":4,"type":"idea","title":"Parity parked idea","status":"accepted","description":"","log":[]},
 {"number":5,"type":"task","title":"Parity wait on vendor","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":5,"sources":["src/five.go"],"depends_on":[],"blocked_on":"vendor review","blocked_since":"2026-11-10T00:00:00Z","blocked":true,"description":"","log":[]},
 {"number":9,"type":"goal","title":"Parity goal","status":"accepted","description":"","log":[]}
@@ -382,7 +394,7 @@ check "stub: the scenarios compared (two checks each)" "$((2 * $(wc -w <<< "$SCE
 
 # The mutations: each changes one server outcome and must fail exactly its own
 # scenario. FAIL is rolled back after, because the failure is the expected result.
-for m in write_item log messages audit; do
+for m in write_item log messages audit build; do
   reset_stub; STUB_MUTATE=$m; export STUB_MUTATE
   p0=$PASS; f0=$FAIL
   out=$(parity "mutated($m): " "$STUB_URL")

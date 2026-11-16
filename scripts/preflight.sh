@@ -336,12 +336,14 @@ check_repo() {
   ensure_gh_auth_probed
 
   # 1. HERO.md present
-  if hero_config_exists "$ROOT"; then
-    emit OK "repo: HERO.md present"
-  else
-    emit BLOCKER "repo: HERO.md missing — run wayfare:wayfare-init-repo"
-    return 0  # downstream checks read HERO.md; bail this bucket
-  fi
+  hero_config_exists "$ROOT"
+  case $? in
+    0) emit OK "repo: HERO.md present" ;;
+    1) emit BLOCKER "repo: HERO.md missing — run wayfare:wayfare-init-repo"
+       return 0 ;;  # downstream checks read HERO.md; bail this bucket
+    *) emit BLOCKER "repo: HERO.md could not be read from its store (see stderr) — not a missing config"
+       return 0 ;;
+  esac
 
   # 2. HERO.md staleness. Fast subset of scripts/check-hero-staleness.sh,
   # intentionally diverged: that script carries a longer pattern list
@@ -423,7 +425,9 @@ check_repo() {
 # Parses HERO.md projects[] into the PROJECTS array. Each entry is a single
 # line `name|path|port|dependency-file|dev-command`. Missing fields are empty.
 parse_hero_projects() {
-  hero_config_show "$ROOT" 2>/dev/null | awk '
+  local cfg
+  cfg=$(hero_config_show "$ROOT") || return 1
+  printf '%s\n' "$cfg" | awk '
     /^## Projects/        { in_projects = 1; next }
     in_projects && /^## / { in_projects = 0 }
     !in_projects          { next }
@@ -446,11 +450,14 @@ parse_hero_projects() {
 check_runtime() {
   hero_config_exists "$ROOT" || { emit SKIP "runtime: HERO.md missing — cannot scope checks"; return 0; }
 
-  local projects=()
+  local projects=() parsed
+  # Read once and checked: a failed read piped into the parser is zero
+  # projects, which reads as "nothing to check" and passes.
+  parsed=$(parse_hero_projects) || { emit BLOCKER "runtime: HERO.md could not be read to scope the checks (see stderr)"; return 0; }
   while IFS= read -r line; do
     [ -z "$line" ] && continue
     projects+=("$line")
-  done < <(parse_hero_projects)
+  done <<< "$parsed"
 
   if [ "${#projects[@]}" -eq 0 ]; then
     emit SKIP "runtime: no projects[] section in HERO.md"

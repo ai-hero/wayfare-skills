@@ -29,7 +29,7 @@ set -uo pipefail
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 # shellcheck source=/dev/null
 . "$(dirname "${BASH_SOURCE[0]}")/hero-lib.sh" || exit 0
-hero_config_exists "$ROOT" || exit 0
+hero_config_exists "$ROOT"; case $? in 0) ;; 1) exit 0 ;; *) echo "check-hero-staleness: cannot read HERO.md from its store; staleness unknown" >&2; exit 0 ;; esac
 # The server keeps no commit time for a config; with none, every repo file
 # reads as newer and the script would warn on every run.
 [ "$(hero_srv_route_root "$ROOT" 2>/dev/null)" != server ] || exit 0

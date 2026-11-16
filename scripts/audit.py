@@ -301,16 +301,20 @@ def _server_fleet(root):
     map row with no `path` does. name, template-port, register and
     register-repo are not on the server's settings and read as absent."""
     try:
-        data = server_cli("fleet", {}, root).get("data") or {}
+        data = server_cli("fleet", {}, root).get("data")
     except ServerError as e:
         sys.exit(str(e))
+    # A missing key read as empty is a fleet of no repos, and the audit then
+    # passes everything it never checked.
+    if not isinstance(data, dict) or not isinstance(data.get("rows"), list):
+        sys.exit(f"the Wayfare server at {store_backend(root)} answered 'wayfare fleet' without its rows")
     st = data.get("settings") or {}
     fields = {k: st[k] for k in ("org", "template") if st.get(k)}
     if st.get("port_min") or st.get("port_max"):
         fields["port-range"] = f"{st.get('port_min', 0)}-{st.get('port_max', 0)}"
     groups = {g.get("id"): g.get("name", "") for g in data.get("groups") or []}
     repos = []
-    for row in data.get("rows") or []:
+    for row in data["rows"]:
         p = row.get("project") or {}
         name = p.get("slug", "")
         if not re.fullmatch(r"[A-Za-z0-9._-]+", name) or name in (".", ".."):
@@ -396,15 +400,28 @@ def store_backend(start=None):
     """`local` or the app's URL: WAYFARE_STORE, else the pin file's URL line for
     the fleet root above `start`, else `local`. hero_store_backend answers the
     same question for the shell and the two must agree. A value that is neither
-    `local` nor an http(s) URL raises ValueError, never reads as local: a fleet
-    that meant the server would keep writing files the server never sees."""
+    `local` nor an http(s) URL raises ValueError, and so does a pin file holding
+    URL lines that cannot be read or a fleet map that cannot be read: none of
+    them reads as local, since a fleet that meant the server would keep writing
+    files the server never sees."""
     v = os.environ.get("WAYFARE_STORE") or ""
     if not v:
+        pin = pathlib.Path(pin_file())
+        if not pin.exists():
+            return "local"
+        try:
+            text = pin.read_text()
+        except (OSError, UnicodeDecodeError) as e:
+            raise ValueError(f"cannot read the pin file {pin} ({e}), so whether this fleet's store "
+                             "is the server is unknown") from None
+        if "://" not in text:
+            return "local"
         try:
             root = fleet_root(start)
-            lines = pathlib.Path(pin_file()).read_text().splitlines() if root else []
-        except (OSError, UnicodeDecodeError, FleetMapError):
-            return "local"
+        except FleetMapError as e:
+            raise ValueError(f"the fleet map cannot be read ({e}), so whether this fleet's store "
+                             "is the server is unknown; fix the map") from None
+        lines = text.splitlines() if root else []
         for line in lines:
             parts = line.split("#", 1)[0].split()
             if len(parts) == 2 and parts[0] == str(root) and "://" in parts[1]:
@@ -464,7 +481,10 @@ def record_results(repo, results, start=None):
     its register lacks, and that refusal raises."""
     sent = [{"check_id": c, "state": _RESULT_STATE[st]} for c, st in results if st in _RESULT_STATE]
     out = server_cli("report-results", {"repo": repo, "results": sent}, start)
-    return out.get("recorded", 0), out.get("failing", 0)
+    if not isinstance(out.get("recorded"), int):
+        raise ServerError(f"the Wayfare server at {store_backend(start)} answered 'wayfare report-results' "
+                          "without a count of what it recorded")
+    return out["recorded"], out.get("failing", 0)
 
 
 def pin_file():

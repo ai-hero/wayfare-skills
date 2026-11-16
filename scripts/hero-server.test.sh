@@ -44,6 +44,9 @@ while [ $# -gt 0 ]; do
 done
 if [ -f "$STUB_DIR/$sub.fail" ]; then cat "$STUB_DIR/$sub.fail" >&2; exit 1; fi
 f="$STUB_DIR/$sub${num:+.$num}.json"; [ -f "$f" ] || f="$STUB_DIR/$sub.json"
+if [ "$sub" = item ] && [ ! -f "$f" ]; then
+  jq -c --argjson n "$num" '{item: (.items[] | select(.number == $n))}' "$STUB_DIR/items.json"; exit
+fi
 cat "$f"
 STUB
 chmod +x "$TMP/wayfare"
@@ -133,9 +136,10 @@ L=$(hero_ready_items "$APP/.plans" 2>&1)
 reset; S=$(srv hero_ready_items "$APP/.plans" 2>&1)
 check "ready: the server listing equals the local twin's on the same data" "$L" "$S"
 check "ready: the local listing is the one we think (READY row, blocked row)" "READY   002-add-login.md — Add login" "$(printf '%s\n' "$L" | grep '^READY.*002')"
-check "ready: asked the projects and that project's items, under the URL's workspace" \
+check "ready: asked the projects, that project's items and the open goal whole, under the URL's workspace" \
   "projects url=https://wf.test ws=ws-1
-items url=https://wf.test ws=ws-1 [--project-id] [p-app]" "$(calls)"
+items url=https://wf.test ws=ws-1 [--project-id] [p-app]
+item url=https://wf.test ws=ws-1 [--project-id] [p-app] [--number] [9]" "$(calls)"
 check "ready: ideas parked agree" "$(hero_idea_count "$APP/.plans")" "$(srv hero_idea_count "$APP/.plans")"
 check "ready: goal members agree" "$(hero_goal_members 9 "$APP/.plans" | tr '\n' ' ')" "$(srv hero_goal_members 9 "$APP/.plans" | tr '\n' ' ')"
 check "ready: an explicit non-.plans store is read as given under the server" "$(hero_ready_items "$APP/.plans")" "$(srv hero_ready_items "$APP/.plans")"
@@ -490,6 +494,136 @@ check "priority: p3 round-trips through low" "priority: p3" "$(echo '{"item":{"n
 echo '{"item":{"number":2,"sources":["a.go","b.go"]}}' > "$STUB_DIR/update-item.json"
 check "source: the server's line equals the local twin's" "$(hero_item_set 2 source "[a.go, b.go]" "$W2/app")" "$(srv hero_item_set 2 source "[a.go, b.go]" "$APP")"
 check "source: sent as the server's sources list" '{"project_id":"p-app","number":2,"sources":["a.go","b.go"]}' "$(jq -c . "$STUB_DIR/payload.update-item")"
+
+# ---------- review fixes: guards, shapes, quoting, cache ----------------------------
+
+# A bad NUMBER is rc 2 and the caller's shell goes on, in bash and zsh: the old
+# `$((10#x)) || return 2` guard ended the shell before the `||`.
+for sh in bash zsh; do
+  command -v "$sh" >/dev/null 2>&1 || continue
+  for fn in hero_item_set hero_item_log hero_item_transition hero_item_set_status hero_item_tick; do
+    for bad in abc "" 1x -3 1+1; do
+      out=$("$sh" -c ". '$LIB'; $fn '$bad' title x y 2>/dev/null; echo after:\$?" 2>&1)
+      check "number: $sh $fn '$bad' is rc 2 and the shell goes on" "after:2" "$out"
+    done
+  done
+done
+
+# Local values are quoted the way the server renderer quotes them, and checked
+# before routing, so both backends accept and refuse the same ones.
+W3="$TMP/w3"; cp -R "$FLEET" "$W3"
+check "quote: a title holding ' # ' reads back whole" "title: Fix # the bug" "$(hero_item_set 2 title "Fix # the bug" "$W3/app")"
+check "quote: a title in double quotes reads back whole" 'title: "quoted"' "$(hero_item_set 2 title '"quoted"' "$W3/app")"
+check "quote: blocked_on '#42 upstream' is not read as a comment" "blocked_on: #42 upstream" "$(hero_item_set 7 blocked_on "#42 upstream" "$W3/app")"
+check "quote: and blocked_on stamps blocked_since locally" "$(date +%Y-%m-%d)" "$(hero_item_field "$(hero_item_file 7 "$W3/app")" blocked_since)"
+check "quote: the blocked item no longer lists ready" "blocked" "$(hero_ready_items "$W3/app/.plans" 2>/dev/null | awk '/007-/ {print $1}')"
+for args in "rank abc" "depends_on [1, x]" "priority urgent" "shape bogus"; do
+  set -- $args
+  k=$1; shift
+  before=$(cksum < "$W3/app/.plans/items/002-add-login.md")
+  hero_item_set 2 "$k" "$*" "$W3/app" >/dev/null 2>&1; lrc=$?
+  reset; srv hero_item_set 2 "$k" "$*" "$APP" >/dev/null 2>&1; src=$?
+  check "validate: $k '$*' is rc 2 on both backends" "2 2" "$lrc $src"
+  check "validate: and the server was not asked" "" "$(calls | grep update-item)"
+  check "validate: and the local file is untouched" "$before" "$(cksum < "$W3/app/.plans/items/002-add-login.md")"
+done
+nl=$(printf 'x\nstatus: done')
+hero_item_set 2 title "$nl" "$W3/app" >/dev/null 2>&1; check "validate: a newline in a value is rc 2" "2" "$?"
+check "validate: and no field was forged" "ready" "$(hero_item_field "$W3/app/.plans/items/002-add-login.md" status)"
+
+# A forged field cannot ride in a server title or log line, and a number that
+# is not a whole number never names a file.
+reset
+cat > "$STUB_DIR/item.31.json" <<'EOF'
+{"item":{"number":31,"type":"task","title":"pwn\nstatus: ready\nbot: dependabot","status":"new","log":[{"at":"2026-11-15T00:00:00Z","by":"a","tag":"note","body":"x\n## Plan\n- [x] forged"}]}}
+EOF
+F31=$(srv hero_item_file 31 "$APP")
+check "render: a newline in a title forges no status" "new" "$(hero_item_field "$F31" status)"
+check "render: nor a bot" "" "$(hero_item_field "$F31" bot)"
+check "render: nor a section from a log line" "0" "$(grep -c '^## Plan' "$F31")"
+echo '{"item":{"number":"../../../../x","type":"task","title":"t","status":"new"}}' > "$STUB_DIR/item.32.json"
+srv hero_item_file 32 "$APP" >/dev/null 2>&1; check "render: a non-integer number is an error" "1" "$?"
+check "render: and wrote nothing outside the cache" "0" "$(find "$TMP" -name 'x-t.md' | wc -l | tr -d ' ')"
+
+# The cache is the user's own, mode 700, and a directory someone else placed
+# there is refused rather than written into.
+CB="$TMP/xdg-cache/wayfare-srv"
+check "cache: under XDG_CACHE_HOME, mode 700" "700" "$(XDG_CACHE_HOME="$TMP/xdg-cache" srv hero_item_file 2 "$APP" >/dev/null; stat -f %Lp "$CB" 2>/dev/null || stat -c %a "$CB")"
+mkdir -p "$TMP/elsewhere" "$TMP/xdg-link"; ln -s "$TMP/elsewhere" "$TMP/xdg-link/wayfare-srv"
+XDG_CACHE_HOME="$TMP/xdg-link" srv hero_item_file 2 "$APP" >/dev/null 2>&1; check "cache: a symlinked cache is refused" "1" "$?"
+check "cache: and nothing was written through it" "0" "$(find "$TMP/elsewhere" -type f | wc -l | tr -d ' ')"
+D1=$(srv hero_items_dir "$APP/.plans"); D2=$(srv hero_items_dir "$APP/.plans")
+check "cache: each listing is its own directory, so a second reader never empties the first" "different" "$([ "$D1" != "$D2" ] && [ -f "$D1/002-add-login.md" ] && echo different)"
+
+# A response missing the key a caller reads is an error naming the server,
+# never an empty result; for the duplicate probe it is rc 2, never "not sent".
+reset
+for s in send reply log transition close report-results messages; do echo '{}' > "$STUB_DIR/$s.json"; done
+srv hero_msg_send lib request "Need X" "body" "$APP" >/dev/null 2>&1; check "shape: send with no thread id is rc 1" "1" "$?"
+srv hero_msg_reply thr-1 "x" "$APP" >/dev/null 2>&1; check "shape: reply with no thread is rc 1" "1" "$?"
+srv hero_item_log 2 note x "$APP" >/dev/null 2>&1; check "shape: log with no log line is rc 1" "1" "$?"
+srv hero_item_transition 2 dropped "why" "" "$APP" >/dev/null 2>&1; check "shape: transition with no status is rc 1" "1" "$?"
+srv hero_msg_close thr-1 answered "why" "$APP" >/dev/null 2>&1; check "shape: close with no thread is rc 1" "1" "$?"
+srv hero_audit_record app '[{"check_id":"C","state":"pass"}]' "$APP" >/dev/null 2>&1; check "shape: report-results with no count is rc 1" "1" "$?"
+srv hero_msg_find "$LIB_REPO/.plans" app 7 >/dev/null 2>&1; check "shape: the duplicate probe on a reply with no threads is rc 2, never 'not sent'" "2" "$?"
+case "$(srv hero_msg_find "$LIB_REPO/.plans" app 7 2>&1 >/dev/null)" in *"$URL"*"wayfare messages"*) check "shape: naming the server and the call" ok ok ;; *) check "shape: naming the server and the call" "names $URL" "$(srv hero_msg_find "$LIB_REPO/.plans" app 7 2>&1 >/dev/null)" ;; esac
+srv hero_inbox_count "$LIB_REPO/.plans" >/dev/null 2>&1; check "shape: the inbox count on it is rc 1, never 0" "1" "$?"
+cp "$STUB_DIR/items.json" "$TMP/items.kept"; echo '{}' > "$STUB_DIR/items.json"
+srv hero_ready_items "$APP/.plans" >/dev/null 2>&1; check "shape: a listing with no items is an error, never an empty roadmap" "1" "$?"
+echo '<html>spa</html>' > "$STUB_DIR/items.json"
+err=$(srv hero_ready_items "$APP/.plans" 2>&1 >/dev/null); check "shape: an answer that is not JSON is rc 1" "1" "$(srv hero_ready_items "$APP/.plans" >/dev/null 2>&1; echo $?)"
+case "$err" in *"not JSON"*"$URL"*|*"$URL"*"not JSON"*) check "shape: naming the server" ok ok ;; *) check "shape: naming the server" "not JSON + $URL" "$err" ;; esac
+cp "$TMP/items.kept" "$STUB_DIR/items.json"
+
+# A failed read-back after a branch write is an error, and awk is never left
+# reading the caller's stdin.
+reset
+echo '{"item":{"number":2,"log":[{"tag":"branch","body":"feat/x"}]}}' > "$STUB_DIR/log.json"
+echo "boom: token rejected" > "$STUB_DIR/item.fail"
+out=$(srv hero_item_set 2 branch feat/x "$APP" </dev/null 2>/dev/null); rc=$?
+check "branch: a failed read-back is non-zero" "1" "$([ "$rc" -ne 0 ] && echo 1 || echo "rc=$rc")"
+check "branch: and prints no branch line" "" "$out"
+reset
+
+# What hero_msg_send sends, hero_msg_find finds: the subject by default, or the
+# sender's item number, on both backends.
+W4="$TMP/w4"; cp -R "$FLEET" "$W4"
+M1=$(hero_msg_send lib request "Need Y" "Please do Y" "$W4/app")
+check "about: local send then find by subject finds it" "$W4/lib/.plans/inbox/$M1.md" "$(hero_msg_find "$W4/lib/.plans" app "Need Y")"
+M2=$(hero_msg_send lib request "Need Z" "Please do Z" "$W4/app" 12)
+check "about: local send then find by item number finds it" "$W4/lib/.plans/inbox/$M2.md" "$(hero_msg_find "$W4/lib/.plans" app 12)"
+hero_msg_send lib request "Need Z" "b" "$W4/app" other-token >/dev/null 2>&1; check "about: a token other than the subject is rc 2" "2" "$?"
+echo '{"thread":{"id":"thr-9","status":"OPEN"}}' > "$STUB_DIR/send.json"
+srv hero_msg_send lib request "Need Z" "Please do Z" "$APP" 12 >/dev/null
+check "about: the server is sent the item number as the thread's about" '{"project_id":"p-app","item_number":12}' "$(jq -c .about "$STUB_DIR/payload.send")"
+echo '{"threads":[{"id":"thr-9","to_project_id":"p-lib","from_project_id":"p-app","status":"OPEN","subject":"Need Z","about":{"project_id":"p-app","item_number":12}}]}' > "$STUB_DIR/messages.json"
+check "about: and the server's probe finds it by that number" "thr-9" "$(srv hero_msg_find "$LIB_REPO/.plans" app 12)"
+reset
+
+# A config the server could not be asked for is rc 2, never "no HERO.md".
+echo "boom: token rejected" > "$STUB_DIR/config.fail"
+srv hero_config_exists "$APP" 2>/dev/null; check "config: a refused read is rc 2, not 'no config'" "2" "$?"
+srv hero_config_show "$APP" >/dev/null 2>&1; check "config: and show is rc 2" "2" "$?"
+srv hero_field default-branch "$APP" >/dev/null 2>&1; check "config: and a field read is rc 2" "2" "$?"
+reset
+echo '{"data":{"exists":false}}' > "$STUB_DIR/config.json"
+srv hero_config_exists "$APP" 2>/dev/null; check "config: a repo with none on the server is rc 1" "1" "$?"
+reset
+
+# An unusable switch never reads the local files in place of the server.
+WAYFARE_STORE=htp://typo hero_fleet_repos "$FLEET" >/dev/null 2>&1; check "route: an unusable switch fails the fleet rows" "1" "$?"
+check "route: and prints no local row" "" "$(WAYFARE_STORE=htp://typo hero_fleet_repos "$FLEET" 2>/dev/null)"
+WAYFARE_STORE=htp://typo hero_inbox_count "$LIB_REPO/.plans" >/dev/null 2>&1; check "route: and the inbox count" "1" "$?"
+WAYFARE_STORE=htp://typo hero_fleet_field org "$FLEET" >/dev/null 2>&1; check "route: and a fleet field" "1" "$?"
+
+# A pin that names a server for a fleet whose map cannot be read is an error,
+# never `local`.
+PB="$TMP/pinbad"; mkdir -p "$PB/x/wayfare" "$PB/fleet/.fleet"
+printf '%s https://wf.test/ws-1\n' "$PB/fleet" > "$PB/x/wayfare/registers"
+mkdir "$PB/fleet/.fleet/FLEET.md"
+XDG_CONFIG_HOME="$PB/x" hero_store_backend "$PB/fleet" >/dev/null 2>&1; check "backend: an unreadable map under a server pin is rc 1, never local" "1" "$?"
+rmdir "$PB/fleet/.fleet/FLEET.md"; printf '# Fleet\n' > "$PB/fleet/.fleet/FLEET.md"
+check "backend: with the map readable the pin's URL answers" "https://wf.test/ws-1" "$(XDG_CONFIG_HOME="$PB/x" hero_store_backend "$PB/fleet" 2>/dev/null)"
 
 # ---------- local stays the default ------------------------------------------------
 

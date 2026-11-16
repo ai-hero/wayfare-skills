@@ -55,6 +55,7 @@ hero_fleet_step0 || exit 1
 ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 BACKEND=$(hero_store_backend "$ROOT") || { echo "STOP: the store switch is unusable"; BACKEND=BAD; }
 echo "work-task: backend=$BACKEND repo=$(basename "$ROOT")"
+[ "$BACKEND" = BAD ] || hero_config_exists "$ROOT"; CFG_RC=$?
 ```
 
 If `FLEET_ROOT` printed, this folder is a fleet, not a repo: stop and follow
@@ -65,6 +66,12 @@ STOP when any of these holds, and print the line given:
 - `BACKEND` is `BAD`: print what `hero_store_backend` said.
 - `BACKEND` is `local`:
   `wayfare-work-task needs the fleet's store to be the Wayfare server, so wayfare-build-task can find the task. Flip it (see docs/PLAN.md, Two stores), then run again.`
+- `CFG_RC` is 3: the server's HERO.md has command fields (`task-runner`, a
+  `test-command`, a `dev-command`) that no person has approved on this machine,
+  and the build would run them. Print the fields `hero_config_exists` named on
+  stderr and say a person must approve them in an interactive session
+  (`hero_srv_commands_approve`). Never approve them here, and claim nothing:
+  this stop comes before the claim, so there is no claim to release.
 - The MCP tools `projects`, `read`, `claim`, `report`, `link_pr`, `release` and
   `comment` are not all available from one Wayfare server. Claude Code names
   them `mcp__wayfare-<ws>__<tool>`. Print the setup line from **Setup** above

@@ -797,6 +797,16 @@ not inbox paths. `hero_msg_send` takes the sender's `about` last, an item number
 or else the subject itself (the default), and sends a number as the thread's
 `about`, so `hero_msg_find` finds what was sent on both backends.
 
+A server-held HERO.md is editable in the app, and its `task-runner` and
+`*-command` fields (`test-command`, `dev-command`) run in the person's shell.
+The config readers therefore return 3, not 2, until a person has approved those
+fields on this machine: `hero_srv_config_file` prints the changed fields on
+stderr and `hero_srv_commands_approve ROOT` records them under
+`${XDG_CONFIG_HOME:-~/.config}/wayfare/approved-commands/` (mode 600). An
+interactive skill asks; wayfare-work-task stops before its claim. A change to
+any other field needs no approval, and the local backend never asks, because a
+committed HERO.md is reviewed in a PR.
+
 An answer the server could not give is never an empty one. A CLI failure, a
 reply that is not JSON, or one missing the key a caller reads is an error naming
 the server; `hero_msg_find` returns 2 ("could not probe") for it, never 1 ("not

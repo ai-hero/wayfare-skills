@@ -40,15 +40,56 @@ TRANSCRIPT=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/nul
 # Tool results arrive as `user` entries too, and so do harness injections
 # (`isMeta`, a background task's notification); none of those starts a turn,
 # and treating one as the start drops a filing made earlier in the turn.
-TURN=$(jq -c -s '
-  (to_entries
-   | map(select(.value.type == "user"
-                and (.value.isMeta | not)
-                and ((.value.message.content | type) == "string"
-                     and (.value.message.content | startswith("<task-notification>") | not)
-                     or any(.value.message.content[]?; .type == "text"))))
-   | last | .key) as $start
-  | .[(($start // -1) + 1):]' "$TRANSCRIPT" 2>/dev/null) || exit 0
+TURN_START='def turn_start:
+  .type == "user"
+  and (.isMeta | not)
+  and ((.message.content | type) == "string"
+       and (.message.content | startswith("<task-notification>") | not)
+       or any(.message.content[]?; .type == "text"));'
+
+# This runs on every Stop, and `jq -s` over a long session's whole transcript
+# takes seconds and gigabytes, past the hook's timeout. So read from the end
+# and hand jq only the lines from the turn's start. A grep finds candidates
+# cheaply, but tool results are `user` entries too, so a candidate is taken
+# only once the exact rule above accepts it; one it rejects is walked past,
+# never used. A line the grep wrongly skips only widens the slice, because jq
+# still picks the last real start inside it.
+MAX_MB=${WAYFARE_DEFERRALS_MAX_MB:-512}
+case $MAX_MB in '' | *[!0-9]*) MAX_MB=512 ;; esac
+SIZE=$(wc -c <"$TRANSCRIPT" 2>/dev/null | tr -d ' ')
+[ -n "$SIZE" ] && [ "$SIZE" -le $((MAX_MB * 1048576)) ] || exit 0
+
+# GNU tail's -r is an error and BSD has no tac, so test for tac first.
+if command -v tac >/dev/null 2>&1; then
+  rev() { tac "$@"; }
+elif tail -r </dev/null >/dev/null 2>&1; then
+  rev() { tail -r "$@"; }
+else
+  exit 0
+fi
+
+BACK=0
+TRIES=0
+while IFS= read -r CAND; do
+  TRIES=$((TRIES + 1))
+  [ "$TRIES" -le 500 ] || exit 0
+  if printf '%s' "${CAND#*:}" | jq -e "$TURN_START"' turn_start' >/dev/null 2>&1; then
+    BACK=${CAND%%:*}
+    break
+  fi
+done < <(rev "$TRANSCRIPT" 2>/dev/null | grep -n '"type":"user"' | grep -v -e '"type":"tool_result"' -e '"isMeta":true')
+
+if [ "$BACK" -gt 0 ]; then
+  # head closing the pipe early makes rev die of SIGPIPE, which pipefail
+  # would report as a failure of a slice that is complete.
+  SLICE=$(set +o pipefail; rev "$TRANSCRIPT" 2>/dev/null | head -n "$BACK" | rev) || exit 0
+  [ -n "$SLICE" ] || exit 0
+else
+  SLICE=$(cat "$TRANSCRIPT" 2>/dev/null) || exit 0
+fi
+TURN=$(printf '%s\n' "$SLICE" | jq -c -s "$TURN_START"'
+  (to_entries | map(select(.value | turn_start)) | last | .key) as $start
+  | .[(($start // -1) + 1):]' 2>/dev/null) || exit 0
 
 # A turn that wrote to the store already filed something; trust it. Only a
 # write counts: a Read or grep of .plans/ is how an agent checks for an item,

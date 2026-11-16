@@ -1243,7 +1243,7 @@ hero_register_find() { # [START]
   d=$(cd "${1:-$PWD}" 2>/dev/null && pwd -P) || return 1
   while [ ! -d "$d/.fleet/.git" ]; do
     [ "$d" = / ] && return 1
-    d=$(dirname "$d")
+    d=${d%/*}; d=${d:-/}
   done
   printf '%s' "$d"
 }

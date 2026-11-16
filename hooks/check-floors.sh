@@ -6,15 +6,16 @@
 # floors is installed below that floor, such as cloudflared before an
 # advisory's fixed release.
 #
-# Runs `fleet-setup.py check --floors-only` from the nearest folder above the
-# session's cwd that holds a .fleet/ register checkout. That mode reads the
+# Runs `fleet-setup.py check --floors-only` from the nearest folder at or above
+# the session's cwd that holds a .fleet/ register checkout. That mode reads the
 # register's origin/main as last fetched and never fetches: a network call at
 # every session start would cost seconds. A raised floor reaches this machine
 # with its next fetch of the register.
 #
 # Input: the SessionStart hook JSON on stdin. Output: nothing, or one JSON
 # object that shows the warnings to the person and to the agent. Every failure
-# path exits 0 silently: a broken hook must never get in a session's way.
+# path exits 0 and a broken hook never gets in a session's way. Only a hero-lib
+# load failure says so on stderr first, since the check then never ran.
 
 set -uo pipefail
 

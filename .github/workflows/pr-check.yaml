@@ -22,10 +22,10 @@ jobs:
   validate:
     name: Validate plugin structure
     runs-on: ubuntu-latest
-    # Cap the run. Structure validation and the shell suites finish in well
-    # under this; the ceiling just stops a wedged step from pinning a runner
-    # for the six-hour default.
-    timeout-minutes: 10
+    # Cap the run so a wedged step cannot pin a runner for the six-hour
+    # default. The shell suites alone took about 9.5 minutes in November 2026,
+    # and a cap of 10 cancelled green runs, so leave headroom when lowering it.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

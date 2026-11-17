@@ -61,6 +61,10 @@ cp -R "$ROOT_REPO/assets/design-system" "$BASE/assets/design-system"
 cp -R "$ROOT_REPO/assets/fleet" "$BASE/assets/fleet"
 cp -R "$ROOT_REPO/assets/security-audit" "$BASE/assets/security-audit"
 cp "$ROOT_REPO/scripts/security_audit_upstream.py" "$BASE/scripts/security_audit_upstream.py"
+mkdir -p "$BASE/.github"
+cp "$ROOT_REPO/.github/auto-approve-human-review.txt" "$BASE/.github/auto-approve-human-review.txt"
+cp -R "$ROOT_REPO/hooks" "$BASE/hooks"
+cp "$ROOT_REPO/scripts/hero-lib.sh" "$ROOT_REPO/scripts/fleet-setup.py" "$ROOT_REPO/scripts/audit.py" "$BASE/scripts/"
 cp "$ROOT_REPO/.claude-plugin/plugin.json" "$BASE/.claude-plugin/plugin.json"
 cp "$ROOT_REPO/.claude-plugin/marketplace.json" "$BASE/.claude-plugin/marketplace.json"
 cp "$ROOT_REPO/.agents/plugins/marketplace.json" "$BASE/.agents/plugins/marketplace.json"
@@ -472,6 +476,23 @@ ls "$(hero_items_dir)"
 ```'
 run_validate "$d"
 check "skill goes through the layer, prose names the files: rc" "0" "$RC"
+
+d=$(fixture hook-dep-listed)
+run_validate "$d"
+check "hook dependencies all on the human-review list: rc" "0" "$RC"
+
+d=$(fixture hook-dep-unlisted)
+printf 'uv run scripts/new-hook-dep.py\n' >> "$d/hooks/check-floors.sh"
+touch "$d/scripts/new-hook-dep.py"
+run_validate "$d"
+check "hook runs a script not on the list: rc" "1" "$RC"
+check_contains "hook runs a script not on the list: names it" "$OUT" "scripts/new-hook-dep.py"
+
+d=$(fixture hook-sibling-unlisted)
+grep -v '^scripts/audit.py$' "$d/.github/auto-approve-human-review.txt" > "$d/list.tmp" && mv "$d/list.tmp" "$d/.github/auto-approve-human-review.txt"
+run_validate "$d"
+check "sibling loaded by a hooked script is off the list: rc" "1" "$RC"
+check_contains "sibling loaded by a hooked script is off the list: names it" "$OUT" "scripts/audit.py"
 
 if [ "$FAIL" -gt 0 ]; then
   echo "validate: $PASS passed, $FAIL FAILED"

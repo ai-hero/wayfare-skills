@@ -6,15 +6,16 @@
 # floors is installed below that floor, such as cloudflared before an
 # advisory's fixed release.
 #
-# Runs `fleet-setup.py check --floors-only` from the nearest folder above the
-# session's cwd that holds a .fleet/ register checkout. That mode reads the
+# Runs `fleet-setup.py check --floors-only` from the nearest folder at or above
+# the session's cwd that holds a .fleet/ register checkout. That mode reads the
 # register's origin/main as last fetched and never fetches: a network call at
 # every session start would cost seconds. A raised floor reaches this machine
 # with its next fetch of the register.
 #
 # Input: the SessionStart hook JSON on stdin. Output: nothing, or one JSON
 # object that shows the warnings to the person and to the agent. Every failure
-# path exits 0 silently: a broken hook must never get in a session's way.
+# path exits 0 and a broken hook never gets in a session's way. Only a hero-lib
+# load failure says so on stderr first, since the check then never ran.
 
 set -uo pipefail
 
@@ -35,7 +36,11 @@ OUT=$(cd "$PLUGIN_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV
   uv run --offline --no-config --quiet scripts/fleet-setup.py --fleet "$FLEET" check --floors-only 2>/dev/null) || exit 0
 [ -n "$OUT" ] || exit 0
 
-MSG="wayfare: below a fleet version floor (from $FLEET/.fleet setup.yaml):
-$OUT"
+# The not-checked line is not a missed floor; under that heading it reads as one.
+case "$OUT" in
+  "wayfare: fleet floors not checked"*) MSG=$OUT ;;
+  *) MSG="wayfare: below a fleet version floor (from $FLEET/.fleet setup.yaml):
+$OUT" ;;
+esac
 jq -n --arg m "$MSG" '{systemMessage: $m, hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $m}}'
 exit 0

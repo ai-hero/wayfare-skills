@@ -2600,6 +2600,9 @@ mkdir -p "$TMP/fl/.fleet/.git" "$TMP/fl/repo/deep"
 check "register_find: walks up to the folder holding .fleet/" "$(cd "$TMP/fl" && pwd -P)" \
   "$(hero_register_find "$TMP/fl/repo/deep")"
 hero_register_find "$TMP/nolayer" >/dev/null 2>&1; check "register_find: none above is rc 1" "1" "$?"
+# The walk must end at / even for a path whose parent strip leaves "".
+hero_register_find / >/dev/null 2>&1; check "register_find: from / is rc 1, not a loop" "1" "$?"
+hero_register_find /usr >/dev/null 2>&1; check "register_find: a one-level path is rc 1, not a loop" "1" "$?"
 check "register_checkout: names the checkout" "$TMP/fl/.fleet" "$(hero_register_checkout "$TMP/fl")"
 
 if [ "$FAIL" -gt 0 ]; then

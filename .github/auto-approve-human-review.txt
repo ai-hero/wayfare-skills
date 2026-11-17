@@ -19,10 +19,19 @@
 assets/auto-approve/caller.yaml
 .github/auto-approve-human-review.txt
 
-# Hooks run in every session of everyone with the plugin enabled, and the
-# Stop hook sources hero-lib.sh.
+# Hooks run in every session of everyone with the plugin enabled, and so does
+# everything they source or run: both hooks source hero-lib.sh, and the
+# SessionStart hook runs fleet-setup.py, which loads audit.py. validate.sh fails
+# when a hook reaches a script no line here matches.
 hooks/*
 scripts/hero-lib.sh
+scripts/fleet-setup.py
+scripts/audit.py
+
+# CI and the commands it runs: a PR that skips or empties its own test job
+# would otherwise satisfy the CI gate with its own edit.
+.github/workflows/*
+Justfile
 
 # Manifests decide what installs and can register hooks or MCP servers
 # anywhere in the tree: Claude Code's, then other agents'.

@@ -137,6 +137,39 @@ T="$TMP/meta.jsonl"
   said "Done; the retry is out of scope."; } > "$T"
 check "isMeta and task notifications do not start a turn" "" "$(run "$TMP/repo" "$T")"
 
+# A long session must not slow the hook past its timeout, nor change its
+# verdict. History is ~200 MB of tool-result-heavy turns, then the current turn.
+BIGLINE=$(head -c 100000 /dev/zero | tr '\0' 'a')
+CHUNK="$TMP/chunk.jsonl"
+for _ in $(seq 25); do
+  user "an older request"
+  jq -cn --arg b "$BIGLINE" '{type:"user",message:{role:"user",content:[{type:"tool_result",tool_use_id:"x",content:$b}]}}'
+  said "an older answer"
+  wrote "$TMP/repo/.plans/items/001-a.md"
+done > "$CHUNK"
+BIG="$TMP/big.jsonl"
+for _ in $(seq 80); do cat "$CHUNK"; done > "$BIG"
+TBIG="$TMP/big-defer.jsonl"
+{ cat "$BIG"; user "fix it"; said "Fixed. The cache is out of scope."; } > "$TBIG"
+check "large transcript: size is 200 MB or more" "yes" \
+  "$([ "$(wc -c < "$TBIG")" -ge 200000000 ] && echo yes || echo no)"
+START=$SECONDS
+check "large transcript: same verdict" "block" "$(WAYFARE_DEFERRALS_MAX_MB=4096 run "$TMP/repo" "$TBIG")"
+ELAPSED=$((SECONDS - START))
+check "large transcript: under 5s (took ${ELAPSED}s)" "yes" "$([ "$ELAPSED" -lt 5 ] && echo yes || echo no)"
+check "transcript over WAYFARE_DEFERRALS_MAX_MB is skipped" "" \
+  "$(WAYFARE_DEFERRALS_MAX_MB=1 run "$TMP/repo" "$TBIG")"
+
+# A filing early in a turn with many tool results after it, and false turn
+# starts the grep cannot tell from a real one, must not make the hook nag.
+TF="$TMP/big-filed.jsonl"
+{ cat "$BIG"
+  user "fix it"; wrote "$TMP/repo/.plans/items/007-retry.md"
+  for _ in $(seq 3000); do said "working"; tool_res; done
+  user "<task-notification>agent finished</task-notification>"
+  said "Done; the retry is out of scope."; } > "$TF"
+check "filing early in a long turn is still seen" "" "$(WAYFARE_DEFERRALS_MAX_MB=4096 run "$TMP/repo" "$TF")"
+
 # Malformed input must never trap a session: exit 0, nothing on stdout.
 raw() { printf '%s' "$1" | bash "$HOOK"; echo "rc=$?"; }
 check "malformed stdin" "rc=0" "$(raw 'not json {')"

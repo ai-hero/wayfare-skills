@@ -1055,6 +1055,75 @@ else
 fi
 
 echo ""
+bold "5. Hook dependencies need a human"
+
+# hooks/*.sh run in every session of everyone with the plugin, and so does
+# every scripts/X.sh or X.py they name and every sibling a named .py loads
+# with spec_from_file_location and a quoted file name. A .sh dependency's own
+# references and a sibling loaded by a variable path are not followed. Each must match a line of the human-review list, or a PR changing it
+# is approved by the model alone. Matched like auto-approve.yaml does: whole
+# path, case-insensitive, `*` crosses `/`. tr, not ${x,,}: macOS bash is 3.2.
+HUMAN_LIST="$PLUGIN_ROOT/.github/auto-approve-human-review.txt"
+HOOK_FILES=$(find "$PLUGIN_ROOT/hooks" -maxdepth 1 -type f -name '*.sh' 2>/dev/null | sort)
+if [[ -n "$HOOK_FILES" ]]; then
+  if [[ ! -f "$HUMAN_LIST" ]]; then
+    error "hooks/ exists but the human-review list is missing" \
+      ".github/auto-approve-human-review.txt" "" \
+      "Restore the list; without it no hook dependency is held for a person"
+  else
+    HUMAN_GLOBS=()
+    while IFS= read -r glob_line; do
+      case "$glob_line" in "" | "#"*) continue ;; esac
+      HUMAN_GLOBS+=("$(printf '%s' "$glob_line" | tr '[:upper:]' '[:lower:]')")
+    done < "$HUMAN_LIST"
+
+    # Any scripts/X.sh or scripts/X.py named on a non-comment line covers the
+    # `. "$PLUGIN_ROOT/scripts/X.sh"`, HERO_LIB=...scripts/X.sh and `uv run`
+    # forms alike.
+    HOOK_DEPS=()
+    while IFS= read -r dep; do
+      [[ -n "$dep" ]] && HOOK_DEPS+=("$dep")
+    done < <(while IFS= read -r hook_file; do
+      grep -v '^[[:space:]]*#' "$hook_file" | grep -oE 'scripts/[A-Za-z0-9_.-]+\.(sh|py)'
+    done <<< "$HOOK_FILES" | sort -u)
+
+    # Worklist: each .py found is read for siblings it loads by path, and a
+    # sibling found is read in turn.
+    dep_i=0
+    while [[ $dep_i -lt ${#HOOK_DEPS[@]} ]]; do
+      dep=${HOOK_DEPS[$dep_i]}
+      dep_i=$((dep_i + 1))
+      [[ $dep == *.py && -f "$PLUGIN_ROOT/$dep" ]] || continue
+      while IFS= read -r sib; do
+        [[ -f "$PLUGIN_ROOT/scripts/$sib" ]] || continue
+        seen=0
+        for known in "${HOOK_DEPS[@]}"; do
+          [[ $known == "scripts/$sib" ]] && seen=1
+        done
+        [[ $seen -eq 1 ]] || HOOK_DEPS+=("scripts/$sib")
+      done < <(grep 'spec_from_file_location' "$PLUGIN_ROOT/$dep" | grep -oE '"[A-Za-z0-9_.-]+\.py"' | tr -d '"' | sort -u)
+    done
+
+    for dep in ${HOOK_DEPS[@]+"${HOOK_DEPS[@]}"}; do
+      dep_lc=$(printf '%s' "$dep" | tr '[:upper:]' '[:lower:]')
+      matched=0
+      for glob in ${HUMAN_GLOBS[@]+"${HUMAN_GLOBS[@]}"}; do
+        # Unquoted on purpose: the right side of == is a glob.
+        # shellcheck disable=SC2053
+        if [[ $dep_lc == $glob ]]; then matched=1; break; fi
+      done
+      if [[ $matched -eq 1 ]]; then
+        pass "$dep is on the human-review list"
+      else
+        error "a hook reaches $dep, which no human-review entry matches" \
+          ".github/auto-approve-human-review.txt" "" \
+          "Add $dep to the list so a PR changing it needs a person"
+      fi
+    done
+  fi
+fi
+
+echo ""
 echo "────────────────────────────"
 
 if [[ $ERRORS -gt 0 ]]; then

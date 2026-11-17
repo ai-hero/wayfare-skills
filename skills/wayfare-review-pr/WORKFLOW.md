@@ -263,7 +263,8 @@ Suggestions.
 
 - **Important:** the diff changes behavior (not only tests, docs or
   `reference/`) and the PR body has no `Reference:` line
-  (`gh pr view PR --json body -q .body | hero_reference_pins -` returns 1). Name
+  (`gh pr view "$PR_NUMBER" --json body -q .body | hero_reference_pins -`
+  returns 1; a failed `gh` call is reported, never read as a missing line). Name
   what changed and the reference file that should describe it.
 - **Important:** each line `hero_reference_code_paths` prints, a reference file
   naming a code path. Links point from the work to the reference only.

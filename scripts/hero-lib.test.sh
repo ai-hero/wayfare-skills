@@ -484,6 +484,9 @@ check "item-write: ready also stamps ready_marked today" "$(date +%Y-%m-%d)" "$(
 check "item-write: committed is a local status" "status: committed" "$(sb hero_item_set_status 3 committed "" "$SW")"
 sb hero_item_set_status 3 "done" shipped "$SW" >/dev/null
 check "item-write: done takes its resolution" "done shipped" "$(hero_item_field "$SW/.plans/items/003-w.md" status) $(hero_item_field "$SW/.plans/items/003-w.md" resolution)"
+sb hero_item_set_status 3 active "" "$SW" >/dev/null
+check "item-write: a move away from done drops the resolution line" "active 0" "$(hero_item_field "$SW/.plans/items/003-w.md" status) $(grep -c '^resolution:' "$SW/.plans/items/003-w.md")"
+sb hero_item_set_status 3 "done" shipped "$SW" >/dev/null
 check "item-write: branch is a field write" "branch: feat/x" "$(sb hero_item_set 3 branch feat/x "$SW")"
 printf -- '---\nid: 4\ntype: task\nstatus: active\n---\n\n## Log\n' > "$SW/.plans/items/004-r.md"
 sb hero_item_set 4 replaced_by 3 "$SW" >/dev/null 2>&1; check "item-write: replaced_by on an item that is not dropped is rc 2" "2" "$?"

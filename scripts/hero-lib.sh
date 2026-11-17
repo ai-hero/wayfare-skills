@@ -1248,19 +1248,6 @@ hero_register_find() { # [START]
   printf '%s' "$d"
 }
 
-# Which store backend this fleet runs on: prints `local` or the app's URL.
-# WAYFARE_STORE (`local` or a URL) wins, for rehearsal runs; else the pin file's
-# URL line for the fleet root (`FLEET_ROOT https://app.example.com/<workspace
-# id>`, beside any register line for the same root); else `local`. A value
-# that is neither `local` nor an https URL (http only for localhost, 127.0.0.1
-# and [::1], never with userinfo) is an error (rc 1, stderr), and so is a pin
-# file holding URL lines that cannot be read or a fleet map that cannot be
-# read: neither is a silent fall back to local, since a fleet that meant the
-# server would keep writing files the server never sees. A checkout outside
-# every fleet folder is local, whatever the pin holds: a URL line names one
-# fleet root, and a repo under none of them (this plugin checkout, a scratch
-# clone) is not that fleet's. A checkout under a URL line's root with no map
-# found above it is an error, not local.
 # A pin line's second field is a store when it is a URL, or reads as one typed
 # without its scheme (`app.example.com/<workspace>`, `localhost:8080/<ws>`):
 # a host with a dot or a port, then one path segment. A register is
@@ -1275,6 +1262,19 @@ _hero_pin_has_store() { # FILE
   awk "$_HERO_PIN_AWK"'{ sub(/#.*/, "") } NF == 2 && store($2) { f = 1 } END { exit !f }' "$1" 2>/dev/null
 }
 
+# Which store backend this fleet runs on: prints `local` or the app's URL.
+# WAYFARE_STORE (`local` or a URL) wins, for rehearsal runs; else the pin file's
+# URL line for the fleet root (`FLEET_ROOT https://app.example.com/<workspace
+# id>`, beside any register line for the same root); else `local`. A value
+# that is neither `local` nor an https URL (http only for localhost, 127.0.0.1
+# and [::1], never with userinfo) is an error (rc 1, stderr), and so is a pin
+# file holding URL lines that cannot be read or a fleet map that cannot be
+# read: neither is a silent fall back to local, since a fleet that meant the
+# server would keep writing files the server never sees. A checkout outside
+# every fleet folder is local, whatever the pin holds: a URL line names one
+# fleet root, and a repo under none of them (this plugin checkout, a scratch
+# clone) is not that fleet's. A checkout under a URL line's root with no map
+# found above it is an error, not local.
 hero_store_backend() { # [DIR]
   local v file root rc a
   v=${WAYFARE_STORE:-}
@@ -3131,10 +3131,13 @@ _hero_srv_shape() { # ROOT SUB
 }
 
 # jq definitions that render a server item as the item file the local readers
-# parse. `q` quotes only a value the readers would misread (a leading quote or
-# `#`, a ` #`, or edge whitespace), and turns a control character into a space:
-# a title or log line holding a newline would otherwise write a frontmatter
-# field of its own (`status: ready` on an item no person marked). An item
+# parse. `q` quotes only a value the readers would misread (a leading or
+# trailing quote, a leading `#`, a ` #`, or edge whitespace), single-quoting
+# one that holds a `"` with any `'` doubled, and quotes a list element that
+# holds a comma, a space, a bracket or a `#` (`lq`). It turns a control
+# character into a space: a title or log line holding a newline would otherwise
+# write a frontmatter field of its own (`status: ready` on an item no person
+# marked). An item
 # number names a file, so anything but a whole number is an error, never a
 # path (`../../x`). Priority is the server's high/medium/low
 # against the local p1/p2/p3 (p0 has no server spelling, so a p0 reads back p1).
@@ -3271,8 +3274,9 @@ _hero_item_num() { # FUNC VALUE
 }
 
 # VALUE as a frontmatter scalar hero_item_field reads back whole: quoted when
-# it opens with a quote, `#` or space, holds ` #`, ends in space, or is empty
-# (the same rule as the server renderer's `q`). Unquoted, `#42 upstream`
+# it opens with a quote, `#` or space, holds ` #`, ends in a space or a quote,
+# or is empty (the same rule as the server renderer's `q`). A value holding a
+# `"` is single-quoted with any `'` doubled, as YAML spells it. Unquoted, `#42 upstream`
 # reads as an empty comment. A control character is rc 2: a newline would
 # start a field of its own.
 _hero_yaml_scalar() { # VALUE
@@ -3530,8 +3534,9 @@ _hero_srv_safe_value() { # FUNC KEY VALUE
 # Move an item to status TO, with a REASON and, for done, a RESOLUTION; prints
 # `status: TO` and, with one, `resolution: R`. Local writes the frontmatter and
 # a `status` log line, dropping a resolution on any move but done; the server
-# takes `transition`, which enforces its own gates (ready and accepted are a person's, a task ships by the
-# merge verdict) and logs the move itself, so the log text differs between them.
+# takes `transition`, which enforces its own gates (ready and accepted are a
+# person's, a task ships by the merge verdict) and logs the move itself, so the
+# log text differs between them.
 hero_item_transition() { # NUMBER TO REASON [RESOLUTION] [ROOT]
   local root r n f pid body json
   n=$(_hero_item_num hero_item_transition "${1:-}") || return 2
@@ -3564,13 +3569,13 @@ hero_item_transition() { # NUMBER TO REASON [RESOLUTION] [ROOT]
 
 # Set an item's status as build-task moves it, and print `status: S` as the
 # store now holds it. Local writes the frontmatter (ready adds `ready_marked:`
-# today, done takes a RESOLUTION, any other status drops one). The server moves a task by its own events
-# (a claim sets active, link_pr and the merge verdict carry review and done)
-# and refuses a transition on a claimed task, so here: active is a no-op when
-# the item already reads active, else a transition; planning, dropped and
-# done/obsolete are transitions; review, committed and done otherwise are a
-# `status` log line, printed after the server's status as `logged: S`; new,
-# accepted and ready are a person's marks and refused.
+# today, done takes a RESOLUTION, any other status drops one). The server moves
+# a task by its own events (a claim sets active, link_pr and the merge verdict
+# carry review and done) and refuses a transition on a claimed task, so here:
+# active is a no-op when the item already reads active, else a transition;
+# planning, dropped and done/obsolete are transitions; review, committed and
+# done otherwise are a `status` log line, printed after the server's status as
+# `logged: S`; new, accepted and ready are a person's marks and refused.
 hero_item_set_status() { # NUMBER STATUS [RESOLUTION] [ROOT]
   local root r n f pid json cur why
   n=$(_hero_item_num hero_item_set_status "${1:-}") || return 2

@@ -322,7 +322,9 @@ hero_config_commands_approved "$ROOT"; echo "CMD_RC=$?"
 ```
 
 - `CMD_RC=0`: run the test command from HERO.md's Projects section (the task
-  runner's test target when one is set).
+  runner's test target when one is set). Read it again with
+  `hero_config_show "$ROOT"`, never from Step 0's output: a field approved since
+  then is missing there.
 - `CMD_RC=3`: the server's HERO.md holds command fields (`task-runner`,
   `test-command`, `dev-command`) that no person has approved on this machine,
   and the config this skill read leaves them out. Never fill one in from memory

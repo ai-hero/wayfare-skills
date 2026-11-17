@@ -1108,7 +1108,10 @@ PR_TITLE="$(git log origin/$DEFAULT_BRANCH..HEAD --pretty=%s | head -1)"
 **Generate PR content by listing each commit as a changeset with its files and
 description.** Keep the title unbranded (no "Hero"/"wayfare"). Humanize the
 drafted body (3c) before creating. End the body with exactly one attribution
-line, `_Generated using wayfare._`:
+line, `_Generated using wayfare._`. In a repo with `reference/`,
+`hero_reference_pr_body` adds the branch's `Reference:` line under the summary
+([reference-layer.md](../../references/reference-layer.md)); in any other repo
+it returns the body unchanged:
 
 ```bash
 BODY=$(cat <<'EOF'
@@ -1137,6 +1140,7 @@ Brief description of what this commit does and why
 _Generated using wayfare._
 EOF
 )
+BODY=$(hero_reference_pr_body "$BODY" "$ROOT")
 # The exact text that gets posted. A finding means fix the text and
 # re-run, never post around it.
 WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"

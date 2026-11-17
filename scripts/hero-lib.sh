@@ -2931,6 +2931,104 @@ CANDS
   printf '%s' "$out" | sort -n -k1,1
 )
 
+# ---------- the reference layer ---------------------------------------------
+#
+# A repo's reference/ folder, read the way references/reference-layer.md says.
+# Every reference hook in a skill is gated on hero_reference_dir, so a repo
+# without the folder runs none of them.
+
+hero_reference_dir() { # [ROOT]
+  local d
+  d="${1:-$(hero_root)}/reference"
+  [ -d "$d" ] || return 1
+  printf '%s' "$d"
+}
+
+# Every headed reference file as `kind:id<TAB>version<TAB>path`. The header is
+# the file's first non-blank line. `capabilities` is read as `capability`:
+# hero-template shipped that spelling before the format was fixed here.
+hero_reference_index() { # [ROOT]
+  local dir
+  dir=$(hero_reference_dir "${1:-}") || return 1
+  find "$dir" -name node_modules -prune -o -type f -name '*.md' -exec awk '
+    FNR == 1 { seen = 0 }
+    seen || !NF { next }
+    {
+      seen = 1
+      if ($0 !~ /^[a-z][a-z-]*: [a-z0-9][a-z0-9-]*@[0-9]+[[:space:]]*$/) next
+      k = $0; sub(/:.*/, "", k); if (k == "capabilities") k = "capability"
+      i = $0; sub(/^[^:]*: /, "", i); v = i; sub(/@.*/, "", i); sub(/^[^@]*@/, "", v)
+      print k ":" i "\t" (v + 0) "\t" FILENAME
+    }' {} +
+}
+
+# The `kind:id@version` pins on the `Reference:` lines of FILE (`-` for stdin),
+# one per line, first seen first. rc 1 when nothing is pinned.
+hero_reference_pins() { # FILE...
+  awk '
+    /^Reference:[[:space:]]/ {
+      n = split(substr($0, 11), parts, ",")
+      for (j = 1; j <= n; j++) {
+        p = parts[j]; gsub(/^[[:space:]`]+|[[:space:]`.]+$/, "", p)
+        sub(/^capabilities:/, "capability:", p)
+        if (p ~ /^[a-z][a-z-]*:[a-z0-9][a-z0-9-]*@[0-9]+$/ && !(p in got)) { got[p] = 1; print p; found = 1 }
+      }
+    }
+    END { exit found ? 0 : 1 }
+  ' "$@"
+}
+
+# Each pin of FILE against the reference as it stands:
+# `pin<TAB>current version<TAB>path`, current `none` and path empty when no
+# file carries that kind:id. rc 1 when FILE pins nothing.
+hero_reference_resolve() { # FILE [ROOT]
+  local pins
+  hero_reference_dir "${2:-}" >/dev/null || return 1
+  pins=$(hero_reference_pins "$1") || return 1
+  printf '%s\n' "$pins" | awk -F'\t' '
+    FILENAME == ARGV[1] { cur[$1] = $2; path[$1] = $3; next }
+    { k = $0; sub(/@[0-9]+$/, "", k)
+      if (k in cur) print $0 "\t" cur[k] "\t" path[k]; else print $0 "\tnone\t" }
+  ' <(hero_reference_index "${2:-}" 2>/dev/null) -
+}
+
+# One `Reference:` line carrying every pin of FILE..., for a PR body. rc 1 when
+# none of them pins anything.
+hero_reference_line() { # FILE...
+  local pins
+  pins=$(hero_reference_pins "$@") || return 1
+  printf 'Reference: %s\n' "$(printf '%s\n' "$pins" | paste -sd, - | sed 's/,/, /g')"
+}
+
+# The Reference: line of every item whose `branch:` is BRANCH (default: the
+# current branch). A goal's members carry the goal's branch, so a goal PR gets
+# the pins of all of them. rc 1 when none pins anything.
+hero_reference_branch_line() { # [BRANCH] [ROOT]
+  local branch items f files=()
+  branch=${1:-$(git branch --show-current 2>/dev/null)}
+  [ -n "$branch" ] || return 1
+  items=$(hero_items_dir "${2:-}") || return 1
+  for f in "$items"/*.md; do
+    [ -f "$f" ] && [ "$(hero_item_field "$f" branch)" = "$branch" ] && files+=("$f")
+  done
+  [ ${#files[@]} -gt 0 ] || return 1
+  hero_reference_line "${files[@]}"
+}
+
+# BODY with this branch's Reference: line after its `## Summary` paragraph, or
+# BODY unchanged when the repo has no reference/ or nothing is pinned.
+hero_reference_pr_body() { # BODY [ROOT]
+  local line
+  if ! hero_reference_dir "${2:-}" >/dev/null || ! line=$(hero_reference_branch_line "" "${2:-}"); then
+    printf '%s\n' "$1"; return 0
+  fi
+  printf '%s\n' "$1" | awk -v ref="$line" '
+    { print }
+    /^## Summary[[:space:]]*$/ { s = 1; next }
+    s == 1 && /^[[:space:]]*$/ { print ref; print ""; s = 2 }
+    END { if (s != 2) { print ""; print ref } }'
+}
+
 # ---------- branch naming ---------------------------------------------------
 #
 # Deriving the name itself is a *model* task, not a shell one. It reads a diff

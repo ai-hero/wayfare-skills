@@ -162,6 +162,12 @@ How the downstream agent proves completion (commands, tests, observable behavior
 - YYYY-MM-DD (author) note: append-only
 ```
 
+In a repo with `reference/` (`hero_reference_dir` succeeds), `## Context` opens
+with the source item's `Reference:` line unchanged, plus a pin for every
+reference file this session changed
+([reference-layer.md](../../references/reference-layer.md), *The hooks*).
+Without the folder, write no such line.
+
 ### Step 4: Optionally File to the Tracker (`--issue`)
 
 When `--issue` is passed (or the user asks): read the **`issues` connection**

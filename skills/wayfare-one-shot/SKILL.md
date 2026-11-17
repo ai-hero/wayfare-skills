@@ -92,6 +92,10 @@ It allocates the id, so none is written into the body.
   the shape requires.
 - A `## Log` line:
   `note: drafted by wayfare-one-shot from a one-line description`.
+- In a repo with `reference/` (`hero_reference_dir` succeeds): any reference
+  edit the change needs is the first Subtask, and `## Context` opens with the
+  `Reference:` pin (`../../references/reference-layer.md`, *The hooks*). Without
+  the folder, neither appears.
 
 Print the whole item. Then ask this question:
 

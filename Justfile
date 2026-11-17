@@ -18,9 +18,11 @@ check: lint test validate
 # file nobody touched can start failing. Network and slowness are the accepted
 # cost.
 
-# Static checks: shell, prose and semgrep.
+# Static checks: shell, Python, prose and semgrep.
 lint:
     @pre-commit run shellcheck --all-files
+    @pre-commit run ruff-check --all-files
+    @pre-commit run ruff-format --all-files
     @pre-commit run markdownlint --all-files
     @pre-commit run mdformat --all-files
     @pre-commit run check-docs --all-files

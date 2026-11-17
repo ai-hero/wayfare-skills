@@ -1,11 +1,12 @@
 """The Kindle edition: book.json as a reflowable EPUB 3 for Kindle Direct Publishing.
 
-    ./publish kindle        -> $PUBLISH_OUT/dist/book.epub
+    scripts/publish.sh kindle        -> $PUBLISH_OUT/dist/book.epub
 
 The same text, figures and references as the print book (no appendix: `book.without_appendix`), one XHTML file per
 chapter. `editions/kindle.json`, when present, overrides fields of `meta.json` for this edition
-only. The cover is `dist/cover-ebook.png`, which `./publish cover` draws.
+only. The cover is `dist/cover-ebook.png`, which `scripts/publish.sh cover` draws.
 """
+
 import datetime
 import html
 import html.entities
@@ -34,34 +35,60 @@ DEFAULTS = {"edition": "First"}
 IMAGE_W, COLOURS = 1100, 256
 # Only what the book can stand behind: textual alone is not sufficient while complex figures lack
 # certified text equivalents, so no WCAG conformance is claimed.
-ACCESSIBILITY = [("rendition:layout", "reflowable"), ("schema:accessMode", "textual"), ("schema:accessMode", "visual"),
-                 ("schema:accessModeSufficient", "textual,visual")] + \
-    [("schema:accessibilityFeature", f) for f in ("alternativeText", "structuralNavigation", "tableOfContents",
-                                                  "readingOrder", "displayTransformability")] + \
-    [("schema:accessibilityHazard", h) for h in ("noFlashingHazard", "noMotionSimulationHazard", "noSoundHazard")]
+ACCESSIBILITY = (
+    [
+        ("rendition:layout", "reflowable"),
+        ("schema:accessMode", "textual"),
+        ("schema:accessMode", "visual"),
+        ("schema:accessModeSufficient", "textual,visual"),
+    ]
+    + [
+        ("schema:accessibilityFeature", f)
+        for f in (
+            "alternativeText",
+            "structuralNavigation",
+            "tableOfContents",
+            "readingOrder",
+            "displayTransformability",
+        )
+    ]
+    + [("schema:accessibilityHazard", h) for h in ("noFlashingHazard", "noMotionSimulationHazard", "noSoundHazard")]
+)
 # The print book's faces, cut to static instances (Kindle does not read variable fonts) and
 # subset to the book's characters, so each costs tens of kilobytes rather than hundreds.
-FACES = [("Geist", 300, "normal"), ("Geist", 400, "normal"), ("Geist", 600, "normal"), ("Geist", 400, "italic"),
-         ("Geist Mono", 400, "normal"), ("Manrope", 300, "normal")]
+FACES = [
+    ("Geist", 300, "normal"),
+    ("Geist", 400, "normal"),
+    ("Geist", 600, "normal"),
+    ("Geist", 400, "italic"),
+    ("Geist Mono", 400, "normal"),
+    ("Manrope", 300, "normal"),
+]
 XHTML_NS = 'xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"'
 XML_ENTITIES = {"amp", "lt", "gt", "quot", "apos"}
 
 
 def xml_safe(s):
     """Named HTML entities other than XML's five are undefined in XHTML and fail the whole file."""
-    return re.sub(r"&([A-Za-z][A-Za-z0-9]*);",
-                  lambda m: m.group(0) if m.group(1) in XML_ENTITIES
-                  else f"&#{html.entities.name2codepoint.get(m.group(1), 0xFFFD)};", s)
+    return re.sub(
+        r"&([A-Za-z][A-Za-z0-9]*);",
+        lambda m: (
+            m.group(0) if m.group(1) in XML_ENTITIES else f"&#{html.entities.name2codepoint.get(m.group(1), 0xFFFD)};"
+        ),
+        s,
+    )
 
 
 def page(title, body, kind=None, main=True):
     attr = f' epub:type="{kind}"' if kind else ""
     if main:
         body = f"<main>{body}</main>"
-    return (f'<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE html>\n<html {XHTML_NS} lang="en" xml:lang="en">'
-            f'<head><meta charset="utf-8"/><title>{esc(title)}</title>'
-            f'<link rel="stylesheet" type="text/css" href="kindle.css"/></head>'
-            f'<body{attr}>{xml_safe(body)}</body></html>')
+    return (
+        f'<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE html>\n<html {XHTML_NS} lang="en" xml:lang="en">'
+        f'<head><meta charset="utf-8"/><title>{esc(title)}</title>'
+        f'<link rel="stylesheet" type="text/css" href="kindle.css"/></head>'
+        f"<body{attr}>{xml_safe(body)}</body></html>"
+    )
 
 
 class Images:
@@ -82,6 +109,7 @@ class Images:
             self.missing.append(name)
             return None
         from PIL import Image
+
         im = svg_image(src) if src.endswith(".svg") else Image.open(src)
         if im.mode in ("RGBA", "LA", "P"):
             im = im.convert("RGBA")
@@ -109,6 +137,7 @@ def svg_image(src):
     import fitz
     from PIL import Image
     from cover import chrome_pdf
+
     with open(src, encoding="utf-8") as f:
         svg = f.read()
     w, h = (float(re.search(rf'<svg[^>]*\b{a}="([\d.]+)', svg).group(1)) for a in ("width", "height"))
@@ -132,23 +161,27 @@ def table_html(rows, tid, labelledby, cls=""):
             if current:
                 bodies.append(current)
             group = f"{tid}-g{i}"
-            current = [f'<tr class="group"><th scope="rowgroup" colspan="{len(r)}" id="{group}">{r[0]["html"]}</th></tr>']
+            current = [
+                f'<tr class="group"><th scope="rowgroup" colspan="{len(r)}" id="{group}">{r[0]["html"]}</th></tr>'
+            ]
             continue
         row = f"{tid}-r{i}"
         cells = [f'<th scope="row" id="{row}" headers="{" ".join(filter(None, (cols[0], group)))}">{r[0]["html"]}</th>']
-        cells += [f'<td headers="{" ".join(filter(None, (cols[j], row, group)))}">{c["html"]}</td>'
-                  for j, c in enumerate(r[1:], 1)]
+        cells += [
+            f'<td headers="{" ".join(filter(None, (cols[j], row, group)))}">{c["html"]}</td>'
+            for j, c in enumerate(r[1:], 1)
+        ]
         current.append("<tr>" + "".join(cells) + "</tr>")
     if current:
         bodies.append(current)
     classes = " ".join(filter(None, (cls, "wide-table" if len(cols) >= 5 else "")))
     cls = f' class="{classes}"' if classes else ""
-    body = "".join(f'<tbody>{"".join(b)}</tbody>' for b in bodies)
-    return (f'<table{cls} id="{tid}" aria-labelledby="{labelledby}"><thead><tr>{head}</tr></thead>{body}</table>')
+    body = "".join(f"<tbody>{''.join(b)}</tbody>" for b in bodies)
+    return f'<table{cls} id="{tid}" aria-labelledby="{labelledby}"><thead><tr>{head}</tr></thead>{body}</table>'
 
 
 def figure(b, images):
-    label = f'{b["label"]} {b["number"]}'
+    label = f"{b['label']} {b['number']}"
     title = f'<p class="panel-title">{esc(label)}</p>'
     cap = f'<figcaption id="{fig_id(b)}-caption">{b["caption_html"]}</figcaption>'
     if b["type"] == "table":
@@ -197,19 +230,22 @@ def card(b, out):
 
 def chapter(c, images):
     import openers
+
     art = images.add(openers.write_png(c["n"], os.path.join(paths.BUILD, "openers")))
     if art:
         images.decorative.add(art)
-    out = [f'<section epub:type="chapter" role="doc-chapter" id="ch-{c["n"]}">'
-           + (f'<div class="opener-art"><img src="{art}" alt=""/></div>' if art else "")
-           + f'<hr class="opener-rule" aria-hidden="true"/><p class="chapter-number">Chapter {ONES[c["n"]]}</p><h1 id="ch-{c["n"]}-title">{esc(c["title"])}</h1>']
+    out = [
+        f'<section epub:type="chapter" role="doc-chapter" id="ch-{c["n"]}">'
+        + (f'<div class="opener-art"><img src="{art}" alt=""/></div>' if art else "")
+        + f'<hr class="opener-rule" aria-hidden="true"/><p class="chapter-number">Chapter {ONES[c["n"]]}</p><h1 id="ch-{c["n"]}-title">{esc(c["title"])}</h1>'
+    ]
     heading = f"ch-{c['n']}-title"
     # Counted per heading, not per section: an untitled section keeps the heading before it, and
     # restarting its count would repeat that heading's table ids.
     tables = {}
     for s in c["sections"]:
         if s["title"]:
-            heading = f'ch-{c["n"]}-{s["slug"]}'
+            heading = f"ch-{c['n']}-{s['slug']}"
             out.append(f'<h2 id="{heading}">{s["html"]}</h2>')
         for b in s["blocks"]:
             if b["kind"] == "table":
@@ -223,24 +259,38 @@ def chapter(c, images):
 
 
 def front_matter(meta):
-    return [("title", "Title page", "titlepage",
-              f'<section class="title-page"><hr class="opener-rule" aria-hidden="true"/>'
-              f'<h1 class="book-title">{esc(meta["title"])}</h1>'
-              + (f'<p class="part">{esc(meta["part"])}</p>' if meta.get("part") else "")
-              + f'<p class="subtitle">{esc(meta.get("subtitle"))}</p><p class="author">{esc(meta["author"])}</p>'
-              f'<p class="affiliation">{esc(meta.get("affiliation"))}</p></section>'),
-             ("copyright", "Copyright", "copyright-page",
-              f'<section class="copyright"><p>{esc(meta.get("copyright"))}</p>'
-              f'<p>{esc(meta.get("edition"))} edition · {esc(meta.get("date"))}</p>'
-              f'<p>All rights reserved. Corrections are welcome at {esc(meta.get("email"))}.</p></section>')]
+    return [
+        (
+            "title",
+            "Title page",
+            "titlepage",
+            f'<section class="title-page"><hr class="opener-rule" aria-hidden="true"/>'
+            f'<h1 class="book-title">{esc(meta["title"])}</h1>'
+            + (f'<p class="part">{esc(meta["part"])}</p>' if meta.get("part") else "")
+            + f'<p class="subtitle">{esc(meta.get("subtitle"))}</p><p class="author">{esc(meta["author"])}</p>'
+            f'<p class="affiliation">{esc(meta.get("affiliation"))}</p></section>',
+        ),
+        (
+            "copyright",
+            "Copyright",
+            "copyright-page",
+            f'<section class="copyright"><p>{esc(meta.get("copyright"))}</p>'
+            f"<p>{esc(meta.get('edition'))} edition · {esc(meta.get('date'))}</p>"
+            f"<p>All rights reserved. Corrections are welcome at {esc(meta.get('email'))}.</p></section>",
+        ),
+    ]
 
 
 def preface(note):
     """The preface opens the book, before Chapter One."""
     body = "".join(f"<p>{b['html']}</p>" for b in note["blocks"])
-    return ("preface", note["title"], "frontmatter",
-            f'<section epub:type="preface" role="doc-preface" id="preface">'
-            f'<hr class="opener-rule" aria-hidden="true"/><h1>{esc(note["title"])}</h1>{body}</section>')
+    return (
+        "preface",
+        note["title"],
+        "frontmatter",
+        f'<section epub:type="preface" role="doc-preface" id="preface">'
+        f'<hr class="opener-rule" aria-hidden="true"/><h1>{esc(note["title"])}</h1>{body}</section>',
+    )
 
 
 ABOUT_PHOTO = "images/about.jpg"
@@ -250,9 +300,13 @@ def about(note, photo, author):
     """The author page closes the book, after the references."""
     img = f'<img class="about-photo" src="{ABOUT_PHOTO}" alt="{esc(author)}"/>' if photo else ""
     body = "".join(f"<p>{b['html']}</p>" for b in note["blocks"])
-    return ("about", note["title"], "backmatter",
-            f'<section id="about" aria-labelledby="about-title"><hr class="opener-rule" aria-hidden="true"/>'
-            f'<h1 id="about-title">{esc(note["title"])}</h1>{img}{body}</section>')
+    return (
+        "about",
+        note["title"],
+        "backmatter",
+        f'<section id="about" aria-labelledby="about-title"><hr class="opener-rule" aria-hidden="true"/>'
+        f'<h1 id="about-title">{esc(note["title"])}</h1>{img}{body}</section>',
+    )
 
 
 def about_jpeg(meta):
@@ -260,6 +314,7 @@ def about_jpeg(meta):
     if not meta.get("about_photo"):
         return None
     from PIL import Image
+
     im = Image.open(os.path.join(paths.EDITIONS, meta["about_photo"])).convert("RGB")
     im.thumbnail((600, 800))
     buf = io.BytesIO()
@@ -275,14 +330,19 @@ def footnotes(name, body):
     def call(note):
         notes.append(note)
         n = len(notes)
-        return (f'<a epub:type="noteref" role="doc-noteref" class="noteref" id="{name}-fnref-{n}" '
-                f'href="#{name}-fn-{n}"><sup>{n}</sup></a>')
+        return (
+            f'<a epub:type="noteref" role="doc-noteref" class="noteref" id="{name}-fnref-{n}" '
+            f'href="#{name}-fn-{n}"><sup>{n}</sup></a>'
+        )
+
     body = sub_notes(body, call)
     if notes:
-        body += "".join(f'<aside epub:type="footnote" role="doc-footnote" class="footnote" id="{name}-fn-{n}"><p>'
-                        f'<a href="#{name}-fnref-{n}" role="doc-backlink" '
-                        f'aria-label="Return to footnote reference {n}">{n}.</a> {t}</p></aside>'
-                        for n, t in enumerate(notes, 1))
+        body += "".join(
+            f'<aside epub:type="footnote" role="doc-footnote" class="footnote" id="{name}-fn-{n}"><p>'
+            f'<a href="#{name}-fnref-{n}" role="doc-backlink" '
+            f'aria-label="Return to footnote reference {n}">{n}.</a> {t}</p></aside>'
+            for n, t in enumerate(notes, 1)
+        )
     return body
 
 
@@ -317,6 +377,7 @@ def link(docs):
             broken.add(m.group(1))
             return m.group(0)
         return f'href="{target}#{m.group(1)}"'
+
     out = [(name, title, kind, re.sub(r'href="#([^"]+)"', fix, body)) for name, title, kind, body in docs]
     # A relative link points into the manuscript folder, which a reader of the store copy does not have.
     local = re.compile(r'<a href="(?![#a-z]+:|[^"]*\.xhtml)[^"]*">(.*?)</a>')
@@ -330,9 +391,12 @@ def contents_tree(chapters, note_title, has_refs, about_title=None):
     both drawn from it, so the two menus cannot disagree."""
     tree = [("preface.xhtml", esc(note_title), [])] if note_title else []
     for c in chapters:
-        subs = [(f'ch-{c["n"]}.xhtml#ch-{c["n"]}-{s["slug"]}', esc(md_plain(s["title"])), [])
-                for s in c["sections"] if s["title"]]
-        tree.append((f'ch-{c["n"]}.xhtml', f'{ONES[c["n"]]}. {esc(c["title"])}', subs))
+        subs = [
+            (f"ch-{c['n']}.xhtml#ch-{c['n']}-{s['slug']}", esc(md_plain(s["title"])), [])
+            for s in c["sections"]
+            if s["title"]
+        ]
+        tree.append((f"ch-{c['n']}.xhtml", f"{ONES[c['n']]}. {esc(c['title'])}", subs))
     if has_refs:
         tree.append(("references.xhtml", "References", []))
     if about_title:
@@ -342,14 +406,20 @@ def contents_tree(chapters, note_title, has_refs, about_title=None):
 
 def nav(tree, first):
     def ol(entries):
-        return "<ol>" + "".join(f'<li><a href="{h}">{label}</a>{ol(kids) if kids else ""}</li>'
-                                for h, label, kids in entries) + "</ol>"
+        return (
+            "<ol>"
+            + "".join(f'<li><a href="{h}">{label}</a>{ol(kids) if kids else ""}</li>' for h, label, kids in entries)
+            + "</ol>"
+        )
+
     # No cover landmark: KDP builds its cover from the cover-image, and an HTML cover page beside it
     # shows the reader the cover twice.
-    body = (f'<nav epub:type="toc" role="doc-toc" id="toc"><h1>Contents</h1>{ol(tree)}</nav>'
-            f'<nav epub:type="landmarks" hidden=""><ol>'
-            f'<li><a epub:type="toc" href="nav.xhtml">Contents</a></li>'
-            f'<li><a epub:type="bodymatter" href="{first}">Start</a></li></ol></nav>')
+    body = (
+        f'<nav epub:type="toc" role="doc-toc" id="toc"><h1>Contents</h1>{ol(tree)}</nav>'
+        f'<nav epub:type="landmarks" hidden=""><ol>'
+        f'<li><a epub:type="toc" href="nav.xhtml">Contents</a></li>'
+        f'<li><a epub:type="bodymatter" href="{first}">Start</a></li></ol></nav>'
+    )
     return page("Contents", body, main=False)
 
 
@@ -361,25 +431,34 @@ def ncx(meta, ident, tree):
         out = []
         for h, label, kids in entries:
             n = next(order)
-            out.append(f'<navPoint id="np{n}" playOrder="{n}"><navLabel><text>{label}</text></navLabel>'
-                       f'<content src="{h}"/>{points(kids)}</navPoint>')
+            out.append(
+                f'<navPoint id="np{n}" playOrder="{n}"><navLabel><text>{label}</text></navLabel>'
+                f'<content src="{h}"/>{points(kids)}</navPoint>'
+            )
         return "".join(out)
+
     depth = 2 if any(kids for *_, kids in tree) else 1
-    return ('<?xml version="1.0" encoding="utf-8"?>\n<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">'
-            f'<head><meta name="dtb:uid" content="urn:uuid:{ident}"/><meta name="dtb:depth" content="{depth}"/>'
-            '<meta name="dtb:totalPageCount" content="0"/><meta name="dtb:maxPageNumber" content="0"/></head>'
-            f'<docTitle><text>{esc(full_title(meta))}</text></docTitle><navMap>{points(tree)}</navMap></ncx>')
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>\n<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">'
+        f'<head><meta name="dtb:uid" content="urn:uuid:{ident}"/><meta name="dtb:depth" content="{depth}"/>'
+        '<meta name="dtb:totalPageCount" content="0"/><meta name="dtb:maxPageNumber" content="0"/></head>'
+        f"<docTitle><text>{esc(full_title(meta))}</text></docTitle><navMap>{points(tree)}</navMap></ncx>"
+    )
 
 
 def opf(meta, ident, docs, images, fonts, first, about_photo=False):
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    items = ['<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
-             '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>',
-             '<item id="css" href="kindle.css" media-type="text/css"/>',
-             '<item id="cover-image" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/>']
+    items = [
+        '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
+        '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>',
+        '<item id="css" href="kindle.css" media-type="text/css"/>',
+        '<item id="cover-image" href="images/cover.jpg" media-type="image/jpeg" properties="cover-image"/>',
+    ]
     items += [f'<item id="{name}" href="{name}.xhtml" media-type="application/xhtml+xml"/>' for name, *_ in docs]
     items += [f'<item id="font{i}" href="{href}" media-type="font/ttf"/>' for i, href in enumerate(fonts)]
-    items += [f'<item id="img{i}" href="{href}" media-type="image/png"/>' for i, (href, _) in enumerate(images.files.values())]
+    items += [
+        f'<item id="img{i}" href="{href}" media-type="image/png"/>' for i, (href, _) in enumerate(images.files.values())
+    ]
     if about_photo:
         items.append(f'<item id="about-photo" href="{ABOUT_PHOTO}" media-type="image/jpeg"/>')
     spine = []
@@ -387,28 +466,38 @@ def opf(meta, ident, docs, images, fonts, first, about_photo=False):
         spine.append(f'<itemref idref="{name}"/>')
         if name == "copyright":
             spine.append('<itemref idref="nav"/>')
-    sub = f'<meta refines="#book-title" property="title-type">main</meta>'
-    summary = (f"Reflowable text with a two-level contents menu, descriptive alternatives supplied for all "
-               f"{len(images.files) - len(images.decorative)} interior figures (chapter-opener art is decorative), and programmatic table headers. Dense diagrams and screenshots "
-               "may require magnification. Full textual equivalence of complex images has not been certified. "
-               "No WCAG conformance claim is made.")
+    sub = '<meta refines="#book-title" property="title-type">main</meta>'
+    summary = (
+        f"Reflowable text with a two-level contents menu, descriptive alternatives supplied for all "
+        f"{len(images.files) - len(images.decorative)} interior figures (chapter-opener art is decorative), and programmatic table headers. Dense diagrams and screenshots "
+        "may require magnification. Full textual equivalence of complex images has not been certified. "
+        "No WCAG conformance claim is made."
+    )
     access = "".join(f'<meta property="{k}">{v}</meta>' for k, v in ACCESSIBILITY)
     access += f'<meta property="schema:accessibilitySummary">{summary}</meta>'
-    subtitle = (f'<dc:title id="subtitle">{esc(meta["subtitle"])}</dc:title>'
-                f'<meta refines="#subtitle" property="title-type">subtitle</meta>') if meta.get("subtitle") else ""
-    return ('<?xml version="1.0" encoding="utf-8"?>\n'
-            '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid" xml:lang="en">'
-            '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
-            f'<dc:identifier id="uid">urn:uuid:{ident}</dc:identifier>'
-            f'<dc:title id="book-title">{esc(full_title(meta))}</dc:title>{sub}{subtitle}'
-            f'<dc:creator>{esc(meta["author"])}</dc:creator><dc:language>en-US</dc:language>'
-            f'<dc:publisher>{esc(meta.get("affiliation"))}</dc:publisher><dc:date>{meta.get("year")}</dc:date>'
-            f'<dc:rights>{esc(meta.get("copyright"))}</dc:rights>'
-            f'<meta property="dcterms:modified">{now}</meta><meta name="cover" content="cover-image"/>{access}'
-            f'</metadata><manifest>{"".join(items)}</manifest>'
-            f'<spine toc="ncx">{"".join(spine)}</spine>'
-            f'<guide><reference type="toc" title="Contents" href="nav.xhtml"/>'
-            f'<reference type="text" title="Start" href="{first}"/></guide></package>')
+    subtitle = (
+        (
+            f'<dc:title id="subtitle">{esc(meta["subtitle"])}</dc:title>'
+            f'<meta refines="#subtitle" property="title-type">subtitle</meta>'
+        )
+        if meta.get("subtitle")
+        else ""
+    )
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid" xml:lang="en">'
+        '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">'
+        f'<dc:identifier id="uid">urn:uuid:{ident}</dc:identifier>'
+        f'<dc:title id="book-title">{esc(full_title(meta))}</dc:title>{sub}{subtitle}'
+        f"<dc:creator>{esc(meta['author'])}</dc:creator><dc:language>en-US</dc:language>"
+        f"<dc:publisher>{esc(meta.get('affiliation'))}</dc:publisher><dc:date>{meta.get('year')}</dc:date>"
+        f"<dc:rights>{esc(meta.get('copyright'))}</dc:rights>"
+        f'<meta property="dcterms:modified">{now}</meta><meta name="cover" content="cover-image"/>{access}'
+        f"</metadata><manifest>{''.join(items)}</manifest>"
+        f'<spine toc="ncx">{"".join(spine)}</spine>'
+        f'<guide><reference type="toc" title="Contents" href="nav.xhtml"/>'
+        f'<reference type="text" title="Start" href="{first}"/></guide></package>'
+    )
 
 
 def embedded_fonts(text):
@@ -417,8 +506,9 @@ def embedded_fonts(text):
     from fontTools import subset
     from fontTools.ttLib import TTFont
     from fontTools.varLib.instancer import instantiateVariableFont
+
     font_faces()
-    chars = text + text.upper() + "".join(map(chr, range(0x20, 0x7f)))
+    chars = text + text.upper() + "".join(map(chr, range(0x20, 0x7F)))
     files, css = {}, []
     for family, weight, style in FACES:
         src = GEIST_ITALIC if style == "italic" else FONTS[family]
@@ -436,8 +526,9 @@ def embedded_fonts(text):
         font.save(buf)
         href = f"fonts/{family.replace(' ', '')}-{weight}{'-italic' if style == 'italic' else ''}.ttf"
         files[href] = buf.getvalue()
-        css.append(f'@font-face {{ font-family: "{family}"; font-weight: {weight}; font-style: {style}; '
-                   f'src: url("{href}"); }}')
+        css.append(
+            f'@font-face {{ font-family: "{family}"; font-weight: {weight}; font-style: {style}; src: url("{href}"); }}'
+        )
     return files, "\n".join(css) + "\n"
 
 
@@ -447,8 +538,9 @@ def visible_text(markup):
 
 def cover_jpeg():
     if not os.path.exists(COVER):
-        raise SystemExit(f"kindle: no {COVER}; run ./publish cover first")
+        raise SystemExit(f"kindle: no {COVER}; run scripts/publish.sh cover first")
     from PIL import Image
+
     buf = io.BytesIO()
     Image.open(COVER).convert("RGB").save(buf, "JPEG", quality=90, optimize=True)
     return buf.getvalue()
@@ -474,8 +566,11 @@ def check(files):
         problems += [f"{name}: id {i} is used twice" for i in sorted({i for i in found if found.count(i) > 1})]
     # A fragment is checked against the ids in its file: a contents entry or cross-reference to a
     # heading that is not there opens the right file at the wrong place, and nothing else notices.
-    ids = {name: set(re.findall(r'\sid="([^"]+)"', data.decode("utf-8") if isinstance(data, bytes) else data))
-           for name, data in files.items() if name.endswith(".xhtml")}
+    ids = {
+        name: set(re.findall(r'\sid="([^"]+)"', data.decode("utf-8") if isinstance(data, bytes) else data))
+        for name, data in files.items()
+        if name.endswith(".xhtml")
+    }
     for name, data in files.items():
         if not name.endswith((".xhtml", ".ncx")):
             continue
@@ -502,29 +597,47 @@ def main():
         docs.append(preface(doc["preface"]))
     docs += [(f"ch-{c['n']}", c["title"], "bodymatter", chapter(c, images)) for c in doc["chapters"]]
     if doc.get("references"):
-        refs = "".join(f'<p id="ref-{r["n"]}"><span class="ref-n">[{r["n"]}]</span>{link_urls(r["html"])}</p>' for r in doc["references"])
-        docs.append(("references", "References", "backmatter",
-                     f'<section epub:type="bibliography" role="doc-bibliography" id="references"><h1>References</h1>'
-                     f'<div class="reference-list">{refs}</div></section>'))
+        refs = "".join(
+            f'<p id="ref-{r["n"]}"><span class="ref-n">[{r["n"]}]</span>{link_urls(r["html"])}</p>'
+            for r in doc["references"]
+        )
+        docs.append(
+            (
+                "references",
+                "References",
+                "backmatter",
+                f'<section epub:type="bibliography" role="doc-bibliography" id="references"><h1>References</h1>'
+                f'<div class="reference-list">{refs}</div></section>',
+            )
+        )
     photo = about_jpeg(meta) if doc.get("about") else None
     if doc.get("about"):
         docs.append(about(doc["about"], photo, meta["author"]))
     docs = [(name, title, kind, footnotes(name, body)) for name, title, kind, body in docs]
     docs, broken, unlinked = link(docs)
-    tree = contents_tree(doc["chapters"], (doc.get("preface") or {}).get("title"), bool(doc.get("references")),
-                         (doc.get("about") or {}).get("title"))
+    tree = contents_tree(
+        doc["chapters"],
+        (doc.get("preface") or {}).get("title"),
+        bool(doc.get("references")),
+        (doc.get("about") or {}).get("title"),
+    )
     first = "preface.xhtml" if doc.get("preface") else f"ch-{doc['chapters'][0]['n']}.xhtml"
     xhtml_nav = nav(tree, first)
     ident = uuid.uuid5(uuid.NAMESPACE_URL, f"aihero.studio/book/{full_title(meta)}")
     with open(os.path.join(HERE, "kindle.css"), encoding="utf-8") as f:
         css = f.read()
-    fonts, faces = embedded_fonts(visible_text("".join(body for *_, body in docs) + xhtml_nav)
-                                  + meta["title"] + (meta.get("subtitle") or ""))
+    fonts, faces = embedded_fonts(
+        visible_text("".join(body for *_, body in docs) + xhtml_nav) + meta["title"] + (meta.get("subtitle") or "")
+    )
     css = faces + css
 
-    files = {"OEBPS/kindle.css": css, "OEBPS/nav.xhtml": xhtml_nav, "OEBPS/toc.ncx": ncx(meta, ident, tree),
-             "OEBPS/content.opf": opf(meta, ident, docs, images, fonts, first, bool(photo)),
-             "OEBPS/images/cover.jpg": cover_jpeg()}
+    files = {
+        "OEBPS/kindle.css": css,
+        "OEBPS/nav.xhtml": xhtml_nav,
+        "OEBPS/toc.ncx": ncx(meta, ident, tree),
+        "OEBPS/content.opf": opf(meta, ident, docs, images, fonts, first, bool(photo)),
+        "OEBPS/images/cover.jpg": cover_jpeg(),
+    }
     if photo:
         files[f"OEBPS/{ABOUT_PHOTO}"] = photo
     files.update({f"OEBPS/{name}.xhtml": page(title, body, kind) for name, title, kind, body in docs})
@@ -537,11 +650,14 @@ def main():
         # OCF: `mimetype` is the first entry and stored uncompressed, or readers cannot sniff the
         # file as an EPUB; letting zipfile deflate it, or writing it later, breaks the book.
         z.writestr(zipfile.ZipInfo("mimetype"), "application/epub+zip", compress_type=zipfile.ZIP_STORED)
-        z.writestr("META-INF/container.xml",
-                   '<?xml version="1.0" encoding="utf-8"?>\n<container version="1.0" '
-                   'xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles>'
-                   '<rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>'
-                   '</rootfiles></container>', compress_type=zipfile.ZIP_DEFLATED)
+        z.writestr(
+            "META-INF/container.xml",
+            '<?xml version="1.0" encoding="utf-8"?>\n<container version="1.0" '
+            'xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles>'
+            '<rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>'
+            "</rootfiles></container>",
+            compress_type=zipfile.ZIP_DEFLATED,
+        )
         for name, data in files.items():
             z.writestr(name, data, compress_type=zipfile.ZIP_DEFLATED)
 
@@ -553,8 +669,10 @@ def main():
     for p in problems:
         print(f"kindle: error: {p}")
     mb = os.path.getsize(OUT) / 1e6
-    print(f"kindle: {len(doc['chapters'])} chapters, {len(images.files) - len(images.decorative)} figures, {mb:.1f} MB "
-          f"(delivery fee about ${0.15 * mb:.2f} a sale at 70%) -> {OUT}")
+    print(
+        f"kindle: {len(doc['chapters'])} chapters, {len(images.files) - len(images.decorative)} figures, {mb:.1f} MB "
+        f"(delivery fee about ${0.15 * mb:.2f} a sale at 70%) -> {OUT}"
+    )
     if problems:
         raise SystemExit(1)
 

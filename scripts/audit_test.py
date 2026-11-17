@@ -141,10 +141,16 @@ class ImageRefs(unittest.TestCase):
         )
         with tempfile.TemporaryDirectory() as d:
             f = write(pathlib.Path(d), "Dockerfile.dev", text)
-            self.assertEqual(audit._image_refs(f), [
-                ("golang", "1.22"), ("node", "20-alpine"), ("redis", "latest"),
-                ("mongo", ""), ("mongo", "8.0"),
-            ])
+            self.assertEqual(
+                audit._image_refs(f),
+                [
+                    ("golang", "1.22"),
+                    ("node", "20-alpine"),
+                    ("redis", "latest"),
+                    ("mongo", ""),
+                    ("mongo", "8.0"),
+                ],
+            )
 
     def test_compose_ignores_comments(self):
         text = "services:\n  a:\n    image: 'minio/minio:latest'\n  b:\n    image: mongo:8\n  # image: bad:latest\n  c:\n    image: ${IMG}\n"
@@ -156,7 +162,11 @@ class ImageRefs(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             r = pathlib.Path(d)
             write(r, "Dockerfile.dev", "FROM mongo:8\nFROM redis:latest\nFROM golang:1.22 AS build\nFROM build\n")
-            write(r, "docker-compose.prod.yaml", "services:\n  mongo:\n    image: mongo:8.0\n    command: [--replSet, rs0]\n")
+            write(
+                r,
+                "docker-compose.prod.yaml",
+                "services:\n  mongo:\n    image: mongo:8.0\n    command: [--replSet, rs0]\n",
+            )
             write(r, "dev.sh", "mongod --replSet rs0\n")
             st, detail = audit.CHECKS["CTR-09"](r)
             self.assertEqual(st, audit.FAIL)
@@ -229,7 +239,7 @@ class VersionPins(unittest.TestCase):
                 "  a:\n"
                 "    steps:\n"
                 "      - uses: actions/setup-node@v4\n"
-                '        with:\n'
+                "        with:\n"
                 '          node-version: "22"\n',
             )
             st, detail = audit.CHECKS["CTR-01"](r)
@@ -248,7 +258,7 @@ class VersionPins(unittest.TestCase):
                 "  a:\n"
                 "    steps:\n"
                 "      - uses: actions/setup-go@v5\n"
-                '        with:\n'
+                "        with:\n"
                 '          go-version: "1.26"\n',
             )
             st, detail = audit.CHECKS["CTR-02"](r)
@@ -413,9 +423,7 @@ class CI14(unittest.TestCase):
             r = pathlib.Path(d)
             self._dependabot(
                 r,
-                "- package-ecosystem: gomod\n"
-                "  directory: /\n"
-                "  schedule: {interval: weekly}\n",
+                "- package-ecosystem: gomod\n  directory: /\n  schedule: {interval: weekly}\n",
             )
             st, detail = audit.CHECKS["CI-14"](r)
             self.assertEqual(st, audit.FAIL)
@@ -720,8 +728,7 @@ class CI01(unittest.TestCase):
     def _check(self, uses):
         with tempfile.TemporaryDirectory() as d:
             r = pathlib.Path(d)
-            write(r, ".github/workflows/w.yaml",
-                  f"on: push\njobs:\n  j:\n    uses: {uses}\n")
+            write(r, ".github/workflows/w.yaml", f"on: push\njobs:\n  j:\n    uses: {uses}\n")
             return audit.CHECKS["CI-01"](r)
 
     def test_vendored_caller_passes(self):
@@ -753,12 +760,15 @@ class CI13(unittest.TestCase):
     def _check(self, steps_yaml):
         with tempfile.TemporaryDirectory() as d:
             r = pathlib.Path(d)
-            write(r, ".github/workflows/w.yaml",
-                  "on: push\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n" + steps_yaml)
+            write(
+                r,
+                ".github/workflows/w.yaml",
+                "on: push\njobs:\n  j:\n    runs-on: ubuntu-latest\n    steps:\n" + steps_yaml,
+            )
             return audit.CHECKS["CI-13"](r)
 
     def _run(self, expr):
-        return self._check(f"      - run: echo \"${{{{ {expr} }}}}\"\n")
+        return self._check(f'      - run: echo "${{{{ {expr} }}}}"\n')
 
     def test_each_injection_form_fails(self):
         for expr in (
@@ -790,9 +800,7 @@ class CI13(unittest.TestCase):
 
     def test_env_resplicing_an_untrusted_value_fails(self):
         st, detail = self._check(
-            "      - env:\n"
-            "          T: ${{ github.event.issue.title }}\n"
-            "        run: echo \"${{ env.T }}\"\n"
+            '      - env:\n          T: ${{ github.event.issue.title }}\n        run: echo "${{ env.T }}"\n'
         )
         self.assertEqual(st, audit.FAIL, detail)
 
@@ -801,7 +809,7 @@ class CI13(unittest.TestCase):
             "      - env:\n"
             "          N: ${{ github.event.issue.number }}\n"
             "          T: ${{ github.event.issue.title }}\n"
-            "        run: echo \"${{ env.N }}\" \"$T\"\n"
+            '        run: echo "${{ env.N }}" "$T"\n'
         )
         self.assertEqual(st, audit.PASS, detail)
 
@@ -871,8 +879,9 @@ class References(unittest.TestCase):
 
     def test_this_repos_fleet_section_matches_the_asset(self):
         root = HERE.parent
-        verdict = audit._matches_reference(root / "AGENTS.md", root / "assets/fleet/agents-md-fleet-section.md",
-                                           audit._fleet_section)
+        verdict = audit._matches_reference(
+            root / "AGENTS.md", root / "assets/fleet/agents-md-fleet-section.md", audit._fleet_section
+        )
         self.assertEqual(verdict[0], audit.PASS, f"VNDR-02 on this repo's AGENTS.md: {verdict}")
 
 
@@ -917,8 +926,13 @@ class Snapshot(unittest.TestCase):
         self.tmp.cleanup()
 
     def worktrees(self):
-        out = subprocess.run(["git", "worktree", "list"], cwd=self.root / "sub" / "hero-template",
-                             capture_output=True, text=True, env=CLEAN_ENV).stdout
+        out = subprocess.run(
+            ["git", "worktree", "list"],
+            cwd=self.root / "sub" / "hero-template",
+            capture_output=True,
+            text=True,
+            env=CLEAN_ENV,
+        ).stdout
         return out.strip().splitlines()
 
     def test_cleanup_on_exception(self):
@@ -944,13 +958,15 @@ class AppliesTo(unittest.TestCase):
     the checkers. A capability name must never exempt a repo on its own:
     the explicit lists it used to resolve to went stale and hid three
     template clones from every Go and Node check."""
+
     def setUp(self):
         self.saved = dict(audit.GROUP_REPOS)
         audit.GROUP_REPOS.clear()
         audit.GROUP_REPOS.update({"apps": {"a", "b"}, "infra": {"tf"}})
 
     def tearDown(self):
-        audit.GROUP_REPOS.clear(); audit.GROUP_REPOS.update(self.saved)
+        audit.GROUP_REPOS.clear()
+        audit.GROUP_REPOS.update(self.saved)
 
     def test_groups(self):
         self.assertTrue(audit.applies({"applies_to": "all"}, "tf"))
@@ -972,7 +988,6 @@ def fleet_fixture(root, fleet_md, overlay=None, checkers=None):
     has no .git, so it is unreviewed until review_register() commits and pushes
     it."""
     write(root, ".fleet/FLEET.md", fleet_md)
-    reg = root / ".fleet"
     if overlay is not None:
         write(root, ".fleet/CHECKS.yaml", overlay)
     if checkers is not None:
@@ -1015,16 +1030,26 @@ def review_register(root, remote=True, name="fx/register", pin=True):
 class Configured(unittest.TestCase):
     """configure() binds every module global from FLEET.md; each test rebinds
     from a fixture and tearDown restores what the import-time call found."""
+
     def setUp(self):
-        self.saved = (audit.ROOT, audit.FAMILY, audit.REGISTER, audit.TEMPLATE, audit.MAP,
-                      dict(audit.REPO_DIR), {k: set(v) for k, v in audit.GROUP_REPOS.items()})
+        self.saved = (
+            audit.ROOT,
+            audit.FAMILY,
+            audit.REGISTER,
+            audit.TEMPLATE,
+            audit.MAP,
+            dict(audit.REPO_DIR),
+            {k: set(v) for k, v in audit.GROUP_REPOS.items()},
+        )
         self.tmp = tempfile.TemporaryDirectory()
         self.root = pathlib.Path(self.tmp.name).resolve()
 
     def tearDown(self):
         audit.ROOT, audit.FAMILY, audit.REGISTER, audit.TEMPLATE, audit.MAP, dirs, groups = self.saved
-        audit.REPO_DIR.clear(); audit.REPO_DIR.update(dirs)
-        audit.GROUP_REPOS.clear(); audit.GROUP_REPOS.update(groups)
+        audit.REPO_DIR.clear()
+        audit.REPO_DIR.update(dirs)
+        audit.GROUP_REPOS.clear()
+        audit.GROUP_REPOS.update(groups)
         audit._OVERLAY_LOADED.clear()
         audit._REGISTER_READ.clear()
         self.tmp.cleanup()
@@ -1092,7 +1117,9 @@ class Configured(unittest.TestCase):
         self.assertEqual(audit.REGISTER, self.root / ".fleet")
         self.assertEqual(audit.TEMPLATE, "tpl")
         self.assertEqual(audit.FAMILY, ("tpl", "alpha", "tf"), "none, blank, escapee, ../evil and fenced are out")
-        self.assertEqual(audit.REPO_DIR["alpha"], self.root / "apps" / "alpha", "path: honoured, quotes and comment stripped")
+        self.assertEqual(
+            audit.REPO_DIR["alpha"], self.root / "apps" / "alpha", "path: honoured, quotes and comment stripped"
+        )
         self.assertEqual(audit.GROUP_REPOS, {"template": {"tpl"}, "apps": {"alpha"}, "infra": {"tf"}})
         self.assertIn("skipping 'escapee'", err.getvalue())
         self.assertIn("skipping '../evil'", err.getvalue())
@@ -1106,7 +1133,9 @@ class Configured(unittest.TestCase):
         (home / ".plug" / "tilde").mkdir(parents=True)
         (self.root / "inside").mkdir()
         (self.root / "linked").symlink_to(outside)
-        fleet_fixture(self.root, f"""## Fleet
+        fleet_fixture(
+            self.root,
+            f"""## Fleet
 
 - name: fx
 
@@ -1134,9 +1163,9 @@ class Configured(unittest.TestCase):
 
 - path: ../{outside.name}
 - group: apps
-""")
-        with mock.patch.dict(os.environ, {"HOME": str(home)}), \
-                contextlib.redirect_stderr(io.StringIO()) as err:
+""",
+        )
+        with mock.patch.dict(os.environ, {"HOME": str(home)}), contextlib.redirect_stderr(io.StringIO()) as err:
             audit.configure(self.root)
         self.assertEqual(audit.FAMILY, ("inside", "abs", "tilde"))
         self.assertEqual(audit.REPO_DIR["abs"], outside)
@@ -1207,8 +1236,9 @@ class Configured(unittest.TestCase):
         clone = git_repo(self.root, "clone")
         marker = self.root / "ran"
         fleet_fixture(clone, "## Fleet\n- name: fx\n", checkers=f"open({str(marker)!r}, 'w').close()\n")
-        p = subprocess.run([sys.executable, str(HERE / "audit.py")], cwd=str(clone),
-                           capture_output=True, text=True, env=CLEAN_ENV)
+        p = subprocess.run(
+            [sys.executable, str(HERE / "audit.py")], cwd=str(clone), capture_output=True, text=True, env=CLEAN_ENV
+        )
         self.assertFalse(marker.exists(), "the clone's .fleet/checkers.py executed")
         self.assertIn("inside a git work tree", p.stderr)
 
@@ -1216,21 +1246,32 @@ class Configured(unittest.TestCase):
         clone = git_repo(self.root, "clone")
         marker = self.root / "ran"
         fleet_fixture(clone, "## Fleet\n- name: fx\n", checkers=f"open({str(marker)!r}, 'w').close()\n")
-        p = subprocess.run([sys.executable, str(HERE / "audit.py"), "--cwd", str(clone)], cwd=str(self.root),
-                           capture_output=True, text=True, env=CLEAN_ENV)
+        p = subprocess.run(
+            [sys.executable, str(HERE / "audit.py"), "--cwd", str(clone)],
+            cwd=str(self.root),
+            capture_output=True,
+            text=True,
+            env=CLEAN_ENV,
+        )
         self.assertFalse(marker.exists(), "the clone's .fleet/checkers.py executed")
         self.assertIn("inside a git work tree", p.stderr)
 
     def test_the_origin_engine_is_not_passed_cwd(self):
-        self.assertEqual(audit._without_cwd(["--cwd", "/x", "--md", "--cwd=/y", "--repo", "."]),
-                         ["--md", "--repo", "."])
+        self.assertEqual(
+            audit._without_cwd(["--cwd", "/x", "--md", "--cwd=/y", "--repo", "."]), ["--md", "--repo", "."]
+        )
 
     def test_import_runs_no_checkers_until_configured(self):
         marker = self.root / "ran"
         fleet_fixture(self.root, "## Fleet\n- name: fx\n", checkers=f"open({str(marker)!r}, 'w').close()\n")
         review_register(self.root)
-        p = subprocess.run([sys.executable, "-c", "import audit"], cwd=str(self.root),
-                           capture_output=True, text=True, env={**CLEAN_ENV, "PYTHONPATH": str(HERE)})
+        p = subprocess.run(
+            [sys.executable, "-c", "import audit"],
+            cwd=str(self.root),
+            capture_output=True,
+            text=True,
+            env={**CLEAN_ENV, "PYTHONPATH": str(HERE)},
+        )
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertFalse(marker.exists(), "importing audit.py ran the fleet's checkers.py")
         audit.configure(self.root)
@@ -1248,8 +1289,9 @@ class Configured(unittest.TestCase):
         docs = clone / "docs"
         marker = self.root / "ran"
         fleet_fixture(docs, "## Fleet\n- name: fx\n", checkers=f"open({str(marker)!r}, 'w').close()\n")
-        subprocess.run([sys.executable, str(HERE / "audit.py")], cwd=str(docs),
-                       capture_output=True, text=True, env=CLEAN_ENV)
+        subprocess.run(
+            [sys.executable, str(HERE / "audit.py")], cwd=str(docs), capture_output=True, text=True, env=CLEAN_ENV
+        )
         self.assertFalse(marker.exists(), "the clone subfolder's .fleet/checkers.py executed")
 
     def test_fleet_root_passes_over_a_git_file(self):
@@ -1298,7 +1340,9 @@ class Configured(unittest.TestCase):
         git(evil, "remote", "add", "origin", str(bare))
         git(evil, "push", "-q", "origin", "HEAD:main")
         fleet = self.root / ".fleet" / "FLEET.md"
-        fleet.write_text(fleet.read_text().replace("- register-repo: fx/register", "- register-repo: fx/evil\n- register: evil/"))
+        fleet.write_text(
+            fleet.read_text().replace("- register-repo: fx/register", "- register-repo: fx/evil\n- register: evil/")
+        )
         for committed in (False, True):
             if committed:
                 git(self.root / ".fleet", "commit", "-qam", "redirect")
@@ -1351,8 +1395,12 @@ class Configured(unittest.TestCase):
     def test_remote_identity(self):
         """ssh and https spell one repo; another host or a local path with the
         same OWNER/NAME is a different repo."""
-        same = ("git@github.com:Fx/Register.git", "https://github.com/fx/register",
-                "ssh://git@github.com:22/fx/register.git", "https://user@github.com/fx/register/")
+        same = (
+            "git@github.com:Fx/Register.git",
+            "https://github.com/fx/register",
+            "ssh://git@github.com:22/fx/register.git",
+            "https://user@github.com/fx/register/",
+        )
         self.assertEqual({audit.remote_identity(u) for u in same}, {"github.com/fx/register"})
         self.assertEqual(audit.remote_identity("git@gitlab.com:fx/register.git"), "gitlab.com/fx/register")
         self.assertEqual(audit.remote_identity("/tmp/x/fx/register.git"), "file/tmp/x/fx/register")
@@ -1365,8 +1413,11 @@ class Configured(unittest.TestCase):
         pins.write_text(f"{self.root} https://app.example.com\n")
         self.assertIsNone(audit.pinned_register(self.root), "a URL alone pins no register")
         pins.write_text(f"{self.root} https://app.example.com\n{self.root} gitlab.com/fx/register\n")
-        self.assertEqual(audit.pinned_register(self.root), "gitlab.com/fx/register",
-                         "the register line beside a URL line still reads")
+        self.assertEqual(
+            audit.pinned_register(self.root),
+            "gitlab.com/fx/register",
+            "the register line beside a URL line still reads",
+        )
 
     def test_store_backend(self):
         """The Python spelling of hero_store_backend: WAYFARE_STORE, else the
@@ -1397,15 +1448,26 @@ class Configured(unittest.TestCase):
         """audit.store_backend and hero_store_backend give the same answer, or
         both refuse, for the same WAYFARE_STORE."""
         lib = pathlib.Path(__file__).resolve().parent / "hero-lib.sh"
-        for v in ["local", "https://app.example.com/ws-1", "https://app.example.com/ws-1/", "https://",
-                  "https://a b", "ftp://x", "sever"]:
+        for v in [
+            "local",
+            "https://app.example.com/ws-1",
+            "https://app.example.com/ws-1/",
+            "https://",
+            "https://a b",
+            "ftp://x",
+            "sever",
+        ]:
             with mock.patch.dict(os.environ, {"WAYFARE_STORE": v}):
                 try:
                     py = audit.store_backend(self.root)
                 except ValueError:
                     py = None
-                r = subprocess.run(["bash", "-c", f". '{lib}'; hero_store_backend '{self.root}'"],
-                                   capture_output=True, text=True, check=False)
+                r = subprocess.run(
+                    ["bash", "-c", f". '{lib}'; hero_store_backend '{self.root}'"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
                 sh = r.stdout.strip() if r.returncode == 0 else None
                 self.assertEqual(py, sh, f"WAYFARE_STORE={v!r}")
 
@@ -1424,16 +1486,25 @@ class Configured(unittest.TestCase):
         stub = self._stub_cli(
             f'printf "%s url=%s ws=%s\\n" "$*" "$WAYFARE_URL" "$WAYFARE_WORKSPACE" > {log}\n'
             'if [ -n "$STUB_FAIL" ]; then echo "boom: token rejected" >&2; exit 1; fi\n'
-            'echo \'{"recorded":2,"failing":1}\'\n')
+            'echo \'{"recorded":2,"failing":1}\'\n'
+        )
         with mock.patch.dict(os.environ, {"WAYFARE_STORE": "https://wf.test/ws-1", "WAYFARE_CLI": str(stub)}):
             os.environ.pop("STUB_FAIL", None)
-            got = audit.record_results("app", [("A-1", audit.PASS), ("A-2", audit.FAIL), ("A-3", audit.ERROR)],
-                                       self.root / "fx")
+            got = audit.record_results(
+                "app", [("A-1", audit.PASS), ("A-2", audit.FAIL), ("A-3", audit.ERROR)], self.root / "fx"
+            )
             self.assertEqual(got, (2, 1))
             sent = log.read_text()
             self.assertIn("url=https://wf.test ws=ws-1", sent)
-            self.assertIn(json.dumps({"repo": "app", "results": [
-                {"check_id": "A-1", "state": "pass"}, {"check_id": "A-2", "state": "fail"}]}), sent)
+            self.assertIn(
+                json.dumps(
+                    {
+                        "repo": "app",
+                        "results": [{"check_id": "A-1", "state": "pass"}, {"check_id": "A-2", "state": "fail"}],
+                    }
+                ),
+                sent,
+            )
             os.environ["STUB_FAIL"] = "1"
             with self.assertRaises(audit.ServerError) as cm:
                 audit.record_results("app", [("A-1", audit.PASS)], self.root / "fx")
@@ -1461,18 +1532,25 @@ class Configured(unittest.TestCase):
         group (lowercased, `none` when unset) and port. Keys the server lacks
         (name) are absent, a failing CLI exits naming the server, and the call
         sent is `fleet --json {}` under the URL's workspace."""
-        fleet_fixture(self.root, "## Fleet\n- name: fx\n- org: acme\n- template: tpl\n- port-range: 33000-33099\n"
-                      "\n## Repos\n\n### app\n\n- group: Core\n- port: 33008\n\n### lib\n\n- group: none\n")
+        fleet_fixture(
+            self.root,
+            "## Fleet\n- name: fx\n- org: acme\n- template: tpl\n- port-range: 33000-33099\n"
+            "\n## Repos\n\n### app\n\n- group: Core\n- port: 33008\n\n### lib\n\n- group: none\n",
+        )
         want_fields, want_repos = audit.read_fleet(self.root)
         log = self.root / "cli.log"
-        data = {"data": {"settings": {"org": "acme", "template": "tpl", "port_min": 33000, "port_max": 33099},
-                         "groups": [{"id": "g1", "name": "Core"}],
-                         "rows": [{"project": {"slug": "app", "group_id": "g1", "port": 33008}},
-                                  {"project": {"slug": "lib"}}]}}
+        data = {
+            "data": {
+                "settings": {"org": "acme", "template": "tpl", "port_min": 33000, "port_max": 33099},
+                "groups": [{"id": "g1", "name": "Core"}],
+                "rows": [{"project": {"slug": "app", "group_id": "g1", "port": 33008}}, {"project": {"slug": "lib"}}],
+            }
+        }
         stub = self._stub_cli(
             f'printf "%s url=%s ws=%s\\n" "$*" "$WAYFARE_URL" "$WAYFARE_WORKSPACE" > {log}\n'
             'if [ -n "$STUB_FAIL" ]; then echo "boom: token rejected" >&2; exit 1; fi\n'
-            f"echo '{json.dumps(data)}'\n")
+            f"echo '{json.dumps(data)}'\n"
+        )
         with mock.patch.dict(os.environ, {"WAYFARE_STORE": "https://wf.test/ws-1", "WAYFARE_CLI": str(stub)}):
             os.environ.pop("STUB_FAIL", None)
             fields, repos = audit.read_fleet(self.root)
@@ -1486,7 +1564,7 @@ class Configured(unittest.TestCase):
                 audit.read_fleet(self.root)
             self.assertIn("https://wf.test/ws-1", str(cm.exception))
             self.assertIn("boom: token rejected", str(cm.exception))
-        stub = self._stub_cli("echo '{\"data\":{\"settings\":{}}}'\n")
+        stub = self._stub_cli('echo \'{"data":{"settings":{}}}\'\n')
         with mock.patch.dict(os.environ, {"WAYFARE_STORE": "https://wf.test/ws-1", "WAYFARE_CLI": str(stub)}):
             with self.assertRaises(SystemExit, msg="an answer with no rows is never a fleet of no repos"):
                 audit.read_fleet(self.root)
@@ -1498,14 +1576,16 @@ class Configured(unittest.TestCase):
         pins = pathlib.Path(os.environ["XDG_CONFIG_HOME"]) / "wayfare" / "registers"
         pins.parent.mkdir(parents=True, exist_ok=True)
         self.addCleanup(lambda: pins.unlink(missing_ok=True))
-        cases = (("absent", None, False, "this machine pins no register for"),
-                 ("match", f"# a comment\n{self.root} {local}\n", True, ""),
-                 ("mismatch", f"{self.root} {local[:-len('register')]}other\n", False, "this machine pins"),
-                 # The same OWNER/NAME on a host, against a local-path origin.
-                 ("other host, two-part", f"{self.root} fx/register\n", False, "this machine pins github.com/fx/register"),
-                 ("other host", f"{self.root} gitlab.com/fx/register\n", False, "this machine pins gitlab.com/fx/register"),
-                 ("another root", f"/elsewhere {local}\n", False, "this machine pins no register for"),
-                 ("sibling prefix", f"{self.root}-other {local}\n", False, "this machine pins no register for"))
+        cases = (
+            ("absent", None, False, "this machine pins no register for"),
+            ("match", f"# a comment\n{self.root} {local}\n", True, ""),
+            ("mismatch", f"{self.root} {local[: -len('register')]}other\n", False, "this machine pins"),
+            # The same OWNER/NAME on a host, against a local-path origin.
+            ("other host, two-part", f"{self.root} fx/register\n", False, "this machine pins github.com/fx/register"),
+            ("other host", f"{self.root} gitlab.com/fx/register\n", False, "this machine pins gitlab.com/fx/register"),
+            ("another root", f"/elsewhere {local}\n", False, "this machine pins no register for"),
+            ("sibling prefix", f"{self.root}-other {local}\n", False, "this machine pins no register for"),
+        )
         for label, text, want_reviewed, want_text in cases:
             pins.unlink(missing_ok=True)
             if text is not None:
@@ -1517,7 +1597,9 @@ class Configured(unittest.TestCase):
             self.assertEqual(reviewed, want_reviewed, f"{label}: {note}")
             self.assertIn(want_text, err.getvalue() + note, label)
             if label == "absent":
-                self.assertIn(f"\n  {self.root} HOST/OWNER/NAME\n", err.getvalue(), "the line to add, with a placeholder")
+                self.assertIn(
+                    f"\n  {self.root} HOST/OWNER/NAME\n", err.getvalue(), "the line to add, with a placeholder"
+                )
                 self.assertIn("HOST/OWNER/NAME >>", err.getvalue(), "the command carries a placeholder")
                 self.assertIn(f"origin is {local}", err.getvalue())
             if label == "match":
@@ -1656,9 +1738,11 @@ class Configured(unittest.TestCase):
         real = write(self.root, "elsewhere.md", "## Fleet\n- name: elsewhere\n")
         # A link to a readable map is refused too: git reviews the link's
         # target string, so its content would arrive unreviewed.
-        for label, make, why in (("directory", lambda m: m.mkdir(), "not a readable file"),
-                                 ("dangling link", lambda m: m.symlink_to(reg / "nowhere"), "is a symlink"),
-                                 ("link to a readable map", lambda m: m.symlink_to(real), "is a symlink")):
+        for label, make, why in (
+            ("directory", lambda m: m.mkdir(), "not a readable file"),
+            ("dangling link", lambda m: m.symlink_to(reg / "nowhere"), "is a symlink"),
+            ("link to a readable map", lambda m: m.symlink_to(real), "is a symlink"),
+        ):
             m = reg / "FLEET.md"
             make(m)
             with self.assertRaises(audit.FleetMapError, msg=label):
@@ -1690,8 +1774,13 @@ class Configured(unittest.TestCase):
         """With no register there is no overlay to name or read, and the run
         still finishes: this plugin's CI and lone repos audit this way."""
         r = git_repo(self.root, "solo")
-        p = subprocess.run([sys.executable, str(HERE / "audit.py"), "--no-snapshot", "--json"], cwd=str(r),
-                           capture_output=True, text=True, env=CLEAN_ENV)
+        p = subprocess.run(
+            [sys.executable, str(HERE / "audit.py"), "--no-snapshot", "--json"],
+            cwd=str(r),
+            capture_output=True,
+            text=True,
+            env=CLEAN_ENV,
+        )
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertIn("baseline only", p.stderr)
 
@@ -1700,16 +1789,31 @@ class Register(unittest.TestCase):
     """load_register merges baseline + overlay by id and validates the
     RESULT: an overlay may add fields and records, never re-parent a check,
     hide a duplicate, or use a severity --fail-on would never match."""
-    BASE = "\n".join([
-        "controls:", "- id: C-A", "  title: A", "  severity: high", "  intent: a",
-        "checks:", "- id: A-1", "  control: C-A", "  scope: repo", "  title: one", "  severity: low",
-        "  detect: {method: manual}", ""])
+
+    BASE = "\n".join(
+        [
+            "controls:",
+            "- id: C-A",
+            "  title: A",
+            "  severity: high",
+            "  intent: a",
+            "checks:",
+            "- id: A-1",
+            "  control: C-A",
+            "  scope: repo",
+            "  title: one",
+            "  severity: low",
+            "  detect: {method: manual}",
+            "",
+        ]
+    )
 
     def setUp(self):
         self.saved = (audit.BASELINE, audit.REGISTER, {k: set(v) for k, v in audit.GROUP_REPOS.items()})
         self.tmp = tempfile.TemporaryDirectory()
         self.root = pathlib.Path(self.tmp.name)
-        (self.root / "base").mkdir(); (self.root / "over").mkdir()
+        (self.root / "base").mkdir()
+        (self.root / "over").mkdir()
         write(self.root, "base/CONTROLS.yaml", self.BASE.split("checks:")[0])
         write(self.root, "base/CHECKS.yaml", "checks:" + self.BASE.split("checks:")[1])
         audit.BASELINE = self.root / "base"
@@ -1718,14 +1822,16 @@ class Register(unittest.TestCase):
         # Merge and validation are what these tests pin, so the plain `over/`
         # directory reads as reviewed unless a test says otherwise.
         self.reviewed = True
-        patcher = mock.patch.object(audit, "register_source",
-                                    side_effect=lambda: (self.root / "over", self.reviewed, "over @ test"))
+        patcher = mock.patch.object(
+            audit, "register_source", side_effect=lambda: (self.root / "over", self.reviewed, "over @ test")
+        )
         patcher.start()
         self.addCleanup(patcher.stop)
 
     def tearDown(self):
         audit.BASELINE, audit.REGISTER, groups = self.saved
-        audit.GROUP_REPOS.clear(); audit.GROUP_REPOS.update(groups)
+        audit.GROUP_REPOS.clear()
+        audit.GROUP_REPOS.update(groups)
         self.tmp.cleanup()
 
     def load(self, overlay_checks="", overlay_controls=""):
@@ -1739,7 +1845,8 @@ class Register(unittest.TestCase):
     def test_overlay_fields_win_and_records_add(self):
         ctrl, checks = self.load(
             "checks:\n- id: A-1\n  severity: low\n"
-            "- id: A-2\n  control: C-A\n  scope: ci\n  title: two\n  detect: {method: manual}\n")
+            "- id: A-2\n  control: C-A\n  scope: ci\n  title: two\n  detect: {method: manual}\n"
+        )
         by = {k["id"]: k for k in checks}
         self.assertEqual(by["A-1"]["severity"], "low")
         self.assertEqual(by["A-1"]["title"], "one", "baseline field survives an overlay that did not set it")
@@ -1761,7 +1868,10 @@ class Register(unittest.TestCase):
 
     def test_reparenting_rejected(self):
         with self.assertRaises(SystemExit) as cm:
-            self.load("checks:\n- id: A-1\n  control: C-B\n", "controls:\n- id: C-B\n  title: B\n  severity: low\n  intent: b\n")
+            self.load(
+                "checks:\n- id: A-1\n  control: C-B\n",
+                "controls:\n- id: C-B\n  title: B\n  severity: low\n  intent: b\n",
+            )
         self.assertIn("re-parent", str(cm.exception))
 
     def test_duplicate_id_rejected(self):
@@ -1787,7 +1897,8 @@ class Register(unittest.TestCase):
         ctrl, checks = self.load(
             "checks:\n- id: A-1\n  title: renamed\n  applies_to: [infra]\n"
             "- id: A-2\n  control: C-B\n  scope: ci\n  title: two\n  detect: {method: manual}\n",
-            "controls:\n- id: C-A\n  severity: low\n- id: C-B\n  title: B\n  severity: low\n  intent: b\n")
+            "controls:\n- id: C-A\n  severity: low\n- id: C-B\n  title: B\n  severity: low\n  intent: b\n",
+        )
         self.assertEqual(ctrl["C-A"]["severity"], "high")
         self.assertIn("C-B", ctrl)
         by = {k["id"]: k for k in checks}
@@ -1822,8 +1933,9 @@ class Register(unittest.TestCase):
         base = "deadlines: {high: 14, medium: 30, low: 90}\n"
         self.assertEqual(self.deadlines(base, "deadlines: {high: 7}\n")["high"], 7)
         self.reviewed = False
-        self.assertEqual(self.deadlines(base, "deadlines: {high: 7}\n")["high"], 14,
-                         "an unreviewed overlay retunes nothing")
+        self.assertEqual(
+            self.deadlines(base, "deadlines: {high: 7}\n")["high"], 14, "an unreviewed overlay retunes nothing"
+        )
 
     def test_bad_deadlines_rejected(self):
         cases = {
@@ -1844,24 +1956,48 @@ class Register(unittest.TestCase):
 class JsonOutput(unittest.TestCase):
     """The --json contract wayfare's compliance stage parses: one object per
     FAIL or ERROR cell on stdout, nothing else there, summary on stderr."""
+
     def test_end_to_end(self):
         with tempfile.TemporaryDirectory() as d:
             root = pathlib.Path(d).resolve()
-            fleet_fixture(root, "## Fleet\n- name: fx\n## Repos\n### a\n- group: apps\n",
-                          overlay="checks:\n- id: CI-02\n  applies_to: [apps]\n",
-                          checkers="from audit import check, FAIL\n@check('ZZ-1')\ndef _(r):\n    raise RuntimeError('boom')\n")
+            fleet_fixture(
+                root,
+                "## Fleet\n- name: fx\n## Repos\n### a\n- group: apps\n",
+                overlay="checks:\n- id: CI-02\n  applies_to: [apps]\n",
+                checkers="from audit import check, FAIL\n@check('ZZ-1')\ndef _(r):\n    raise RuntimeError('boom')\n",
+            )
             write(root, ".fleet/CONTROLS.yaml", "controls:\n- id: C-ZZ\n  title: z\n  severity: low\n  intent: z\n")
-            write(root, ".fleet/CHECKS.yaml", "checks:\n- id: CI-02\n  applies_to: [apps]\n  example: |\n    version: 2\n- id: ZZ-1\n  control: C-ZZ\n  scope: repo\n  title: boom\n")
+            write(
+                root,
+                ".fleet/CHECKS.yaml",
+                "checks:\n- id: CI-02\n  applies_to: [apps]\n  example: |\n    version: 2\n- id: ZZ-1\n  control: C-ZZ\n  scope: repo\n  title: boom\n",
+            )
             review_register(root)
             git_repo(root, "a")
-            p = subprocess.run([sys.executable, str(HERE / "audit.py"), "--fleet", str(root), "--no-snapshot", "--json", "--repo", "a"],
-                               capture_output=True, text=True, env=CLEAN_ENV)
-            lines = [json.loads(l) for l in p.stdout.splitlines() if l.strip()]
+            p = subprocess.run(
+                [
+                    sys.executable,
+                    str(HERE / "audit.py"),
+                    "--fleet",
+                    str(root),
+                    "--no-snapshot",
+                    "--json",
+                    "--repo",
+                    "a",
+                ],
+                capture_output=True,
+                text=True,
+                env=CLEAN_ENV,
+            )
+            lines = [json.loads(ln) for ln in p.stdout.splitlines() if ln.strip()]
             self.assertTrue(lines, p.stderr)
             by = {(o["check"], o["status"]): o for o in lines}
             self.assertIn(("CI-02", "FAIL"), by, "no dependabot.yml in the fixture")
-            self.assertEqual(by[("CI-02", "FAIL")]["example"], "version: 2\n",
-                             "the correct shape travels with the finding, not a repo name")
+            self.assertEqual(
+                by[("CI-02", "FAIL")]["example"],
+                "version: 2\n",
+                "the correct shape travels with the finding, not a repo name",
+            )
             self.assertEqual(by[("CI-02", "FAIL")]["repo"], "a")
             self.assertIn(("ZZ-1", "ERROR"), by, "a raised checker is on stdout, flagged")
             self.assertIn("failing (check x repo)", p.stderr, "summary went to stderr")
@@ -1870,14 +2006,28 @@ class JsonOutput(unittest.TestCase):
     def test_repo_dot_resolves_the_row(self):
         with tempfile.TemporaryDirectory() as d:
             root = pathlib.Path(d).resolve()
-            fleet_fixture(root, "## Fleet\n- name: fx\n## Repos\n### svc\n- group: apps\n- path: services/svc\n", overlay="checks: []\n")
+            fleet_fixture(
+                root,
+                "## Fleet\n- name: fx\n## Repos\n### svc\n- group: apps\n- path: services/svc\n",
+                overlay="checks: []\n",
+            )
             (root / "services").mkdir()
             r = git_repo(root / "services", "svc")
-            p = subprocess.run([sys.executable, str(HERE / "audit.py"), "--fleet", str(root), "--no-snapshot", "--repo", "."],
-                               capture_output=True, text=True, cwd=r, env=CLEAN_ENV)
+            p = subprocess.run(
+                [sys.executable, str(HERE / "audit.py"), "--fleet", str(root), "--no-snapshot", "--repo", "."],
+                capture_output=True,
+                text=True,
+                cwd=r,
+                env=CLEAN_ENV,
+            )
             self.assertIn("across 1 repos", p.stdout + p.stderr)
-            p = subprocess.run([sys.executable, str(HERE / "audit.py"), "--fleet", str(root), "--no-snapshot", "--repo", "svc-typo"],
-                               capture_output=True, text=True, cwd=r, env=CLEAN_ENV)
+            p = subprocess.run(
+                [sys.executable, str(HERE / "audit.py"), "--fleet", str(root), "--no-snapshot", "--repo", "svc-typo"],
+                capture_output=True,
+                text=True,
+                cwd=r,
+                env=CLEAN_ENV,
+            )
             self.assertNotEqual(p.returncode, 0)
             self.assertIn("not a FLEET.md row", p.stderr)
 
@@ -1934,16 +2084,18 @@ class Consistency(unittest.TestCase):
     path is wrong. Every assertion here is therefore about what a real
     invocation leaves behind: the file, the exit status, and the summary.
     """
+
     def _fleet(self, root):
         # Two DIFFERENT groups, and an overlay check narrowed to one of them.
         # An overlay that restates the baseline is inert: it reads as though it
         # pins applies_to scoping and the overlay merge, and pins neither,
         # so a later change to either could not fail this suite.
-        fleet_fixture(root, "## Fleet\n- name: fx\n- org: fx\n## Repos\n"
-                            "### a\n- group: apps\n\n### b\n- group: infra\n",
-                      overlay="checks:\n- id: CI-02\n  applies_to: [apps]\n")
-        write(root, ".fleet/CONTROLS.yaml",
-              "controls:\n- id: C-SUPPLY\n  title: s\n  severity: high\n  intent: s\n")
+        fleet_fixture(
+            root,
+            "## Fleet\n- name: fx\n- org: fx\n## Repos\n### a\n- group: apps\n\n### b\n- group: infra\n",
+            overlay="checks:\n- id: CI-02\n  applies_to: [apps]\n",
+        )
+        write(root, ".fleet/CONTROLS.yaml", "controls:\n- id: C-SUPPLY\n  title: s\n  severity: high\n  intent: s\n")
         review_register(root)
         for name in ("a", "b"):
             git_repo(root, name)
@@ -1957,24 +2109,25 @@ class Consistency(unittest.TestCase):
             root = self._fleet(pathlib.Path(d).resolve())
             self.assertEqual(self._run(root).returncode, 0)
             body = (root / ".fleet" / "CONSISTENCY.md").read_text()
-            row = [l for l in body.splitlines() if l.startswith("| **CI-02**")]
+            row = [ln for ln in body.splitlines() if ln.startswith("| **CI-02**")]
             self.assertTrue(row, "no CI-02 row in the table")
             cells = [c.strip() for c in row[0].split("|")]
-            self.assertIn(audit.MARK[audit.NA], cells,
-                          "CI-02 is scoped to apps, so the infra repo's cell must be n/a")
+            self.assertIn(audit.MARK[audit.NA], cells, "CI-02 is scoped to apps, so the infra repo's cell must be n/a")
 
     def _run(self, root, *extra):
         return subprocess.run(
-            [sys.executable, str(HERE / "consistency.py"), "--fleet", str(root),
-             "--no-snapshot", *extra],
-            capture_output=True, text=True, env=CLEAN_ENV)
+            [sys.executable, str(HERE / "consistency.py"), "--fleet", str(root), "--no-snapshot", *extra],
+            capture_output=True,
+            text=True,
+            env=CLEAN_ENV,
+        )
 
     def test_writes_the_table_and_exits_clean(self):
         with tempfile.TemporaryDirectory() as d:
             root = self._fleet(pathlib.Path(d).resolve())
             p = self._run(root)
             self.assertEqual(p.returncode, 0, p.stderr)
-            out = (root / ".fleet" / "CONSISTENCY.md")
+            out = root / ".fleet" / "CONSISTENCY.md"
             self.assertTrue(out.is_file(), "no table written")
             body = out.read_text()
             # Both repos are columns, and neither is remembered from a field:
@@ -1990,7 +2143,7 @@ class Consistency(unittest.TestCase):
 
     def _ci02_row(self, root):
         body = (root / ".fleet" / "CONSISTENCY.md").read_text()
-        row = [l for l in body.splitlines() if l.startswith("| **CI-02**")]
+        row = [ln for ln in body.splitlines() if ln.startswith("| **CI-02**")]
         self.assertTrue(row, "no CI-02 row in the table")
         return body, [c.strip() for c in row[0].split("|")]
 
@@ -2038,23 +2191,44 @@ class Consistency(unittest.TestCase):
         spec.loader.exec_module(mod)
         today = datetime.date(2026, 10, 27)
         with tempfile.TemporaryDirectory() as d:
-            path = write(pathlib.Path(d), "FIRST_SEEN.json", json.dumps({"started": "2026-01-01", "seen": {
-                "X-1": {"a": "2026-02-01", "b": "2026-02-01", "c": "2026-02-01"},
-                "X-2": {"a": "2026-02-01"}}}))
-            started, seen = mod.first_seen(path, {
-                ("X-1", "a"): "FAIL", ("X-1", "b"): "MANUAL", ("X-1", "c"): "PASS",
-                ("X-3", "a"): "FAIL", ("X-3", "b"): "n/a"}, today)
+            path = write(
+                pathlib.Path(d),
+                "FIRST_SEEN.json",
+                json.dumps(
+                    {
+                        "started": "2026-01-01",
+                        "seen": {
+                            "X-1": {"a": "2026-02-01", "b": "2026-02-01", "c": "2026-02-01"},
+                            "X-2": {"a": "2026-02-01"},
+                        },
+                    }
+                ),
+            )
+            started, seen = mod.first_seen(
+                path,
+                {
+                    ("X-1", "a"): "FAIL",
+                    ("X-1", "b"): "MANUAL",
+                    ("X-1", "c"): "PASS",
+                    ("X-3", "a"): "FAIL",
+                    ("X-3", "b"): "n/a",
+                },
+                today,
+            )
         self.assertEqual(started, "2026-01-01")
-        self.assertEqual(seen, {"X-1": {"a": "2026-02-01", "b": "2026-02-01"},
-                                "X-3": {"a": "2026-10-27"}},
-                         "PASS and a cell gone from the table clear; MANUAL keeps; a new FAIL is today")
+        self.assertEqual(
+            seen,
+            {"X-1": {"a": "2026-02-01", "b": "2026-02-01"}, "X-3": {"a": "2026-10-27"}},
+            "PASS and a cell gone from the table clear; MANUAL keeps; a new FAIL is today",
+        )
 
     def test_analysis_parser_reads_an_aged_cell_as_a_failure(self):
         """analysis/report/compliance/register.py reads every committed table.
         A cell it does not recognise is neither pass nor fail, so the report
         would show a late failure as a fleet that got greener."""
         spec = importlib.util.spec_from_file_location(
-            "compliance_register", HERE.parent / "analysis" / "report" / "compliance" / "register.py")
+            "compliance_register", HERE.parent / "analysis" / "report" / "compliance" / "register.py"
+        )
         reg = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(reg)
         with tempfile.TemporaryDirectory() as d:
@@ -2070,7 +2244,11 @@ class Consistency(unittest.TestCase):
     def test_unreadable_first_seen_stops_before_writing(self):
         with tempfile.TemporaryDirectory() as d:
             root = self._fleet(pathlib.Path(d).resolve())
-            for text in ("{", '{"started": "2026-01-01"}', '{"started": "2026-01-01", "seen": {"CI-02": {"a": "soon"}}}'):
+            for text in (
+                "{",
+                '{"started": "2026-01-01"}',
+                '{"started": "2026-01-01", "seen": {"CI-02": {"a": "soon"}}}',
+            ):
                 with self.subTest(text=text):
                     write(root, ".fleet/FIRST_SEEN.json", text)
                     p = self._run(root)
@@ -2094,8 +2272,7 @@ class Consistency(unittest.TestCase):
             p = self._run(root, "--stdout")
             self.assertEqual(p.returncode, 0, p.stderr)
             self.assertIn("| Check |", p.stdout)
-            self.assertFalse((root / ".fleet" / "CONSISTENCY.md").exists(),
-                             "--stdout must not write the file")
+            self.assertFalse((root / ".fleet" / "CONSISTENCY.md").exists(), "--stdout must not write the file")
 
     def test_outside_a_fleet_refuses(self):
         """CONSISTENCY.md is the fleet's table. With no FLEET.md there is no
@@ -2112,7 +2289,11 @@ class Consistency(unittest.TestCase):
             git_repo(root, "lonely")
             p = subprocess.run(
                 [sys.executable, str(HERE / "consistency.py"), "--no-snapshot"],
-                cwd=str(root / "lonely"), capture_output=True, text=True, env=CLEAN_ENV)
+                cwd=str(root / "lonely"),
+                capture_output=True,
+                text=True,
+                env=CLEAN_ENV,
+            )
             self.assertNotEqual(p.returncode, 0)
             self.assertIn("not inside a fleet", p.stderr, p.stdout)
 
@@ -2134,6 +2315,7 @@ class ReviewedRegister(unittest.TestCase):
     checkers.py. Run end to end: the header and the cells are what a person
     reads. The overlay narrows baseline CI-02 and adds ZZ-9, whose checker
     lives in checkers.py."""
+
     FLEET = "## Fleet\n- name: fx\n## Repos\n### a\n- group: apps\n\n### b\n- group: infra\n"
     MANUAL_ROW = [audit.MARK[audit.MANUAL]] * 2
 
@@ -2141,13 +2323,15 @@ class ReviewedRegister(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = pathlib.Path(self.tmp.name).resolve()
         self.ran = self.root / "ran"
-        fleet_fixture(self.root, self.FLEET,
-                      overlay="checks:\n- id: CI-02\n  applies_to: [apps]\n"
-                              "- id: ZZ-9\n  control: C-ZZ\n  scope: repo\n  title: own\n",
-                      checkers=self.marker(self.ran)
-                      + "from audit import check, PASS\n@check('ZZ-9')\ndef _(r):\n    return PASS, ''\n")
-        write(self.root, ".fleet/CONTROLS.yaml",
-              "controls:\n- id: C-ZZ\n  title: z\n  severity: high\n  intent: z\n")
+        fleet_fixture(
+            self.root,
+            self.FLEET,
+            overlay="checks:\n- id: CI-02\n  applies_to: [apps]\n"
+            "- id: ZZ-9\n  control: C-ZZ\n  scope: repo\n  title: own\n",
+            checkers=self.marker(self.ran)
+            + "from audit import check, PASS\n@check('ZZ-9')\ndef _(r):\n    return PASS, ''\n",
+        )
+        write(self.root, ".fleet/CONTROLS.yaml", "controls:\n- id: C-ZZ\n  title: z\n  severity: high\n  intent: z\n")
         for name in ("a", "b"):
             git_repo(self.root, name)
         self.reg = self.root / ".fleet"
@@ -2160,18 +2344,24 @@ class ReviewedRegister(unittest.TestCase):
         return f"open({str(path)!r}, 'w').close()\n"
 
     def run_audit(self, *extra):
-        return subprocess.run([sys.executable, str(HERE / "audit.py"), "--fleet", str(self.root), "--no-snapshot",
-                               "--md", *extra], capture_output=True, text=True, env=CLEAN_ENV)
+        return subprocess.run(
+            [sys.executable, str(HERE / "audit.py"), "--fleet", str(self.root), "--no-snapshot", "--md", *extra],
+            capture_output=True,
+            text=True,
+            env=CLEAN_ENV,
+        )
 
     def assert_unreviewed(self, rows):
         self.assertEqual(rows["ZZ-9"], self.MANUAL_ROW, "the overlay's own check reads MANUAL")
-        self.assertNotEqual(rows["CI-02"][1], audit.MARK[audit.NA], "the overlay's change to a baseline check is dropped")
+        self.assertNotEqual(
+            rows["CI-02"][1], audit.MARK[audit.NA], "the overlay's change to a baseline check is dropped"
+        )
         self.assertNotIn(audit.MARK[audit.MANUAL], rows["CI-02"], "a baseline check still runs")
 
     def audit(self):
         p = self.run_audit()
         self.assertIn(p.returncode, (0, 1), p.stderr)
-        header = next(l for l in p.stdout.splitlines() if l.startswith("register: "))
+        header = next(ln for ln in p.stdout.splitlines() if ln.startswith("register: "))
         rows = {}
         for line in p.stdout.splitlines():
             cells = [c.strip() for c in line.split("|")]
@@ -2279,9 +2469,13 @@ class ReviewedRegister(unittest.TestCase):
         self.assert_unreviewed(rows)
 
     def test_repo_slug_reads_every_remote_spelling(self):
-        for url in ("https://github.com/ai-hero/fleet-register.git", "https://github.com/ai-hero/fleet-register/",
-                    "git@github.com:ai-hero/fleet-register.git", "ssh://git@github.com/AI-Hero/fleet-register",
-                    "/srv/git/ai-hero/fleet-register.git"):
+        for url in (
+            "https://github.com/ai-hero/fleet-register.git",
+            "https://github.com/ai-hero/fleet-register/",
+            "git@github.com:ai-hero/fleet-register.git",
+            "ssh://git@github.com/AI-Hero/fleet-register",
+            "/srv/git/ai-hero/fleet-register.git",
+        ):
             self.assertEqual(audit._repo_slug(url), "ai-hero/fleet-register", url)
 
     def test_no_remote_reads_head_unreviewed(self):
@@ -2310,8 +2504,11 @@ class ReviewedRegister(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr)
 
     def test_a_reviewed_overlay_retunes_a_baseline_control(self):
-        write(self.root, ".fleet/CONTROLS.yaml",
-              "controls:\n- id: C-ZZ\n  title: z\n  severity: high\n  intent: z\n- id: C-SUPPLY\n  severity: low\n")
+        write(
+            self.root,
+            ".fleet/CONTROLS.yaml",
+            "controls:\n- id: C-ZZ\n  title: z\n  severity: high\n  intent: z\n- id: C-SUPPLY\n  severity: low\n",
+        )
         review_register(self.root)
         saved = audit.REGISTER
         audit.REGISTER = self.reg
@@ -2335,6 +2532,7 @@ class CI20Owner(unittest.TestCase):
     not emitted by --json — so a repo whose caller had drifted could add one
     line, keep the drift, and erase the finding instead of fixing it.
     """
+
     def _verdict(self, body):
         with tempfile.TemporaryDirectory() as d:
             repo = pathlib.Path(d) / "consumer"
@@ -2362,8 +2560,9 @@ class CI20Owner(unittest.TestCase):
     def test_workflow_call_does_not_excuse_a_caller_that_still_delegates(self):
         drifted = self.asset.replace("@main", "@some-branch")
         spoof = drifted.replace("on:\n", "on:\n  workflow_call:\n", 1)
-        self.assertEqual(self._verdict(spoof), audit.FAIL,
-                         "adding workflow_call must not turn a drifted caller into NA")
+        self.assertEqual(
+            self._verdict(spoof), audit.FAIL, "adding workflow_call must not turn a drifted caller into NA"
+        )
 
     def test_the_real_shared_workflow_is_exempt(self):
         owner = (HERE.parent / ".github" / "workflows" / "auto-approve.yaml").read_text()
@@ -2375,8 +2574,10 @@ class ReferenceAssets(unittest.TestCase):
     branch the checkout is on: a stale branch's caller.yaml inverted CI-20
     for the whole fleet."""
 
-    CALLER = ("on:\n  pull_request:\njobs:\n  approve:\n"
-              "    uses: ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@main  # {}\n")
+    CALLER = (
+        "on:\n  pull_request:\njobs:\n  approve:\n"
+        "    uses: ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@main  # {}\n"
+    )
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -2444,6 +2645,7 @@ class ReferenceAssets(unittest.TestCase):
             if " fetch " in f" {cmd} ":
                 raise subprocess.TimeoutExpired(cmd, 60)
             return real(cwd, cmd)
+
         audit.sh3 = hang
         try:
             with contextlib.redirect_stderr(io.StringIO()):
@@ -2465,15 +2667,21 @@ class EngineAtOrigin(unittest.TestCase):
     origin/main, whatever branch it sits on. The fixture's origin/main carries
     one extra check and a line the stale branch's engine lacks."""
 
-    NEW_CHECK = ("\n- id: ZZ-NEW\n  control: C-SUPPLY\n  scope: repo\n  title: only on main\n"
-                 "  example: |\n    x\n  detect:\n    method: manual\n")
+    NEW_CHECK = (
+        "\n- id: ZZ-NEW\n  control: C-SUPPLY\n  scope: repo\n  title: only on main\n"
+        "  example: |\n    x\n  detect:\n    method: manual\n"
+    )
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = pathlib.Path(self.tmp.name).resolve()
         upstream = git_repo(self.root, "upstream")
-        for rel in ("scripts/audit.py", "scripts/consistency.py",
-                    "assets/compliance/CONTROLS.yaml", "assets/compliance/CHECKS.yaml"):
+        for rel in (
+            "scripts/audit.py",
+            "scripts/consistency.py",
+            "assets/compliance/CONTROLS.yaml",
+            "assets/compliance/CHECKS.yaml",
+        ):
             write(upstream, rel, (HERE.parent / rel).read_text())
         git(upstream, "add", "-A")
         git(upstream, "commit", "-q", "-m", "v1")
@@ -2482,11 +2690,17 @@ class EngineAtOrigin(unittest.TestCase):
         git(self.plugin, "config", "user.email", "t@example.com")
         git(self.plugin, "config", "user.name", "t")
         git(self.plugin, "checkout", "-q", "-b", "stale")
-        write(upstream, "assets/compliance/CHECKS.yaml",
-              (upstream / "assets/compliance/CHECKS.yaml").read_text() + self.NEW_CHECK)
+        write(
+            upstream,
+            "assets/compliance/CHECKS.yaml",
+            (upstream / "assets/compliance/CHECKS.yaml").read_text() + self.NEW_CHECK,
+        )
         audit_py = upstream / "scripts/audit.py"
-        audit_py.write_text(audit_py.read_text().replace(
-            "def main():\n", "def main():\n    print('ran-origin-engine', file=sys.stderr)\n", 1))
+        audit_py.write_text(
+            audit_py.read_text().replace(
+                "def main():\n", "def main():\n    print('ran-origin-engine', file=sys.stderr)\n", 1
+            )
+        )
         git(upstream, "add", "-A")
         git(upstream, "commit", "-q", "-m", "v2")
         self.fleet = self.root / "fleet"
@@ -2502,9 +2716,12 @@ class EngineAtOrigin(unittest.TestCase):
         # HOME moves so _PLUGIN_HOME is the fixture; the user site (where a
         # developer's pyyaml may live) is found through HOME, so pin it.
         e.update(HOME=str(self.root / "home"), PYTHONUSERBASE=site.getuserbase(), **env)
-        return subprocess.run([sys.executable, str(self.plugin / "scripts" / script),
-                               "--fleet", str(self.fleet), "--no-snapshot", *args],
-                              capture_output=True, text=True, env=e)
+        return subprocess.run(
+            [sys.executable, str(self.plugin / "scripts" / script), "--fleet", str(self.fleet), "--no-snapshot", *args],
+            capture_output=True,
+            text=True,
+            env=e,
+        )
 
     def test_stale_checkout_runs_origin_main(self):
         p = self.run_script("audit.py", "--md")
@@ -2512,7 +2729,11 @@ class EngineAtOrigin(unittest.TestCase):
         self.assertIn("ZZ-NEW", p.stdout, "a check added on origin/main is listed")
         self.assertIn("ran-origin-engine", p.stderr, "origin/main's engine code ran")
         self.assertRegex(p.stdout, r"engine: origin/main @ ([0-9a-f]+) in .*\nassets: origin/main @ \1 in ")
-        self.assertRegex(p.stderr, r"(?m)^engine: origin/main @ [0-9a-f]+, not ", "the re-exec names itself on stderr, whatever the output format")
+        self.assertRegex(
+            p.stderr,
+            r"(?m)^engine: origin/main @ [0-9a-f]+, not ",
+            "the re-exec names itself on stderr, whatever the output format",
+        )
 
     def test_failed_engine_fetch_is_labelled_engine(self):
         git(self.plugin, "remote", "set-url", "origin", str(self.root / "gone"))
@@ -2585,9 +2806,11 @@ class HeroMdField(unittest.TestCase):
 ## Deployment
 - under-h3: other
 """
-    CASES = [(k, b) for k in ("published-files", "linters", "merge-method", "hostile", "quoted",
-                             "hashed", "under-h3", "missing")
-             for b in ("", "## Repository", "## Code Quality", "## Deployment", "## Nowhere")]
+    CASES = [
+        (k, b)
+        for k in ("published-files", "linters", "merge-method", "hostile", "quoted", "hashed", "under-h3", "missing")
+        for b in ("", "## Repository", "## Code Quality", "## Deployment", "## Nowhere")
+    ]
 
     def test_parity_with_the_shell_reader(self):
         with tempfile.TemporaryDirectory() as d:
@@ -2595,9 +2818,21 @@ class HeroMdField(unittest.TestCase):
             f.write_text(self.TEXT)
             for key, block in self.CASES:
                 with self.subTest(key=key, block=block):
-                    p = subprocess.run(["bash", "-c", '. "$1"; hero_md_field "$2" "$3" "$4"', "_",
-                                        str(HERE / "hero-lib.sh"), str(f), key, block],
-                                       capture_output=True, text=True, env=CLEAN_ENV)
+                    p = subprocess.run(
+                        [
+                            "bash",
+                            "-c",
+                            '. "$1"; hero_md_field "$2" "$3" "$4"',
+                            "_",
+                            str(HERE / "hero-lib.sh"),
+                            str(f),
+                            key,
+                            block,
+                        ],
+                        capture_output=True,
+                        text=True,
+                        env=CLEAN_ENV,
+                    )
                     want = p.stdout if p.returncode == 0 else None
                     with contextlib.redirect_stderr(io.StringIO()):
                         self.assertEqual(audit.hero_md_field(f, key, block), want)
@@ -2614,8 +2849,9 @@ class HeroMdField(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             f = pathlib.Path(d) / "HERO.md"
             f.write_text("## Repository\n- x: y\x0c- published-files: VERSION.md\n")
-            self.assertIsNone(audit.hero_md_field(f, "published-files", "## Repository"),
-                              "a form feed is not a line break to awk")
+            self.assertIsNone(
+                audit.hero_md_field(f, "published-files", "## Repository"), "a form feed is not a line break to awk"
+            )
 
 
 class ExtractTar(unittest.TestCase):
@@ -2669,12 +2905,14 @@ class ExtractTar(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_normal_assets_archive_extracts(self):
-        data = self.tar(("assets/", tarfile.DIRTYPE), ("assets/a/", tarfile.DIRTYPE),
-                        ("assets/a/caller.yaml", tarfile.REGTYPE))
+        data = self.tar(
+            ("assets/", tarfile.DIRTYPE), ("assets/a/", tarfile.DIRTYPE), ("assets/a/caller.yaml", tarfile.REGTYPE)
+        )
 
         def run():
             audit._extract_tar(data, self.dest, "test")
             self.assertTrue((self.dest / "assets" / "a" / "caller.yaml").is_file())
+
         self.both_branches(run)
 
     def test_traversal_member_raises_and_writes_nothing(self):
@@ -2685,14 +2923,19 @@ class ExtractTar(unittest.TestCase):
                 audit._extract_tar(data, self.dest, "test")
             self.assertFalse((self.root / "escape.txt").exists())
             self.assertEqual(list(self.dest.iterdir()), [], "validated before anything is written")
+
         self.both_branches(run)
 
     def test_absolute_and_link_members_raise(self):
         def run():
-            for entry in (("/tmp/abs.txt", tarfile.REGTYPE), ("assets/link", tarfile.SYMTYPE),
-                          ("assets/hard", tarfile.LNKTYPE)):
+            for entry in (
+                ("/tmp/abs.txt", tarfile.REGTYPE),
+                ("assets/link", tarfile.SYMTYPE),
+                ("assets/hard", tarfile.LNKTYPE),
+            ):
                 with self.assertRaises(RuntimeError, msg=entry):
                     audit._extract_tar(self.tar(entry), self.dest, "test")
+
         self.both_branches(run)
 
 
@@ -2701,11 +2944,14 @@ class SCAN01(unittest.TestCase):
     repo holding exceptions without it running on PRs and in every scan that
     applies them must fail."""
 
-    PR_GATE = ("on:\n  pull_request:\njobs:\n  lint:\n    steps:\n"
-               "      - run: ./scripts/check-exception-expiry.sh{arg}\n")
-    SCAN = ("on:\n  schedule:\n    - cron: '0 6 * * *'\njobs:\n  scan:\n    steps:\n"
-            "{gate}"
-            "      - uses: docker/scout-action@x\n        with:\n          vex-location: .vex\n")
+    PR_GATE = (
+        "on:\n  pull_request:\njobs:\n  lint:\n    steps:\n      - run: ./scripts/check-exception-expiry.sh{arg}\n"
+    )
+    SCAN = (
+        "on:\n  schedule:\n    - cron: '0 6 * * *'\njobs:\n  scan:\n    steps:\n"
+        "{gate}"
+        "      - uses: docker/scout-action@x\n        with:\n          vex-location: .vex\n"
+    )
 
     def setUp(self):
         self._saved_assets = audit._PLUGIN_ASSETS
@@ -2762,13 +3008,14 @@ class SCAN01(unittest.TestCase):
         self.assertIn("pull_request", detail)
 
     def test_a_gate_that_cannot_fail_does_not_count(self):
-        for run in ("./scripts/check-exception-expiry.sh || true",
-                    "echo hi  # TODO wire check-exception-expiry.sh"):
-            self.wf("build.yaml", "on:\n  pull_request:\njobs:\n  lint:\n    steps:\n"
-                    f"      - run: {run}\n")
+        for run in ("./scripts/check-exception-expiry.sh || true", "echo hi  # TODO wire check-exception-expiry.sh"):
+            self.wf("build.yaml", f"on:\n  pull_request:\njobs:\n  lint:\n    steps:\n      - run: {run}\n")
             self.assertEqual(self.verdict()[0], audit.FAIL, run)
-        self.wf("build.yaml", "on:\n  pull_request:\njobs:\n  lint:\n    steps:\n"
-                "      - run: ./scripts/check-exception-expiry.sh\n        continue-on-error: true\n")
+        self.wf(
+            "build.yaml",
+            "on:\n  pull_request:\njobs:\n  lint:\n    steps:\n"
+            "      - run: ./scripts/check-exception-expiry.sh\n        continue-on-error: true\n",
+        )
         self.assertEqual(self.verdict()[0], audit.FAIL)
 
     def test_undated_plain_trivyignore_fails(self):
@@ -2834,8 +3081,12 @@ class RuleNotSpelling(unittest.TestCase):
         self.assertEqual(self.pre06(["--config=p/default", "--skip-unknown-extensions"]), audit.FAIL)
         self.assertEqual(self.pre06(["--config=p/default", "--error"]), audit.FAIL)
         r = self.root / "p"
-        write(r, ".pre-commit-config.yaml", self.SEMGREP.format(
-            args="    - --error\n    - --skip-unknown-extensions\n    - --config\n") + "    stages: [pre-push]\n")
+        write(
+            r,
+            ".pre-commit-config.yaml",
+            self.SEMGREP.format(args="    - --error\n    - --skip-unknown-extensions\n    - --config\n")
+            + "    stages: [pre-push]\n",
+        )
         self.assertEqual(self.verdict("PRE-06", r)[0], audit.FAIL, "a trailing bare --config has no value")
 
     # PLACE-04
@@ -2867,9 +3118,12 @@ class RuleNotSpelling(unittest.TestCase):
             self.assertIn("published-files exempts VERSION.md", detail, cid)
 
     def test_published_file_holding_a_version_still_fails_rel01(self):
-        for name, text in (("VERSION", "1.2.3\n"), ("VERSION.md", "v2.0.0-rc.1\n"),
-                           ("VERSION.md", "# Changes\n\n## [Unreleased]\n- x\n"),
-                           ("VERSION.md", "# Changes\n\n## 1.4.0 - 2026-10-01\n- x\n")):
+        for name, text in (
+            ("VERSION", "1.2.3\n"),
+            ("VERSION.md", "v2.0.0-rc.1\n"),
+            ("VERSION.md", "# Changes\n\n## [Unreleased]\n- x\n"),
+            ("VERSION.md", "# Changes\n\n## 1.4.0 - 2026-10-01\n- x\n"),
+        ):
             with self.subTest(text=text):
                 r = self.repo({"HERO.md": self.PUBLISHED.format(name), name: text})
                 st, detail = self.verdict("REL-01", r)
@@ -2883,10 +3137,18 @@ class RuleNotSpelling(unittest.TestCase):
             self.assertEqual(self.verdict(cid, r), (audit.FAIL, "VERSION.md"), cid)
 
     def test_published_file_exempts_only_itself(self):
-        r = self.repo({"HERO.md": self.PUBLISHED.format("VERSION.md, docs/notes.txt"),
-                       "VERSION.md": self.CHANGELOG_STYLE, "notes.txt": "x\n"})
-        self.assertEqual(self.verdict("PLACE-04", r), (audit.FAIL, "notes.txt"),
-                         "a nested entry exempts nothing, and a declaration exempts no other loose file")
+        r = self.repo(
+            {
+                "HERO.md": self.PUBLISHED.format("VERSION.md, docs/notes.txt"),
+                "VERSION.md": self.CHANGELOG_STYLE,
+                "notes.txt": "x\n",
+            }
+        )
+        self.assertEqual(
+            self.verdict("PLACE-04", r),
+            (audit.FAIL, "notes.txt"),
+            "a nested entry exempts nothing, and a declaration exempts no other loose file",
+        )
 
     def test_refused_value_is_named_in_the_fail(self):
         r = self.repo({"HERO.md": self.PUBLISHED.format("-VERSION.md"), "VERSION.md": self.CHANGELOG_STYLE})
@@ -2910,7 +3172,9 @@ class RuleNotSpelling(unittest.TestCase):
         self.assertEqual(self.verdict("REL-01", r)[0], audit.FAIL)
 
     def test_published_files_outside_repository_section_is_ignored(self):
-        r = self.repo({"HERO.md": "## Code Quality\n- published-files: VERSION.md\n", "VERSION.md": self.CHANGELOG_STYLE})
+        r = self.repo(
+            {"HERO.md": "## Code Quality\n- published-files: VERSION.md\n", "VERSION.md": self.CHANGELOG_STYLE}
+        )
         self.assertEqual(self.verdict("REL-01", r)[0], audit.FAIL)
 
     # JUST-01
@@ -2991,8 +3255,12 @@ class RuleNotSpelling(unittest.TestCase):
     def test_ci08_read_only_workflows_are_not_applicable(self):
         st, _ = self.ci08({"ci.yaml": "jobs:\n  t:\n    steps:\n      - run: just test\n"})
         self.assertEqual(st, audit.NA)
-        st, _ = self.ci08({"ci.yaml": "jobs:\n  t:\n    steps:\n      - uses: docker/build-push-action@x\n"
-                           "        with:\n          push: false\n"})
+        st, _ = self.ci08(
+            {
+                "ci.yaml": "jobs:\n  t:\n    steps:\n      - uses: docker/build-push-action@x\n"
+                "        with:\n          push: false\n"
+            }
+        )
         self.assertEqual(st, audit.NA)
 
     def test_ci08_concurrency_without_a_signal_keeps_its_pass(self):
@@ -3009,7 +3277,7 @@ class RuleNotSpelling(unittest.TestCase):
         cases = {
             "a.yaml": "on:\n  pull_request:\njobs: {}\n",
             "b.yaml": "on: [pull_request]\nconcurrency:\n  group: ${{ github.workflow }}\n"
-                      "  cancel-in-progress: true\njobs: {}\n",
+            "  cancel-in-progress: true\njobs: {}\n",
             "c.yml": self.PR_CONC.format(key="ref", cancel="false"),
             "s.yaml": "on: pull_request\nconcurrency: pr-${{ github.ref }}\njobs: {}\n",
         }
@@ -3061,7 +3329,7 @@ class RuleNotSpelling(unittest.TestCase):
             write(r, rel, text)
         return self.verdict("CTR-01", r)
 
-    ASSERT_SH = "#!/bin/sh\nwant=$(cat .nvmrc)\ngrep -q \"distroless/nodejs$want\" Dockerfile\n"
+    ASSERT_SH = '#!/bin/sh\nwant=$(cat .nvmrc)\ngrep -q "distroless/nodejs$want" Dockerfile\n'
 
     def test_ctr01_script_run_by_ci_asserts(self):
         st, _ = self.ctr01({"scripts/check-node.sh": self.ASSERT_SH}, "      - run: scripts/check-node.sh\n")
@@ -3081,8 +3349,10 @@ class RuleNotSpelling(unittest.TestCase):
         self.assertIn("does not assert", detail)
 
     def test_ctr01_two_mentions_are_not_a_comparison(self):
-        build = ("      - uses: actions/setup-node@v4\n        with:\n          node-version-file: .nvmrc\n"
-                 "      - run: docker build --build-arg BASE=gcr.io/distroless/nodejs20 .\n")
+        build = (
+            "      - uses: actions/setup-node@v4\n        with:\n          node-version-file: .nvmrc\n"
+            "      - run: docker build --build-arg BASE=gcr.io/distroless/nodejs20 .\n"
+        )
         self.assertEqual(self.ctr01({}, build)[0], audit.FAIL)
         todo = "      # TODO: compare .nvmrc with distroless/nodejs\n      - run: echo\n"
         self.assertEqual(self.ctr01({}, todo)[0], audit.FAIL)
@@ -3096,7 +3366,9 @@ class RuleNotSpelling(unittest.TestCase):
         self.assertEqual(st, audit.FAIL)
 
     def test_ctr01_an_assertion_ci_never_runs_does_not_count(self):
-        st, _ = self.ctr01({"scripts/check-node.sh": self.ASSERT_SH, "Justfile": "check-node:\n    sh scripts/check-node.sh\n"})
+        st, _ = self.ctr01(
+            {"scripts/check-node.sh": self.ASSERT_SH, "Justfile": "check-node:\n    sh scripts/check-node.sh\n"}
+        )
         self.assertEqual(st, audit.FAIL)
 
     # UI-01
@@ -3109,77 +3381,95 @@ class RuleNotSpelling(unittest.TestCase):
         return self.verdict("UI-01", self.repo({**base, **files}))
 
     def test_ui01_gate_mounted_through_the_chain(self):
-        st, detail = self.ui01({
-            "src/components/update-banner.tsx": self.BANNER,
-            "src/components/shell.tsx": self.SHELL,
-            "src/routes/__root.tsx": "import { Shell } from '@/components/shell'\nexport const Route = { component: () => <Shell /> }\n",
-        })
+        st, detail = self.ui01(
+            {
+                "src/components/update-banner.tsx": self.BANNER,
+                "src/components/shell.tsx": self.SHELL,
+                "src/routes/__root.tsx": "import { Shell } from '@/components/shell'\nexport const Route = { component: () => <Shell /> }\n",
+            }
+        )
         self.assertEqual(st, audit.PASS, detail)
         self.assertIn("__root.tsx", detail)
 
     def test_ui01_chain_imported_but_never_rendered_fails(self):
-        st, _ = self.ui01({
-            "src/components/update-banner.tsx": self.BANNER,
-            "src/components/shell.tsx": self.SHELL,
-            "src/routes/__root.tsx": "import { Shell } from '@/components/shell'\nexport const Route = { shell: Shell }\n",
-        })
+        st, _ = self.ui01(
+            {
+                "src/components/update-banner.tsx": self.BANNER,
+                "src/components/shell.tsx": self.SHELL,
+                "src/routes/__root.tsx": "import { Shell } from '@/components/shell'\nexport const Route = { shell: Shell }\n",
+            }
+        )
         self.assertEqual(st, audit.FAIL)
 
     def test_ui01_chain_never_imported_by_the_app_fails(self):
-        st, _ = self.ui01({
-            "src/components/update-banner.tsx": self.BANNER,
-            "src/components/shell.tsx": self.SHELL,
-        })
+        st, _ = self.ui01(
+            {
+                "src/components/update-banner.tsx": self.BANNER,
+                "src/components/shell.tsx": self.SHELL,
+            }
+        )
         self.assertEqual(st, audit.FAIL)
 
     def test_ui01_chain_rendered_only_in_a_test_fails(self):
-        st, _ = self.ui01({
-            "src/components/update-banner.tsx": self.BANNER,
-            "src/components/shell.test.tsx": self.SHELL,
-            "src/routes/__root.tsx": "export const Route = {}\n",
-        })
+        st, _ = self.ui01(
+            {
+                "src/components/update-banner.tsx": self.BANNER,
+                "src/components/shell.test.tsx": self.SHELL,
+                "src/routes/__root.tsx": "export const Route = {}\n",
+            }
+        )
         self.assertEqual(st, audit.FAIL)
 
     def test_ui01_chain_longer_than_three_hops_fails(self):
-        st, _ = self.ui01({
-            "src/components/update-banner.tsx": self.BANNER,
-            "src/components/a.tsx": "import { UpdateBanner } from './update-banner'\nexport function A() { return <UpdateBanner /> }\n",
-            "src/components/b.tsx": "import { A } from './a'\nexport function B() { return <A /> }\n",
-            "src/components/c.tsx": "import { B } from './b'\nexport function C() { return <B /> }\n",
-            "src/routes/__root.tsx": "import { C } from '@/components/c'\nexport const Route = { component: () => <C /> }\n",
-        })
+        st, _ = self.ui01(
+            {
+                "src/components/update-banner.tsx": self.BANNER,
+                "src/components/a.tsx": "import { UpdateBanner } from './update-banner'\nexport function A() { return <UpdateBanner /> }\n",
+                "src/components/b.tsx": "import { A } from './a'\nexport function B() { return <A /> }\n",
+                "src/components/c.tsx": "import { B } from './b'\nexport function C() { return <B /> }\n",
+                "src/routes/__root.tsx": "import { C } from '@/components/c'\nexport const Route = { component: () => <C /> }\n",
+            }
+        )
         self.assertEqual(st, audit.FAIL)
 
     def test_ui01_component_folder_index_is_not_an_entry(self):
-        st, _ = self.ui01({
-            "src/components/update-banner.tsx": self.BANNER,
-            "src/components/shell/index.tsx": "import { UpdateBanner } from '../update-banner'\n"
-                                              "export function Shell() { return <UpdateBanner /> }\n",
-        })
+        st, _ = self.ui01(
+            {
+                "src/components/update-banner.tsx": self.BANNER,
+                "src/components/shell/index.tsx": "import { UpdateBanner } from '../update-banner'\n"
+                "export function Shell() { return <UpdateBanner /> }\n",
+            }
+        )
         self.assertEqual(st, audit.FAIL)
 
     def test_ui01_commented_out_render_fails(self):
-        st, _ = self.ui01({
-            "src/components/update-banner.tsx": self.BANNER,
-            "src/routes/__root.tsx": "import { UpdateBanner } from '@/components/update-banner'\n"
-                                     "// TODO render <UpdateBanner />\nexport const Route = {}\n",
-        })
+        st, _ = self.ui01(
+            {
+                "src/components/update-banner.tsx": self.BANNER,
+                "src/routes/__root.tsx": "import { UpdateBanner } from '@/components/update-banner'\n"
+                "// TODO render <UpdateBanner />\nexport const Route = {}\n",
+            }
+        )
         self.assertEqual(st, audit.FAIL)
 
     def test_ui01_package_import_does_not_resolve_to_a_local_file(self):
-        st, _ = self.ui01({
-            "src/components/update-banner.tsx": self.BANNER,
-            "src/lib/react.tsx": "import { UpdateBanner } from '../components/update-banner'\n"
-                                 "export function R() { return <UpdateBanner /> }\n",
-            "src/routes/__root.tsx": "import { R } from 'react'\nexport const Route = { component: () => <R /> }\n",
-        })
+        st, _ = self.ui01(
+            {
+                "src/components/update-banner.tsx": self.BANNER,
+                "src/lib/react.tsx": "import { UpdateBanner } from '../components/update-banner'\n"
+                "export function R() { return <UpdateBanner /> }\n",
+                "src/routes/__root.tsx": "import { R } from 'react'\nexport const Route = { component: () => <R /> }\n",
+            }
+        )
         self.assertEqual(st, audit.FAIL)
 
     def test_ui01_literal_version_gate_still_passes(self):
-        st, _ = self.ui01({
-            "src/components/version-gate.tsx": "export function VersionGate() { return null }\n",
-            "src/app.tsx": "import { VersionGate } from './components/version-gate'\nexport const A = () => <VersionGate />\n",
-        })
+        st, _ = self.ui01(
+            {
+                "src/components/version-gate.tsx": "export function VersionGate() { return null }\n",
+                "src/app.tsx": "import { VersionGate } from './components/version-gate'\nexport const A = () => <VersionGate />\n",
+            }
+        )
         self.assertEqual(st, audit.PASS)
 
 
@@ -3196,10 +3486,12 @@ class SENTRY06(unittest.TestCase):
             return audit.CHECKS["SENTRY-06"](r)
 
     def test_init_in_a_nitro_plugin_passes(self):
-        st, detail = self.run_on({
-            "ui/src/server.ts": self.ENTRY,
-            "ui/src/server/sentry-boot.ts": "export default definePlugin(() => {\n  initSentryServer();\n});\n",
-        })
+        st, detail = self.run_on(
+            {
+                "ui/src/server.ts": self.ENTRY,
+                "ui/src/server/sentry-boot.ts": "export default definePlugin(() => {\n  initSentryServer();\n});\n",
+            }
+        )
         self.assertEqual(st, audit.PASS, detail)
 
     def test_init_in_the_lazy_server_entry_fails(self):
@@ -3208,25 +3500,31 @@ class SENTRY06(unittest.TestCase):
         self.assertIn("first SSR request", detail)
 
     def test_a_plugin_that_does_not_init_is_not_boot(self):
-        st, _ = self.run_on({
-            "ui/src/server.ts": self.ENTRY,
-            "ui/src/server/other.ts": "export default definePlugin(() => {});\n",
-        })
+        st, _ = self.run_on(
+            {
+                "ui/src/server.ts": self.ENTRY,
+                "ui/src/server/other.ts": "export default definePlugin(() => {});\n",
+            }
+        )
         self.assertEqual(st, audit.FAIL)
 
     def test_init_in_both_places_fails(self):
-        st, detail = self.run_on({
-            "ui/src/server.ts": "initSentryServer();\n" + self.ENTRY,
-            "ui/src/server/sentry-boot.ts": "export default definePlugin(() => {\n  initSentryServer();\n});\n",
-        })
+        st, detail = self.run_on(
+            {
+                "ui/src/server.ts": "initSentryServer();\n" + self.ENTRY,
+                "ui/src/server/sentry-boot.ts": "export default definePlugin(() => {\n  initSentryServer();\n});\n",
+            }
+        )
         self.assertEqual(st, audit.FAIL)
         self.assertIn("twice", detail)
 
     def test_unwrapped_fetch_fails(self):
-        st, detail = self.run_on({
-            "ui/src/server.ts": "export default createServerEntry(h);\n",
-            "ui/src/server/sentry-boot.ts": "export default definePlugin(() => initSentryServer());\n",
-        })
+        st, detail = self.run_on(
+            {
+                "ui/src/server.ts": "export default createServerEntry(h);\n",
+                "ui/src/server/sentry-boot.ts": "export default definePlugin(() => initSentryServer());\n",
+            }
+        )
         self.assertEqual(st, audit.FAIL)
         self.assertIn("not wrapped", detail)
 

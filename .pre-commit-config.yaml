@@ -124,6 +124,19 @@ repos:
         files: \.sh$
 
   # ===========================================================================
+  # Python lint and format
+  # ===========================================================================
+  # Settings, the analysis/ exclusion among them, live in .ruff.toml so the
+  # editor's ruff extension reads the same ones. A `# fmt: off` around a
+  # `# nosemgrep` line is load-bearing: semgrep reads the suppression only on
+  # the line it reports, and the formatter would wrap the call and move it.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: ef6cf06c079dd6b299dfc720b0f14400c9d168e1  # frozen: v0.17.5
+    hooks:
+      - id: ruff-check
+      - id: ruff-format
+
+  # ===========================================================================
   # Commit message convention (conventional commits)
   # ===========================================================================
   # ===========================================================================

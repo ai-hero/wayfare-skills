@@ -1,5 +1,6 @@
 """Where the manuscript, its assets and the editions live. `PUBLISH_OUT` moves the output; the
 default keeps it under `.analysis/`, which is gitignored because the editions carry the findings."""
+
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

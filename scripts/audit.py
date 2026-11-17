@@ -87,19 +87,19 @@ try:
 except ImportError:
     sys.exit("pyyaml required: run through uv (`uv run scripts/audit.py`), which installs it from the inline metadata")
 
-HERE = pathlib.Path(__file__).resolve().parent.parent   # the wayfare plugin
-BASELINE = HERE / "assets" / "compliance"               # generic register, public
+HERE = pathlib.Path(__file__).resolve().parent.parent  # the wayfare plugin
+BASELINE = HERE / "assets" / "compliance"  # generic register, public
 # Set by configure(): the fleet root (or the lone repo's parent), the fleet's
 # register overlay directory (None outside a fleet), the template repo's row
 # name (None outside a fleet), and each family repo's directory.
 ROOT = None
 REGISTER = None
 REGISTER_REPO = None
-MAP = None          # the map configure() read: <root>/.fleet/FLEET.md
+MAP = None  # the map configure() read: <root>/.fleet/FLEET.md
 TEMPLATE = None
 REPO_DIR = {}
 _OVERLAY_LOADED = set()
-GROUP_REPOS = {}    # FLEET.md group -> set of family repo names; see applies()
+GROUP_REPOS = {}  # FLEET.md group -> set of family repo names; see applies()
 
 PASS, FAIL, NA, MANUAL, ERROR = "PASS", "FAIL", "n/a", "MANUAL", "ERROR"
 STATUSES = {PASS, FAIL, NA, MANUAL, ERROR}
@@ -121,8 +121,20 @@ FAMILY = ()
 # a repo list here; the closed set exists so a misspelt group name cannot fall
 # through as "a capability the checker will handle" and silently reach every
 # repo — the inverse of the stale-list failure applies() describes.
-CAPABILITIES = {"go", "node", "node-ssr", "python", "ui", "backend",
-                "dev-stack", "ships-image", "schema", "container", "ci", "repo"}
+CAPABILITIES = {
+    "go",
+    "node",
+    "node-ssr",
+    "python",
+    "ui",
+    "backend",
+    "dev-stack",
+    "ships-image",
+    "schema",
+    "container",
+    "ci",
+    "repo",
+}
 
 # The register's own files, repo-relative. A content check that greps for a
 # banned string finds these first: they have to spell what they ban. Excluding
@@ -169,7 +181,7 @@ class FleetMapError(Exception):
     would hide a broken register."""
 
 
-_NOTED = set()   # leftover-copy notes already printed, once per process
+_NOTED = set()  # leftover-copy notes already printed, once per process
 
 
 def fleet_map(d, quiet=False):
@@ -193,8 +205,9 @@ def fleet_map(d, quiet=False):
     # points at, and a linked .fleet/ puts the register outside the folder the
     # review checks. Same rule in hero_fleet_map and ingest's fleet_map.
     if (d / ".fleet").is_symlink() or new.is_symlink():
-        raise FleetMapError(f"{d / '.fleet'} or its FLEET.md is a symlink; the register must be a real "
-                            "checkout holding a real file")
+        raise FleetMapError(
+            f"{d / '.fleet'} or its FLEET.md is a symlink; the register must be a real checkout holding a real file"
+        )
     if new.exists():
         if not new.is_file() or not os.access(new, os.R_OK):
             raise FleetMapError(f"{new} exists but is not a readable file; fix the register checkout")
@@ -203,8 +216,10 @@ def fleet_map(d, quiet=False):
             print(f"fleet_map: ignoring {legacy}; the map is {new}, so delete the old copy", file=sys.stderr)
         return new
     if legacy.is_file():
-        raise FleetMapError(f"{legacy} is no longer read; move it into the register as {new} "
-                            "(docs/FLEET-MD.md, Moving from a top-level FLEET.md)")
+        raise FleetMapError(
+            f"{legacy} is no longer read; move it into the register as {new} "
+            "(docs/FLEET-MD.md, Moving from a top-level FLEET.md)"
+        )
     return None
 
 
@@ -227,7 +242,9 @@ def fleet_root(start=None):
                 if err:
                     raise err
                 return d
-            print(f"fleet_root: passing over {d}; a folder inside a git work tree is never a fleet root", file=sys.stderr)
+            print(
+                f"fleet_root: passing over {d}; a folder inside a git work tree is never a fleet root", file=sys.stderr
+            )
         if d.parent == d:
             return None
         d = d.parent
@@ -321,8 +338,9 @@ def _server_fleet(root):
             print(f"read_fleet: skipping '{name}' — a repo name is [A-Za-z0-9._-] only", file=sys.stderr)
             continue
         group = (groups.get(p.get("group_id", ""), "") or "").lower() if p.get("group_id") else ""
-        repos.append({"name": name, "group": group or "none", "path": "",
-                      "port": str(p["port"]) if p.get("port") else ""})
+        repos.append(
+            {"name": name, "group": group or "none", "path": "", "port": str(p["port"]) if p.get("port") else ""}
+        )
     return fields, repos
 
 
@@ -337,7 +355,7 @@ def declares_fleet(repo):
         return False
 
 
-EXIT_NO_FLEET_MAP = 4   # a repo that declares a fleet found no map; the compliance stage keys on it
+EXIT_NO_FLEET_MAP = 4  # a repo that declares a fleet found no map; the compliance stage keys on it
 
 
 def remote_identity(url):
@@ -354,7 +372,7 @@ def remote_identity(url):
     else:
         m = re.match(r"^(?:[^@/]+@)?([^/:]+):(?!/)(.+)$", u)
         if not m:
-            local = u[len("file://"):] if u.lower().startswith("file://") else u
+            local = u[len("file://") :] if u.lower().startswith("file://") else u
             return ("file" + os.path.abspath(local)).lower()
         host, path = m.groups()
     return f"{host}/{path.strip('/')}".lower()
@@ -412,15 +430,18 @@ def store_backend(start=None):
         try:
             text = pin.read_text()
         except (OSError, UnicodeDecodeError) as e:
-            raise ValueError(f"cannot read the pin file {pin} ({e}), so whether this fleet's store "
-                             "is the server is unknown") from None
+            raise ValueError(
+                f"cannot read the pin file {pin} ({e}), so whether this fleet's store is the server is unknown"
+            ) from None
         if "://" not in text:
             return "local"
         try:
             root = fleet_root(start)
         except FleetMapError as e:
-            raise ValueError(f"the fleet map cannot be read ({e}), so whether this fleet's store "
-                             "is the server is unknown; fix the map") from None
+            raise ValueError(
+                f"the fleet map cannot be read ({e}), so whether this fleet's store "
+                "is the server is unknown; fix the map"
+            ) from None
         lines = text.splitlines() if root else []
         for line in lines:
             parts = line.split("#", 1)[0].split()
@@ -451,24 +472,31 @@ def server_cli(sub, args, start=None):
         raise ServerError("the backend is local; there is no server to call")
     m = re.match(r"^(https?://[^/\s]+)/([^/\s]+)$", backend)
     if not m:
-        raise ServerError(f"the server URL '{backend}' must end in the workspace id "
-                          "(<origin>/<workspace id>); fix WAYFARE_STORE or the URL line in the pin file")
+        raise ServerError(
+            f"the server URL '{backend}' must end in the workspace id "
+            "(<origin>/<workspace id>); fix WAYFARE_STORE or the URL line in the pin file"
+        )
     cli = os.environ.get("WAYFARE_CLI") or "wayfare"
     env = {**os.environ, "WAYFARE_URL": m.group(1), "WAYFARE_WORKSPACE": m.group(2)}
     try:
-        r = subprocess.run([cli, sub, "--json", json.dumps(args)], capture_output=True, text=True,
-                           env=env, timeout=130, check=False)
+        r = subprocess.run(
+            [cli, sub, "--json", json.dumps(args)], capture_output=True, text=True, env=env, timeout=130, check=False
+        )
     except FileNotFoundError:
-        raise ServerError(f"the Wayfare server at {backend} needs the wayfare CLI, and '{cli}' was not "
-                          "found (set WAYFARE_CLI)") from None
+        raise ServerError(
+            f"the Wayfare server at {backend} needs the wayfare CLI, and '{cli}' was not found (set WAYFARE_CLI)"
+        ) from None
     if r.returncode != 0:
-        raise ServerError(f"the Wayfare server at {backend} refused or failed 'wayfare {sub}' "
-                          f"(exit {r.returncode}): {r.stderr.strip()[:600]}")
+        raise ServerError(
+            f"the Wayfare server at {backend} refused or failed 'wayfare {sub}' "
+            f"(exit {r.returncode}): {r.stderr.strip()[:600]}"
+        )
     try:
         return json.loads(r.stdout)
     except ValueError:
-        raise ServerError(f"the Wayfare server at {backend} answered 'wayfare {sub}' with something "
-                          "that is not JSON") from None
+        raise ServerError(
+            f"the Wayfare server at {backend} answered 'wayfare {sub}' with something that is not JSON"
+        ) from None
 
 
 _RESULT_STATE = {PASS: "pass", FAIL: "fail", NA: "n/a", MANUAL: "manual"}
@@ -482,8 +510,10 @@ def record_results(repo, results, start=None):
     sent = [{"check_id": c, "state": _RESULT_STATE[st]} for c, st in results if st in _RESULT_STATE]
     out = server_cli("report-results", {"repo": repo, "results": sent}, start)
     if not isinstance(out.get("recorded"), int):
-        raise ServerError(f"the Wayfare server at {store_backend(start)} answered 'wayfare report-results' "
-                          "without a count of what it recorded")
+        raise ServerError(
+            f"the Wayfare server at {store_backend(start)} answered 'wayfare report-results' "
+            "without a count of what it recorded"
+        )
     return out["recorded"], out.get("failing", 0)
 
 
@@ -509,8 +539,10 @@ def configure(root=None, load_overlay=True, no_fleet=False, no_fleet_flag=True):
         elif root:
             root = pathlib.Path(root).resolve()
             if fleet_map(root, quiet=True) is None:
-                sys.exit(f"--fleet {root}: no fleet map there; clone the register into {root / '.fleet'} "
-                         "so .fleet/FLEET.md exists")
+                sys.exit(
+                    f"--fleet {root}: no fleet map there; clone the register into {root / '.fleet'} "
+                    "so .fleet/FLEET.md exists"
+                )
         else:
             root = fleet_root()
     except FleetMapError as e:
@@ -529,17 +561,26 @@ def configure(root=None, load_overlay=True, no_fleet=False, no_fleet_flag=True):
         # carries the section).
         if load_overlay and not no_fleet:
             if declares_fleet(repo):
-                print(f"audit: NO_FLEET_MAP: {repo.name} declares a fleet (its instructions carry the "
-                      "`## Fleet` section) but no fleet map was found walking up from here. Clone the "
-                      "fleet's register repo into the fleet folder as .fleet/ so .fleet/FLEET.md exists "
-                      "(docs/FLEET-MD.md)"
-                      + (", or, if this repo is standalone, pass --no-fleet to audit it alone against "
-                         "the baseline." if no_fleet_flag else "."), file=sys.stderr)
+                print(
+                    f"audit: NO_FLEET_MAP: {repo.name} declares a fleet (its instructions carry the "
+                    "`## Fleet` section) but no fleet map was found walking up from here. Clone the "
+                    "fleet's register repo into the fleet folder as .fleet/ so .fleet/FLEET.md exists "
+                    "(docs/FLEET-MD.md)"
+                    + (
+                        ", or, if this repo is standalone, pass --no-fleet to audit it alone against the baseline."
+                        if no_fleet_flag
+                        else "."
+                    ),
+                    file=sys.stderr,
+                )
                 sys.exit(EXIT_NO_FLEET_MAP)
-            print("audit: no fleet map found walking up from here (.fleet/FLEET.md), so this run is "
-                  "baseline only: the fleet's register overlay and its checks are not applied. "
-                  "Inside a fleet, clone the fleet's register repo into the fleet folder as .fleet/ "
-                  "(docs/FLEET-MD.md).", file=sys.stderr)
+            print(
+                "audit: no fleet map found walking up from here (.fleet/FLEET.md), so this run is "
+                "baseline only: the fleet's register overlay and its checks are not applied. "
+                "Inside a fleet, clone the fleet's register repo into the fleet folder as .fleet/ "
+                "(docs/FLEET-MD.md).",
+                file=sys.stderr,
+            )
         ROOT, FAMILY, REGISTER, TEMPLATE = repo.parent, (repo.name,), None, None
         REGISTER_REPO = None
         REPO_DIR[repo.name] = repo
@@ -559,8 +600,10 @@ def configure(root=None, load_overlay=True, no_fleet=False, no_fleet_flag=True):
     # main its author controls, plus a matching register-repo, and the audit
     # would import that sibling's checkers.py as reviewed.
     if REGISTER != register_dir(root).resolve():
-        sys.exit(f"FLEET.md register: {reg} must be .fleet/ — the map lives in {root / '.fleet'}, "
-                 "which is the register; delete the key or set it to .fleet/")
+        sys.exit(
+            f"FLEET.md register: {reg} must be .fleet/ — the map lives in {root / '.fleet'}, "
+            "which is the register; delete the key or set it to .fleet/"
+        )
     TEMPLATE = fields.get("template") or None
     names = []
     for row in repos:
@@ -615,13 +658,15 @@ def _load_overlay_checkers():
     try:
         spec.loader.exec_module(mod)
     except Exception as e:  # a broken overlay must not read as "no overlay"
-        sys.exit(f"{REGISTER / 'checkers.py'} ({note.split('  ')[0]}): could not load the fleet's checkers: "
-                 f"{type(e).__name__}: {e}")
+        sys.exit(
+            f"{REGISTER / 'checkers.py'} ({note.split('  ')[0]}): could not load the fleet's checkers: "
+            f"{type(e).__name__}: {e}"
+        )
     _OVERLAY_LOADED.add(REGISTER)
 
 
 _REGISTER_OWN = ("CONTROLS.yaml", "CHECKS.yaml", "checkers.py")
-_REGISTER_READ = {}   # REGISTER -> (dir, reviewed, note), one resolution per process
+_REGISTER_READ = {}  # REGISTER -> (dir, reviewed, note), one resolution per process
 # The full refname, never `origin/main`: a local branch or tag of that name
 # shadows the short form, and would pass an unpushed commit off as reviewed.
 _REGISTER_REF = "refs/remotes/origin/main"
@@ -656,8 +701,14 @@ def _repo_slug(url):
 
 def _resolve_register(reg):
     if not (reg / ".git").exists():
-        return reg, False, (f"working tree {reg}  UNREVIEWED: no .git, so nothing is reviewed; "
-                            "checkers.py not loaded, overlay checks read MANUAL")
+        return (
+            reg,
+            False,
+            (
+                f"working tree {reg}  UNREVIEWED: no .git, so nothing is reviewed; "
+                "checkers.py not loaded, overlay checks read MANUAL"
+            ),
+        )
     problems, ref = [], None
     rc, url = sh(reg, "git remote get-url origin")
     if rc == 0:
@@ -672,8 +723,10 @@ def _resolve_register(reg):
         pin = pinned_register(ROOT)
         seen = remote_identity(url)
         if pin is None and re.search(r"\s", str(ROOT)):
-            problems.append(f"this machine pins no register for {ROOT}, and a path with whitespace cannot "
-                            "be pinned; move the fleet folder to a path without it")
+            problems.append(
+                f"this machine pins no register for {ROOT}, and a path with whitespace cannot "
+                "be pinned; move the fleet folder to a path without it"
+            )
         elif pin is None and os.path.exists(pin_file()) and not os.access(pin_file(), os.R_OK):
             problems.append(f"cannot read the pin file {pin_file()}; fix its permissions")
         elif pin is None:
@@ -681,14 +734,16 @@ def _resolve_register(reg):
             # could be a fork's, and a quote in it would break out of the line.
             shown = seen if re.fullmatch(r"[a-z0-9.-]+(/[a-z0-9._-]+)+", seen) else "(not shown: unexpected characters)"
             problems.append(f"this machine pins no register for {ROOT} ({pin_file()})")
-            print(f"audit: the register for {ROOT} is not pinned, so it reads UNREVIEWED: a fork of it "
-                  f"carrying its own map could vouch for itself. This register's origin is {shown}. "
-                  "Confirm that is your fleet's register, not a fork, then pin it once on this machine "
-                  f"by adding this line to {pin_file()}, with its HOST/OWNER/NAME in place of the "
-                  f"placeholder:\n  {ROOT} HOST/OWNER/NAME\nor run:\n"
-                  f"  mkdir -p {shlex.quote(os.path.dirname(pin_file()))} && printf '%s %s\\n' "
-                  f"{shlex.quote(str(ROOT))} HOST/OWNER/NAME >> {shlex.quote(pin_file())}",
-                  file=sys.stderr)
+            print(
+                f"audit: the register for {ROOT} is not pinned, so it reads UNREVIEWED: a fork of it "
+                f"carrying its own map could vouch for itself. This register's origin is {shown}. "
+                "Confirm that is your fleet's register, not a fork, then pin it once on this machine "
+                f"by adding this line to {pin_file()}, with its HOST/OWNER/NAME in place of the "
+                f"placeholder:\n  {ROOT} HOST/OWNER/NAME\nor run:\n"
+                f"  mkdir -p {shlex.quote(os.path.dirname(pin_file()))} && printf '%s %s\\n' "
+                f"{shlex.quote(str(ROOT))} HOST/OWNER/NAME >> {shlex.quote(pin_file())}",
+                file=sys.stderr,
+            )
         else:
             if seen != pin:
                 problems.append(f"origin is {seen} but this machine pins {pin} ({pin_file()})")
@@ -733,8 +788,13 @@ def _resolve_register(reg):
         if rc:
             problems.append("git ls-tree failed")
         elif present:
-            p = subprocess.run(["git", "archive", "--format=tar", sha, "--", *present.split()],
-                               cwd=reg, capture_output=True, env=_ENV, timeout=60)
+            p = subprocess.run(
+                ["git", "archive", "--format=tar", sha, "--", *present.split()],
+                cwd=reg,
+                capture_output=True,
+                env=_ENV,
+                timeout=60,
+            )
             if p.returncode:
                 sys.exit(f"git archive {read} in {reg} failed: {p.stderr.decode().strip()}")
             _extract_tar(p.stdout, dest, f"git archive {read} in {reg}")
@@ -784,9 +844,11 @@ def sh(cwd, cmd):
     try:
         # dev tooling; cmd is a literal in this file (or the fleet's checkers), or interpolates
         # only regex-pinned tokens (ARCH-02: 40 hex chars) — never raw external input
+        # fmt: off
         p = subprocess.run(
             cmd, cwd=cwd, shell=True, capture_output=True, text=True, timeout=60, env=_ENV  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true
         )
+        # fmt: on
         return p.returncode, p.stdout.strip()
     except Exception:
         return 1, ""
@@ -795,9 +857,11 @@ def sh(cwd, cmd):
 def sh3(cwd, cmd):
     """sh() with stderr. Raises on the failure classes sh() hides (timeout,
     missing cwd) so a caller inside run_matrix reports ERROR, never PASS."""
+    # fmt: off
     p = subprocess.run(
         cmd, cwd=cwd, shell=True, capture_output=True, text=True, timeout=60, env=_ENV  # nosemgrep: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true
     )
+    # fmt: on
     return p.returncode, p.stdout.strip(), p.stderr.strip()
 
 
@@ -1052,10 +1116,10 @@ def _(r):
     f = r / ".gitignore"
     if not f.is_file():
         return FAIL, "no .gitignore"
-    lines = [l.strip() for l in uncommented(f.read_text()).splitlines() if l.strip()]
+    lines = [ln.strip() for ln in uncommented(f.read_text()).splitlines() if ln.strip()]
     if ".claude/" in lines or ".claude" in lines:
         return FAIL, ".claude/ blanket-ignored — skills can never be committed"
-    if not any(l.startswith(".claude/") for l in lines):
+    if not any(ln.startswith(".claude/") for ln in lines):
         return FAIL, "no .claude rule — local settings untracked only by luck"
     if "!.claude/skills/" not in lines:
         return FAIL, "skills not un-ignored"
@@ -1091,8 +1155,7 @@ def _(r):
     strays = [x.strip() for x in out.splitlines() if x.strip()]
     di = r / ".dockerignore"
     doc = di.read_text() if di.is_file() else ""
-    undocumented = [x for x in strays
-                    if x.split("/")[1] not in doc] if doc else strays
+    undocumented = [x for x in strays if x.split("/")[1] not in doc] if doc else strays
     if undocumented:
         return FAIL, "undocumented: " + " ".join(undocumented)
     return MANUAL, "documented sidecar: " + " ".join(strays) + " — re-verify it copies named files only"
@@ -1123,8 +1186,6 @@ def registry():
     return out
 
 
-
-
 @check("PORT-02")
 def _(r):
     mine = own_port(r)
@@ -1139,10 +1200,6 @@ def _(r):
     if not mine.startswith("330"):
         return FAIL, f"binds {mine}, not a family port"
     return PASS, mine
-
-
-
-
 
 
 @check("CI-01")
@@ -1203,8 +1260,7 @@ def _entry_label(u):
 
 def _ignores_semver_major(u):
     return any(
-        rule.get("dependency-name") == "*"
-        and "version-update:semver-major" in (rule.get("update-types") or [])
+        rule.get("dependency-name") == "*" and "version-update:semver-major" in (rule.get("update-types") or [])
         for rule in u.get("ignore") or []
     )
 
@@ -1233,7 +1289,8 @@ def _(r):
     bad = []
     for u in updates:
         star_groups = [
-            g for g in (u.get("groups") or {}).values()
+            g
+            for g in (u.get("groups") or {}).values()
             if g.get("applies-to") != "security-updates" and "*" in (g.get("patterns") or [])
         ]
         if not star_groups:
@@ -1267,11 +1324,7 @@ def _(r):
     # every ecosystem supports (docker/actions support nothing finer). Security
     # updates for known advisories are exempt by design, so this does not slow a
     # real patch.
-    missing = [
-        u.get("package-ecosystem", "?")
-        for u in updates
-        if not (u.get("cooldown") or {}).get("default-days")
-    ]
+    missing = [u.get("package-ecosystem", "?") for u in updates if not (u.get("cooldown") or {}).get("default-days")]
     if missing:
         return FAIL, "no cooldown: " + ",".join(sorted(set(missing)))
     return PASS, "each ecosystem quarantines new releases"
@@ -1282,6 +1335,7 @@ def _(r):
 # OLDER than the fleet already runs ships that staleness — the x/crypto CVEs —
 # into every future clone. These read the declared versions so the check can
 # assert the template is not behind any consumer on a dependency they share.
+
 
 def _semver(v):
     """Leading MAJOR.MINOR.PATCH as a tuple; strips a range operator (^ ~ >=),
@@ -1364,7 +1418,7 @@ def _is_floating_npm_spec(spec):
     # "@" at all (or only the scope's) means the alias names no version,
     # which resolves at install time exactly like a bare dist-tag — floats.
     if s.startswith("npm:"):
-        aliased = s[len("npm:"):]
+        aliased = s[len("npm:") :]
         at = aliased.rfind("@")
         return _is_floating_npm_spec(aliased[at + 1 :]) if at > 0 else True
     # `>=`/`>` with no paired `<`/`<=` anywhere in the spec has no ceiling —
@@ -1426,8 +1480,6 @@ def _floating_npm_deps(repo):
                 if _is_floating_npm_spec(spec):
                     out[name] = spec
     return out
-
-
 
 
 @check("CI-16")
@@ -1503,9 +1555,7 @@ def _(r):
             # and `contains(fromJSON('["OWNER",…]'), …author_association)`.
             # Requiring `==` failed the second, which is the better form.
             # Reject only an outright inversion, which gates on nothing.
-            if "author_association" in cond and not re.search(
-                r"author_association\s*!=", cond
-            ):
+            if "author_association" in cond and not re.search(r"author_association\s*!=", cond):
                 continue
             ungated.append(f"{w.name}:{name}")
     if ungated:
@@ -1528,11 +1578,7 @@ def _(r):
     jobs = {}
     for w in wfs:
         jobs.update(_jobs(w) or {})
-    if any(
-        _DELEGATES.search(str(j.get("uses", "")))
-        for j in jobs.values()
-        if isinstance(j, dict)
-    ):
+    if any(_DELEGATES.search(str(j.get("uses", ""))) for j in jobs.values() if isinstance(j, dict)):
         return MANUAL, "delegated to the plugin repo"
     return PASS, ""
 
@@ -1660,9 +1706,10 @@ def _(r):
         # A workflow-level group applies on top of the job-level ones, so a
         # bad one is not rescued by good groups on every job.
         if "pull_request" in _wf_on(doc) and not (
-            _cancels_superseded_pr_runs(doc["concurrency"]) if "concurrency" in doc
-            else jobs and all(isinstance(j, dict) and _cancels_superseded_pr_runs(j.get("concurrency"))
-                              for j in jobs.values())
+            _cancels_superseded_pr_runs(doc["concurrency"])
+            if "concurrency" in doc
+            else jobs
+            and all(isinstance(j, dict) and _cancels_superseded_pr_runs(j.get("concurrency")) for j in jobs.values())
         ):
             stale.append(w.name)
         racers = [j for j in jobs.values() if _job_races(j)]
@@ -1725,8 +1772,7 @@ def _(r):
     # problem it does not have.
     if c.get("default_stages"):
         return PASS, "default_stages set"
-    loose = [h["id"] for r_ in c.get("repos", []) for h in r_.get("hooks", [])
-             if h.get("stages") is None]
+    loose = [h["id"] for r_ in c.get("repos", []) for h in r_.get("hooks", []) if h.get("stages") is None]
     if loose:
         return FAIL, f"{len(loose)} hooks run at every stage"
     return PASS, "every hook declares stages"
@@ -1786,8 +1832,6 @@ def _(r):
     heads = [h.strip() for h in re.findall(r"^#{2,3}\s+(.+)$", f.read_text(), re.M)]
     dupes = {h for h in heads if heads.count(h) > 1}
     return (FAIL, "dupe: " + ",".join(sorted(dupes))) if dupes else (PASS, "")
-
-
 
 
 @check("JUST-01")
@@ -1959,8 +2003,10 @@ def _run_lines(text):
         jobs = doc.get("jobs") or {}
         return [
             st["run"]
-            for j in jobs.values() if isinstance(j, dict)
-            for st in j.get("steps") or [] if isinstance(st, dict) and isinstance(st.get("run"), str)
+            for j in jobs.values()
+            if isinstance(j, dict)
+            for st in j.get("steps") or []
+            if isinstance(st, dict) and isinstance(st.get("run"), str)
         ]
     except (yaml.YAMLError, AttributeError):
         return [uncommented(text)]
@@ -2204,7 +2250,7 @@ def _(r):
         "git grep -nI -E '(Environment|env)\\s*!=\\s*\"production\"' -- '*.go' 2>/dev/null",
     )
     if bad:
-        return FAIL, "string compare against \"production\": " + bad.splitlines()[0][:60]
+        return FAIL, 'string compare against "production": ' + bad.splitlines()[0][:60]
     return MANUAL, "no string-compare found; confirm probe errors are gated on IsDev()"
 
 
@@ -2234,8 +2280,11 @@ def _(r):
     bad = []
     _rc, out = sh(r, "just --summary 2>/dev/null")
     if out:
-        bad += ["Justfile:" + x for x in out.split()
-                if x in ("dev", "dev-ui", "dev-service", "dev-mongo", "dev-redis", "preview")]
+        bad += [
+            "Justfile:" + x
+            for x in out.split()
+            if x in ("dev", "dev-ui", "dev-service", "dev-mongo", "dev-redis", "preview")
+        ]
     # SUB-files count. A root Justfile with no host recipe proves nothing if
     # ui/Justfile still has `dev` and service/Makefile still has `run` — the
     # rule is that no path starts a server on the host, not that one file
@@ -2257,27 +2306,6 @@ def _(r):
     if bad:
         return FAIL, "host-run: " + ", ".join(bad)
     return PASS, "containerized only"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 @check("PLACE-05")
@@ -2354,7 +2382,7 @@ def _(r):
     for svc in (doc.get("services") or {}).values():
         if not isinstance(svc, dict):
             continue
-        for v in (svc.get("volumes") or []):
+        for v in svc.get("volumes") or []:
             if isinstance(v, str) and (v.startswith("./") or v.startswith(".:")):
                 mounts.append(v.split(":")[0])
     if not mounts:
@@ -2525,9 +2553,7 @@ def _ci_refs(repo):
     can appear anywhere (env:, with:, run:), and only the reference matters."""
     out = {}
     for wf in workflows(repo):
-        for ns, name in re.findall(
-            r"\$\{\{\s*(secrets|vars)\.([A-Z_][A-Z0-9_]*)\s*\}\}", wf.read_text()
-        ):
+        for ns, name in re.findall(r"\$\{\{\s*(secrets|vars)\.([A-Z_][A-Z0-9_]*)\s*\}\}", wf.read_text()):
             out.setdefault(name, set()).add(ns)
     return out
 
@@ -2536,30 +2562,38 @@ def _ci_refs(repo):
 def _(r):
     if not precommit(r):
         return FAIL, "no .pre-commit-config.yaml — nothing runs before a commit"
-    missing = _missing_hooks(r, {
-        "detect-secrets": ["detect-secrets"],
-        "detect-private-key": ["detect-private-key"],
-        "no-commit-to-branch": ["no-commit-to-branch"],
-        "semgrep": ["semgrep"],
-    })
-    return (FAIL, "missing security hooks: " + ",".join(missing)) if missing \
+    missing = _missing_hooks(
+        r,
+        {
+            "detect-secrets": ["detect-secrets"],
+            "detect-private-key": ["detect-private-key"],
+            "no-commit-to-branch": ["no-commit-to-branch"],
+            "semgrep": ["semgrep"],
+        },
+    )
+    return (
+        (FAIL, "missing security hooks: " + ",".join(missing))
+        if missing
         else (PASS, "secret/private-key/branch/SAST hooks present")
+    )
 
 
 @check("PRE-02")
 def _(r):
     if not precommit(r):
         return FAIL, "no .pre-commit-config.yaml"
-    missing = _missing_hooks(r, {
-        "end-of-file-fixer": ["end-of-file-fixer"],
-        "trailing-whitespace": ["trailing-whitespace"],
-        "check-yaml": ["check-yaml"],
-        "check-merge-conflict": ["check-merge-conflict"],
-        "check-added-large-files": ["check-added-large-files"],
-        "conventional-commit": ["conventional-pre-commit", "conventional-commit"],
-    })
-    return (FAIL, "missing hygiene hooks: " + ",".join(missing)) if missing \
-        else (PASS, "file-hygiene hooks present")
+    missing = _missing_hooks(
+        r,
+        {
+            "end-of-file-fixer": ["end-of-file-fixer"],
+            "trailing-whitespace": ["trailing-whitespace"],
+            "check-yaml": ["check-yaml"],
+            "check-merge-conflict": ["check-merge-conflict"],
+            "check-added-large-files": ["check-added-large-files"],
+            "conventional-commit": ["conventional-pre-commit", "conventional-commit"],
+        },
+    )
+    return (FAIL, "missing hygiene hooks: " + ",".join(missing)) if missing else (PASS, "file-hygiene hooks present")
 
 
 @check("PRE-03")
@@ -2568,14 +2602,20 @@ def _(r):
         return NA, "no Go"
     if not precommit(r):
         return FAIL, "no .pre-commit-config.yaml"
-    missing = _missing_hooks(r, {
-        "go-fmt": ["go-fmt", "gofmt", "gofumpt"],
-        "go-vet": ["go-vet"],
-        "go-mod-tidy": ["go-mod-tidy", "mod-tidy"],
-        "golangci-lint": ["golangci"],
-    })
-    return (FAIL, "missing Go hooks: " + ",".join(missing)) if missing \
+    missing = _missing_hooks(
+        r,
+        {
+            "go-fmt": ["go-fmt", "gofmt", "gofumpt"],
+            "go-vet": ["go-vet"],
+            "go-mod-tidy": ["go-mod-tidy", "mod-tidy"],
+            "golangci-lint": ["golangci"],
+        },
+    )
+    return (
+        (FAIL, "missing Go hooks: " + ",".join(missing))
+        if missing
         else (PASS, "go fmt/vet/mod-tidy/golangci-lint all hooked")
+    )
 
 
 @check("PRE-04")
@@ -2584,12 +2624,14 @@ def _(r):
         return NA, "no front-end"
     if not precommit(r):
         return FAIL, "no .pre-commit-config.yaml"
-    missing = _missing_hooks(r, {
-        "eslint": ["eslint"],
-        "typecheck": ["tsc", "typecheck"],
-    })
-    return (FAIL, "missing Node hooks: " + ",".join(missing)) if missing \
-        else (PASS, "eslint + typecheck hooked")
+    missing = _missing_hooks(
+        r,
+        {
+            "eslint": ["eslint"],
+            "typecheck": ["tsc", "typecheck"],
+        },
+    )
+    return (FAIL, "missing Node hooks: " + ",".join(missing)) if missing else (PASS, "eslint + typecheck hooked")
 
 
 @check("PRE-05")
@@ -2598,12 +2640,14 @@ def _(r):
         return NA, "no Python in this repo"
     if not precommit(r):
         return FAIL, "no .pre-commit-config.yaml"
-    missing = _missing_hooks(r, {
-        "ruff": ["ruff"],
-        "type-checker": ["mypy", "pyright"],
-    })
-    return (FAIL, "missing Python hooks: " + ",".join(missing)) if missing \
-        else (PASS, "ruff + type checker hooked")
+    missing = _missing_hooks(
+        r,
+        {
+            "ruff": ["ruff"],
+            "type-checker": ["mypy", "pyright"],
+        },
+    )
+    return (FAIL, "missing Python hooks: " + ",".join(missing)) if missing else (PASS, "ruff + type checker hooked")
 
 
 @check("CI-11")
@@ -2639,27 +2683,11 @@ def _(r):
             continue
         namespaces = set().union(*per_repo.values())
         if len(namespaces) > 1:
-            others = sorted(
-                f"{rp}:{'/'.join(sorted(ns))}" for rp, ns in per_repo.items()
-            )
+            others = sorted(f"{rp}:{'/'.join(sorted(ns))}" for rp, ns in per_repo.items())
             split.append(f"{name} ({', '.join(others)})")
     if split:
         return FAIL, "read from both namespaces: " + "; ".join(sorted(split))
     return PASS, f"{len(mine)} names, each one namespace fleet-wide"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 @check("UI-03")
@@ -2809,28 +2837,37 @@ def _(r):
 # auto-approve workflow splices (issue.number, comment.id). A leaf that is an
 # index (commits[0]) or the bare payload (toJSON(github.event)) is the whole
 # object, so it is not safe either.
-_SAFE_EVENT_LEAVES = frozenset({
-    "number", "id", "sha", "head_sha", "before", "after", "run_id",
-    "run_number", "run_attempt", "draft", "merged", "fork", "forced",
-    "created", "deleted",
-})
+_SAFE_EVENT_LEAVES = frozenset(
+    {
+        "number",
+        "id",
+        "sha",
+        "head_sha",
+        "before",
+        "after",
+        "run_id",
+        "run_number",
+        "run_attempt",
+        "draft",
+        "merged",
+        "fork",
+        "forced",
+        "created",
+        "deleted",
+    }
+)
 _ARBITRARY_EVENT_KEYS = frozenset({"client_payload", "inputs"})
 # `}}` inside a quoted literal does not close the expression, and a quote is
 # escaped by doubling it.
 _EXPR = re.compile(r"\$\{\{((?:'(?:[^']|'')*'|[^'}]|\}(?!\}))*)\}\}")
 _KEY = r"""\.\s*([A-Za-z0-9_*-]+)|\[\s*(?:'([^']*)'|"([^"]*)"|[^\]]*)\s*\]"""
-_CONTEXT_REF = re.compile(
-    rf"(?<![\w.])(github|inputs|env)\b((?:\s*(?:{_KEY}))*)", re.I
-)
+_CONTEXT_REF = re.compile(rf"(?<![\w.])(github|inputs|env)\b((?:\s*(?:{_KEY}))*)", re.I)
 _SEGMENT = re.compile(_KEY)
 
 
 def _ref_path(tail):
     """The keys after a context name, lowercased; None for a dynamic index."""
-    return [
-        (named or sq or dq or "").lower() or None
-        for named, sq, dq in _SEGMENT.findall(tail)
-    ]
+    return [(named or sq or dq or "").lower() or None for named, sq, dq in _SEGMENT.findall(tail)]
 
 
 def _untrusted_splice(text, env=None):
@@ -2845,8 +2882,7 @@ def _untrusted_splice(text, env=None):
                 return ref.group(0)
             if root == "env":
                 names = [path[0]] if path and path[0] else list(env)
-                if any(isinstance(env.get(n), str) and _untrusted_splice(env[n])
-                       for n in names):
+                if any(isinstance(env.get(n), str) and _untrusted_splice(env[n]) for n in names):
                     return ref.group(0)
                 continue
             if not path or path[0] in (None, "head_ref"):
@@ -2854,8 +2890,7 @@ def _untrusted_splice(text, env=None):
             if path[0] != "event":
                 continue
             event = path[1:]
-            if (not event or event[-1] not in _SAFE_EVENT_LEAVES
-                    or _ARBITRARY_EVENT_KEYS & set(event)):
+            if not event or event[-1] not in _SAFE_EVENT_LEAVES or _ARBITRARY_EVENT_KEYS & set(event):
                 return ref.group(0)
     return None
 
@@ -3005,8 +3040,7 @@ def _(r):
 @check("LIC-01")
 def _(r):
     # GitHub detects LICENSE/LICENCE/COPYING with an optional extension.
-    if not any((r / n).is_file() for n in
-               ("LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "COPYING")):
+    if not any((r / n).is_file() for n in ("LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "COPYING")):
         return FAIL, "no LICENSE at the repo root"
     cfg = r / ".pre-commit-config.yaml"
     if not cfg.is_file():
@@ -3031,8 +3065,7 @@ def _(r):
     # `- "--license-filepath=X"`, and the split `- --license-filepath` / `- X`.
     # `(?:-\s+)?` absorbs the YAML list dash in the split form, where the value
     # sits on the NEXT line as its own item.
-    values = re.findall(
-        r"--license-filepath[=\s]+(?:-\s+)?[\"\']?([^\"\',\]\s]+)", raw)
+    values = re.findall(r"--license-filepath[=\s]+(?:-\s+)?[\"\']?([^\"\',\]\s]+)", raw)
     for v in values:
         if re.fullmatch(r"LICEN[SC]E(\.[A-Za-z]+)?|COPYING", pathlib.Path(v).name):
             return FAIL, f"insert-license stamps {v}, the repo LICENSE; use a separate header template"
@@ -3060,15 +3093,22 @@ _LIC_HOLDER = r"A\.I\. Hero, Inc\."
 # narrowing convenience, NOT a correctness guarantee: it does not detect drift
 # from the hook's own excludes in either direction, and it is this repo's
 # layout. The holder match above is what makes the check correct elsewhere.
-_LIC_SKIP = ("schema/gen/", "ui/src/gen/", "ui/src/routeTree.gen.ts",
-             "ui/src/components/ui/", "ui/src/components/blocks/",
-             ".claude/hooks/", "node_modules/", "ui/.output/", ".venv/")
+_LIC_SKIP = (
+    "schema/gen/",
+    "ui/src/gen/",
+    "ui/src/routeTree.gen.ts",
+    "ui/src/components/ui/",
+    "ui/src/components/blocks/",
+    ".claude/hooks/",
+    "node_modules/",
+    "ui/.output/",
+    ".venv/",
+)
 
 
 @check("LIC-02")
 def _(r):
-    if not any((r / n).is_file() for n in
-               ("LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "COPYING")):
+    if not any((r / n).is_file() for n in ("LICENSE", "LICENSE.md", "LICENSE.txt", "LICENCE", "COPYING")):
         return NA, "no LICENSE (LIC-01 owns the wiring)"
     rc, out = sh(r, r"git ls-files '*.go' '*.ts' '*.tsx' '*.py' '*.sh'")
     if rc != 0:
@@ -3083,8 +3123,7 @@ def _(r):
             head = f.read_text(errors="replace")[:400]
         except OSError:
             continue
-        m = re.search(
-            rf"Copyright \(c\) (\d{{4}}(?:\s*-\s*\d{{4}})?) {_LIC_HOLDER}", head)
+        m = re.search(rf"Copyright \(c\) (\d{{4}}(?:\s*-\s*\d{{4}})?) {_LIC_HOLDER}", head)
         # A file with no stamp of OURS is LIC-01's problem (no hook, or the hook
         # has not run); this check only judges the year of stamps that exist.
         if m and m.group(1) != year:
@@ -3148,8 +3187,7 @@ def _(r):
 # The skill's section contract. Order is not checked — only membership: a
 # reordered file still gives every consumer the section it navigates by, and
 # failing on order would make a cosmetic edit look like a structural defect.
-_ARCH_CORE = ("Overview", "Tech stack", "Codemap", "Boundaries", "Invariants",
-              "Decisions")
+_ARCH_CORE = ("Overview", "Tech stack", "Codemap", "Boundaries", "Invariants", "Decisions")
 _ARCH_PRODUCT = ("Users", "Flows", "Interaction standards")
 
 
@@ -3187,10 +3225,12 @@ def _(r):
     # core sections nobody had been told about — a second full round trip for
     # evidence the first run was holding.
     detail = "; ".join(
-        d for d in (
+        d
+        for d in (
             f"missing section(s): {', '.join(missing)}" if missing else "",
             f"no user-facing surface, so drop: {', '.join(stray)}" if stray else "",
-        ) if d
+        )
+        if d
     )
     return (FAIL, detail) if detail else (PASS, "")
 
@@ -3205,9 +3245,15 @@ _PLUGIN_REPO = "wayfare-skills"
 # Presence list — deliberately NOT REGISTER_FILES, which is the content-grep
 # exclusion set. The two overlap but answer different questions, and merging
 # them would put a file in one job because it belonged in the other.
-_REGISTER_ARTIFACTS = ("CONTROLS.yaml", "CHECKS.yaml", "CONSISTENCY.md",
-                       "FIRST_SEEN.json", "scripts/audit.py", "scripts/consistency.py",
-                       ".claude/skills/consistency-audit")
+_REGISTER_ARTIFACTS = (
+    "CONTROLS.yaml",
+    "CHECKS.yaml",
+    "CONSISTENCY.md",
+    "FIRST_SEEN.json",
+    "scripts/audit.py",
+    "scripts/consistency.py",
+    ".claude/skills/consistency-audit",
+)
 
 
 @check("REG-01")
@@ -3216,8 +3262,7 @@ def _(r):
         return NA, "the engine's home"
     # is_symlink() as well as exists(): a broken symlink is still a copy this
     # repo declares it owns, and exists() alone reads it as clean.
-    found = [p for p in _REGISTER_ARTIFACTS
-             if (r / p).exists() or (r / p).is_symlink()]
+    found = [p for p in _REGISTER_ARTIFACTS if (r / p).exists() or (r / p).is_symlink()]
     if not found:
         return PASS, ""
     home = f"{_PLUGIN_REPO} (engine) and {REGISTER or 'the fleet register checkout'} (overlay)"
@@ -3397,14 +3442,17 @@ def run_at_origin(script):
         return None
     tmp = pathlib.Path(tempfile.mkdtemp(prefix="audit-engine-"))
     try:
-        sha, note = _plugin_at_origin(_PLUGIN_HOME, tmp, ("scripts/audit.py", "scripts/consistency.py", "assets"),
-                                      "engine")
+        sha, note = _plugin_at_origin(
+            _PLUGIN_HOME, tmp, ("scripts/audit.py", "scripts/consistency.py", "assets"), "engine"
+        )
         if not sha:
             _ENGINE_NOTE = f"working tree {HERE} ({note}; register and checkers may be stale)"
             return None
         print(f"engine: {_PLUGIN_REMOTE}/{_PLUGIN_BRANCH} @ {sha}, not the invoked tree {HERE}", file=sys.stderr)
-        rc = subprocess.run([sys.executable, str(tmp / "scripts" / script), *_without_cwd(sys.argv[1:])],
-                            env={**os.environ, _ENGINE_MARKER: note}).returncode
+        rc = subprocess.run(
+            [sys.executable, str(tmp / "scripts" / script), *_without_cwd(sys.argv[1:])],
+            env={**os.environ, _ENGINE_MARKER: note},
+        ).returncode
         return rc if rc >= 0 else 128 - rc
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -3457,8 +3505,9 @@ def _plugin_at_origin(plugin, dest, paths, label):
     rc, sha, _err = sh3(plugin, f"git rev-parse --verify -q --short {ref}^{{commit}}")
     if rc or not sha:
         return None, f"absent ({ref} does not resolve in {plugin}; asset checks read MANUAL){stale}"
-    p = subprocess.run(["git", "archive", "--format=tar", sha, "--", *paths],
-                       cwd=plugin, capture_output=True, env=_ENV, timeout=60)
+    p = subprocess.run(
+        ["git", "archive", "--format=tar", sha, "--", *paths], cwd=plugin, capture_output=True, env=_ENV, timeout=60
+    )
     if p.returncode:
         raise RuntimeError(f"git archive {ref} in {plugin} failed: {p.stderr.decode().strip()}")
     _extract_tar(p.stdout, dest, f"git archive {ref} in {plugin}")
@@ -3470,8 +3519,11 @@ def _fetch(repo, label, refspec=_PLUGIN_BRANCH):
     note that origin/main is as last fetched. A hung fetch or a credential
     prompt falls back like any failed fetch, not in a TimeoutExpired traceback."""
     try:
-        rc, _out, err = sh3(repo, "GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes' "
-                                  f"git fetch -q {_PLUGIN_REMOTE} {shlex.quote(refspec)}")
+        rc, _out, err = sh3(
+            repo,
+            "GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND='ssh -o BatchMode=yes' "
+            f"git fetch -q {_PLUGIN_REMOTE} {shlex.quote(refspec)}",
+        )
     except subprocess.TimeoutExpired as e:
         rc, err = 124, f"timed out after {e.timeout:g}s"
     if not rc:
@@ -3496,8 +3548,7 @@ def _extract_tar(data, dest, origin):
             parts = pathlib.PurePosixPath(m.name).parts
             if not (m.isreg() or m.isdir()) or m.name.startswith("/") or ".." in parts:
                 raise RuntimeError(f"{origin} holds an unsafe member {m.name!r}; nothing extracted")
-        t.extractall(dest, members=members,
-                     **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
+        t.extractall(dest, members=members, **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
 
 
 class Unreadable(Exception):
@@ -3711,8 +3762,7 @@ def _(r):
     # workflow. The callee cannot, because that would be itself. Requiring
     # both means the only way out of this check is to stop being a consumer.
     delegates = any(
-        _SHARED_WORKFLOW_OWNER in str((job or {}).get("uses") or "")
-        for job in (doc.get("jobs") or {}).values()
+        _SHARED_WORKFLOW_OWNER in str((job or {}).get("uses") or "") for job in (doc.get("jobs") or {}).values()
     )
     if "workflow_call" in _wf_on(doc) and not delegates:
         return NA, "shared workflow owner (declares workflow_call, delegates to nobody)"
@@ -3728,7 +3778,7 @@ def _plain_trivyignore_entries(r):
     p = r / ".trivyignore"
     if not p.is_file():
         return []
-    return [l.split()[0] for l in p.read_text().splitlines() if l.strip() and not l.lstrip().startswith("#")]
+    return [ln.split()[0] for ln in p.read_text().splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
 
 
 def _gate_args(step, job):
@@ -3756,9 +3806,12 @@ def _(r):
     # The gate reads only .trivyignore.yaml for dates; a plain-format entry
     # suppresses in Trivy with no date anything checks.
     if plain:
-        problems.append(".trivyignore entries the gate cannot date (move them to .trivyignore.yaml): " + ", ".join(plain))
-    status, detail = _matches_reference(r / "scripts" / _EXPIRY_GATE,
-                                        _PLUGIN_ASSETS / "exception-expiry" / _EXPIRY_GATE)
+        problems.append(
+            ".trivyignore entries the gate cannot date (move them to .trivyignore.yaml): " + ", ".join(plain)
+        )
+    status, detail = _matches_reference(
+        r / "scripts" / _EXPIRY_GATE, _PLUGIN_ASSETS / "exception-expiry" / _EXPIRY_GATE
+    )
     if status == MANUAL:
         return status, f"scripts/{_EXPIRY_GATE}: {detail}"
     if status != PASS:
@@ -3769,8 +3822,13 @@ def _(r):
             doc = _wf_doc(wf)
         except Unreadable as e:
             return MANUAL, str(e)
-        pairs = [(s, job) for job in (doc.get("jobs") or {}).values() if isinstance(job, dict)
-                 for s in (job.get("steps") or []) if isinstance(s, dict)]
+        pairs = [
+            (s, job)
+            for job in (doc.get("jobs") or {}).values()
+            if isinstance(job, dict)
+            for s in (job.get("steps") or [])
+            if isinstance(s, dict)
+        ]
         gates = [a for a in (_gate_args(s, job) for s, job in pairs) if a is not None]
         inputs = [s["with"] for s, _ in pairs if isinstance(s.get("with"), dict)]
         if any(_EXCEPTION_INPUTS & set(w) for w in inputs) and not gates:
@@ -3813,7 +3871,7 @@ def _(r):
     return (FAIL, "paths filter on pull_request: " + ", ".join(bad)) if bad else (PASS, "")
 
 
-_FLEET = {}   # family-wide caches; cleared on snapshot entry and exit
+_FLEET = {}  # family-wide caches; cleared on snapshot entry and exit
 _USES_RE = re.compile(r"uses:\s*([\w.-]+/[\w./-]+)@([0-9a-f]{40})\s*#\s*(v?[\d.]+)")
 
 
@@ -3873,8 +3931,17 @@ def _(r):
     seg = _hook_segment(uncommented(precommit(r)), "markdownlint")
     if not seg:
         return NA, "no markdownlint hook"
-    cfg = [f for f in (".markdownlint.yaml", ".markdownlint.yml", ".markdownlint.json",
-                       ".markdownlint-cli2.yaml", ".markdownlint-cli2.jsonc") if (r / f).is_file()]
+    cfg = [
+        f
+        for f in (
+            ".markdownlint.yaml",
+            ".markdownlint.yml",
+            ".markdownlint.json",
+            ".markdownlint-cli2.yaml",
+            ".markdownlint-cli2.jsonc",
+        )
+        if (r / f).is_file()
+    ]
     if not cfg:
         return FAIL, "no .markdownlint config"
     if "--disable" in seg:
@@ -3904,8 +3971,12 @@ def _(r):
 def _(r):
     if not _ships_image(r):
         return NA, "no image"
-    bad = [f"{f.name}: {name}:{tag or '<untagged>'}" for f in _image_files(r)
-           for name, tag in _image_refs(f) if not tag or tag == "latest"]
+    bad = [
+        f"{f.name}: {name}:{tag or '<untagged>'}"
+        for f in _image_files(r)
+        for name, tag in _image_refs(f)
+        if not tag or tag == "latest"
+    ]
     return (FAIL, "; ".join(bad)) if bad else (PASS, "")
 
 
@@ -3919,8 +3990,9 @@ def _(r):
 
 @check("CTR-11")
 def _(r):
-    majors = {re.match(r"\d*", tag).group(0) for f in _image_files(r)
-              for name, tag in _image_refs(f) if name == "mongo"}
+    majors = {
+        re.match(r"\d*", tag).group(0) for f in _image_files(r) for name, tag in _image_refs(f) if name == "mongo"
+    }
     if not majors:
         return NA, "no mongo"
     if len(majors) > 1:
@@ -4013,15 +4085,14 @@ def _(r):
     m = re.search(r"^health[^\n]*:\n((?:[ \t]+[^\n]*\n?)+)", jf.read_text(), re.M)
     if not m:
         return NA, "no health recipe"
-    body = "\n".join(l for l in m.group(1).splitlines() if not l.lstrip().startswith("#"))
+    body = "\n".join(ln for ln in m.group(1).splitlines() if not ln.lstrip().startswith("#"))
     return (PASS, "") if re.search(r'\.status|"ok"', body) else (FAIL, "checks HTTP code only")
 
 
 # A declared published file still fails REL-01 when it reads as the repo's own
 # version: a bare version string, or a changelog's `## [Unreleased]` / `## 1.2.3`
 # headings. Without this, declaring a real VERSION file would silence the check.
-_HOLDS_A_VERSION = re.compile(
-    r"\A\s*v?\d+(\.\d+)+\S*\s*\Z|^#+\s*\[?(unreleased|v?\d+\.\d+\.\d+)", re.I | re.M)
+_HOLDS_A_VERSION = re.compile(r"\A\s*v?\d+(\.\d+)+\S*\s*\Z|^#+\s*\[?(unreleased|v?\d+\.\d+\.\d+)", re.I | re.M)
 
 
 @check("REL-01")
@@ -4041,8 +4112,11 @@ def _(r):
             exempt.append(h)
     hits = [h for h in hits if h not in exempt]
     if hits:
-        note = (f"declared in published-files, but holds a version or is not a regular file: {', '.join(overridden)}"
-                if overridden else "")
+        note = (
+            f"declared in published-files, but holds a version or is not a regular file: {', '.join(overridden)}"
+            if overridden
+            else ""
+        )
         return FAIL, _with(_with(", ".join(hits), note), problem)
     return PASS, _published_note(exempt)
 
@@ -4058,8 +4132,10 @@ _IDE_FLOOR = (
     (lambda r, pc: (r / "schema" / "buf.yaml").is_file(), "bufbuild.vscode-buf"),
     (lambda r, pc: _ships_image(r), "ms-azuretools.vscode-containers"),
     (lambda r, pc: "hadolint" in pc, "exiasr.hadolint"),
-    (lambda r, pc: "shellcheck" in pc or (r / "dev.sh").is_file() or (r / ".claude" / "hooks").is_dir(),
-     "timonwong.shellcheck"),
+    (
+        lambda r, pc: "shellcheck" in pc or (r / "dev.sh").is_file() or (r / ".claude" / "hooks").is_dir(),
+        "timonwong.shellcheck",
+    ),
     (lambda r, pc: "markdownlint" in pc, "davidanson.vscode-markdownlint"),
     (lambda r, pc: bool(workflows(r)), "github.vscode-github-actions"),
     (lambda r, pc: (r / "Justfile").is_file(), "skellock.just"),
@@ -4091,7 +4167,7 @@ def _fleet_section(text):
     if i < 0:
         return None
     j = text.find("\n## ", i + 1)
-    return text[i + 1:] if j < 0 else text[i + 1:j]
+    return text[i + 1 :] if j < 0 else text[i + 1 : j]
 
 
 @check("VNDR-02")
@@ -4171,7 +4247,9 @@ def load_register():
         # Re-parenting a baseline check under another control makes --json's
         # `control` lie to whoever groups items by it; say so instead.
         if base and k.get("control") and k["control"] != base.get("control"):
-            sys.exit(f"overlay check {k['id']} moves control {base.get('control')} -> {k['control']}; the overlay may add fields, not re-parent")
+            sys.exit(
+                f"overlay check {k['id']} moves control {base.get('control')} -> {k['control']}; the overlay may add fields, not re-parent"
+            )
         by_id.setdefault(k["id"], {}).update(k)
         if not reviewed:
             by_id[k["id"]]["_unreviewed"] = True
@@ -4184,6 +4262,7 @@ def load_register():
     sev_ok = set(SEVERITIES)
     unimplemented = []
     exampleless = []
+
     # A rule may not name a repo. `reference:` and `known_violations` are
     # rejected rather than ignored: silently dropping them would leave an
     # overlay author believing an exemption is in force while every repo in it
@@ -4197,6 +4276,7 @@ def load_register():
                     f"consistent means, not who currently passes. Delete the field; who "
                     f"passes is this run's output, derived from the repos FLEET.md lists."
                 )
+
     for c in ctrl.values():
         for f in ("id", "title", "severity", "intent"):
             if not c.get(f):
@@ -4211,7 +4291,7 @@ def load_register():
         if k.get("severity") is not None and k["severity"] not in sev_ok:
             sys.exit(f"check {k['id']}: severity {k['severity']!r} is not one of high|medium|low")
         _no_repo_names("check", k)
-        manual = ((k.get("detect") or {}).get("method") == "manual")
+        manual = (k.get("detect") or {}).get("method") == "manual"
         if k["id"] not in CHECKS and not manual and not k.get("_unreviewed"):
             unimplemented.append(k["id"])
         # A manual check is verified by a person reading it. With no checker
@@ -4223,22 +4303,32 @@ def load_register():
         if manual and not k.get("example"):
             exampleless.append(k["id"])
         want = k.get("applies_to") or "all"
-        for n in ([want] if isinstance(want, str) else list(want)):
+        for n in [want] if isinstance(want, str) else list(want):
             n = str(n).lower()
             if GROUP_REPOS and n != "all" and n not in GROUP_REPOS and n not in CAPABILITIES:
-                sys.exit(f"check {k['id']}: applies_to names '{n}', which is neither a FLEET.md group ({', '.join(sorted(GROUP_REPOS))}) nor a capability ({', '.join(sorted(CAPABILITIES))})")
+                sys.exit(
+                    f"check {k['id']}: applies_to names '{n}', which is neither a FLEET.md group ({', '.join(sorted(GROUP_REPOS))}) nor a capability ({', '.join(sorted(CAPABILITIES))})"
+                )
     # A check with no checker reports MANUAL by design (a person verifies it),
     # but a check that does not SAY so is indistinguishable from a typo'd
     # overlay id — the gate that silently never runs. Name them every load.
     if unimplemented:
-        print(f"load_register: {len(unimplemented)} check(s) have no checker and are not declared "
-              f"`detect: method: manual` — reported MANUAL: {', '.join(unimplemented)}", file=sys.stderr)
+        print(
+            f"load_register: {len(unimplemented)} check(s) have no checker and are not declared "
+            f"`detect: method: manual` — reported MANUAL: {', '.join(unimplemented)}",
+            file=sys.stderr,
+        )
     if exampleless:
-        print(f"load_register: {len(exampleless)} manual check(s) carry no `example:`, so nothing "
-              f"states the correct shape: {', '.join(exampleless)}", file=sys.stderr)
+        print(
+            f"load_register: {len(exampleless)} manual check(s) carry no `example:`, so nothing "
+            f"states the correct shape: {', '.join(exampleless)}",
+            file=sys.stderr,
+        )
     if not ctrl or not checks:
-        sys.exit(f"no register: baseline {BASELINE} holds no controls or checks"
-                 + (f" and overlay {REGISTER} adds none" if REGISTER else ""))
+        sys.exit(
+            f"no register: baseline {BASELINE} holds no controls or checks"
+            + (f" and overlay {REGISTER} adds none" if REGISTER else "")
+        )
     orphans = [k["id"] for k in checks if k.get("control") not in ctrl]
     if orphans:
         sys.exit(f"checks with unknown control: {orphans}")
@@ -4323,8 +4413,11 @@ def snapshot_family(ref, repos=()):
                 rc, _out, err = sh3(home, f"git worktree remove --force {shlex.quote(str(path))}")
                 if rc:
                     sh3(home, "git worktree prune")
-                    print(f"{rn}: worktree remove failed ({err}); ran `git worktree prune` — "
-                          f"check `git -C {home} worktree list`", file=sys.stderr)
+                    print(
+                        f"{rn}: worktree remove failed ({err}); ran `git worktree prune` — "
+                        f"check `git -C {home} worktree list`",
+                        file=sys.stderr,
+                    )
             except Exception as e:
                 print(f"{rn}: could not remove worktree {path}: {e} — remove it by hand", file=sys.stderr)
         REPO_PATH.clear()
@@ -4398,18 +4491,31 @@ def main():
     ap.add_argument("--control", action="append")
     ap.add_argument("--md", action="store_true", help="markdown table")
     ap.add_argument("--fail-on", default="", help="comma severities that exit non-zero, e.g. high")
-    ap.add_argument("--ref", default="origin/main",
-                    help="audit this ref of every repo via a detached worktree (default origin/main)")
-    ap.add_argument("--no-snapshot", action="store_true",
-                    help="audit the checkouts as they sit, whatever branch or dirt they carry")
+    ap.add_argument(
+        "--ref",
+        default="origin/main",
+        help="audit this ref of every repo via a detached worktree (default origin/main)",
+    )
+    ap.add_argument(
+        "--no-snapshot", action="store_true", help="audit the checkouts as they sit, whatever branch or dirt they carry"
+    )
     ap.add_argument("--fleet", default="", help="the fleet root (default: found by walking up from cwd)")
-    ap.add_argument("--cwd", default="", help="run as if started in this directory: the fleet walk, "
-                    "the lone repo and `--repo .` all start there")
-    ap.add_argument("--no-fleet", action="store_true",
-                    help="audit the current repo alone against the baseline, even when it declares a fleet")
+    ap.add_argument(
+        "--cwd",
+        default="",
+        help="run as if started in this directory: the fleet walk, the lone repo and `--repo .` all start there",
+    )
+    ap.add_argument(
+        "--no-fleet",
+        action="store_true",
+        help="audit the current repo alone against the baseline, even when it declares a fleet",
+    )
     ap.add_argument("--json", action="store_true", help="one JSON object per failing (check x repo) cell, for skills")
-    ap.add_argument("--record", action="store_true",
-                    help="also record every repo's results on the Wayfare server (needs a server backend)")
+    ap.add_argument(
+        "--record",
+        action="store_true",
+        help="also record every repo's results on the Wayfare server (needs a server backend)",
+    )
     a = ap.parse_args()
     if a.cwd:
         try:
@@ -4437,7 +4543,9 @@ def main():
             if hit:
                 resolved.append(hit)
             elif REGISTER is not None:
-                sys.exit(f"--repo {x}: not a FLEET.md row (rows: {', '.join(REPO_DIR) or 'none'}); pass the row name or `.`")
+                sys.exit(
+                    f"--repo {x}: not a FLEET.md row (rows: {', '.join(REPO_DIR) or 'none'}); pass the row name or `.`"
+                )
             else:
                 sys.exit(f"--repo {x}: outside a fleet only the current repo ({', '.join(REPO_DIR)}) can be audited")
         a.repo = resolved
@@ -4447,9 +4555,11 @@ def main():
         checks = [k for k in checks if k["id"] in want or k.get("control") in want]
     repos = [x for x in (a.repo or family_repos()) if repo_path(x).is_dir()]
     if not repos:
-        sys.exit("no repos to audit: every FLEET.md row is `group: none` or missing on disk"
-                 if REGISTER is not None else
-                 "no repos to audit: not inside a fleet and not inside a git repo")
+        sys.exit(
+            "no repos to audit: every FLEET.md row is `group: none` or missing on disk"
+            if REGISTER is not None
+            else "no repos to audit: not inside a fleet and not inside a git repo"
+        )
 
     with reference_assets() as assets_note:
         if a.no_snapshot:
@@ -4467,8 +4577,10 @@ def main():
             sys.exit(f"--record: {e}")
 
     w = max(len(r) for r in repos) + 2
-    print(f"engine: {engine_note()}\nassets: {assets_note}\nregister: {register_source()[2]}\n",
-          file=sys.stderr if a.json else sys.stdout)
+    print(
+        f"engine: {engine_note()}\nassets: {assets_note}\nregister: {register_source()[2]}\n",
+        file=sys.stderr if a.json else sys.stdout,
+    )
     if a.json:
         # ERROR cells go out too, flagged: a consumer that only saw FAILs would
         # read a broken checker as a passing one.
@@ -4477,25 +4589,33 @@ def main():
                 # `example` replaces the old `reference` key: a consumer fixing
                 # a finding needed the correct shape, and used to get a repo
                 # name to go and read. The shape now travels with the finding.
-                print(json.dumps({"status": status, "check": c["id"], "control": c["control"], "repo": rn,
-                                  "severity": sev_of(c, ctrl), "title": c["title"],
-                                  "example": c.get("example") or None,
-                                  "detail": detail, "rule": " ".join((c.get("rule") or "").split())}))
+                print(
+                    json.dumps(
+                        {
+                            "status": status,
+                            "check": c["id"],
+                            "control": c["control"],
+                            "repo": rn,
+                            "severity": sev_of(c, ctrl),
+                            "title": c["title"],
+                            "example": c.get("example") or None,
+                            "detail": detail,
+                            "rule": " ".join((c.get("rule") or "").split()),
+                        }
+                    )
+                )
     elif a.md:
         print("| Control | Check | Sev | " + " | ".join(repos) + " |")
         print("| --- | --- | --- | " + " | ".join("---" for _ in repos) + " |")
         for c, cells in rows:
             print(
-                f"| {c.get('control','?')} | **{c['id']}** {c['title']} "
-                f"({c.get('scope','?')}) | {sev_of(c, ctrl)[0].upper()} | "
-                + " | ".join(
-                    MARK[s] + (f" {d}" if s in (FAIL, ERROR) and d else "") for s, d in cells
-                )
+                f"| {c.get('control', '?')} | **{c['id']}** {c['title']} "
+                f"({c.get('scope', '?')}) | {sev_of(c, ctrl)[0].upper()} | "
+                + " | ".join(MARK[s] + (f" {d}" if s in (FAIL, ERROR) and d else "") for s, d in cells)
                 + " |"
             )
     else:
-        print(f"{'CONTROL':<13}{'CHECK':<12} {'SCOPE':<10}{'SEV':<7}"
-              + "".join(f"{r:<{w}}" for r in repos))
+        print(f"{'CONTROL':<13}{'CHECK':<12} {'SCOPE':<10}{'SEV':<7}" + "".join(f"{r:<{w}}" for r in repos))
         print("-" * (42 + w * len(repos)))
         last = None
         for c, cells in rows:
@@ -4503,9 +4623,8 @@ def main():
             shown = cid if cid != last else ""
             last = cid
             print(
-                f"{shown:<13}{c['id']:<12} {c.get('scope',''):<10}"
-                f"{sev_of(c, ctrl):<7}"
-                + "".join(f"{st:<{w}}" for st, _ in cells)
+                f"{shown:<13}{c['id']:<12} {c.get('scope', ''):<10}"
+                f"{sev_of(c, ctrl):<7}" + "".join(f"{st:<{w}}" for st, _ in cells)
             )
 
     hi = [f for f in fails if sev_of(f[0], ctrl) == "high"]
@@ -4515,10 +4634,16 @@ def main():
     # summary still prints, on stderr, so a consumer parsing stdout never
     # meets prose.
     out = sys.stderr if a.json else sys.stdout
-    print(f"\n{len(fails)} failing (check x repo) results ({len(hi)} high) "
-          f"across {len(repos)} repos" + (f"; {len(errors)} checker errors" if errors else ""), file=out)
-    print(f"{len(checks)} checks under {len(ctrls_touched)} controls; "
-          f"{len(failing_ctrls)} controls have at least one failing check", file=out)
+    print(
+        f"\n{len(fails)} failing (check x repo) results ({len(hi)} high) "
+        f"across {len(repos)} repos" + (f"; {len(errors)} checker errors" if errors else ""),
+        file=out,
+    )
+    print(
+        f"{len(checks)} checks under {len(ctrls_touched)} controls; "
+        f"{len(failing_ctrls)} controls have at least one failing check",
+        file=out,
+    )
     if errors:
         return 2
     if a.fail_on:

@@ -5,6 +5,7 @@ a reference that no longer matches is an error naming the slide, so an edit to t
 surfaces here instead of leaving a slide that quotes text the book no longer has. Text a slide
 writes itself (manifest attributions and titles, chapter labels, recapitalized list leads) is not
 checked."""
+
 import re
 from inline import md_plain
 

@@ -6,6 +6,7 @@ the head of the chapter file. Where a scene lays a plain floor it is white with 
 the guides' grey: beside real figures the art has to read lighter than they do. Chapter 8 draws its
 proposals dashed, as the book does everywhere a thing is not built.
 """
+
 import math
 import os
 
@@ -34,8 +35,17 @@ def _floor(g, u, v, w, d, z=0):
 
 def _room(g, u, v, z=3.4, w=4.4, d=3.6):
     from guide_scenes import control_room
-    control_room(g, u, v, z, w, d, screens=2,
-                 content=[lambda cw, ch: A.code_lines(cw, ch, 4, 1), lambda cw, ch: A.app_ui(cw, ch)])
+
+    control_room(
+        g,
+        u,
+        v,
+        z,
+        w,
+        d,
+        screens=2,
+        content=[lambda cw, ch: A.code_lines(cw, ch, 4, 1), lambda cw, ch: A.app_ui(cw, ch)],
+    )
 
 
 def ch1():
@@ -51,8 +61,14 @@ def ch1():
 def ch2():
     g = _canvas(((-1, 17), (-1, 11), (0, 7.2)))
     _floor(g, -1, -1, 18, 12)
-    for u, v, h, acc in [(0.0, 4.0, 1.1, False), (2.2, 4.0, 0.9, False), (4.4, 4.0, 1.0, False),
-                         (0.0, 7.2, 1.0, True), (2.2, 7.2, 1.1, False), (4.4, 7.2, 0.9, False)]:
+    for u, v, h, acc in [
+        (0.0, 4.0, 1.1, False),
+        (2.2, 4.0, 0.9, False),
+        (4.4, 4.0, 1.0, False),
+        (0.0, 7.2, 1.0, True),
+        (2.2, 7.2, 1.1, False),
+        (4.4, 7.2, 0.9, False),
+    ]:
         A.crate(g, u, v, 1.2, 1.0, h, None, acc)
     A.machine(g, 6.6, 4.6, 12, 0.6)
     A.belt(g, 9.6, 6.0, 7.0, 0.9)
@@ -131,8 +147,7 @@ def ch8():
     tu, tv = A.fleet_size(1, 1)
     g = _canvas(((-7.6, tu), (-1.0, tv + 4.6), (0, 7.4)))
     A.fleet(g, 1, 1)
-    g.box(-A.PAD, tv - A.PAD + 0.4, tu, 4.0, A.PLATE_Z, top=PAGE, right=PAGE, front=PAGE, stroke=ROSE,
-          dash="1.4 1.6")
+    g.box(-A.PAD, tv - A.PAD + 0.4, tu, 4.0, A.PLATE_Z, top=PAGE, right=PAGE, front=PAGE, stroke=ROSE, dash="1.4 1.6")
     g.oz = A.PLATE_Z
     for k in range(4):
         g.box(0.2 + k * 2.6, tv + 0.6, 1.8, 1.8, 1.2, top=PAGE, right=PAGE, front=PAGE, stroke=ROSE, dash="1.4 1.6")
@@ -149,8 +164,10 @@ def svg(n, cls="opener-art"):
     if n not in SCENES:
         return ""
     g = SCENES[n]()
-    return (f'<svg class="{cls}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W:g} {H:g}" '
-            f'role="img" aria-hidden="true">{"".join(g.out)}</svg>')
+    return (
+        f'<svg class="{cls}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W:g} {H:g}" '
+        f'role="img" aria-hidden="true">{"".join(g.out)}</svg>'
+    )
 
 
 def standalone(n):
@@ -167,6 +184,7 @@ def write_png(n, folder, width_px=1200):
     if not body:
         return None
     from cover import chrome_pdf, raster
+
     os.makedirs(folder, exist_ok=True)
     pdf = os.path.join(folder, f"opener-chapter-{n}.pdf")
     path = pdf[:-4] + ".png"

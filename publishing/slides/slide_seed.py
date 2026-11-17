@@ -1,6 +1,7 @@
 """A starting manifest drawn from the book's structure alone: title, then per chapter a divider and
 its first two figures (diagrams first), then the last sentence of the book as the close. It is a scaffold for
 the editor to curate, not a selection: the curated deck is the manifest it writes."""
+
 import json
 import os
 import re
@@ -12,7 +13,9 @@ def write(doc, path):
     slides = [{"layout": "Title"}]
     for c in doc["chapters"]:
         slides.append({"layout": "Section divider", "chapter": c["n"]})
-        figs = [b for s in c["sections"] for b in s["blocks"] if b["kind"] == "figure" and b.get("files", {}).get("png")]
+        figs = [
+            b for s in c["sections"] for b in s["blocks"] if b["kind"] == "figure" and b.get("files", {}).get("png")
+        ]
         figs.sort(key=lambda b: b["type"] != "diagram")
         slides += [{"layout": "Picture", "figure": b["ref"], "takeaway": "clause"} for b in figs[:2]]
     last = doc["chapters"][-1]

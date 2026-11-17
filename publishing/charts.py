@@ -1,5 +1,6 @@
 """Draw a deck view's native chart data (the bar and line charts the viewer reads) as print files,
 in `figure_lib`'s brand style so these sit beside the drawn figures without a seam."""
+
 import math
 import textwrap
 
@@ -25,8 +26,11 @@ def _bar(ax, c):
     n = len(series)
     width = 0.7 if stacked else 0.8 / max(n, 1)
     base = [0.0] * len(cats)
-    totals = [sum((s["values"][j] or 0.0) for s in series) for j in range(len(cats))] if stacked else \
-        [max((v or 0.0) for s in series for v in s["values"])]
+    totals = (
+        [sum((s["values"][j] or 0.0) for s in series) for j in range(len(cats))]
+        if stacked
+        else [max((v or 0.0) for s in series for v in s["values"])]
+    )
     for i, s in enumerate(series):
         vals = [v or 0.0 for v in s["values"]]
         pos = [j + (0 if stacked else (i - (n - 1) / 2) * width) for j in range(len(cats))]
@@ -40,9 +44,17 @@ def _bar(ax, c):
                 if not v or (stacked and v < 0.09 * max(totals)):
                     continue
                 x, y = (b.get_x() + b.get_width() / 2, b.get_y() + b.get_height() / 2)
-                dark = sum(int(kw["color"][k:k + 2], 16) for k in (1, 3, 5)) < 420
-                ax.text(x, y, fmt(v), ha="center", va="center", fontsize=7.5, fontfamily=F.MONO_FONT,
-                        color="white" if dark else F.INK)
+                dark = sum(int(kw["color"][k : k + 2], 16) for k in (1, 3, 5)) < 420
+                ax.text(
+                    x,
+                    y,
+                    fmt(v),
+                    ha="center",
+                    va="center",
+                    fontsize=7.5,
+                    fontfamily=F.MONO_FONT,
+                    color="white" if dark else F.INK,
+                )
         if stacked:
             base = [a + b for a, b in zip(base, vals)]
     ticks = list(range(len(cats)))
@@ -70,8 +82,14 @@ def _line(ax, c):
     xs = list(range(len(cats)))
     for i, s in enumerate(c["series"]):
         pts = [(x, v) for x, v in zip(xs, s["values"]) if v is not None]
-        ax.plot([p[0] for p in pts], [p[1] for p in pts], color=_color(s.get("color"), i), label=s["name"],
-                marker="o", markersize=3)
+        ax.plot(
+            [p[0] for p in pts],
+            [p[1] for p in pts],
+            color=_color(s.get("color"), i),
+            label=s["name"],
+            marker="o",
+            markersize=3,
+        )
     marks = sorted(c.get("marks") or [], key=lambda m: m["at"])
     named = [m for m in marks if m["name"].strip()]
     for m in marks:
@@ -99,15 +117,35 @@ def _line(ax, c):
             start = group[-1]["at"] - 34 * 7 * 0.6 / per_unit if right else group[0]["at"]
             if level_end is not None and start < level_end:
                 level_pt += lines * 7 * 1.25 + 2
-            ax.annotate(text, (group[-1]["at"] if right else group[0]["at"], 1.0), xycoords=ax.get_xaxis_transform(),
-                        xytext=(0, level_pt), textcoords="offset points", va="bottom", ha="right" if right else "left",
-                        multialignment="right" if right else "left", fontsize=7, fontfamily=F.MONO_FONT, color=F.MUTED)
+            ax.annotate(
+                text,
+                (group[-1]["at"] if right else group[0]["at"], 1.0),
+                xycoords=ax.get_xaxis_transform(),
+                xytext=(0, level_pt),
+                textcoords="offset points",
+                va="bottom",
+                ha="right" if right else "left",
+                multialignment="right" if right else "left",
+                fontsize=7,
+                fontfamily=F.MONO_FONT,
+                color=F.MUTED,
+            )
             level_end = group[-1]["at"] if right else group[0]["at"] + 34 * 7 * 0.6 / per_unit
             continue
         sides = [(group[0], "right"), (group[1], "left")] if len(group) == 2 else [(group[0], "right")]
         for m, ha in sides:
-            ax.text(m["at"], 1.0, " " + m["name"].upper() + " ", transform=ax.get_xaxis_transform(), rotation=90,
-                    va="top", ha=ha, fontsize=7, fontfamily=F.MONO_FONT, color=F.MUTED)
+            ax.text(
+                m["at"],
+                1.0,
+                " " + m["name"].upper() + " ",
+                transform=ax.get_xaxis_transform(),
+                rotation=90,
+                va="top",
+                ha=ha,
+                fontsize=7,
+                fontfamily=F.MONO_FONT,
+                color=F.MUTED,
+            )
     step = max(1, math.ceil(len(cats) / 10))
     ax.set_xticks(xs[::step], cats[::step], rotation=45, ha="right")
     ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: fmt(v)))
@@ -129,13 +167,16 @@ def _height(c):
 def _plain(name):
     """A repository label as the plain name the book uses (`repo-names.json`), any other label as is."""
     from inline import repo_display
+
     return repo_display(name)
 
 
 def draw(charts, base):
     """Every chart in the view, stacked top to bottom; returns {ext: filename}."""
-    charts = [dict(c, cats=[_plain(x) for x in c["cats"]],
-                   series=[dict(s, name=_plain(s["name"])) for s in c["series"]]) for c in charts]
+    charts = [
+        dict(c, cats=[_plain(x) for x in c["cats"]], series=[dict(s, name=_plain(s["name"])) for s in c["series"]])
+        for c in charts
+    ]
     heights = [_height(c) + (0.28 * math.ceil(len(c["series"]) / 2) if len(c["series"]) > 1 else 0) for c in charts]
     fig, axes = F.fig(W, sum(heights), nrows=len(charts), gridspec_kw={"height_ratios": heights})
     axes = axes if len(charts) > 1 else [axes]

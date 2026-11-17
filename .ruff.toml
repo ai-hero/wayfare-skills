@@ -1,0 +1,15 @@
+# A dotfile, not ruff.toml: PLACE-04 would flag a root ruff.toml, and a
+# pyproject.toml would make `uv run` treat the checkout as a project instead of
+# running each script's PEP 723 block.
+line-length = 120
+target-version = "py312"
+extend-exclude = ["analysis"]
+# Pre-commit names files explicitly, and ruff checks a named file even when it
+# is excluded unless this is set.
+force-exclude = true
+
+[lint]
+# Named, not left to ruff's default: 0.17 widened the default set to some 30
+# rule families, so a version bump alone would fail every commit on code
+# nobody touched.
+select = ["E4", "E7", "E9", "F"]

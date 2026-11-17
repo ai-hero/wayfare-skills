@@ -1,6 +1,6 @@
 """The technical edition: the manuscript as a numbered research paper, compiled with tectonic.
 
-    ./publish technical
+    scripts/publish.sh technical
 
 Chapters become sections, figures and diagrams one numbered figure series, and the chapters' Sources
 one deduplicated bibliography. The paper prints what the book prints, so it has no appendix: the
@@ -9,6 +9,7 @@ a self-contained arXiv source bundle to `build/technical/`, then `dist/technical
 `dist/technical-arxiv.tar.gz` and `dist/evidence.pdf`. The abstract and keywords come from
 `editions/technical.json` and must be verbatim from the text.
 """
+
 import json
 import os
 import re
@@ -44,6 +45,7 @@ def terms(text):
     def swap(m):
         word = TERMS[m.group(1).lower()] + m.group(2)
         return word.capitalize() if m.group(1)[0].isupper() else word
+
     return TERM.sub(swap, text)
 
 
@@ -81,12 +83,20 @@ class Refs:
             for s in c["sections"]:
                 for b in s["blocks"]:
                     if b["kind"] == "figure" and b["type"] != "missing":
-                        self.index[f"fig:{b['key'][2:]}" if b["type"] == "card"
-                                   else f"{b['ref_kind']}:{b['id']}"] = b
+                        self.index[f"fig:{b['key'][2:]}" if b["type"] == "card" else f"{b['ref_kind']}:{b['id']}"] = b
         # Empty in the paper, as `book.without_appendix` drops the book's evidence links: each would
         # point at a page the paper does not print.
-        self.evidenced = {sl for p in doc.get("appendix", {}).get("parts", []) for g in p["groups"]
-                          for e in g["entries"] for sl in e["slugs"]} if evidence else set()
+        self.evidenced = (
+            {
+                sl
+                for p in doc.get("appendix", {}).get("parts", [])
+                for g in p["groups"]
+                for e in g["entries"]
+                for sl in e["slugs"]
+            }
+            if evidence
+            else set()
+        )
 
     def chapter(self, m):
         nums = re.split(r",\s+|\s+and\s+|\s+to\s+", m.group(2))
@@ -117,13 +127,16 @@ class Refs:
         def xref(m):
             stash.append(m)
             return f"\u27e6{len(stash) - 1}\u27e7"
+
         if not self.evidenced:
             md = re.sub(r"\s*\{\{ev:[^}]*\}\}", "", md)
         s = md_latex(XREF_RE.sub(xref, md), terms)
         s = CHAP_RE.sub(self.chapter, s)
         s = FIG_RE.sub(self.figure, s)
         s = quotes(Q_RE.sub(self.evidence, s))
-        s = re.sub(r"(?:\\citep\{[^}]*\})+", lambda m: "\\citep{" + ",".join(re.findall(r"\{([^}]*)\}", m.group(0))) + "}", s)
+        s = re.sub(
+            r"(?:\\citep\{[^}]*\})+", lambda m: "\\citep{" + ",".join(re.findall(r"\{([^}]*)\}", m.group(0))) + "}", s
+        )
         s = re.sub(r"\s+\\citep", r"~\\citep", s)
         for i, m in enumerate(stash):
             s = s.replace(f"\u27e6{i}\u27e7", self.xref(m))
@@ -158,11 +171,14 @@ def abstract(doc, manifest):
             out.append(tex_escape(terms(item["text"])))
             continue
         ch = by_n[item["chapter"]]
-        text = " ".join(md_plain(b.get("md", "")) for s in ch["sections"]
-                        if s["title"] == item["section"] for b in s["blocks"])
+        text = " ".join(
+            md_plain(b.get("md", "")) for s in ch["sections"] if s["title"] == item["section"] for b in s["blocks"]
+        )
         if item["sentence"] not in text:
-            raise SystemExit(f"technical.json: not found verbatim in chapter {item['chapter']} "
-                             f"'{item['section']}': {item['sentence']}")
+            raise SystemExit(
+                f"technical.json: not found verbatim in chapter {item['chapter']} "
+                f"'{item['section']}': {item['sentence']}"
+            )
         out.append(tex_escape(terms(item["sentence"])))
     corpus = " ".join(md_plain(b.get("md", "")) for c in doc["chapters"] for s in c["sections"] for b in s["blocks"])
     for kw in manifest.get("keywords", []):
@@ -179,7 +195,13 @@ def source_tex(md):
     measure and sets it in the mono face as the reference does."""
     out, last = [], 0
     for m in URL_RE.finditer(md):
-        out.append(quotes(md_latex(md[last:m.start()])) + "\\url{" + m.group(1).replace("%", "\\%").replace("#", "\\#") + "}" + m.group(2))
+        out.append(
+            quotes(md_latex(md[last : m.start()]))
+            + "\\url{"
+            + m.group(1).replace("%", "\\%").replace("#", "\\#")
+            + "}"
+            + m.group(2)
+        )
         last = m.end()
     out.append(quotes(md_latex(md[last:])))
     return "".join(out)
@@ -213,6 +235,7 @@ def place(name, build):
         # XeTeX can't size an SVG and halts; print it through the cover's Chrome path, which sets the
         # design system's fonts.
         from cover import chrome_pdf
+
         with open(src, encoding="utf-8") as f:
             svg = f.read()
         w, h = (float(re.search(rf'<svg[^>]*\b{a}="([\d.]+)', svg).group(1)) for a in ("width", "height"))
@@ -223,6 +246,7 @@ def place(name, build):
         shutil.copyfile(src, dst)
         return name
     from PIL import Image
+
     with Image.open(src) as im:
         im = im.convert("RGBA")
         flat = Image.new("RGB", im.size, "white")
@@ -248,17 +272,18 @@ def figure_tex(b, refs):
         return table_tex(b, refs, cap)
     tall = (b.get("height") or 0) > 1.05 * (b.get("width") or 1)
     size = "width=0.8\\linewidth" if tall else "width=\\linewidth"
-    return ("\\begin{figure}[htbp]\n\\centering\n"
-            f"\\includegraphics[{size},height=0.5\\textheight,keepaspectratio]{{{asset(b, refs.build)}}}\n"
-            f"\\caption{{{cap}}}\\label{{{b['_label']}}}\n\\end{{figure}}\n")
+    return (
+        "\\begin{figure}[htbp]\n\\centering\n"
+        f"\\includegraphics[{size},height=0.5\\textheight,keepaspectratio]{{{asset(b, refs.build)}}}\n"
+        f"\\caption{{{cap}}}\\label{{{b['_label']}}}\n\\end{{figure}}\n"
+    )
 
 
 def table_tex(b, refs, cap):
     """A drawn table is too wide for portrait at a legible size, so it turns."""
     rows = b["rows"]
     ncol = len(rows[0])
-    spec = "@{}>{\\raggedright\\arraybackslash}p{\\firstcol}" + \
-        ">{\\raggedright\\arraybackslash}X" * (ncol - 1) + "@{}"
+    spec = "@{}>{\\raggedright\\arraybackslash}p{\\firstcol}" + ">{\\raggedright\\arraybackslash}X" * (ncol - 1) + "@{}"
     names = [n for r in rows[1:] for n in re.findall(r"`([^`]+)`", r[0]["md"]) if n in REPOS]
     longest = f"\\settowidth{{\\firstcol}}{{\\texttt{{{tex_escape(max(names, key=len))}}}}}\n" if names else ""
     head = " & ".join(f"\\textbf{{{refs.tex(c['md'])}}}" for c in rows[0]) + " \\\\"
@@ -268,13 +293,16 @@ def table_tex(b, refs, cap):
             body.append(f"\\midrule\n\\multicolumn{{{ncol}}}{{@{{}}l}}{{\\textit{{{md_plain(r[0]['md'])}}}}} \\\\*")
         else:
             body.append(" & ".join(refs.tex(c["md"]) for c in r) + " \\\\\n\\addlinespace[4pt]")
-    return ("\\begin{landscape}\n\\scriptsize\n\\setlength{\\tabcolsep}{4pt}\n\\setlength{\\firstcol}{0pt}\n"
-            f"{longest}\\ifdim\\firstcol<2.4cm\\setlength{{\\firstcol}}{{2.4cm}}\\fi\n"
-            f"\\begin{{xltabular}}{{\\linewidth}}{{{spec}}}\n"
-            f"\\caption{{{cap}}}\\label{{{b['_label']}}}\\\\\n\\toprule\n{head}\n\\midrule\n\\endfirsthead\n"
-            f"\\multicolumn{{{ncol}}}{{@{{}}l}}{{\\textit{{Table~\\ref{{{b['_label']}}}, continued}}}}\\\\\n"
-            f"\\toprule\n{head}\n\\midrule\n\\endhead\n\\bottomrule\n\\endlastfoot\n"
-            + "\n".join(body) + "\n\\end{xltabular}\n\\end{landscape}\n")
+    return (
+        "\\begin{landscape}\n\\scriptsize\n\\setlength{\\tabcolsep}{4pt}\n\\setlength{\\firstcol}{0pt}\n"
+        f"{longest}\\ifdim\\firstcol<2.4cm\\setlength{{\\firstcol}}{{2.4cm}}\\fi\n"
+        f"\\begin{{xltabular}}{{\\linewidth}}{{{spec}}}\n"
+        f"\\caption{{{cap}}}\\label{{{b['_label']}}}\\\\\n\\toprule\n{head}\n\\midrule\n\\endfirsthead\n"
+        f"\\multicolumn{{{ncol}}}{{@{{}}l}}{{\\textit{{Table~\\ref{{{b['_label']}}}, continued}}}}\\\\\n"
+        f"\\toprule\n{head}\n\\midrule\n\\endhead\n\\bottomrule\n\\endlastfoot\n"
+        + "\n".join(body)
+        + "\n\\end{xltabular}\n\\end{landscape}\n"
+    )
 
 
 def column_weights(rows, line=88):
@@ -285,8 +313,14 @@ def column_weights(rows, line=88):
     n = len(rows[0])
     cols = [[md_plain(r[i]["md"]) for r in rows] for i in range(n)]
     names = [[n for r in rows for n in re.findall(r"`([^`]+)`", r[i]["md"]) if n in REPOS] for i in range(n)]
-    need = [max([len(p) for cell in col for p in re.split(r"\s+|(?<=-)", cell)] + [round(1.3 * len(x)) for x in names[i]],
-                default=1) + 1 for i, col in enumerate(cols)]
+    need = [
+        max(
+            [len(p) for cell in col for p in re.split(r"\s+|(?<=-)", cell)] + [round(1.3 * len(x)) for x in names[i]],
+            default=1,
+        )
+        + 1
+        for i, col in enumerate(cols)
+    ]
     text = [max(1, sum(len(cell) for cell in col)) for col in cols]
     rest = max(0, line - 2 * (n - 1) - sum(need))
     w = [need[i] + rest * text[i] / sum(text) for i in range(n)]
@@ -321,24 +355,39 @@ def block_tex(b, refs):
         return f"\\begin{{quote}}\\small\n{refs.tex(b['md'])}\n\\end{{quote}}\n"
     if k in ("ul", "ol"):
         env = "itemize" if k == "ul" else "enumerate"
-        return f"\\begin{{{env}}}\n" + "".join(f"\\item {refs.tex(i['md'])}\n" for i in b["items"]) + f"\\end{{{env}}}\n"
+        return (
+            f"\\begin{{{env}}}\n" + "".join(f"\\item {refs.tex(i['md'])}\n" for i in b["items"]) + f"\\end{{{env}}}\n"
+        )
     if k == "table":
         rows, n = b["rows"], len(b["rows"][0])
-        spec = "@{}" + "".join(f">{{\\hsize={w:.3f}\\hsize\\raggedright\\arraybackslash}}X"
-                                for w in column_weights(rows)) + "@{}"
-        lines = [" & ".join(("\\textbf{%s}" % refs.tex(c["md"])) if i == 0 else refs.tex(c["md"]) for c in r)
-                 + " \\\\" + ("\n\\midrule" if i == 0 else "") for i, r in enumerate(rows)]
+        spec = (
+            "@{}"
+            + "".join(f">{{\\hsize={w:.3f}\\hsize\\raggedright\\arraybackslash}}X" for w in column_weights(rows))
+            + "@{}"
+        )
+        lines = [
+            " & ".join(("\\textbf{%s}" % refs.tex(c["md"])) if i == 0 else refs.tex(c["md"]) for c in r)
+            + " \\\\"
+            + ("\n\\midrule" if i == 0 else "")
+            for i, r in enumerate(rows)
+        ]
         # Five equal columns at \small leave less than the width of `infrastructure-` in typewriter.
         size = "\\footnotesize\\setlength{\\tabcolsep}{4pt}" if n >= 5 else "\\small"
-        return (f"\\begin{{table}}[tbp]\n\\centering{size}\n"
-                f"\\begin{{tabularx}}{{\\linewidth}}{{{spec}}}\n\\toprule\n" + "\n".join(lines)
-                + "\n\\bottomrule\n\\end{tabularx}\n\\end{table}\n")
+        return (
+            f"\\begin{{table}}[tbp]\n\\centering{size}\n"
+            f"\\begin{{tabularx}}{{\\linewidth}}{{{spec}}}\n\\toprule\n"
+            + "\n".join(lines)
+            + "\n\\bottomrule\n\\end{tabularx}\n\\end{table}\n"
+        )
     if k == "figure":
         return figure_tex(b, refs)
     return ""
 
 
-RUN_IN = re.compile(r"^(Finding in the chapter|Finding|Question|Source|Evidence limitation|Firsthand context|Limits|Operating practice|Recorded sources|Selection|Sources|Method(?: \([^)]*\))?):\s+(.*)$", re.S)
+RUN_IN = re.compile(
+    r"^(Finding in the chapter|Finding|Question|Source|Evidence limitation|Firsthand context|Limits|Operating practice|Recorded sources|Selection|Sources|Method(?: \([^)]*\))?):\s+(.*)$",
+    re.S,
+)
 
 
 def appendix_title():
@@ -356,31 +405,52 @@ def appendix_block(b, refs):
     if k == "p":
         m = RUN_IN.match(b["md"])
         if m:
-            label = m.group(1).replace("Method (", "Method (\\texttt{").replace(")", "})") \
-                if m.group(1).startswith("Method (") else terms(m.group(1))
+            label = (
+                m.group(1).replace("Method (", "Method (\\texttt{").replace(")", "})")
+                if m.group(1).startswith("Method (")
+                else terms(m.group(1))
+            )
             return f"\\noindent\\textit{{{label}.}} {refs.tex(m.group(2))}\\par\\smallskip\n"
         return refs.tex(b["md"]) + "\\par\\smallskip\n"
     if k == "table":
         rows = b["rows"]
         n = len(rows[0])
-        spec = "@{}>{\\raggedright\\arraybackslash}p{0.24\\linewidth}" + ">{\\raggedright\\arraybackslash}X" * (n - 1) + "@{}"
+        spec = (
+            "@{}>{\\raggedright\\arraybackslash}p{0.24\\linewidth}"
+            + ">{\\raggedright\\arraybackslash}X" * (n - 1)
+            + "@{}"
+        )
         if n >= 3:
-            spec = "@{}" + "".join(f">{{\\hsize={w:.3f}\\hsize\\raggedright\\arraybackslash}}X"
-                                    for w in column_weights(rows, line=96)) + "@{}"
-        lines = [" & ".join(("\\textbf{%s}" % refs.tex(c["md"])) if i == 0 else refs.tex(c["md"]) for c in r)
-                 + " \\\\" + ("\n\\midrule" if i == 0 else "") for i, r in enumerate(rows)]
-        return ("{\\footnotesize\\noindent\n"
-                f"\\begin{{tabularx}}{{\\linewidth}}{{{spec}}}\n\\toprule\n" + "\n".join(lines)
-                + "\n\\bottomrule\n\\end{tabularx}\\par}\\smallskip\n")
+            spec = (
+                "@{}"
+                + "".join(
+                    f">{{\\hsize={w:.3f}\\hsize\\raggedright\\arraybackslash}}X" for w in column_weights(rows, line=96)
+                )
+                + "@{}"
+            )
+        lines = [
+            " & ".join(("\\textbf{%s}" % refs.tex(c["md"])) if i == 0 else refs.tex(c["md"]) for c in r)
+            + " \\\\"
+            + ("\n\\midrule" if i == 0 else "")
+            for i, r in enumerate(rows)
+        ]
+        return (
+            "{\\footnotesize\\noindent\n"
+            f"\\begin{{tabularx}}{{\\linewidth}}{{{spec}}}\n\\toprule\n"
+            + "\n".join(lines)
+            + "\n\\bottomrule\n\\end{tabularx}\\par}\\smallskip\n"
+        )
     return block_tex(b, refs)
 
 
 def appendix_chart(c, build):
     name = place(c["files"].get("pdf") or c["files"].get("png") or c["files"].get("svg"), build)
-    return ("\\begin{center}\n"
-            f"\\includegraphics[width=0.8\\linewidth,height=0.36\\textheight,keepaspectratio]{{figures/{name}}}\n"
-            f"\\captionof{{figure}}{{Chart for \\texttt{{{tex_escape(c['slug'])}}}.}}\\label{{fig:appendix-{c['slug']}}}\n"
-            "\\end{center}\n")
+    return (
+        "\\begin{center}\n"
+        f"\\includegraphics[width=0.8\\linewidth,height=0.36\\textheight,keepaspectratio]{{figures/{name}}}\n"
+        f"\\captionof{{figure}}{{Chart for \\texttt{{{tex_escape(c['slug'])}}}.}}\\label{{fig:appendix-{c['slug']}}}\n"
+        "\\end{center}\n"
+    )
 
 
 def evidence_body(doc, refs, numbers):
@@ -426,8 +496,10 @@ def front(doc, title):
     with open(os.path.join(HERE, "preamble.tex"), encoding="utf-8") as f:
         tex = [f.read(), f"\\newcommand{{\\exampletitle}}{{{tex_escape(EXAMPLE_TITLE.upper())}}}\n"]
     tex.append(f"\\title{{{tex_escape(title)}}}\n")
-    tex.append(f"\\author{{{tex_escape(meta['author'])}\\\\{tex_escape(meta['affiliation'])}\\\\"
-               f"\\href{{mailto:{meta['email']}}}{{\\texttt{{{tex_escape(meta['email'])}}}}}}}\n")
+    tex.append(
+        f"\\author{{{tex_escape(meta['author'])}\\\\{tex_escape(meta['affiliation'])}\\\\"
+        f"\\href{{mailto:{meta['email']}}}{{\\texttt{{{tex_escape(meta['email'])}}}}}}}\n"
+    )
     when = f"{meta['edition']} edition · {meta['date']}" if meta.get("edition") else meta["date"]
     tex.append(f"\\date{{{tex_escape(when)}}}\n\\begin{{document}}\n\\maketitle\n")
     return tex
@@ -438,8 +510,11 @@ def book_title(meta):
 
 
 def bibliography_tex(items):
-    return (["\n\\clearpage\n\\begin{thebibliography}{99}\\small\\raggedright\n"]
-            + [f"\\bibitem{{{k}}} {source_tex(md)}\n" for k, md in items] + ["\\end{thebibliography}\n"])
+    return (
+        ["\n\\clearpage\n\\begin{thebibliography}{99}\\small\\raggedright\n"]
+        + [f"\\bibitem{{{k}}} {source_tex(md)}\n" for k, md in items]
+        + ["\\end{thebibliography}\n"]
+    )
 
 
 def paper(doc, manifest):
@@ -447,13 +522,17 @@ def paper(doc, manifest):
     abs_text, keywords = abstract(doc, manifest)
     items, per_chapter = bibliography(doc)
     tex = front(doc, book_title(doc["meta"]))
-    tex.append(f"\\begin{{abstract}}\n\\noindent {abs_text}\n\\par\\medskip\\noindent\\textbf{{Keywords:}} "
-               f"{'; '.join(tex_escape(k) for k in keywords)}.\n\\end{{abstract}}\n")
+    tex.append(
+        f"\\begin{{abstract}}\n\\noindent {abs_text}\n\\par\\medskip\\noindent\\textbf{{Keywords:}} "
+        f"{'; '.join(tex_escape(k) for k in keywords)}.\n\\end{{abstract}}\n"
+    )
     for c in doc["chapters"]:
         tex.append(f"\n\\section{{{tex_escape(c['title'])}}}\\label{{{refs.chapters[c['n']]}}}\n")
         for s in c["sections"]:
             if s["title"]:
-                tex.append(f"\n\\FloatBarrier\n\\subsection{{{refs.tex(s['title'])}}}\\label{{sec:{c['slug']}:{s['slug']}}}\n")
+                tex.append(
+                    f"\n\\FloatBarrier\n\\subsection{{{refs.tex(s['title'])}}}\\label{{sec:{c['slug']}:{s['slug']}}}\n"
+                )
             tex += blocks_tex(s["blocks"], refs)
         if per_chapter[c["n"]]:
             tex.append(f"\\sources{{{','.join(per_chapter[c['n']])}}}\n")
@@ -481,8 +560,7 @@ def evidence(doc):
     # A label the paper did not number (or numbered blank, under a starred heading) would print "??"
     # or nothing, and LaTeX only warns; refuse it here instead.
     own = set(re.findall(r"\\label\{([^}]+)\}", content))
-    missing = sorted({k for k in re.findall(r"\\ref\*?\{([^}]+)\}", content)
-                      if k not in own and not numbers.get(k)})
+    missing = sorted({k for k in re.findall(r"\\ref\*?\{([^}]+)\}", content) if k not in own and not numbers.get(k)})
     if missing:
         raise SystemExit(f"evidence: references the paper does not number: {missing}")
     content = re.sub(r"\\ref\*?\{([^}]+)\}", lambda m: numbers.get(m.group(1), m.group(0)), content)
@@ -498,8 +576,12 @@ def evidence(doc):
 def compile_pdf(build):
     log = os.path.join(build, "tectonic.log")
     with open(log, "w") as f:
-        r = subprocess.run(["tectonic", "--keep-logs", "--keep-intermediates", "paper.tex"], cwd=build,
-                           stdout=f, stderr=subprocess.STDOUT)
+        r = subprocess.run(
+            ["tectonic", "--keep-logs", "--keep-intermediates", "paper.tex"],
+            cwd=build,
+            stdout=f,
+            stderr=subprocess.STDOUT,
+        )
     name = os.path.basename(build)
     if r.returncode:
         raise SystemExit(f"{name}: tectonic failed, see {log}")
@@ -509,8 +591,7 @@ def compile_pdf(build):
     bad = [float(x) for x in overfull if float(x) > 2]
     undefined = sorted(set(re.findall(r"(?:Reference|Citation) `([^']+)' .*undefined", text)))
     missing = sorted(set(re.findall(r"Missing character: There is no (.) in font", text)))
-    for msg, items in (("overfull boxes > 2pt", bad), ("undefined references", undefined),
-                       ("missing glyphs", missing)):
+    for msg, items in (("overfull boxes > 2pt", bad), ("undefined references", undefined), ("missing glyphs", missing)):
         if items:
             print(f"warn: {name}: {len(items)} {msg}: {items[:8]}")
 
@@ -536,6 +617,7 @@ def build(doc, make, out, *args):
         print(f"warn: {os.path.basename(path)}: references with no figure: {sorted(refs.unmapped)}")
     compile_pdf(path)
     import fitz
+
     pdf = fitz.open(os.path.join(path, "paper.pdf"))
     dst = os.path.join(paths.DIST, out)
     pdf.save(dst, garbage=4, deflate=True, deflate_fonts=True, clean=True)

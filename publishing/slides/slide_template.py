@@ -2,6 +2,7 @@
 does not do for a template's placeholders: keep the layout's styling while filling them, shrink
 text the way PowerPoint's autofit would, carry the slide number, and fill the layouts'
 non-placeholder labels (the Picture layout's figure label, the list layouts' numbers)."""
+
 import copy
 import os
 import sys
@@ -85,8 +86,12 @@ def _style(layout_ph):
     rpr = lvl.find(f"{NS}defRPr")
     spc = lvl.find(f"{NS}lnSpc/{NS}spcPct")
     latin = rpr.find(f"{NS}latin")
-    return (int(rpr.get("sz")) / 100, int(spc.get("val")) / 100000 if spc is not None else 1.2,
-            latin.get("typeface") if latin is not None else "Geist Light", rpr.get("cap") == "all")
+    return (
+        int(rpr.get("sz")) / 100,
+        int(spc.get("val")) / 100000 if spc is not None else 1.2,
+        latin.get("typeface") if latin is not None else "Geist Light",
+        rpr.get("cap") == "all",
+    )
 
 
 def fill(slide, idx, text, min_scale=0.62, height=None):

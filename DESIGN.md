@@ -38,7 +38,7 @@ empty or falling back to a local file.
 gate above (see Boundaries).
 
 `publishing/` is Python plus LaTeX and a TSX site with a Playwright spec, run by
-`./publish` from its own venv (`.analysis/publish-env`, installed from
+`scripts/publish.sh` from its own venv (`.analysis/publish-env`, installed from
 `publishing/requirements.txt`). Unlike `analysis/` it sits inside the main gates,
 but its suite only runs where that venv exists (see Testing).
 
@@ -56,7 +56,7 @@ but its suite only runs where that venv exists (see Testing).
 | `plugin.json`, `.claude-plugin/`, `.agents/` | One portable manifest for Agent Plugin hosts, a separate Claude Code adapter, and marketplace metadata over the same skills. |
 | `.github/workflows/auto-approve.yaml` | The shared reusable workflow ~25 repos execute at `@main`. |
 | `.github/workflows/pr-check.yaml`, `vendored-pin.yaml` | This repo's own gates. |
-| `publishing/`, `publish` | Builds the book's editions (print, technical with its evidence document, web, field guides, slides, cover, Kindle) and their QA from `analysis/manuscript/` into the gitignored `.analysis/`. |
+| `publishing/`, `scripts/publish.sh` | Builds the book's editions (print, technical with its evidence document, web, field guides, slides, cover, Kindle) and their QA from `analysis/manuscript/` into the gitignored `.analysis/`. |
 | `analysis/` | The research pipeline (ingest, cube, detectors, questions, report) that reads the fleet's repos and session data into a gitignored `.analysis/` store. Code commits; data and results never do. |
 
 ## Boundaries
@@ -78,7 +78,7 @@ but its suite only runs where that venv exists (see Testing).
 | `.plans/`, `.fleet/`, the inbox → the server | Under a server backend these are records in the app, not files. The local functions refuse writes there, and reads render the server's data into a read-only cache. |
 | audits → `issues` tracker | A confirmed finding (judged against the default branch as merged) is filed as one ticket through the `issues` connection, linked both ways with its `.plans/` item, and closed only on evidence (`references/finding-tickets.md`). Candidates stay local. |
 | `analysis/` → the rest | Research code, outside the plugin's gates (check_docs, mdformat, the main codespell hook, semgrep). Nothing in `skills/`, `scripts/` or `hooks/` imports it; it reads the plugin and fleet the way a skill does, never the other way round. `publishing/` is the one reader: it reuses `analysis/report`'s figure library and reads `analysis/manuscript/`. |
-| `publishing/` → `website` | `./publish web` writes the web edition into a worktree of the sibling `website` repo on its own branch (`WEBSITE_DIR`), never into the checkout someone works in. It is the one place this repo edits a sibling's code, and a person merges it there. |
+| `publishing/` → `website` | `scripts/publish.sh web` writes the web edition into a worktree of the sibling `website` repo on its own branch (`WEBSITE_DIR`), never into the checkout someone works in. It is the one place this repo edits a sibling's code, and a person merges it there. |
 
 The `auto-approve` rows are the ones that surprise people.
 `assets/auto-approve/caller.yaml` is **copied**; `auto-approve.yaml` is

@@ -1,12 +1,13 @@
-"""Build the editions. `./publish all` runs every target but `cover`, `kindle` and `slides`, in order; each
+"""Build the editions. `scripts/publish.sh all` runs every target but `cover`, `kindle` and `slides`, in order; each
 target can run alone once `source` has run, and `all` always rebuilds `source` first so no edition
 reads a stale one."""
+
 import importlib
 import sys
 import time
 
 # Literal names, never import_module(name): semgrep's non-literal-import rule blocks the pre-push
-# gate, and this table is the allow-list of what `./publish` may load.
+# gate, and this table is the allow-list of what `scripts/publish.sh` may load.
 EDITIONS = {
     "source": lambda: importlib.import_module("source"),
     "book": lambda: importlib.import_module("book"),
@@ -34,6 +35,7 @@ def main(argv):
     names = argv or ["all"]
     if names[0] == "qa":
         import qa
+
         return qa.main(names[1:])
     if names == ["all"]:
         names = TARGETS

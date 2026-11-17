@@ -1,6 +1,6 @@
 """The talk: a .pptx built on the A.I. Hero template (`.analysis/A.I. Hero.potx`), from a manifest.
 
-    ./publish slides
+    scripts/publish.sh slides
 
 The manifest, `$PUBLISH_OUT/editions/slides.json`, is the deck's source: an ordered list of slides,
 each naming a template layout and pointing at the book by chapter, section, figure and verbatim
@@ -9,8 +9,9 @@ sentence. It lives beside the build (gitignored) because it quotes the findings.
 
 Every slide is a template layout with its placeholders filled; the theme does the styling. Slide
 text is the author's words, and speaker notes carry the paragraph each slide stands for.
-`dist/slides.pdf` is converted by LibreOffice for review (`./publish qa slides`).
+`dist/slides.pdf` is converted by LibreOffice for review (`scripts/publish.sh qa slides`).
 """
+
 import json
 import os
 import re
@@ -79,8 +80,9 @@ def picture(prs, doc, spec):
     P.picture(s, 1, asset(fig))
     P.fill(s, 0, takeaway(fig["caption_md"], spec.get("takeaway", "clause")))
     P.figure_label(s, f"{fig['label']} {fig['number']}")
-    return [s], [[md_plain(prev["md"]) if prev else "",
-                  f"{fig['label']} {fig['number']}. {md_plain(fig['caption_md'])}"]]
+    return [s], [
+        [md_plain(prev["md"]) if prev else "", f"{fig['label']} {fig['number']}. {md_plain(fig['caption_md'])}"]
+    ]
 
 
 def list_items(sec, kind):
@@ -111,7 +113,7 @@ def listing(prs, doc, spec):
     per = -(-len(items) // -(-len(items) // LIST_SLOTS))
     slides, notes = [], []
     for start in range(0, len(items), per):
-        chunk = items[start:start + per]
+        chunk = items[start : start + per]
         s = P.add(prs, "List")
         P.fill(s, 10, f"Chapter {ONES[ch['n']]} · {ch['title']}")
         P.fill(s, 0, spec.get("title") or md_plain(sec["title"]))
@@ -139,8 +141,21 @@ def to_pdf(pptx):
     soffice = shutil.which("soffice") or "/opt/homebrew/bin/soffice"
     # A private profile: a running LibreOffice holds the default one and makes --headless exit silently.
     profile = "file://" + os.path.join(paths.OUT, ".soffice-profile")
-    r = subprocess.run([soffice, f"-env:UserInstallation={profile}", "--headless", "--convert-to", "pdf",
-                        "--outdir", paths.DIST, pptx], capture_output=True, text=True, timeout=300)
+    r = subprocess.run(
+        [
+            soffice,
+            f"-env:UserInstallation={profile}",
+            "--headless",
+            "--convert-to",
+            "pdf",
+            "--outdir",
+            paths.DIST,
+            pptx,
+        ],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
     pdf = os.path.splitext(pptx)[0] + ".pdf"
     if r.returncode or not os.path.exists(pdf):
         raise SystemExit(f"slides: PDF conversion failed: {r.stderr or r.stdout}")
@@ -152,6 +167,7 @@ def main():
         doc = json.load(f)
     if not os.path.exists(MANIFEST):
         import slide_seed
+
         slide_seed.write(doc, MANIFEST)
         print(f"slides: no manifest; wrote a starting one to {MANIFEST}")
     with open(MANIFEST, encoding="utf-8") as f:

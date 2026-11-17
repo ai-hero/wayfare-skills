@@ -1,5 +1,6 @@
 """One inline Markdown reading, three outputs: HTML for the book and the web, LaTeX for the
 technical edition, plain text for slides and alt text."""
+
 import json
 import os
 import re
@@ -20,6 +21,7 @@ def full_title(meta):
 def subtitle_line(meta):
     """The part and the subtitle as one line, for an edition with a single subtitle slot."""
     return ": ".join(x for x in (meta.get("part"), meta.get("subtitle")) if x)
+
 
 MD = MarkdownIt("commonmark")
 
@@ -45,15 +47,15 @@ def note_end(html_text, i):
         depth += -1 if t.group(0) == "</span>" else 1
         if depth == 0:
             return t.end()
-    raise ValueError(f"unclosed author's note: {html_text[i:i + 80]}")
+    raise ValueError(f"unclosed author's note: {html_text[i : i + 80]}")
 
 
 def sub_notes(html_text, repl):
     """`html_text` with each author's note replaced by `repl(the note's inner HTML)`."""
     out, pos = [], 0
-    while (m := _NOTE_OPEN.search(html_text, pos)):
+    while m := _NOTE_OPEN.search(html_text, pos):
         end = note_end(html_text, m.start())
-        out += [html_text[pos:m.start()], repl(html_text[m.end():end - len("</span>")])]
+        out += [html_text[pos : m.start()], repl(html_text[m.end() : end - len("</span>")])]
         pos = end
     return "".join(out) + html_text[pos:]
 
@@ -75,9 +77,17 @@ REPO_MAP = dict(_PAIRS)
 
 
 # Inside a longer label only a hyphenated name is swapped: `auth` and `website` are also ordinary words.
-_REPO_WORD = re.compile(r"(?<![\w-])(" + "|".join(re.escape(k) for k in sorted(
-    (k for k, v in REPO_MAP.items() if "-" in k and k != v), key=len, reverse=True)) + r")(?![\w-])") \
-    if any("-" in k and k != v for k, v in REPO_MAP.items()) else None
+_REPO_WORD = (
+    re.compile(
+        r"(?<![\w-])("
+        + "|".join(
+            re.escape(k) for k in sorted((k for k, v in REPO_MAP.items() if "-" in k and k != v), key=len, reverse=True)
+        )
+        + r")(?![\w-])"
+    )
+    if any("-" in k and k != v for k, v in REPO_MAP.items())
+    else None
+)
 
 
 def repo_display(label):
@@ -95,13 +105,33 @@ def repo_display(label):
 # first field of a `repo|pr|n` record, before " session", or listed beside another repository's name.
 _AMBIGUOUS = {"auth", "website"}
 _NAMES = "|".join(re.escape(n) for n in sorted({n for k, v in REPO_MAP.items() for n in (k, v)}, key=len, reverse=True))
-_PLAIN_CLEAR = re.compile(r"(?<![\w./-])(" + "|".join(re.escape(k) for k in sorted(
-    (k for k, v in REPO_MAP.items() if k != v and k not in _AMBIGUOUS), key=len, reverse=True)) + r")(?![\w/-]|\.\w)") \
-    if any(k != v and k not in _AMBIGUOUS for k, v in REPO_MAP.items()) else None
-_PLAIN_AMBIGUOUS = re.compile(
-    r"(?<![\w./-])(auth|website)(?=`|'s\b|\||\s+session\b|,\s*`?(?:" + _NAMES + r")\b|\s+(?:and|to)\s+`?(?:" + _NAMES + r")\b)"
-    r"|(?<=`)(auth|website)(?=`)") if _NAMES else None
-_AFTER_NAME = re.compile(r"(\b(?:" + _NAMES + r")`?,?\s+(?:and\s+)?`?)(auth|website)(?![\w/-]|\.\w)") if _NAMES else None
+_PLAIN_CLEAR = (
+    re.compile(
+        r"(?<![\w./-])("
+        + "|".join(
+            re.escape(k)
+            for k in sorted((k for k, v in REPO_MAP.items() if k != v and k not in _AMBIGUOUS), key=len, reverse=True)
+        )
+        + r")(?![\w/-]|\.\w)"
+    )
+    if any(k != v and k not in _AMBIGUOUS for k, v in REPO_MAP.items())
+    else None
+)
+_PLAIN_AMBIGUOUS = (
+    re.compile(
+        r"(?<![\w./-])(auth|website)(?=`|'s\b|\||\s+session\b|,\s*`?(?:"
+        + _NAMES
+        + r")\b|\s+(?:and|to)\s+`?(?:"
+        + _NAMES
+        + r")\b)"
+        r"|(?<=`)(auth|website)(?=`)"
+    )
+    if _NAMES
+    else None
+)
+_AFTER_NAME = (
+    re.compile(r"(\b(?:" + _NAMES + r")`?,?\s+(?:and\s+)?`?)(auth|website)(?![\w/-]|\.\w)") if _NAMES else None
+)
 
 
 def plain_repos(text):
@@ -119,10 +149,25 @@ def plain_repos(text):
 
 def chip_repos(html):
     """`<code>name</code>` for a repository becomes `<code class="repo">`; other code stays plain."""
-    return re.sub(r"<code>([^<]+)</code>", lambda m: f'<code class="repo">{m.group(1)}</code>' if m.group(1) in REPOS else m.group(0), html)
+    return re.sub(
+        r"<code>([^<]+)</code>",
+        lambda m: f'<code class="repo">{m.group(1)}</code>' if m.group(1) in REPOS else m.group(0),
+        html,
+    )
 
-LATEX_ESC = {"\\": r"\textbackslash{}", "&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#", "_": r"\_",
-             "{": r"\{", "}": r"\}", "~": r"\textasciitilde{}", "^": r"\textasciicircum{}"}
+
+LATEX_ESC = {
+    "\\": r"\textbackslash{}",
+    "&": r"\&",
+    "%": r"\%",
+    "$": r"\$",
+    "#": r"\#",
+    "_": r"\_",
+    "{": r"\{",
+    "}": r"\}",
+    "~": r"\textasciitilde{}",
+    "^": r"\textasciicircum{}",
+}
 
 
 def md_html(text):
@@ -136,8 +181,7 @@ def _children(text):
 
 def md_plain(text):
     text = _MARKER_GAP.sub("", text or "")
-    return "".join(t.content for t in _children(text) if t.type in ("text", "code_inline")).strip() \
-        if text else ""
+    return "".join(t.content for t in _children(text) if t.type in ("text", "code_inline")).strip() if text else ""
 
 
 def tex_escape(s):
@@ -152,7 +196,9 @@ def _text_latex(content, words):
     out = []
     for part in NOTE_RE.split(content):
         if len(out) % 2:
-            out.append(r"\footnote{" + NOTES[part] + "}" if part in NOTES else r"\citep{" + CITE_MAP.get(part, part) + "}")
+            out.append(
+                r"\footnote{" + NOTES[part] + "}" if part in NOTES else r"\citep{" + CITE_MAP.get(part, part) + "}"
+            )
         else:
             out.append(tex_escape(words(part) if words else part))
     return "".join(out)

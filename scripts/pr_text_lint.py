@@ -53,14 +53,16 @@ PLACEHOLDERS = re.compile(
     r"\bCommits: SHA1\b|(?<=: )(?:FINDING|QUESTION)\.|\bSkipped: REASON\b|"
     r"\{(?:[NWXYZ]|file:line|finding|agent|what's well-done|summary of fix \d+|"
     r"type|scope|description|body if needed|DECISION_FLAG|1-3 sentence summary|"
-    r"most important issue|second most important|positive observations)\}")
+    r"most important issue|second most important|positive observations)\}"
+)
 # A template line that is nothing but a bracketed slot, bare or as a list
 # item: `[1-3 sentence overview]`, `- [ ] [Test step 1]`. The slot needs two
 # words or a digit range inside, so a bare `- [ ]` and a one-word shortcut
 # reference `[ref]` are not slots. A Markdown link has a `(` after its `]`.
 SLOT_LINE = re.compile(
     r"^\s*(?:[-*] (?:\[[ xX]\] )?)?"
-    r"\[(?=[^\]]*[A-Za-z0-9])(?=[^\]]*(?:\S\s+\S|\d-\d))[^\]]+\]\s*$")
+    r"\[(?=[^\]]*[A-Za-z0-9])(?=[^\]]*(?:\S\s+\S|\d-\d))[^\]]+\]\s*$"
+)
 HTML_COMMENT = re.compile(r"<!--(?!\s*check-docs:)[\s\S]*?-->")
 CODE_SPAN = re.compile(r"(`+).*?\1")
 # Capitalized `Hero` is the brand; lowercase `hero` is the ordinary word
@@ -120,8 +122,7 @@ def lint(kind, title, body):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--kind", required=True,
-                    choices=["pr", "pr-edit", "comment", "review", "inline", "commit"])
+    ap.add_argument("--kind", required=True, choices=["pr", "pr-edit", "comment", "review", "inline", "commit"])
     ap.add_argument("--title")
     ap.add_argument("--body-file", required=True, help="path, or - for stdin")
     args = ap.parse_args()

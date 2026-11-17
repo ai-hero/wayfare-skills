@@ -47,12 +47,19 @@ DATE_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 # The wrapper skill names these. If an update renames one, the wrapper's verdict
 # mapping and output rules silently stop matching what the audit writes.
 CONTRACT = {
-    "skill/SKILL.md": ["findings.json", "FINDINGS-DETAIL.md", "coverage-ledger.json",
-                       "run-metadata.json", "~/security-audit-skill/"],
+    "skill/SKILL.md": [
+        "findings.json",
+        "FINDINGS-DETAIL.md",
+        "coverage-ledger.json",
+        "run-metadata.json",
+        "~/security-audit-skill/",
+    ],
     "skill/report-schema.json": ['"confirmed"', '"needs_validation"', '"rejected"'],
 }
-DATE_CAVEAT = ("DATE_IS_AUTHOR_SET commit dates are set by the author's git client and GitHub "
-               "does not verify them, so a backdated commit passes the age check")
+DATE_CAVEAT = (
+    "DATE_IS_AUTHOR_SET commit dates are set by the author's git client and GitHub "
+    "does not verify them, so a backdated commit passes the age check"
+)
 
 
 class NotChecked(Exception):
@@ -130,9 +137,13 @@ def read_pin():
     except (OSError, ValueError):
         return None
     fields = dict(line.split(": ", 1) for line in text.splitlines() if ": " in line)
-    if (not re.fullmatch(r"[0-9a-f]{40}", fields.get("sha", ""))
-            or fields.get("repo") != REPO_URL or fields.get("path") != TREE
-            or not fields.get("vendored") or not fields.get("commit-date")):
+    if (
+        not re.fullmatch(r"[0-9a-f]{40}", fields.get("sha", ""))
+        or fields.get("repo") != REPO_URL
+        or fields.get("path") != TREE
+        or not fields.get("vendored")
+        or not fields.get("commit-date")
+    ):
         return None
     return fields
 
@@ -160,8 +171,9 @@ def contract_findings(read):
         text = read(rel)
         for token in tokens:
             if token not in text:
-                findings.append(f"CONTRACT_MISSING {rel} no longer holds {token}; "
-                                "update the wrapper skill and CONTRACT first")
+                findings.append(
+                    f"CONTRACT_MISSING {rel} no longer holds {token}; update the wrapper skill and CONTRACT first"
+                )
     return findings
 
 
@@ -188,6 +200,7 @@ def local_findings():
 
     def read(rel):
         return (ASSET / rel).read_text(encoding="utf-8", errors="replace") if rel in actual else ""
+
     return contract_findings(read)
 
 
@@ -209,7 +222,7 @@ def fetch_tree(sha):
                 if inner == "LICENSE":
                     rel = "LICENSE"
                 elif inner.startswith(TREE + "/"):
-                    rel = "skill/" + inner[len(TREE) + 1:]
+                    rel = "skill/" + inner[len(TREE) + 1 :]
                 else:
                     continue
                 if m.isdir():
@@ -230,8 +243,7 @@ def fetch_tree(sha):
 def commit_date(commit):
     """The later of the two dates, because a later date is the stricter reading."""
     stamps = [commit["commit"][k]["date"] for k in ("author", "committer")]
-    return max(datetime.datetime.strptime(s, DATE_FORMAT).replace(
-        tzinfo=datetime.timezone.utc) for s in stamps)
+    return max(datetime.datetime.strptime(s, DATE_FORMAT).replace(tzinfo=datetime.timezone.utc) for s in stamps)
 
 
 def age_days(when):
@@ -258,8 +270,9 @@ def cmd_verify(args):
             return 1
         expected = read_manifest()
         rows = {rel: entry(d, mode, rel) for rel, (d, mode) in fetch_tree(sha).items()}
-        bad = [rel for rel in sorted((expected.keys() - {PIN_FILE}) | rows.keys())
-               if expected.get(rel) != rows.get(rel)]
+        bad = [
+            rel for rel in sorted((expected.keys() - {PIN_FILE}) | rows.keys()) if expected.get(rel) != rows.get(rel)
+        ]
         if bad:
             print("\n".join(f"PIN_MISMATCH {clean(rel)}" for rel in bad))
             return 1
@@ -281,11 +294,15 @@ def cmd_status(args):
         print(f"UPSTREAM_CURRENT pinned {sha[:8]} is {clean(branch)} at upstream")
         return 0
     if state != "ahead":
-        print(f"UPSTREAM_DIVERGED pinned {sha[:8]} is not an ancestor of {clean(branch)} "
-              f"(compare status {state}); read upstream before refreshing")
+        print(
+            f"UPSTREAM_DIVERGED pinned {sha[:8]} is not an ancestor of {clean(branch)} "
+            f"(compare status {state}); read upstream before refreshing"
+        )
         return 1
-    print(f"UPSTREAM_BEHIND {ahead} commit(s): pinned {sha[:8]} is behind {clean(branch)}; "
-          "read it with this script's status, take it with refresh")
+    print(
+        f"UPSTREAM_BEHIND {ahead} commit(s): pinned {sha[:8]} is behind {clean(branch)}; "
+        "read it with this script's status, take it with refresh"
+    )
     if args.summary:
         return 0
     print(DATE_CAVEAT)
@@ -305,6 +322,7 @@ def cmd_status(args):
 
     def vendored(name):
         return name == "LICENSE" or name.startswith(TREE + "/")
+
     for f in files:
         name = f["filename"]
         mark = "*" if vendored(name) or vendored(f.get("previous_filename", "")) else " "
@@ -325,8 +343,7 @@ def resolve_target(branch, to):
     # resolves here may never have been in this repository's history.
     state = compare(sha, branch)["status"]
     if state not in ("ahead", "identical"):
-        raise Refused(f"REFRESH_REFUSED_OFF_BRANCH {clean(sha[:8])} is not on {clean(branch)} "
-                      f"(compare status {state})")
+        raise Refused(f"REFRESH_REFUSED_OFF_BRANCH {clean(sha[:8])} is not on {clean(branch)} (compare status {state})")
     return commit, sha
 
 
@@ -337,8 +354,9 @@ def write_asset(tree, sha, when):
         if stale.exists():
             shutil.rmtree(stale)
     today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
-    pin_text = (f"repo: {REPO_URL}\nsha: {sha}\nvendored: {today}\n"
-                f"commit-date: {when.strftime(DATE_FORMAT)}\npath: {TREE}\n")
+    pin_text = (
+        f"repo: {REPO_URL}\nsha: {sha}\nvendored: {today}\ncommit-date: {when.strftime(DATE_FORMAT)}\npath: {TREE}\n"
+    )
     files = dict(tree)
     files[PIN_FILE] = (pin_text.encode("utf-8"), "100644")
     rows = []
@@ -362,22 +380,24 @@ def write_asset(tree, sha, when):
 def cmd_refresh(args):
     pin = read_pin()
     if pin is None:
-        raise Refused(f"REFRESH_REFUSED_BAD_PIN {PIN_FILE} does not parse, so a rollback "
-                      "cannot be ruled out; restore it with git first")
+        raise Refused(
+            f"REFRESH_REFUSED_BAD_PIN {PIN_FILE} does not parse, so a rollback "
+            "cannot be ruled out; restore it with git first"
+        )
     branch = default_branch()
     commit, sha = resolve_target(branch, args.to)
     if sha != pin["sha"] and compare(pin["sha"], sha)["status"] == "behind":
-        raise Refused(f"REFRESH_REFUSED_OLDER_THAN_PIN {clean(sha[:8])} is older than the pin "
-                      f"{pin['sha'][:8]}")
+        raise Refused(f"REFRESH_REFUSED_OLDER_THAN_PIN {clean(sha[:8])} is older than the pin {pin['sha'][:8]}")
     when = commit_date(commit)
     age = age_days(when)
     print(DATE_CAVEAT)
     if age < MIN_AGE_DAYS:
-        raise Refused(f"REFRESH_REFUSED_TOO_NEW {clean(sha[:8])} is {age:.1f} days old by its "
-                      f"commit date; the wait is {MIN_AGE_DAYS}. status names the newest old enough.")
+        raise Refused(
+            f"REFRESH_REFUSED_TOO_NEW {clean(sha[:8])} is {age:.1f} days old by its "
+            f"commit date; the wait is {MIN_AGE_DAYS}. status names the newest old enough."
+        )
     tree = fetch_tree(sha)
-    findings = contract_findings(
-        lambda rel: tree[rel][0].decode("utf-8", "replace") if rel in tree else "")
+    findings = contract_findings(lambda rel: tree[rel][0].decode("utf-8", "replace") if rel in tree else "")
     if findings:
         print("\n".join(findings))
         return 1

@@ -36,7 +36,8 @@ import sys
 
 DEBUG = re.compile(
     r"\bconsole\.(log|debug)\s*\(|^\s*debugger\s*;?\s*$|\bbreakpoint\(\)|"
-    r"\b[ip]db\.set_trace\(|\bbinding\.pry\b|\bdbg!\(")
+    r"\b[ip]db\.set_trace\(|\bbinding\.pry\b|\bdbg!\("
+)
 TODO_MARK = re.compile(r"\b(TODO|FIXME|XXX)\b")  # leftovers: ok
 TRACKED = re.compile(r"#\d+|\b[A-Z][A-Z0-9]+-\d+\b|https?://")
 PROSE = re.compile(r"\.(md|mdx|rst|txt|adoc)$")
@@ -47,8 +48,18 @@ VENDORED = "assets/security-audit/"
 # Explicit prefixes and flags override the diff.noprefix, diff.mnemonicPrefix
 # and color configs, any of which silently changes the headers this parser
 # reads. core.quotePath=false keeps non-ASCII paths unescaped.
-DIFF = ["git", "-c", "core.quotePath=false", "diff", "--unified=0", "--no-color",
-        "--no-ext-diff", "--no-textconv", "--src-prefix=a/", "--dst-prefix=b/"]
+DIFF = [
+    "git",
+    "-c",
+    "core.quotePath=false",
+    "diff",
+    "--unified=0",
+    "--no-color",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+]
 
 
 class GitError(Exception):
@@ -67,10 +78,15 @@ def unquote(path):
     # quotePath off; the octal escapes are the path's UTF-8 bytes.
     if not (path.startswith('"') and path.endswith('"')):
         return path
-    raw = re.sub(rb"\\([0-7]{3}|.)",
-                 lambda m: bytes([int(m.group(1), 8)]) if len(m.group(1)) == 3
-                 else {b"n": b"\n", b"t": b"\t"}.get(m.group(1), m.group(1)),
-                 path[1:-1].encode("utf-8"))
+    raw = re.sub(
+        rb"\\([0-7]{3}|.)",
+        lambda m: (
+            bytes([int(m.group(1), 8)])
+            if len(m.group(1)) == 3
+            else {b"n": b"\n", b"t": b"\t"}.get(m.group(1), m.group(1))
+        ),
+        path[1:-1].encode("utf-8"),
+    )
     return raw.decode("utf-8", "replace")
 
 

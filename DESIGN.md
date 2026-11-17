@@ -47,7 +47,7 @@ but its suite only runs where that venv exists (see Testing).
 | Path | What lives there |
 | -- | -- |
 | `skills/<name>/` | One skill each: instructions an agent follows, not code it runs. `SKILL.md` is the entrypoint an agent loads; a pipeline skill keeps its long procedure in a linked `WORKFLOW.md`, so activation stays short. |
-| `references/` | Procedure shared by several skills; a skill points at it rather than restating it. `authorization.md` says when a run continues, confirms, stops or defers, `client-capabilities.md` maps the skills' generic operations onto each host's tools, and `store-writes.md` fixes the two write channels: an item's own fields, and `DESIGN.md`. |
+| `references/` | Procedure shared by several skills; a skill points at it rather than restating it. `authorization.md` says when a run continues, confirms, stops or defers, `client-capabilities.md` maps the skills' generic operations onto each host's tools, and `store-writes.md` fixes the two write channels: an item's own fields, and `DESIGN.md`. `reference-layer.md` is the format of a consumer repo's `reference/` and the hooks that read it. |
 | `docs/` | The standards: the store and its two backends, connections, the fleet map, messages, the product description, pipelines, and the rest. |
 | `scripts/` | The shell library every skill sources, its helpers and `*.test.sh` suites, the Python compliance engine (`audit.py`, `consistency.py`), and the Python checkers (`check_docs.py`, `pr_text_lint.py`, `diff_leftovers.py`). |
 | `hooks/` | Claude Code hooks (`hooks.json`): a Stop hook, `check-deferrals.sh`, that blocks a stop once when deferred work was never filed in `.plans/`, and a SessionStart hook, `check-floors.sh`, that warns when a tool the fleet's `setup.yaml` floors is installed below that floor. Claude Code only; other hosts do not run them. |
@@ -455,3 +455,18 @@ skill posts. What still needs judgment runs on demand, not on every commit.
   fleet moved to the server. A PR that touches CI, the hooks' scripts or the
   maintainer's editor and agent settings cannot be approved by auto-approve;
   `validate.sh` fails a hook that reaches a script no entry matches.
+
+### 2026-11-17: A repo's reference/ layer is read through one shared doc, with integer versions and one-way pins
+
+- Context: agents misread designs because a mockup shows one state and hides
+  the entities, processes and flow behind it, and consumer repos are starting a
+  `reference/` layer written before the code.
+- Decision: wayfare reads a repo's `reference/` through one shared doc,
+  `references/reference-layer.md`: a `KIND: ID@VERSION` header on every file,
+  integer versions bumped only on a change in meaning, one version per file,
+  `Reference:` pins on items and PRs, and links that point from the work to the
+  reference only. Chosen over a version per edit, which is noise, and over
+  section-level pins, which churn too fast to pin.
+- Consequences: consumer repos write against this format, so changing it needs
+  a migration of their pins. Every hook is gated on `hero_reference_dir`, so a
+  repo without the folder behaves as before.

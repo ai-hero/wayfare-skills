@@ -50,6 +50,10 @@ Progress:
 - [ ] 5. Write `.plans/PLAN.md`, or migrate an unmigrated store and say so
 - [ ] 6. Fill `## Scope`: a round that plans against "TODO" plans against
   nothing
+- [ ] 7. Offer `reference/` only when `hero_reference_dir` returns 1: ask once
+  whether to start one, and on a yes run `hero_reference_scaffold`
+  ([reference-layer.md](../../references/reference-layer.md), *Starting a
+  reference*). A repo that has the folder is offered nothing
 
 This is the only skill that creates the plan object. Every other one reads it,
 and `hero_ready_items` refuses a store without one rather than printing an empty

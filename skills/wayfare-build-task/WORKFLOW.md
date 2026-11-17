@@ -708,6 +708,16 @@ before the first edit, so a session that dies mid-flight leaves an honest store
 behind and `resume-state.sh` can tell this branch's item from the others a goal
 has in flight.
 
+**In a repo with `reference/`, read the pinned files before the first edit.**
+When `hero_reference_dir` succeeds, run `hero_reference_resolve ITEM_FILE`: each
+line is a pin, the file's current version and its path. Read every path. A pin
+behind its file's version is checked against the `reference/CHANGELOG.md` lines
+between the two: a change that contradicts the plan, or a pin whose version is
+`none` (the file is gone), is a Step 2 ambiguity, not something to build around.
+Building a behavior the pinned files do not describe means editing the reference
+first, as `../../references/reference-layer.md` says. Without the folder, skip
+this.
+
 **A goal member in commit-only mode builds from the carried plan.** When the
 invocation carries `commit only: goal GOAL_ID branch GOAL_BRANCH` and the item's
 goal carries `## Plan`, the item has no `## Approach`. Its approach is its

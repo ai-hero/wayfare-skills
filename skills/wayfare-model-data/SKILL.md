@@ -44,6 +44,14 @@ If `NO_MONGO` printed, report that this skill does not apply and stop. If
 `GREP_FAILED` printed, report the failure and stop. Do not read it as
 `NO_MONGO`. If `HERO.md` is missing, continue with detection.
 
+**Start from the reference when there is one.** When `hero_reference_dir`
+succeeds and `reference/entities/` holds files, read the entities the work
+touches before any code: identity, grain, attributes, relationships and rules
+are the model to build, and a field the change needs that no entity names is a
+reference edit first, with its bump
+([reference-layer.md](../../references/reference-layer.md)). Without the folder,
+start from the code as below.
+
 ## Step 1: Find this repo's versions of the helpers
 
 The helpers have the same purpose across the fleet but different names. Read the

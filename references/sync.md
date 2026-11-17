@@ -669,6 +669,13 @@ rather than reporting clean, the same rule the Upstream lane above follows):
   plan would otherwise never produce: re-read the item's `source` paths at the
   new head before trusting anything the item asserts about them. Report how many
   commits, not how many syncs.
+- **reference-stale**: in a repo with `reference/`, an open item whose
+  `Reference:` pin names a version older than its file's current one, or a file
+  that no longer exists ([reference-layer.md](./reference-layer.md)).
+  `hero_reference_stale` lists each, with the `CHANGELOG.md` entries between the
+  two versions; quote them, since they say what the item must re-check, and
+  route the item back to planning when they contradict its plan. Without the
+  folder the function returns 1 and this finding does not exist.
 - **already-satisfied**: a `accepted` or `planning` item whose work has landed
   out-of-band. Propose `done` with the evidence, exactly as **covered** does.
   See also the pre-planning check, which exists because planning finished work

@@ -150,6 +150,12 @@ a stale map. If the UX flow is absent, declared `none`, or unresolved, report
 the slice's Complete-ness as unverified. Do not plan silently without these
 inputs.
 
+**In a repo with `reference/`** (`hero_reference_dir` succeeds), propose the
+reference edit first and pin it, per `../../references/reference-layer.md` (_The
+hooks_): any reference edit is the first Subtask and is shown at Step 3's gate,
+and each item's `## Context` opens with its `Reference:` line. Without the
+folder, skip this.
+
 Write the conclusions into the existing task: `## Approach`, ordered
 `## Subtasks`, `## Definition of Done`, and one-line `success:`. Before writing
 each DoD line, ask yourself how you would test it, per

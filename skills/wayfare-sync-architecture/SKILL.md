@@ -20,6 +20,14 @@ Read `wayfare:wayfare-review-architecture` for the Hard Rule, required sections,
 and findings table. Keep those requirements in one place so the two skills use
 the same review criteria.
 
+**Where the line sits** in a repo with `reference/` (`hero_reference_dir`
+succeeds): `PRODUCT.md` is the whiteboard view of what the product does,
+`DESIGN.md` is how the code is structured, and `reference/` is what the app is
+meant to be, entity by entity and screen by screen, written before the code
+([reference-layer.md](../../references/reference-layer.md)). An entity's
+attributes or a screen's states belong in `reference/`; `DESIGN.md` names the
+layer that holds them and never copies them.
+
 ## Instructions
 
 ### Step 0: Load

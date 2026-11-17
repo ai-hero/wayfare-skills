@@ -39,8 +39,9 @@ done
 TARGET_ROOT="${1:-$(git rev-parse --show-toplevel)}"
 DRIFT=0
 
-# A clone keeps a committed symlink, and cp writes through one, so a target
-# repo could aim .claude, hooks/ or a file itself anywhere on this machine.
+# A clone keeps a committed symlink. A linked .claude or hooks/ sends mkdir and
+# mktemp anywhere on this machine, and a linked settings.json is written through
+# by the `{}` seed; the atomic mv covers only the hook files themselves.
 refuse_symlinked() { # PATH under TARGET_ROOT
   local p="$TARGET_ROOT" part parts
   IFS=/ read -ra parts <<<"${1#"$TARGET_ROOT"/}"
@@ -108,8 +109,7 @@ if ! command -v jq >/dev/null 2>&1; then
   echo "Add this to $SETTINGS by hand:"
   echo '  "hooks": { "Stop": [ {'
   echo "    \"hooks\": [ { \"type\": \"command\", \"command\": \"$HOOK_CMD\" } ] } ] }"
-  [[ $DRIFT -eq 1 ]] && exit 2
-  exit 0
+  exit 1
 fi
 
 mkdir -p "$(dirname "$SETTINGS")"
@@ -158,7 +158,7 @@ fi
 echo ""
 echo "Stop checks installed."
 echo "  Hook:  .claude/hooks/stop-checks.sh  (runs just check-fast; exit 2 keeps the agent working)"
-echo "  Test:  .claude/hooks/stop-checks.test.sh  (run it after editing the hook)"
+echo "  Test:  .claude/hooks/stop-checks.test.sh  (run it after re-vendoring the hook)"
 
 [[ $DRIFT -eq 1 ]] && exit 2
 exit 0

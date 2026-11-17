@@ -47,6 +47,8 @@ check "fresh: hook matches source" "same" "$(cmp -s "$SRC_HOOK" "$d/.claude/hook
 check "fresh: hook executable" "yes" "$([[ -x "$d/.claude/hooks/stop-checks.sh" ]] && echo yes || echo no)"
 check "fresh: wired once" "1" "$(stop_entries "$d/.claude/settings.json")"
 check "fresh: no temp left behind" "0" "$(find "$d/.claude" -name '.*' -type f | wc -l | tr -d ' ')"
+# shellcheck disable=SC2016
+check "fresh: command keeps its inner quotes" '"$CLAUDE_PROJECT_DIR/.claude/hooks/stop-checks.sh"' "$(jq -r '.hooks.Stop[0].hooks[0].command' "$d/.claude/settings.json")"
 
 # --- re-run is a no-op ------------------------------------------------------
 "$INSTALLER" "$d" >/dev/null 2>&1; rc=$?
@@ -63,6 +65,27 @@ check "existing: rc" "0" "$rc"
 check "existing: braced spelling not duplicated" "1" "$(stop_entries "$d/.claude/settings.json")"
 check "existing: PostToolUse kept" "x.sh" "$(jq -r '.hooks.PostToolUse[0].hooks[0].command' "$d/.claude/settings.json")"
 check "existing: permissions kept" "Read(/a)" "$(jq -r '.permissions.deny[0]' "$d/.claude/settings.json")"
+
+# --- the merge itself keeps what was there ----------------------------------
+d=$(fixture merge)
+mkdir -p "$d/.claude"
+printf '%s\n' '{"hooks":{"PostToolUse":[{"hooks":[{"type":"command","command":"x.sh"}]}],"Stop":[{"hooks":[{"type":"command","command":"other-stop.sh"}]}]},"permissions":{"deny":["Read(/a)"]}}' >"$d/.claude/settings.json"
+"$INSTALLER" "$d" >/dev/null 2>&1; rc=$?
+check "merge: rc" "0" "$rc"
+check "merge: wired once" "1" "$(stop_entries "$d/.claude/settings.json")"
+check "merge: other Stop hook kept first" "other-stop.sh" "$(jq -r '.hooks.Stop[0].hooks[0].command' "$d/.claude/settings.json")"
+check "merge: Stop entries" "2" "$(jq '.hooks.Stop | length' "$d/.claude/settings.json")"
+check "merge: PostToolUse kept" "x.sh" "$(jq -r '.hooks.PostToolUse[0].hooks[0].command' "$d/.claude/settings.json")"
+check "merge: permissions kept" "Read(/a)" "$(jq -r '.permissions.deny[0]' "$d/.claude/settings.json")"
+
+# --- without jq nothing is wired, so it is not a success --------------------
+d=$(fixture nojq)
+NOJQ="$WORK/nojq-bin"
+mkdir -p "$NOJQ"
+for t in bash git dirname basename mkdir mktemp cp chmod mv rm cmp cat; do ln -sf "$(command -v "$t")" "$NOJQ/$t"; done
+PATH="$NOJQ" "$(command -v bash)" "$INSTALLER" "$d" >/dev/null 2>&1; rc=$?
+check "no jq: rc 1" "1" "$rc"
+check "no jq: settings not created" "no" "$([[ -e "$d/.claude/settings.json" ]] && echo yes || echo no)"
 
 # --- drift writes .new and exits 2 ------------------------------------------
 d=$(fixture drift)

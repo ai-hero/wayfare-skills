@@ -4,8 +4,8 @@
 
 # Regression table for stop-checks.sh.
 #
-# Every skip path exits 0, and so does a check that passed, so "exit 0" alone
-# proves nothing. Each fixture's check-fast recipe touches a marker file, and
+# A skip exits 0, and so does a check that passed, so "exit 0" alone proves
+# nothing. Each fixture's check-fast recipe touches a marker file, and
 # the rows assert on whether it ran as well as on the exit code.
 
 set -uo pipefail
@@ -104,12 +104,20 @@ check "unpushed commit, no upstream: ran" yes "$RAN"
 d=$(fixture active 'exit 1')
 echo x >"$d/new.txt"
 run "$d" "$(payload true)"
-check "stop_hook_active: rc" 0 "$RC"
-check "stop_hook_active: not run" no "$RAN"
+check "stop_hook_active, still red: rc 0, never 2" 0 "$RC"
+check "stop_hook_active, still red: ran" yes "$RAN"
+check "stop_hook_active, still red: tells the person" yes "$(has "$OUT" "still failing")"
 run "$d" '{"session_id":"s1", "stop_hook_active" : true}'
-check "stop_hook_active spaced: not run" no "$RAN"
+check "stop_hook_active spaced: rc 0" 0 "$RC"
+check "stop_hook_active spaced: tells the person" yes "$(has "$OUT" "still failing")"
 run "$d" '{"cwd":"/a/\"stop_hook_active\": true","stop_hook_active":false}'
-check "stop_hook_active inside a string: still runs" yes "$RAN"
+check "stop_hook_active inside a string: still blocks" 2 "$RC"
+
+d=$(fixture active_green 'true')
+echo x >"$d/new.txt"
+run "$d" "$(payload true)"
+check "stop_hook_active, now green: rc" 0 "$RC"
+check "stop_hook_active, now green: no message" no "$(has "$OUT" "systemMessage")"
 
 run "$d" ''
 check "empty payload: rc 1, not 2" 1 "$RC"
@@ -128,7 +136,6 @@ for marker in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD rebase-merge rebase-apply;
   check "$marker: not run" no "$RAN"
 done
 
-# In a worktree .git is a file, so `[ -f .git/MERGE_HEAD ]` is false mid-merge.
 d=$(fixture wt_main 'exit 1')
 git -C "$d" worktree add -q -b wt "$TMP/wt" 2>/dev/null
 echo x >"$TMP/wt/new.txt"
@@ -145,6 +152,23 @@ check "no recipe: rc" 0 "$RC"
 check "no recipe: warns" yes "$(has "$OUT" "systemMessage")"
 run "$d" "$(payload false nr)"
 check "no recipe: warns once per session" "" "$OUT"
+run "$d" '{"stop_hook_active":false}'
+check "no session id: warns anyway" yes "$(has "$OUT" "systemMessage")"
+run "$d" '{"stop_hook_active":false}'
+check "no session id: no shared marker" yes "$(has "$OUT" "systemMessage")"
+
+# A Justfile that no longer parses is the agent's mistake, not a missing recipe.
+d=$(fixture brokenjf 'true')
+printf 'check-fast:\n    @touch ran\nbroken recipe ((\n' >"$d/Justfile"
+run "$d" "$(payload false bj)"
+check "unparsable Justfile: rc 2" 2 "$RC"
+check "unparsable Justfile: shows the parse error" yes "$(has "$ERR" "error")"
+
+d=$(fixture nojustfile 'true')
+rm "$d/Justfile"
+run "$d" "$(payload false njf)"
+check "no Justfile: rc" 0 "$RC"
+check "no Justfile: warns" yes "$(has "$OUT" "no Justfile")"
 
 d=$(fixture nojust 'exit 1')
 echo x >"$d/new.txt"
@@ -167,13 +191,31 @@ check "long: keeps the end" yes "$(has "$ERR" "red-error")"
 check "long: drops the start" no "$(printf '%s\n' "$ERR" | grep -qx 1 && echo yes || echo no)"
 check "long: ANSI stripped" no "$(has "$ERR" $'\033[')"
 
-# --- cwd from the payload when CLAUDE_PROJECT_DIR is unset ------------------
+d=$(fixture exact 'seq 1 58; exit 1')
+echo x >"$d/new.txt"
+run "$d" "$(payload)"
+check "exactly 60 lines: no trim header" no "$(has "$ERR" "Last 60 of")"
+
+# --- which tree is checked ---------------------------------------------------
 d=$(fixture cwd 'exit 1')
 echo x >"$d/new.txt"
 rm -f "$d/ran"
 printf '{"cwd":"%s","stop_hook_active":false}' "$d" | (cd / && bash "$HOOK") >/dev/null 2>&1
 RC=$?
-check "payload cwd: rc" 2 "$RC"
+check "payload cwd, no project dir: rc" 2 "$RC"
+check "payload cwd, no project dir: ran" yes "$([ -e "$d/ran" ] && echo yes || echo no)"
+
+# A worktree session has the worktree as cwd and the main checkout as
+# CLAUDE_PROJECT_DIR; the change is in the worktree.
+main=$(fixture cwd_main 'exit 1')
+git -C "$main" worktree add -q -b cwdwt "$TMP/cwdwt" 2>/dev/null
+echo x >"$TMP/cwdwt/new.txt"
+rm -f "$TMP/cwdwt/ran" "$main/ran"
+printf '{"cwd":"%s","stop_hook_active":false}' "$TMP/cwdwt" |
+  CLAUDE_PROJECT_DIR="$main" bash "$HOOK" >/dev/null 2>&1
+RC=$?
+check "worktree cwd over project dir: rc" 2 "$RC"
+check "worktree cwd over project dir: ran in the worktree" yes "$([ -e "$TMP/cwdwt/ran" ] && echo yes || echo no)"
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

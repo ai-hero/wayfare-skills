@@ -8,9 +8,9 @@ compatibility: "Requires the complete Wayfare plugin and the target repository's
 
 # Handoff: package this conversation for a downstream agent
 
-Write one work item in `.plans/` from this conversation. Include the goal,
-decisions and reasons, completed work, and remaining work. A downstream agent
-must execute it **without repeating questions this conversation already
+File one work item with `hero_item_create` from this conversation. Include the
+goal, decisions and reasons, completed work, and remaining work. A downstream
+agent must execute it **without repeating questions this conversation already
 answered**. The reader may be a fresh session, a cheaper model,
 `wayfare:wayfare-build-task`, or a teammate.
 
@@ -110,17 +110,15 @@ corrections. Write the item only after the user says yes.
 
 ### Step 3: Write the Work-Item
 
-One file at `.plans/items/NNN-slug.md`, id continuing from the highest existing
-id (wayfare-grill-idea's numbering rules: integer `id`, zero-padded filename
-only). Use the shared format plus the handoff sections:
+File one item with `hero_item_create task TITLE BODY_FILE`
+(`../../references/store-writes.md`, *Creating an item*), which allocates the
+`id` and prints it. Draft the body (no `id`, `type` or `title` line) in the
+shared format plus the handoff sections:
 
 ```markdown
 ---
-id: 9
-type: task # every item is a wayfare item (docs/PLAN.md)
 shape: story # or structural, defect, visual, dependency, docs
 origin: handoff
-title: Finish the payment-retry migration
 status: planning # docs/PLAN.md's lifecycle; flipped to ready by the user's ready-mark
 depends_on: []
 one_way_door: false
@@ -245,11 +243,11 @@ filing.** Never file to a repo the user did not name in this session.
    The target repo's labels and templates are its own. Do not pass `--label`
    unless the user named one that exists there.
 
-5. **Write the local stub.** Keep a `.plans/` item here titled for *this* repo's
-   side of the work (e.g. "Await rate-limit support in acme/api-service"), with
-   the issue URL in its Context. This repo's plate should show that it is
-   waiting on someone, otherwise the dependency is invisible the moment this
-   conversation ends.
+5. **File the local stub** with `hero_item_create`. Keep a `.plans/` item here
+   titled for *this* repo's side of the work (e.g. "Await rate-limit support in
+   acme/api-service"), with the issue URL in its Context. This repo's plate
+   should show that it is waiting on someone, otherwise the dependency is
+   invisible the moment this conversation ends.
 
    Use `status: planning`, because the external gate cannot be expressed in
    `depends_on` (it holds ids of items in **this** store only, and an entry no
@@ -276,8 +274,8 @@ Downstream pickup (after the ready-mark):
 ```
 
 A handoff usually wants immediate pickup, so end by offering the flip: "Mark it
-ready for pickup now? [y/N]" On yes, set `status: ready` and add `ready_marked:`
-with the date.
+ready for pickup now? [y/N]" On yes, run `hero_item_set_status ID ready`, which
+also stamps `ready_marked:`.
 
 For a `--repo` handoff, report both sides so it's clear what left the building:
 

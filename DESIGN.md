@@ -1,6 +1,6 @@
 # Design
 
-> Last updated: 2026-10-22 · Source ref: ebe36dd29311836a91faf793c42205dd44630b1e
+> Last updated: 2026-11-16 · Source ref: 41447edf791f87976f4967ae1bff9d7b9f2bfa03
 
 Why wayfare is shaped the way it is. Facts the code cannot state about itself,
 and decisions someone would otherwise undo.
@@ -27,6 +27,13 @@ same checks locally and in `pr-check.yaml`, one recipe per CI step. mdformat
 owns Markdown line breaks, so nobody re-wraps a paragraph by hand, except in this
 file, whose line-3 anchor must stay on one line.
 
+Under a Wayfare server backend the store functions call the `wayfare` CLI
+(`WAYFARE_CLI`, else `wayfare` on PATH) and `jq`. That CLI is the only seam to
+the server: `hero-lib.sh` renders what it returns into a read-only cache in the
+file shapes the local readers parse, and a field the server has no value for
+fails loudly, naming the server and the missing field, rather than reading as
+empty or falling back to a local file.
+
 `analysis/` is Python too, over a local SQLite store, and sits outside every
 gate above (see Boundaries).
 
@@ -40,8 +47,8 @@ but its suite only runs where that venv exists (see Testing).
 | Path | What lives there |
 | -- | -- |
 | `skills/<name>/` | One skill each: instructions an agent follows, not code it runs. `SKILL.md` is the entrypoint an agent loads; a pipeline skill keeps its long procedure in a linked `WORKFLOW.md`, so activation stays short. |
-| `references/` | Procedure shared by several skills; a skill points at it rather than restating it. `authorization.md` says when a run continues, confirms, stops or defers, and `client-capabilities.md` maps the skills' generic operations onto each host's tools. |
-| `docs/` | The standards: the store, connections, the fleet map, messages, pipelines, and the rest. |
+| `references/` | Procedure shared by several skills; a skill points at it rather than restating it. `authorization.md` says when a run continues, confirms, stops or defers, `client-capabilities.md` maps the skills' generic operations onto each host's tools, and `store-writes.md` fixes the two write channels: an item's own fields, and `DESIGN.md`. |
+| `docs/` | The standards: the store and its two backends, connections, the fleet map, messages, the product description, pipelines, and the rest. |
 | `scripts/` | The shell library every skill sources, its helpers and `*.test.sh` suites, the Python compliance engine (`audit.py`, `consistency.py`), and the Python checkers (`check_docs.py`, `pr_text_lint.py`, `diff_leftovers.py`). |
 | `hooks/` | Claude Code hooks (`hooks.json`): a Stop hook, `check-deferrals.sh`, that blocks a stop once when deferred work was never filed in `.plans/`, and a SessionStart hook, `check-floors.sh`, that warns when a tool the fleet's `setup.yaml` floors is installed below that floor. Claude Code only; other hosts do not run them. |
 | `Justfile` | The gate recipes CI calls, one per step. |
@@ -66,7 +73,9 @@ but its suite only runs where that venv exists (see Testing).
 | `.github/workflows/auto-approve.yaml` → consumers | Executed *in place* by ~25 repos via `uses: …@main`. Not copied; resolved at trigger time. A consumer's caller is also held to the vendored `caller.yaml` when `@auto-approve` runs. Any workflow a PR touches whose `uses:` (as YAML resolves it, at the base or the head) calls this one must be byte-identical to `assets/auto-approve/caller.yaml` at `main`, and deleting it, or moving it where it no longer runs, always fails. That is CI-20, keyed on content rather than the audit's one path. A change to `auto-approve.yaml`, the vendored `caller.yaml`, the hooks and what they source, or the plugin manifests needs a person: `.github/auto-approve-human-review.txt` lists them, and the workflow reads it from `main`. |
 | `FLEET.md` → the audit | The map is `.fleet/FLEET.md`, and the fleet root is the folder holding `.fleet/`, never inside a git work tree and never beside `HERO.md`, so a map committed in a cloned repo cannot make the audit run that clone's `.fleet/checkers.py`. The rules, who can steer the audit through the map, and how the map and the per-machine pin are reviewed are in [docs/FLEET-MD.md](./docs/FLEET-MD.md); the decision is in *The fleet map moves into the register repo* below. |
 | register → the audit | The overlay (`CONTROLS.yaml`, `CHECKS.yaml`, `checkers.py`) is read from a commit of the register checkout: `origin/main`, freshly fetched, else HEAD; only a register with no `.git` is read from its working tree. The engine trusts the operator's branch protection to make `origin/main` reviewed and does not check it. Anything short of a clean, pushed, fetched `origin/main` is unreviewed: the header's `register:` line says why, the overlay's changes to baseline records are dropped, its own checks read MANUAL, `checkers.py` is not loaded, and `--fail-on` exits 3. |
-| repo → sibling repo | A skill reaches a sibling through a message, a new file in the sibling's `.plans/inbox/` and the only write allowed there; never by editing its code or config. |
+| repo → sibling repo | A skill reaches a sibling through a message, never by editing its code or config. On the local store the message is a new file in the sibling's `.plans/inbox/` and the only write allowed there; that file write holds on the local store only. Under a server backend the inbox is the app's record, `hero_msg_send` reaches it through the `wayfare` CLI, and the local write is refused. |
+| skills and scripts → the store | Nothing outside `hero-lib.sh` (and `hero-fields.sh` and `fleet-scan.sh`, and in Python `audit.py`'s `config_path`, `register_dir` and `fleet_map`) reads `HERO.md`, the register or the inbox by name; see *The store layer* under Invariants. |
+| `.plans/`, `.fleet/`, the inbox → the server | Under a server backend these are records in the app, not files. The local functions refuse writes there, and reads render the server's data into a read-only cache. |
 | audits → `issues` tracker | A confirmed finding (judged against the default branch as merged) is filed as one ticket through the `issues` connection, linked both ways with its `.plans/` item, and closed only on evidence (`references/finding-tickets.md`). Candidates stay local. |
 | `analysis/` → the rest | Research code, outside the plugin's gates (check_docs, mdformat, the main codespell hook, semgrep). Nothing in `skills/`, `scripts/` or `hooks/` imports it; it reads the plugin and fleet the way a skill does, never the other way round. `publishing/` is the one reader: it reuses `analysis/report`'s figure library and reads `analysis/manuscript/`. |
 | `publishing/` → `website` | `./publish web` writes the web edition into a worktree of the sibling `website` repo on its own branch (`WEBSITE_DIR`), never into the checkout someone works in. It is the one place this repo edits a sibling's code, and a person merges it there. |
@@ -76,13 +85,46 @@ The `auto-approve` rows are the ones that surprise people.
 **called**. A change to the first reaches a repo when someone re-runs the
 installer. A change to the second reaches every repo on merge.
 
-Three places carry wayfare's state in a consuming repo, and each has one owner:
+Four places carry wayfare's state in a consuming repo, and each has one owner:
 `HERO.md` (one repo's config), `FLEET.md` (the fleet's map of the sibling
-checkouts, kept in the register repo at `.fleet/FLEET.md`), and `.plans/` (the
-roadmap store, whose schema
-`docs/PLAN.md` defines). A verb scoped to the wrong one writes the wrong file.
+checkouts, kept in the register repo at `.fleet/FLEET.md`), `.plans/` (the
+roadmap store, whose schema `docs/PLAN.md` defines), and `PRODUCT.md` (the
+whiteboard description of what the product is and can do,
+[docs/PRODUCT-MD.md](./docs/PRODUCT-MD.md)). A verb scoped to the wrong one
+writes the wrong file. Those files are the local store. On a server-backed
+fleet `.plans/`, `.fleet/`, the inbox and the product's ideas are app records
+and no file is written.
+
+`wayfare-sync-product` writes the product description: what the product is, its
+features with a shipped, partial or planned status, and one statement of what a
+person can do for each. It files ideas on the server, or writes `PRODUCT.md`
+locally. `wayfare-review-product` compares that description with the code and
+writes nothing; it reports missing features, claims the code no longer backs,
+wrong statuses and a stale Source ref. Its Hard Rule is this file's, one level
+up: the description never restates what reading the code answers.
+`wayfare-work-task` is the agent side of a server-backed fleet: it reads the
+tasks the server lists as claimable, claims one under a 30-minute lease, builds
+it, opens the PR, links it to the task and reports, and releases the claim when
+the build fails. It never reviews its own task, merges or passes a gate.
 
 ## Invariants
+
+### The store layer
+
+Plans, the fleet map, the config and the inbox are reached only through
+`scripts/hero-lib.sh`, `hero-fields.sh` and `fleet-scan.sh`, and in the Python
+scripts through `audit.py`'s `config_path`, `register_dir` and `fleet_map`.
+`validate.sh` fails a skill, reference, hook or script that reads one by name,
+and a Python script that joins its path. The reason is the switch below: a read
+that bypasses the functions still works on the local store and silently reads
+the wrong place the day a fleet moves to the server. A read with no function
+yet gets one in `hero-lib.sh`; there is no opt-out marker.
+
+Writes follow the same rule. A skill writes an item through
+`hero_item_set_status`, `hero_item_set`, `hero_item_tick` and `hero_item_log`,
+and files a new one with `hero_item_create`, which returns 1 and writes nothing
+on a server backend until the server has create-item. The functions' local
+writes are refused under a server backend (`hero_store_require_local`).
 
 ### Testing
 
@@ -322,3 +364,60 @@ skill posts. What still needs judgment runs on demand, not on every commit.
   that skipped the pin now gets no review and no reviewed overlay until it pins.
   Fan-out (`hero_fleet_root`, Step 0) does not need the pin, so `sync` can still
   find the fleet root to write the pin for.
+
+### 2026-11-16: DESIGN.md changes ride an item's branch, and item writes go through the store layer
+
+- Context: a skill that settled something `DESIGN.md` should say used to write
+  the file wherever the working tree was, including the default branch. The tree
+  then disagreed with the branch, the next architecture review read that as
+  drift, and the change had no item to carry or review it. Item status and
+  field writes, and item creation, were likewise hand edits of `.plans/` files
+  that land nowhere once the store is the server.
+- Decision: a decision's `DESIGN.md` change is drafted on an item (its
+  `## DESIGN.md` section, or the goal's `### Design` for a member of a goal with
+  `## Plan`) and applied as a Subtask and a DoD line on that item's branch.
+  `wayfare-sync-architecture` writes only on a branch a live item owns: the
+  current branch equals the `branch:` of an item not `done` or `dropped`. Any
+  other branch, the default branch and bootstrap included, gets a `shape: docs`
+  task carrying the confirmed edits instead, and `wayfare-review-architecture`
+  reports a `DESIGN.md` modified there. Item status, field and log writes go
+  through `hero_item_set_status`, `hero_item_set` and `hero_item_log`, and
+  creation through `hero_item_create`, which refuses on a server backend until
+  the server has create-item. `references/store-writes.md` holds both rules once.
+- Consequences: `DESIGN.md` is never edited in place by a skill, so every change
+  to it has a reviewer and an item that explains it. A skill that cannot file
+  an item on a server backend reports the work it carried and stops, never
+  writing the file by hand. `validate.sh` holds the routed skills and
+  `references/*.md` to both rules.
+
+### 2026-11-16: The local store's behaviour is the contract
+
+- Context: the server store (aihero-wayfare) allows replies on sent messages,
+  re-closes, and goal resolutions that the local store does not have.
+- Decision: the local store's behaviour is the contract. `hero-lib.sh` enforces
+  it on the server branch rather than widening the local store to whatever the
+  server allows.
+- Consequences: a server-side loosening never reaches the skills unnoticed, and
+  a new server value needs a mapping in `hero-lib.sh` before any skill sees it.
+
+### 2026-11-16: One switch picks the store for a whole fleet, and local writes are refused after cutover
+
+- Context: wayfare grew a second backend, the Wayfare server, beside the local
+  `.plans/`, `.fleet/` and inbox files. Messages cross repos, so a fleet split
+  between backends would drop them; and a switch kept in `HERO.md` or `FLEET.md`
+  cannot be read before it is chosen, because the server holds both records.
+- Decision: `hero_store_backend` answers `WAYFARE_STORE` (`local` or an
+  `http(s)://` URL) first, so a rehearsal runs against a test fleet without
+  touching the machine's pin; else a `FLEET_ROOT https://...` line in the
+  per-machine pin file `${XDG_CONFIG_HOME:-~/.config}/wayfare/registers`; else
+  `local`. A value that is neither is an error, never a silent `local`. Once it
+  names a server, `hero_store_require_local` refuses the local writes, and the
+  functions answer from the server through the `wayfare` CLI or fail naming
+  what it lacks.
+- Consequences: local stays the default, so nothing changes until a person flips
+  the switch. Reads stay possible under a server so the cutover can import from
+  the local files and the dry run can compare against them. A hand edit of a
+  `.plans/` file does not pass through a function and is not refused, which is
+  why the skills write through the functions and `validate.sh` fails prose that
+  does not. A fleet that meant the server and kept writing files would drift
+  without an error, which is what the refusal prevents.

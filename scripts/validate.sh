@@ -883,23 +883,70 @@ done < <(find "$PLUGIN_ROOT/scripts" -maxdepth 1 -type f -name '*.py' 2>/dev/nul
 # Under a server backend the item file is a read-only render, so prose that
 # tells the agent to set `status:` or `branch:` by hand writes nowhere. A skill
 # joins ITEM_WRITES_ROUTED once its item writes call hero_item_set_status,
-# hero_item_set, hero_item_tick and hero_item_log; the rest still edit by hand.
-ITEM_WRITES_ROUTED="wayfare-build-task"
+# hero_item_set, hero_item_tick and hero_item_log, and files a new item with
+# hero_item_create; the rest still edit by hand.
+# Every references/*.md is scanned, because a skill's prose is run from them.
+ITEM_WRITES_ROUTED="wayfare-build-task wayfare-drop-item wayfare-grill-idea wayfare-one-shot wayfare-write-handoff wayfare-sync-plan wayfare-audit-security wayfare-audit-compliance wayfare-audit-deep"
 item_hand_writes() { # FILE -> prints "LINE: text" per instruction to edit a field by hand
   grep -nE '(^|[^[:alnum:]_])([Ss]et|[Ff]lip[a-z]*( it| the item| the task)? to|[Ww]rite|[Mm]ark( it| the item| the task)?) `(status|branch): ' "$1" || true
+  # A new item is filed by hero_item_create; a hand-written file lands where a server never reads it.
+  grep -nE '(^|[^[:alnum:]_])([Ww]rite|[Ww]rote|[Cc]r[e]ate|[Ee]mit)s? [^.]{0,40}`?\.plans/items/(NNN|[0-9]{3}|ID)' "$1" || true
+  grep -nE '(^|[^[:alnum:]_])[Ww]rite (one|each|the)[a-z ]{0,20} (file|item|task)s? (to|in|at) `?\.plans/' "$1" || true
 }
 ITEM_WRITE_ERRORS=0
-for s in $ITEM_WRITES_ROUTED; do
+while IFS= read -r f; do
+  hits=$(item_hand_writes "$f")
+  [ -z "$hits" ] && continue
+  ITEM_WRITE_ERRORS=$((ITEM_WRITE_ERRORS + 1))
+  error "tells the agent to set an item field by hand" \
+    "${f#"$PLUGIN_ROOT/"}" "$(printf '%s' "$hits" | head -1 | cut -d: -f1)" \
+    "Call hero_item_set_status ID STATUS, hero_item_set ID branch BRANCH, or hero_item_create TYPE TITLE BODY_FILE for a new item (scripts/hero-lib.sh)"
+done < <(
+  for s in $ITEM_WRITES_ROUTED; do find "$SKILLS_DIR/$s" -type f -name '*.md' 2>/dev/null; done
+  find "$PLUGIN_ROOT/references" -maxdepth 1 -type f -name '*.md' 2>/dev/null
+)
+[[ $ITEM_WRITE_ERRORS -eq 0 ]] && pass "routed skills and references write their item through the store layer"
+
+# ── DESIGN.md is written only on a branch a live item owns ─────────
+# A skill that offers or instructs a DESIGN.md write on the default branch
+# leaves the file modified with no item to carry it (references/store-writes.md).
+# Checked a paragraph at a time, because mdformat wraps the verb and the file
+# name onto different lines. grill-idea writes the file never; sync-architecture
+# does, so only an instruction naming the default branch (or a bootstrap with
+# no branch test) counts there.
+design_write_paras() { # FILE MODE(any|default) -> prints the first line of each offending paragraph
+  awk -v mode="$2" '
+    function flush() {
+      lp = tolower(p)
+      if (lp ~ /design\.md/ && lp ~ /(append|write|edit|update|create|bootstrap)/ \
+          && lp !~ /(never|nothing|not |instead|draft|files? (a|one|the)|shape: docs)/ \
+          && (mode == "any" || lp ~ /default branch/)) print start
+      p = ""; start = 0
+    }
+    /^[[:space:]]*$/ { flush(); next }
+    { if (!start) start = NR; p = p " " $0 }
+    END { flush() }
+  ' "$1"
+}
+DESIGN_WRITE_ERRORS=0
+for pair in "wayfare-grill-idea:any" "wayfare-sync-architecture:default"; do
+  s=${pair%%:*}
   while IFS= read -r f; do
-    hits=$(item_hand_writes "$f")
-    [ -z "$hits" ] && continue
-    ITEM_WRITE_ERRORS=$((ITEM_WRITE_ERRORS + 1))
-    error "tells the agent to set an item field by hand" \
-      "${f#"$PLUGIN_ROOT/"}" "$(printf '%s' "$hits" | head -1 | cut -d: -f1)" \
-      "Call hero_item_set_status ID STATUS or hero_item_set ID branch BRANCH (scripts/hero-lib.sh)"
+    hit=$(design_write_paras "$f" "${pair##*:}" | head -1)
+    [ -z "$hit" ] && continue
+    DESIGN_WRITE_ERRORS=$((DESIGN_WRITE_ERRORS + 1))
+    error "tells the agent to write DESIGN.md outside a live item's branch" \
+      "${f#"$PLUGIN_ROOT/"}" "$hit" \
+      "Draft the entry into the item, or file a shape: docs task; see references/store-writes.md"
   done < <(find "$SKILLS_DIR/$s" -type f -name '*.md' 2>/dev/null)
 done
-[[ $ITEM_WRITE_ERRORS -eq 0 ]] && pass "routed skills write their item through the store layer"
+for s in wayfare-grill-idea wayfare-sync-architecture; do
+  grep -q 'references/store-writes\.md' "$SKILLS_DIR/$s/SKILL.md" 2>/dev/null && continue
+  DESIGN_WRITE_ERRORS=$((DESIGN_WRITE_ERRORS + 1))
+  error "does not link the DESIGN.md channel rule" "skills/$s/SKILL.md" "" \
+    "Link ../../references/store-writes.md where the skill handles a DESIGN.md change"
+done
+[[ $DESIGN_WRITE_ERRORS -eq 0 ]] && pass "DESIGN.md is written only on a live item's branch"
 
 # ── work-item store: producers must have a consumer ────────────────
 # wayfare-grill-idea, handoff, and harden all WRITE work-items into .plans/

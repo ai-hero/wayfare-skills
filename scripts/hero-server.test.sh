@@ -380,6 +380,13 @@ reset
 E=$(srv hero_item_set 2 status "done" "$APP" 2>&1 >/dev/null)
 case "$E" in *hero_item_set_status*) check "loud: the status refusal points at hero_item_set_status" ok ok ;; *) check "loud: the status refusal points at hero_item_set_status" "names it" "$E" ;; esac
 check "loud: none of them reached the server" "" "$(calls)"
+printf -- '---\nshape: docs\n---\n\n## Context\n\nx\n' > "$TMP/create-body.md"
+BEFORE=$(find "$APP/.plans" -type f | wc -l | tr -d ' ')
+reset
+E=$(srv hero_item_create task "New item" "$TMP/create-body.md" "$APP" 2>&1 >/dev/null); RC=$?
+check "create: a server WAYFARE_STORE returns 1" "1" "$RC"
+case "$E" in *"no create-item yet"*) check "create: the refusal names create-item" ok ok ;; *) check "create: the refusal names create-item" "names it" "$E" ;; esac
+check "create: no file is written and the server is not called" "$BEFORE " "$(find "$APP/.plans" -type f | wc -l | tr -d ' ') $(calls)"
 
 # ---------- plan fields ---------------------------------------------------------
 
@@ -540,6 +547,15 @@ reset
 check "branch: server prints the branch it now reads" "branch: feat/new" "$(srv hero_item_set 12 branch feat/new "$APP")"
 check "branch: as a branch log line, not an update_item field" '{"tag":"branch","text":"feat/new"}' "$(jq -c '{tag, text}' "$STUB_DIR/payload.log")"
 check "branch: update-item was not called" "" "$(calls | grep '^update-item')"
+reset
+srv hero_item_set 12 replaced_by 2 "$APP" >/dev/null 2>&1; check "replaced_by: server refuses it on an item that is not dropped (rc 2)" "2" "$?"
+check "replaced_by: and logged nothing" "" "$(calls | grep '^log')"
+cp "$STUB_DIR/item.12.json" "$TMP/item.12.saved"
+jq -c '.item.status = "dropped"' "$TMP/item.12.saved" > "$STUB_DIR/item.12.json"
+check "replaced_by: on a dropped item the server prints what it was sent" "replaced_by: 2" "$(srv hero_item_set 12 replaced_by 2 "$APP")"
+check "replaced_by: as a replaced_by log line, not an update_item field" '{"tag":"replaced_by","text":"2"}' "$(jq -c '{tag, text}' "$STUB_DIR/payload.log")"
+check "replaced_by: update-item was not called" "" "$(calls | grep '^update-item')"
+cp "$TMP/item.12.saved" "$STUB_DIR/item.12.json"
 reset
 check "tick: server logs a box it has not ticked" "tick: write the parser" "$(srv hero_item_tick 12 "write the parser" "$APP")"
 check "tick: as a tick log line" '{"tag":"tick","text":"write the parser"}' "$(jq -c '{tag, text}' "$STUB_DIR/payload.log")"

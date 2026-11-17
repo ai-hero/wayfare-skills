@@ -120,10 +120,10 @@ Review reports findings. Sync writes confirmed changes to the one root file.
 Everything else is an idea or task to think through.
 
 **Feature mode:** if `$ARGUMENTS` resolves to an existing `task` by id, filename
-slug, or title, plan that task **in place**. Change `status: accepted` to
-`planning` before the interview. Resume a task already at `planning`. Refuse
-`ready` and later statuses. Route replanning of those tasks through
-`wayfare-sync-plan`.
+slug, or title, plan that task **in place**. Run
+`hero_item_set_status ID planning` before the interview. Resume a task already
+at `planning`. Refuse `ready` and later statuses. Route replanning of those
+tasks through `wayfare-sync-plan`.
 
 **Check existing premises before planning.** Read `## Context`, `## Approach`,
 and inherited `## Subtasks` (for a goal member with no `## Approach`, its slice:
@@ -190,8 +190,8 @@ Propose the goal before Step 3's gate, and at Step 4 write it with its `## Plan`
 `## Subtasks` generated from its slice and its own `## Definition of Done`, with
 no `## Approach`. **Read `../../references/planning.md` (_A goal's plan_) before
 proposing one.** Cross-cutting decisions go in `### Design`, not the members'
-`## Context`; an architectural one also goes in `DESIGN.md`, because a decision
-made in a planning pass and written nowhere gets remade differently next time. A
+`## Context`; an architectural one is also drafted as a `DESIGN.md` entry there
+(Step 4), because an unrecorded decision gets remade differently next time. A
 task left outside any goal keeps its own `## Approach` and its own ready-mark; a
 goal's plan takes one, covering `## Plan` and every member's DoD. The user is
 approving plans, not a planning session.
@@ -275,9 +275,9 @@ listing's `anti` rows are anti-features: things this repo looked at and chose
 not to build. Read each one's `title` and `## Context` against the ask. On an
 overlap, stop: print the item (id, title, its Context) and ask whether to
 reverse the decision. Only a yes continues, and the reversal is written on the
-anti-feature, not remembered: append a dated `note:` line to its `## Log` saying
-who reversed it and why, and set it `done` with `resolution: promoted` when Step
-4 writes what it became, which carries `discovered_from: ANTI_FEATURE_ID`. A no
+anti-feature, not remembered: `hero_item_log ID note "..."` says who reversed it
+and why, and `hero_item_set_status ID done promoted` closes it when Step 4
+writes what it became, which carries `discovered_from: ANTI_FEATURE_ID`. A no
 ends the run, with the item cited as the reason. Planning it anyway is how a
 decision made once gets re-litigated every quarter, and the store's only record
 of it goes on saying "declined" beside a task that builds it.
@@ -313,28 +313,26 @@ Wait for the user's yes. Do not emit anything before it.
 ### Step 4: Emit work-items
 
 Break the understood work into the smallest units that each deliver something
-testable and can be reviewed on their own. For each, write one file to `.plans/`
-(see _The work-item format_ below) with `status: planning`. **Every item is a
-wayfare item**: `type: task` with `shape: story`, or `shape: structural` when
-the unit is a structural change rather than a story, with
-`origin: wayfare-grill-idea`. There is no plain shape any more: one lifecycle,
-one set of sections, one thing for wayfare-build-task to build, whether or not
-the repo has a `## Wayfare` block or a design target. A task can have no target.
-In that case, omit `target:` and `anchors.target`. Set `depends_on` to encode
-the real order. Dependencies make the required order explicit. Flag any
-one-way-door item with `one_way_door: true`. Ask once, at write time, what
-priority the person wants on the set (`p0` to `p3` in `docs/PLAN.md`, where
-absent is unranked): one question for the set with a per-item override, never
-one per item, and write it only when they name one. It is the owner's call on
-when, not `severity`.
+testable and can be reviewed on their own. For each, file one item with
+`hero_item_create task TITLE BODY_FILE`
+([store-writes.md](../../references/store-writes.md), _Creating an item_), its
+body drafted in _The work-item format_ below with `status: planning`. **Every
+item is a wayfare item**: `type: task` with `shape: story`, or
+`shape: structural` when the unit is a structural change rather than a story,
+with `origin: wayfare-grill-idea`. There is no plain shape any more: one
+lifecycle, one set of sections, one thing for wayfare-build-task to build,
+whether or not the repo has a `## Wayfare` block or a design target. A task can
+have no target. In that case, omit `target:` and `anchors.target`. Set
+`depends_on` to encode the real order. Dependencies make the required order
+explicit. Flag any one-way-door item with `one_way_door: true`. Ask once, at
+write time, what priority the person wants on the set (`p0` to `p3` in
+`docs/PLAN.md`, where absent is unranked): one question for the set with a
+per-item override, never one per item, and write it only when they name one. It
+is the owner's call on when, not `severity`.
 
-Number items sequentially from the highest existing `id` in `.plans/`,
-re-checked immediately before writing (not cached from earlier in the session).
-This does not eliminate a collision between two truly concurrent writers, but it
-closes the common case of a stale count from a session that has been running a
-while. Use a plain integer for the `id` frontmatter field. Zero-pad only the
-**filename** prefix (`007-slug.md`) so `ls` sorts them. `depends_on` references
-the plain integer id.
+`hero_item_create` allocates the `id` (a plain integer, re-read at call time),
+zero-pads the filename and prints the id. `depends_on` references the plain
+integer id.
 
 Before writing, verify every `depends_on` id actually exists in `.plans/`.
 reference ids, never titles. `hero_ready_items` names a dangling reference
@@ -351,42 +349,25 @@ After writing, print the readiness view (below), where new items show as `plan`
 rows, then run the ready-mark gate (Step 5).
 
 When the grilling settled a **one-way-door architectural decision** (schema,
-public API, data model, service boundary), offer to also append it to
-`DESIGN.md`'s `## Decisions` section, because the grilled answers _are_ the
-entry. Do not make the user derive them again later.
-`wayfare:wayfare-review-architecture` owns the format. Append the entry at the
-end, in date order, using this shape:
-
-```markdown
-### YYYY-MM-DD — DECISION_TITLE
-
-- Context: what forced a choice (the grilled Context answer)
-- Decision: what was chosen, over what alternatives (fold the grilled
-  Alternatives in here)
-- Consequences: what this commits us to (fold the grilled Reversibility
-  answer in here)
-```
-
-Append the entry only. Never touch the file's `Last updated` or `Source ref`
-line. Only `architecture sync` updates the anchor. If `DESIGN.md` doesn't exist,
-don't hand-create a bare one (that would bypass the owning skill's format and
-confirm flow), offer `wayfare:wayfare-sync-architecture` to bootstrap it,
-carrying the decision as trailing context.
+public API, data model, service boundary), draft its entry into the item: a
+`## DESIGN.md` section, or the goal's `### Design` for a member of a goal with
+`## Plan`, plus the Subtask and DoD line that apply it on that item's branch.
+Read `../../references/store-writes.md` (_The DESIGN.md channel_) for the shape.
 
 ### Step 5: The ready-mark gate
 
 Emitted items are `planning`: shaped, but not yet approved to implement. The
 ready-mark is the **user's act, never yours**: ask which items to mark ready,
-flip only the confirmed ones to `status: ready` and append `ready_marked:` with
-the date, leaving the rest in `planning` for a later session. Never flip an item
-unprompted, and never batch beyond what the user named. An unmarked item is
-invisible to `wayfare:wayfare-build-task` by design.
+run `hero_item_set_status ID ready` on only the confirmed ones (it stamps
+`ready_marked:`), leaving the rest in `planning` for a later session. Never flip
+an item unprompted, and never batch beyond what the user named. An unmarked item
+is invisible to `wayfare:wayfare-build-task` by design.
 
 **A goal's members are marked once, on the goal's plan.** Ask about the goal; on
-yes, write `status: ready` + `ready_marked:` on every `planning` member that
-passes `hero_member_planned ITEM_FILE GOAL_FILE` (wayfare-build-task's Step 1
-check for the same mark), and name each that fails with the part it lacks. The
-goal stays `accepted`: `wayfare-start-goal`'s gate authorizes it.
+yes, run `hero_item_set_status ID ready` on every `planning` member that passes
+`hero_member_planned ITEM_FILE GOAL_FILE` (wayfare-build-task's Step 1 check for
+the same mark), and name each that fails with the part it lacks. The goal stays
+`accepted`: `wayfare-start-goal`'s gate authorizes it.
 
 **In Feature mode under `wayfare-sync-plan`, the mark ends this task's grill,
 not the pass.** Flip the task to `ready`, then hand control back to wayfare,
@@ -398,10 +379,10 @@ answering.
 
 ## The work-item format
 
-One markdown file per item at `.plans/items/NNN-slug.md`. **Read
-`../../references/work-item-format.md` before Step 4 writes one**: it holds the
-canonical frontmatter block (the status enum, `ready_marked:`, `awaiting`) and
-which sections each item must carry.
+One markdown file per item at `.plans/items/NNN-slug.md`, filed by
+`hero_item_create`. **Read `../../references/work-item-format.md` before Step 4
+drafts one**: it holds the canonical frontmatter block (the status enum,
+`ready_marked:`, `awaiting`) and which sections each item must carry.
 
 ## "What's ready": the one query that matters
 

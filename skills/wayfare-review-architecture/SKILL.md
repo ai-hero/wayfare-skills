@@ -224,6 +224,13 @@ must never produce the healthy verdict.
 
    - **obsolete**: a section describing something the code dropped.
 
+   - **uncommitted**: `DESIGN.md` modified in the working tree
+     (`git status --porcelain -- DESIGN.md` is non-empty) on a branch no live
+     item owns, the default branch included. Test the branch as
+     `wayfare:wayfare-sync-architecture` does
+     (`../../references/store-writes.md`, _The DESIGN.md channel_). The change
+     has no item to carry it; say that sync files a `shape: docs` task for it.
+
    - **defect**: a missing or malformed `Source ref`, a missing or extra
      top-level section, a changed Decisions entry, or a Hard Rule violation.
      Check each category below.
@@ -259,9 +266,8 @@ anchor, not a plan item.
   architecture layers. Its sync runs `review` first and offers `sync` when the
   file is missing or stale.
 - **`wayfare:wayfare-grill-idea`** grills against the file in Feature mode, and
-  after settling a one-way-door decision offers to append it to `## Decisions`
-  (dated entry, same format). Use the interview answers for the entry. Do not
-  ask the user to derive them again.
+  after settling a one-way-door decision drafts the dated `## Decisions` entry
+  into the item it governs, which appends it on its own branch.
 - **Non-sync writers append their entry only.** Never touch the `Last updated` /
   `Source ref` line. Only `sync` updates the anchor. If an appender updates the
   ref, it falsely claims that the whole file matches that commit.

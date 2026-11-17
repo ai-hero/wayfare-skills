@@ -866,7 +866,7 @@ Three cases, gated by what each one actually costs:
 [2/9] implement
   ! subtask 3 (token refresh) is its own story, not part of this slice
   → carve it into a new task and drop it from this one? [y/N]
-  → wrote .plans/items/018-i-stay-signed-in-across-sessions.md (task 18)
+  → filed task 18 with hero_item_create (i-stay-signed-in-across-sessions)
   → continuing with subtasks 4–5
 ```
 
@@ -939,11 +939,10 @@ outright. If the work you are carving owns a DoD line, it satisfies target
 ground and is therefore a story; if it genuinely isn't one, the DoD line belongs
 to the parent and stays there.
 
-Ids for either shape follow wayfare-grill-idea's numbering rules: the highest
-existing `id` in `.plans/`, **re-checked immediately before writing, never
-cached from earlier in the session**. A wayfare-build-task run is long, which is
-exactly the stale-count case that rule exists for; a collision only ever
-surfaces as a `duplicate id` line on stderr.
+Either shape is filed with `hero_item_create task TITLE BODY_FILE`
+(`../../references/store-writes.md`, *Creating an item*), which allocates the id
+when it is called. A wayfare-build-task run is long, so no id is carried from
+earlier in the session.
 
 Five rules that make a carve honest:
 

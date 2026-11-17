@@ -3283,16 +3283,18 @@ _hero_local_append() { # FILE SECTION LINE
 # `branch:`). A status moves by hero_item_set_status. Values are checked here,
 # before routing, so both backends accept and refuse the same ones. Setting
 # `blocked_on` locally also stamps `blocked_since` when the item has none; the
-# server stamps its own.
+# server stamps its own. `replaced_by` is accepted only on an item already at
+# `dropped` (so the status moves first), and the server has no field for it, so
+# there it is a `replaced_by` log line.
 hero_item_set() { # NUMBER KEY VALUE [ROOT]
   local root r n pid skey kind body json f val sv
   n=$(_hero_item_num hero_item_set "${1:-}") || return 2
   case "$2" in
     title|priority|severity|shape|blocked_on|success|origin|branch) kind=str ;;
-    rank|parent) kind=int ;;
+    rank|parent|replaced_by) kind=int ;;
     depends_on) kind=ints ;;
     source|target) kind=list ;;
-    *) echo "hero_item_set: '$2' is not a field this writes (title priority severity shape rank parent depends_on blocked_on source target success origin branch); a status moves by hero_item_set_status" >&2; return 2 ;;
+    *) echo "hero_item_set: '$2' is not a field this writes (title priority severity shape rank parent depends_on blocked_on source target success origin branch replaced_by); a status moves by hero_item_set_status" >&2; return 2 ;;
   esac
   case "${3:-}" in *[[:cntrl:]]*) echo "hero_item_set: a $2 holds no control characters; a newline would start a field of its own" >&2; return 2 ;; esac
   val=${3:-}
@@ -3316,6 +3318,15 @@ hero_item_set() { # NUMBER KEY VALUE [ROOT]
   esac
   root=$(hero_srv_root "${4:-}")
   r=$(hero_srv_route_root "$root") || return 1
+  if [ "$2" = replaced_by ]; then
+    f=$(hero_item_file "$n" "$root") || return 1
+    [ "$(hero_item_field "$f" status)" = dropped ] || { echo "hero_item_set: replaced_by is set only on a dropped item; item $n is '$(hero_item_field "$f" status)'. Drop it first with hero_item_set_status $n dropped" >&2; return 2; }
+    if [ "$r" != local ]; then
+      hero_item_log "$n" replaced_by "$val" "$root" >/dev/null || return 1
+      printf 'replaced_by: %s\n' "$val"
+      return 0
+    fi
+  fi
   if [ "$r" = local ]; then
     hero_store_require_local "$root" hero_item_set || return 1
     f=$(hero_item_file "$n" "$root") || return 1
@@ -3564,6 +3575,86 @@ hero_item_tick() { # NUMBER TEXT [ROOT]
     hero_item_log "$n" tick "$2" "$root" >/dev/null || return 1
   fi
   printf 'tick: %s\n' "$2"
+}
+
+# The highest item id under DIR, from each file's `id:` and its filename's
+# number, so an item whose frontmatter is unreadable still holds its number.
+_hero_item_max_id() { # DIR
+  local f b id max=0
+  setopt localoptions nullglob 2>/dev/null || true
+  for f in "$1"/*.md; do
+    [ -e "$f" ] || continue
+    b=${f##*/}
+    for id in "$(hero_item_field "$f" id)" "${b%%[!0-9]*}"; do
+      case "$id" in ''|*[!0-9]*) continue ;; esac
+      [ $((10#$id)) -le "$max" ] || max=$((10#$id))
+    done
+  done
+  printf '%d' "$max"
+}
+
+# File a new item and print its id. BODY_FILE holds the item minus `id:`,
+# `type:` and `title:` (those are the arguments, and a copy in the file is rc 2
+# so two spellings never disagree): an optional frontmatter block, then the
+# sections. `status:` defaults to planning (new for an idea, anti-feature or
+# signal). The id is the highest one in the store plus one, read here and never
+# cached, and the file is linked into place under a lock so an existing path is
+# refused, not overwritten. The server has no create-item yet, so there it refuses and
+# files nothing.
+hero_item_create() { # TYPE TITLE BODY_FILE [ROOT]
+  local root dir type title body slug n f tmp max k st fm r rc
+  type=${1:-}; title=${2:-}; body=${3:-}
+  case "$type" in task|signal|goal|idea|anti-feature) ;; *) echo "hero_item_create: TYPE '$type' is not task, signal, goal, idea or anti-feature" >&2; return 2 ;; esac
+  [ -n "$title" ] || { echo "hero_item_create: TITLE is required" >&2; return 2; }
+  case "$title" in *[[:cntrl:]]*) echo "hero_item_create: a title holds no control characters" >&2; return 2 ;; esac
+  [ -f "$body" ] || { echo "hero_item_create: BODY_FILE '$body' is not a file" >&2; return 2; }
+  root=$(hero_srv_root "${4:-}")
+  r=$(hero_srv_route_root "$root") || return 1
+  if [ "$r" != local ]; then
+    echo "hero_item_create: the server has no create-item yet (aihero-wayfare); this item was not filed" >&2
+    return 1
+  fi
+  hero_store_require_local "$root" hero_item_create || return 1
+  dir="$(hero_store_path "$root")/items"
+  [ ! -L "$dir" ] || { echo "hero_item_create: $dir is a symlink; refusing to write through it" >&2; return 1; }
+  [ -d "$dir" ] || { echo "hero_item_create: no item directory at $dir" >&2; return 1; }
+  fm=$(awk 'NR == 1 && !/^---[[:space:]]*$/ { exit } NR > 1 && /^---[[:space:]]*$/ { exit } NR > 1 { print }' "$body")
+  for k in id type title; do
+    if printf '%s\n' "$fm" | grep -qE "^$k:"; then
+      echo "hero_item_create: BODY_FILE carries its own $k:; it is an argument (id is allocated)" >&2; return 2
+    fi
+  done
+  slug=$(printf '%s' "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]\{1,\}/-/g; s/^-//; s/-$//' | cut -c1-60 | sed 's/-$//')
+  [ -n "$slug" ] || slug=item
+  case "$type" in idea|anti-feature|signal) st=new ;; *) st=planning ;; esac
+  # Two creators that read the same highest id would both take the next one
+  # under different slugs, and ln only refuses the same path; the lock makes
+  # read-and-link one step.
+  hero_pending_lock "$dir/.create" || return 1
+  max=$(_hero_item_max_id "$dir") || { hero_pending_unlock "$dir/.create"; return 1; }
+  n=$((max + 1))
+  f="$dir/$(printf '%03d' "$n")-$slug.md"
+  tmp=$(mktemp "$dir/.create.XXXXXX") || { hero_pending_unlock "$dir/.create"; return 1; }
+  {
+    printf -- '---\nid: %s\ntype: %s\ntitle: %s\n' "$n" "$type" "$(_hero_yaml_scalar "$title")"
+    if [ -n "$fm" ]; then
+      printf '%s\n' "$fm" | grep -qE '^status:' || printf 'status: %s\n' "$st"
+      printf '%s\n' "$fm"
+      printf -- '---\n'
+      awk 'NR == 1 { next } !done && /^---[[:space:]]*$/ { done = 1; next } done { print }' "$body"
+    else
+      printf 'status: %s\n---\n' "$st"
+      cat "$body"
+    fi
+  } > "$tmp" && ln "$tmp" "$f" 2>/dev/null; rc=$?
+  rm -f "$tmp"
+  hero_pending_unlock "$dir/.create"
+  if [ "$rc" -ne 0 ]; then
+    if [ -e "$f" ]; then echo "hero_item_create: $f already exists; refusing to overwrite" >&2
+    else echo "hero_item_create: could not write $f" >&2; fi
+    return 1
+  fi
+  printf '%s\n' "$n"
 }
 
 # ----- messages

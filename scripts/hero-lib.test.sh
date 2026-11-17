@@ -485,6 +485,13 @@ check "item-write: committed is a local status" "status: committed" "$(sb hero_i
 sb hero_item_set_status 3 "done" shipped "$SW" >/dev/null
 check "item-write: done takes its resolution" "done shipped" "$(hero_item_field "$SW/.plans/items/003-w.md" status) $(hero_item_field "$SW/.plans/items/003-w.md" resolution)"
 check "item-write: branch is a field write" "branch: feat/x" "$(sb hero_item_set 3 branch feat/x "$SW")"
+printf -- '---\nid: 4\ntype: task\nstatus: active\n---\n\n## Log\n' > "$SW/.plans/items/004-r.md"
+sb hero_item_set 4 replaced_by 3 "$SW" >/dev/null 2>&1; check "item-write: replaced_by on an item that is not dropped is rc 2" "2" "$?"
+check "item-write: and the item keeps no replaced_by" "" "$(hero_item_field "$SW/.plans/items/004-r.md" replaced_by)"
+sb hero_item_set_status 4 dropped "" "$SW" >/dev/null
+check "item-write: replaced_by beside dropped is written" "replaced_by: 3" "$(sb hero_item_set 4 replaced_by 3 "$SW")"
+check "item-write: and read back from the file" "3" "$(hero_item_field "$SW/.plans/items/004-r.md" replaced_by)"
+sb hero_item_set 4 replaced_by abc "$SW" >/dev/null 2>&1; check "item-write: a replaced_by that is not an id is rc 2" "2" "$?"
 check "item-write: tick prints the box" "tick: write the parser" "$(sb hero_item_tick 3 "write the parser" "$SW")"
 check "item-write: every box with that text is ticked, the others left" "2 1" \
   "$(grep -c '^- \[x\] write the parser$' "$SW/.plans/items/003-w.md") $(grep -c '^1\. \[ \] number one' "$SW/.plans/items/003-w.md")"
@@ -497,6 +504,44 @@ for c in "hero_item_set_status 3 active ''" "hero_item_set 3 branch feat/y" "her
   case "$ERR" in *https://app.example.com*) N=names ;; *) N="$ERR" ;; esac
   check "item-write: '${c%% *}' under a server backend fails naming the server, file untouched" "1 names $SUM" "$RC $N $(cksum < "$SW/.plans/items/003-w.md")"
 done
+
+# hero_item_create: local files an item the listing reads; a server backend refuses and writes nothing.
+CR="$TMP/create"; mkdir -p "$CR"; git init -q "$CR" 2>/dev/null
+( unset WAYFARE_STORE; hero_work_store "$CR" >/dev/null 2>&1 )
+mkdir -p "$CR/.plans/items"
+printf -- '---\nschema: 1\ndefault_branch: main\nnext_id: 1\n---\n' > "$CR/.plans/PLAN.md"
+printf -- '---\nid: 7\ntype: task\ntitle: Old\nstatus: done\n---\n' > "$CR/.plans/items/007-old.md"
+printf -- '---\nshape: docs\norigin: test\n---\n\n## Context\n\nwhy\n' > "$TMP/create-body.md"
+check "create: prints the next id after the highest one" "8" "$(sb hero_item_create task "Fix: the #1 thing" "$TMP/create-body.md" "$CR")"
+CF="$CR/.plans/items/008-fix-the-1-thing.md"
+check "create: the file is NNN-slug.md with id, type, status and the body's fields" "8 task planning docs" \
+  "$(hero_item_field "$CF" id) $(hero_item_field "$CF" type) $(hero_item_field "$CF" status) $(hero_item_field "$CF" shape)"
+check "create: a title with a colon and # reads back whole" "Fix: the #1 thing" "$(hero_item_field "$CF" title)"
+check "create: the sections follow the frontmatter" "1" "$(grep -c '^## Context$' "$CF")"
+check "create: hero_ready_items lists it with its title and status" "plan 008-fix-the-1-thing.md" \
+  "$(sb hero_ready_items "$CR/.plans" 2>/dev/null | awk '/Fix: the #1 thing/ { print $1, $2 }')"
+printf -- '---\nstatus: new\n---\n\n## Context\n\nidea\n' > "$TMP/create-idea.md"
+sb hero_item_create idea "An idea" "$TMP/create-idea.md" "$CR" >/dev/null
+check "create: a status in the body is kept" "new" "$(hero_item_field "$CR/.plans/items/009-an-idea.md" status)"
+printf '## Context\n\nbare\n' > "$TMP/create-bare.md"
+sb hero_item_create task "Bare" "$TMP/create-bare.md" "$CR" >/dev/null
+check "create: a body with no frontmatter files at planning" "planning" "$(hero_item_field "$CR/.plans/items/010-bare.md" status)"
+printf -- '---\nid: 3\n---\n' > "$TMP/create-id.md"
+sb hero_item_create task "Has id" "$TMP/create-id.md" "$CR" >/dev/null 2>&1; check "create: a body that carries its own id is rc 2" "2" "$?"
+sb hero_item_create epic "T" "$TMP/create-bare.md" "$CR" >/dev/null 2>&1; check "create: an unknown type is rc 2" "2" "$?"
+printf -- '---\nid: 11\ntype: task\ntitle: Taken\nstatus: ready\n---\n' > "$CR/.plans/items/011-taken.md"
+CK=$(cksum < "$CR/.plans/items/011-taken.md")
+( unset WAYFARE_STORE; _hero_item_max_id() { echo 10; }; hero_item_create task "Taken" "$TMP/create-bare.md" "$CR" ) >/dev/null 2>&1; check "create: an existing path is refused (rc 1)" "1" "$?"
+check "create: and the existing file is untouched" "$CK" "$(cksum < "$CR/.plans/items/011-taken.md")"
+check "create: the id counts a filename number the frontmatter lacks" "13" "$(printf -- '---\nid: x\n---\n' > "$CR/.plans/items/012-odd.md"; sb hero_item_create task "Next" "$TMP/create-bare.md" "$CR")"
+rm -f "$CR/.plans/items/012-odd.md" "$CR/.plans/items/013-next.md"
+mv "$CR/.plans/items" "$CR/.plans/real-items"; ln -s real-items "$CR/.plans/items"
+sb hero_item_create task "Via link" "$TMP/create-bare.md" "$CR" >/dev/null 2>&1; check "create: a symlinked items dir is refused (rc 1)" "1 0" "$? $(find "$CR/.plans/real-items" -name "*via-link*" | wc -l | tr -d " ")"
+rm "$CR/.plans/items"; mv "$CR/.plans/real-items" "$CR/.plans/items"
+BEFORE=$(ls "$CR/.plans/items" | wc -l | tr -d ' ')
+ERR=$(srv hero_item_create task "Server" "$TMP/create-bare.md" "$CR" 2>&1 >/dev/null); RC=$?
+check "create: under a server backend it fails and writes no file" "1 $BEFORE" "$RC $(ls "$CR/.plans/items" | wc -l | tr -d ' ')"
+case "$ERR" in *"no create-item yet"*) check "create: the refusal names create-item" ok ok ;; *) check "create: the refusal names create-item" "names it" "$ERR" ;; esac
 
 SHA=$(printf 'a%.0s' $(seq 40))
 srv hero_deploy_pending_add "$SW/.plans" "$SHA" 7 >/dev/null 2>&1; check "store-guard: hero_deploy_pending_add refuses under a server backend" "1 no" "$? $([ -e "$SW/.plans/.deploy-pending" ] && echo yes || echo no)"

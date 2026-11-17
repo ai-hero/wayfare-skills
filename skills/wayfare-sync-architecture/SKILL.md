@@ -3,7 +3,7 @@ name: wayfare-sync-architecture
 # prettier-ignore
 description: "Create DESIGN.md when absent or apply drift findings from an architecture review. Write only changes the user confirms. Keep Decisions append-only. Use after wayfare-review-architecture reports findings or to create the record."
 argument-hint: ""
-compatibility: "Requires the complete Wayfare plugin, git, and repository write access for DESIGN.md."
+compatibility: "Requires the complete Wayfare plugin, git, and repository write access for DESIGN.md on a live item's branch."
 user-invocable: false
 ---
 
@@ -11,7 +11,10 @@ user-invocable: false
 
 `DESIGN.md` records boundaries, invariants, users, flows, and decisions the code
 cannot express. Create the file when absent. Apply findings from an architecture
-review when the file exists. Write only changes the user confirms.
+review when the file exists. Write only changes the user confirms, and only on a
+branch a live item owns: anywhere else, bootstrap included, file a `shape: docs`
+task and write nothing (`../../references/store-writes.md`, _The DESIGN.md
+channel_).
 
 Read `wayfare:wayfare-review-architecture` for the Hard Rule, required sections,
 and findings table. Keep those requirements in one place so the two skills use
@@ -74,7 +77,25 @@ WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfar
 # output when HERO.md exists but lacks these sections.
 HERO_SECTIONS=$(hero_config_sections "$ROOT" 'Repository|Projects|Deployment' 2>/dev/null)
 [ -n "$HERO_SECTIONS" ] && printf '%s\n' "$HERO_SECTIONS" || echo "NO_HERO_SECTIONS"
+
+# The branch test. A detached head or an unreadable store fails closed to
+# FILE_TASK: writing DESIGN.md is the side that cannot be undone quietly.
+BRANCH=$(git -C "$ROOT" symbolic-ref --short -q HEAD || echo DETACHED)
+DESIGN_CHANNEL=FILE_TASK
+ITEMS_DIR=$(hero_items_dir "$ROOT" 2>/dev/null)
+for f in "$ITEMS_DIR"/*.md; do
+  [ -e "$f" ] || continue
+  case "$(hero_item_field "$f" status)" in done|dropped) continue ;; esac
+  [ "$(hero_item_field "$f" branch)" = "$BRANCH" ] && { DESIGN_CHANNEL=BRANCH; break; }
+done
+echo "DESIGN_CHANNEL=$DESIGN_CHANNEL"
 ```
+
+`DESIGN_CHANNEL=BRANCH` means the current branch is the `branch:` of an item
+that is not `done` or `dropped`, so confirmed edits are written here as below.
+`FILE_TASK` means every other case, the default branch included: the run still
+reviews, proposes and confirms, then files the docs task described under _Filing
+instead of writing_ and writes nothing to `DESIGN.md`.
 
 **If any line above prints STOP, stop.** Never use `ROOT=GIT_ERROR` in a read or
 write below. Report an unreadable DESIGN.md as a permissions problem. Do not
@@ -125,10 +146,11 @@ has a surface) are `uncovered` rows like any other. Same rule as the legacy
    not verify as a question, not a claim. Users and their anti-goals are the
    sections least likely to be derivable from code, so propose them as questions
    and let the answers, not inference, fill them.
-3. **Confirm, then write** the file with `Source ref` = `$HEAD_SHA`. If
-   `HEAD_SHA` is `NO_GIT`, STOP before writing: say whether this is a non-repo
-   or an empty repo (no commits yet), and that the file cannot be anchored until
-   a commit exists, and a sentinel must never be written as `Source ref`.
+3. **Confirm, then write** the file with `Source ref` = `$HEAD_SHA`, when
+   `DESIGN_CHANNEL=BRANCH`; otherwise file the docs task instead. If `HEAD_SHA`
+   is `NO_GIT`, STOP before writing: say whether this is a non-repo or an empty
+   repo (no commits yet), and that the file cannot be anchored until a commit
+   exists, and a sentinel must never be written as `Source ref`.
 
 ## Update: the file exists
 
@@ -138,18 +160,30 @@ the file format this step writes against. Do not derive the findings again here.
 Use the review's findings table so the user does not have to reconcile
 conflicting investigations.
 
-1. **Confirm, then write.** Apply confirmed rows. **Decisions are append-only**:
-   a stale decision gets a superseding entry, never an edit. Refresh
-   `Last updated` and `Source ref` to `$HEAD_SHA` **only when every section was
-   verified this pass and no stale row was declined.** A declined stale row
-   keeps the old anchor so the next `review` re-surfaces it (re-anchoring would
-   silently erase the finding from every future diff), and an unverified file
-   (`UNANCHORED`, failed diff) never gets a fresh anchor stamped over it with
-   zero rows applied.
+1. **Confirm, then write.** Apply confirmed rows when `DESIGN_CHANNEL=BRANCH`;
+   otherwise file the docs task instead. **Decisions are append-only**: a stale
+   decision gets a superseding entry, never an edit. Refresh `Last updated` and
+   `Source ref` to `$HEAD_SHA` **only when every section was verified this pass
+   and no stale row was declined.** A declined stale row keeps the old anchor so
+   the next `review` re-surfaces it (re-anchoring would silently erase the
+   finding from every future diff), and an unverified file (`UNANCHORED`, failed
+   diff) never gets a fresh anchor stamped over it with zero rows applied.
 
 A decision brought as trailing context ("record that we picked Postgres over
 Mongo") is an append to `## Decisions` in the same confirm flow, dated today,
 with the context/decision/consequences the user gives or the grilling settled.
+
+## Filing instead of writing
+
+When `DESIGN_CHANNEL=FILE_TASK`, file **one** item per run, after the user
+confirms the rows (or the bootstrap outline), as `references/store-writes.md`
+describes: `type: task`, `shape: docs`, `origin: wayfare-sync-architecture`,
+`status: accepted`, `source: [DESIGN.md]`. Its `## Context` is the review's
+findings table, its `## Definition of Done` has one line per confirmed claim
+(for a bootstrap, one per confirmed section), and its Subtask is to apply them
+to `DESIGN.md` on the item's own branch, where `Source ref` is stamped. A
+declined row is left out of the DoD and keeps the old anchor, as above. Name the
+filed item's id and say nothing was written to `DESIGN.md`.
 
 ## Who else touches the file
 
@@ -160,9 +194,8 @@ with the context/decision/consequences the user gives or the grilling settled.
   architecture layers. Its sync runs `review` first and offers `sync` when the
   file is missing or stale.
 - **`wayfare:wayfare-grill-idea`** grills against the file in Feature mode, and
-  after settling a one-way-door decision offers to append it to `## Decisions`
-  (dated entry, same format). Use the interview answers for the entry. Do not
-  ask the user to derive them again.
+  after settling a one-way-door decision drafts the dated `## Decisions` entry
+  into the item it governs, which appends it on its own branch.
 - **Non-sync writers append their entry only.** Never touch the `Last updated` /
   `Source ref` line. Only `sync` updates the anchor. If an appender updates the
   ref, it falsely claims that the whole file matches that commit.

@@ -5,12 +5,12 @@ merged, stash anything uncommitted, switch back to the default branch and pull;
 either way, mark the item so the roadmap tells the truth about it.
 
 This was `wayfare:wayfare-drop-item`. Two things changed in the move. It takes
-an **item id**, and it writes `status: dropped` on that item, the state
-`docs/PLAN.md` defines and that nothing previously set, so an abandoned branch
-used to leave its item sitting at `active` forever, claiming work that had
-stopped. And `dropped` deliberately does **not** satisfy a dependency: the
-prerequisite was abandoned, so anything waiting on it really is blocked, and the
-listing says so instead of quietly unblocking.
+an **item id**, and it moves that item to `dropped`, the state `docs/PLAN.md`
+defines and that nothing previously set, so an abandoned branch used to leave
+its item sitting at `active` forever, claiming work that had stopped. And
+`dropped` deliberately does **not** satisfy a dependency: the prerequisite was
+abandoned, so anything waiting on it really is blocked, and the listing says so
+instead of quietly unblocking.
 
 `wayfare:wayfare-ship-pr` already cleans up a **merged** branch. This verb is
 for the opposite case, and it checks: a branch whose PR turns out to have merged
@@ -49,13 +49,14 @@ from an oversight.
 The item write, after the branch work succeeds (or straight away on the
 branchless path):
 
-- Set `status: dropped` on the item. Leave `resolution` unset: `dropped` is its
-  own terminal, not a flavour of `done`.
-- Append one `## Log` line saying what was abandoned and why, dated:
-  `- DATE (wayfare-drop-item) decision: dropped: REASON`, where the actor is
-  whichever verb wrote the line (`wayfare-sync-plan` when its roundup calls this
-  write). This is the only record: `.plans/` is git-ignored, so there is no diff
-  and no blame to recover the reason from later.
+- Run `hero_item_set_status ID dropped` with no resolution: `dropped` is its own
+  terminal, not a flavour of `done`.
+- Log what was abandoned and why with
+  `hero_item_log ID decision "dropped: REASON"`. The function dates the line and
+  signs it `$WAYFARE_AGENT`, so export the verb that is writing
+  (`wayfare-sync-plan` when its roundup calls this write). This is the only
+  record: `.plans/` is git-ignored, so there is no diff and no blame to recover
+  the reason from later.
 - **Keep the file.** A dropped item is the history that stops the same work
   being re-proposed next round, the same reason a `rejected` signal is kept.
 - Say which dependents this blocks. `hero_ready_items` will report them as
@@ -78,17 +79,18 @@ item write as above, with three additions:
   `NEW is STATUS; a replacement has to be work that is still open.` A dependent
   moved onto a dropped item is blocked again, and one moved onto a done item
   unblocks on work that was never the replacement.
-- **Write `replaced_by: NEW` beside `status: dropped`**, and name it in the
-  reason line:
-  `- DATE (wayfare-drop-item) decision: dropped, replaced by NEW: REASON`. The
-  listing then prints the row as `dropped FILE — TITLE [replaced by NEW]`
+- **Run `hero_item_set ID replaced_by NEW` after the status write** (it refuses
+  an item that is not yet `dropped`), and name it in the reason line:
+  `hero_item_log ID decision "dropped, replaced by NEW: REASON"`. The listing
+  then prints the row as `dropped FILE — TITLE [replaced by NEW]`
   (docs/PLAN.md).
 - **Offer to move the dependents.** List every item whose `depends_on` names ID,
   and ask once: `Move depends_on from ID to NEW on: 12, 15? [y/N]`. On yes,
-  rewrite ID to NEW in each of those `depends_on` lists, leaving NEW in place
-  where the list already has it rather than writing it twice, and append to each
-  one's `## Log`:
-  `- DATE (wayfare-drop-item) note: depends_on ID → NEW (ID dropped, replaced by NEW)`.
+  write each of those `depends_on` lists back with
+  `hero_item_set DEPENDENT depends_on "[...]"`, ID replaced by NEW and NEW left
+  in place where the list already has it rather than written twice, and log each
+  one with
+  `hero_item_log DEPENDENT note "depends_on ID → NEW (ID dropped, replaced by NEW)"`.
   On no, rewrite nothing and say that `hero_ready_items` lists each of them with
   `[replaced dep: ID → NEW]` until the edge is moved, and that the next
   `wayfare-sync-plan` round offers the same rewrite. Never move an edge without

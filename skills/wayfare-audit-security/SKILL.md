@@ -341,19 +341,17 @@ subsystem or mechanism. Do not create one item per line. Emit at most the top
 
 ## Step 3: Emit Plan Items
 
-Write each unit as a work item in `.plans/` using wayfare-grill-idea's format.
-Continue id numbering from the highest existing id. Use filename `NNN-slug.md`.
+File each unit as a work item with `hero_item_create task TITLE BODY_FILE`
+(`../../references/store-writes.md`, *Creating an item*), the body in
+wayfare-grill-idea's format. It allocates the id and the `NNN-slug.md` filename.
 Use `depends_on` when another plan must land first. Use `discovered_from` only
 for provenance. Add the two sections below for the executor. Emit every plan
 with `status: planning`.
 
 ```markdown
 ---
-id: 12
-type: task # every item is a wayfare item (docs/PLAN.md)
 shape: defect # a CVE fix, a bump batch, an image bump; `structural` when the fix is a boundary or a trust decision rather than a patch
 origin: harden
-title: Update lodash + minimist for critical CVEs
 status: planning # the user marks audit plans ready — audit output never goes straight to build
 depends_on: []
 one_way_door: false

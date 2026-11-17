@@ -441,6 +441,72 @@ printf '\nAn item at `status: committed` is already built.\n' >> "$d/skills/wayf
 run_validate "$d"
 check "routed skill naming a status without setting it: not reported" "" "$(printf '%s' "$OUT" | grep -o 'tells the agent to set an item field by hand' || true)"
 
+d=$(fixture item-write-routed-skill-added)
+printf '\nThen set `status: dropped` on the item.\n' >> "$d/skills/wayfare-drop-item/SKILL.md"
+run_validate "$d"
+check "drop-item sets status by hand: rc" "1" "$RC"
+check_contains "drop-item sets status by hand: names the file" "$OUT" "skills/wayfare-drop-item/SKILL.md"
+
+d=$(fixture item-write-reference-by-hand)
+printf '\nThen set `status: dropped` on the item.\n' >> "$d/references/drop.md"
+run_validate "$d"
+check "a reference sets status by hand: rc" "1" "$RC"
+check_contains "a reference sets status by hand: names the file" "$OUT" "references/drop.md"
+
+d=$(fixture item-write-reference-branch-by-hand)
+printf '\nWrite `branch: NEW_BRANCH` on the goal.\n' >> "$d/references/goals.md"
+run_validate "$d"
+check_contains "a reference writes branch by hand: reported" "$OUT" "tells the agent to set an item field by hand"
+
+d=$(fixture item-write-reference-reads-status)
+printf '\nAn item at `status: dropped` is closed.\n' >> "$d/references/drop.md"
+run_validate "$d"
+check "a reference naming a status without setting it: not reported" "" "$(printf '%s' "$OUT" | grep -o 'tells the agent to set an item field by hand' || true)"
+
+d=$(fixture item-create-by-hand)
+printf '\nWrite `.plans/items/NNN-slug.md` at planning.\n' >> "$d/skills/wayfare-one-shot/SKILL.md"
+run_validate "$d"
+check "routed skill writes an item file by hand: rc" "1" "$RC"
+check_contains "routed skill writes an item file by hand: reported" "$OUT" "tells the agent to set an item field by hand"
+check_contains "routed skill writes an item file by hand: names the file" "$OUT" "skills/wayfare-one-shot/SKILL.md"
+
+d=$(fixture item-create-by-hand-audit)
+printf '\nWrite each unit as a work item in `.plans/` by hand.\n' >> "$d/skills/wayfare-audit-security/SKILL.md"
+run_validate "$d"
+check "audit skill writes items by hand: rc" "1" "$RC"
+
+d=$(fixture item-create-reference-by-hand)
+printf '\nCreate `.plans/items/007-x.md` for the finding.\n' >> "$d/references/sync.md"
+run_validate "$d"
+check "a reference writes an item file by hand: rc" "1" "$RC"
+
+d=$(fixture item-create-routed)
+printf '\nFile it with `hero_item_create task TITLE BODY_FILE`; it lands at `.plans/items/NNN-slug.md`.\n' >> "$d/skills/wayfare-one-shot/SKILL.md"
+run_validate "$d"
+check "routed skill filing through hero_item_create: not reported" "" "$(printf '%s' "$OUT" | grep -o 'tells the agent to set an item field by hand' || true)"
+
+# ---------- DESIGN.md is written only on a live item's branch ---------------
+
+d=$(fixture design-grill-offers-append)
+printf '\nWhen the grilling settled a one-way-door decision, offer to also append it to\n`DESIGN.md`'"'"'s `## Decisions` section.\n' >> "$d/skills/wayfare-grill-idea/SKILL.md"
+run_validate "$d"
+check "grill-idea offers a DESIGN.md append: rc" "1" "$RC"
+check_contains "grill-idea offers a DESIGN.md append: reported" "$OUT" "tells the agent to write DESIGN.md outside a live item's branch"
+check_contains "grill-idea offers a DESIGN.md append: names the file" "$OUT" "skills/wayfare-grill-idea/SKILL.md"
+
+d=$(fixture design-sync-writes-on-default)
+printf '\nOn the default branch, write DESIGN.md straight into the\nworking tree once the user confirms.\n' >> "$d/skills/wayfare-sync-architecture/SKILL.md"
+run_validate "$d"
+check "sync-architecture writes DESIGN.md on the default branch: rc" "1" "$RC"
+check_contains "sync-architecture writes DESIGN.md on the default branch: reported" "$OUT" "tells the agent to write DESIGN.md outside a live item's branch"
+check_contains "sync-architecture writes DESIGN.md on the default branch: names the file" "$OUT" "skills/wayfare-sync-architecture/SKILL.md"
+
+d=$(fixture design-sync-unlinked)
+sed -i.bak 's#references/store-writes\.md#references/other.md#g' "$d/skills/wayfare-sync-architecture/SKILL.md"
+rm -f "$d/skills/wayfare-sync-architecture/SKILL.md.bak"
+run_validate "$d"
+check_contains "sync-architecture without the channel link: reported" "$OUT" "does not link the DESIGN.md channel rule"
+
 # ---------- store layer: no direct store-file read ---------------------------
 
 d=$(fixture store-direct-items)

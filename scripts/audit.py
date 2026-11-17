@@ -684,10 +684,9 @@ def register_source():
     no uncommitted or unpushed change to the three files, an origin that
     matches both FLEET.md's register-repo and this machine's register pin, and,
     when FLEET.md lives in the register, a FLEET.md identical to origin/main's.
-    Cached, so
-    checkers.py and the YAML come from one sha even when origin/main moves
-    between the two reads. The one working-tree read is a register with no
-    .git: read in place, never reviewed, so its checkers.py never runs.
+    Cached, so checkers.py and the YAML come from one sha even when origin/main
+    moves between the two reads. The one working-tree read is a register with
+    no .git: read in place, never reviewed, so its checkers.py never runs.
 
     Reviewed trusts the remote: the engine does not check that its main
     requires a PR, which is the operator's branch protection to hold."""

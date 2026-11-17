@@ -293,6 +293,11 @@ srv hero_config_commands_approved "$APP"; check "commands: and has nothing to ap
 # The local backend is unchanged: a committed HERO.md is reviewed in a PR.
 check "commands: local reads never ask" "main" "$(hero_field default-branch "$APP")"
 hero_config_commands_approved "$APP"; check "commands: and the local run check passes" "0" "$?"
+# A skill that runs a command field without asking finds none and skips its
+# tests with no error, so every skill that runs one must ask.
+for f in skills/wayfare-push-pr/WORKFLOW.md skills/wayfare-work-task/SKILL.md skills/wayfare-respond-pr/WORKFLOW.md; do
+  check "commands: $f asks before running one" "yes" "$(grep -q 'hero_config_commands_approved "\$ROOT"' "$(dirname "$LIB")/../$f" && echo yes || echo no)"
+done
 cmd_cfg "npm test" 3000
 
 # ---------- fleet rows ----------------------------------------------------------

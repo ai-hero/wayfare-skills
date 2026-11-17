@@ -825,10 +825,11 @@ sha256 on stderr, and rc 2 when it could not ask.
 with rc 3 when the cached fields no longer hash to SHA. A command key is matched
 in any spelling an agent would read as one: any bullet, indent, case, backticks
 or bold, and inside fences. wayfare-push-pr asks before its test phase;
-wayfare-work-task stops before its claim. A skill that runs one without asking
-(wayfare-respond-pr's test step) finds no command while the fields await
-approval, and runs nothing. A change to any other field needs no approval, and
-the local backend never asks, because a committed HERO.md is reviewed in a PR.
+wayfare-work-task stops before its claim; wayfare-respond-pr asks before its
+test step. A skill that runs one without asking finds no command while the
+fields await approval, and runs nothing. A change to any other field needs no
+approval, and the local backend never asks, because a committed HERO.md is
+reviewed in a PR.
 
 An answer the server could not give is never an empty one. A CLI failure, a
 reply that is not JSON, or one missing the key a caller reads is an error naming

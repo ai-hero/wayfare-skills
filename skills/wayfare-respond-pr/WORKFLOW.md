@@ -309,10 +309,33 @@ if command -v pre-commit > /dev/null 2>&1; then
 else
   echo "NO_PRECOMMIT"
 fi
-
-# Run tests if configured in HERO.md
-# Use the test command from HERO.md projects section
 ```
+
+Before running any test command from HERO.md, ask whether its command fields may
+run:
+
+```bash
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+. "$WAYFARE_ROOT/scripts/hero-lib.sh" || { echo "wayfare: cannot load hero-lib.sh from $WAYFARE_ROOT, export WAYFARE_ROOT as the plugin root"; exit 1; }
+hero_config_commands_approved "$ROOT"; echo "CMD_RC=$?"
+```
+
+- `CMD_RC=0`: run the test command from HERO.md's Projects section (the task
+  runner's test target when one is set).
+- `CMD_RC=3`: the server's HERO.md holds command fields (`task-runner`,
+  `test-command`, `dev-command`) that no person has approved on this machine,
+  and the config this skill read leaves them out. Never fill one in from memory
+  or auto-detect around it. The fields and their sha256 are on stderr. In an
+  interactive run, show them to the person and ask; on a yes, run
+  `hero_srv_commands_approve "$ROOT" SHA` with that sha256 and repeat this block
+  (rc 3 there means the fields changed since they were shown, so show the new
+  ones and ask again); on a no, STOP before committing. Headless, STOP and name
+  the fields: never approve on a person's behalf.
+- Any other `CMD_RC`: STOP with its stderr. Whether the commands may run is
+  unknown, so the tests cannot run.
+
+Never skip the tests and carry on: a fix pushed without them reads as tested.
 
 If checks fail, fix the issues before committing.
 

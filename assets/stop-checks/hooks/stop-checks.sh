@@ -105,15 +105,32 @@ if ! command -v just >/dev/null 2>&1; then
   warn_once "stop-checks: just is not installed, so check-fast did not run"
   exit 0
 fi
+# just's own lookup: justfile or .justfile, any case, here or in any parent.
+# Probed rather than read from just's error, whose wording changed case between
+# releases (1.46 "No justfile found", 1.59 "no justfile found").
+# The brackets are load-bearing: nocaseglob applies only to a word that is a
+# pattern, so a plain "$d"/justfile would match that exact case alone.
+has_justfile() (
+  shopt -s nocaseglob nullglob
+  d="$PWD"
+  while :; do
+    for f in "$d"/[j]ustfile "$d"/.[j]ustfile; do
+      [ -f "$f" ] && exit 0
+    done
+    [ "$d" = / ] && exit 1
+    d="${d%/*}"
+    [ -n "$d" ] || d=/
+  done
+)
+if ! has_justfile; then
+  warn_once "stop-checks: this repo has no Justfile, so nothing ran"
+  exit 0
+fi
 # A Justfile that no longer parses fails --summary too; reading that as "no
 # recipe" lets an agent that broke the Justfile end its turn.
 SUMMARY="$(NO_COLOR=1 just --summary 2>&1)"
 RC=$?
 if [ "$RC" -ne 0 ]; then
-  if printf '%s' "$SUMMARY" | grep -q 'No justfile found'; then
-    warn_once "stop-checks: this repo has no Justfile, so nothing ran"
-    exit 0
-  fi
   fail "$RC" 0 "$SUMMARY"
 fi
 if ! printf '%s' "$SUMMARY" | tr ' ' '\n' | grep -qx 'check-fast'; then

@@ -170,6 +170,27 @@ run "$d" "$(payload false njf)"
 check "no Justfile: rc" 0 "$RC"
 check "no Justfile: warns" yes "$(has "$OUT" "no Justfile")"
 
+# just finds justfile and .justfile in any case; each must reach check-fast,
+# not the "no Justfile" skip. Fixtures are numbered, not named after the file:
+# on a case-insensitive filesystem jfnamejustfile and jfnameJUSTFILE collide.
+i=0
+for name in justfile .justfile JUSTFILE; do
+  i=$((i + 1))
+  d=$(fixture "jfname$i" 'exit 1')
+  git -C "$d" mv Justfile "$name.tmp" && git -C "$d" mv "$name.tmp" "$name"
+  run "$d" "$(payload false "jf$name")"
+  check "$name: rc 2" 2 "$RC"
+  check "$name: ran" yes "$RAN"
+done
+
+# A Justfile above the repo root is still the one just runs.
+mkdir -p "$TMP/parentjf"
+printf 'check-fast:\n    @touch ran\n    exit 1\n' >"$TMP/parentjf/Justfile"
+d=$(fixture parentjf/child 'true')
+rm "$d/Justfile"
+run "$d" "$(payload false pjf)"
+check "parent Justfile: rc 2" 2 "$RC"
+
 d=$(fixture nojust 'exit 1')
 echo x >"$d/new.txt"
 NOJUST="$TMP/nojust-bin"

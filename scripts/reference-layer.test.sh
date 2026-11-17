@@ -103,6 +103,11 @@ check "stale: a pin with no file" "item 3: entity:gone@1 has no reference file" 
 check "stale: current pins and done items are not listed" "3" "$(printf '%s\n' "$STALE" | wc -l | tr -d ' ')"
 check "stale: the @1 entry is not quoted for a pin already at @1" "0" "$(printf '%s\n' "$STALE" | grep -c 'first written')"
 
+mv "$WITH/reference/CHANGELOG.md" "$TMP/CHANGELOG.md"
+check "stale: a reference with no changelog still lists the pins" "item 3: entity:loan@1 is now @2" \
+  "$(hero_reference_stale "$WITH" | sed -n 1p)"
+mv "$TMP/CHANGELOG.md" "$WITH/reference/CHANGELOG.md"
+
 # What review-pr flags.
 check "code paths: the example names none" "1" "$(hero_reference_code_paths "$WITH" >/dev/null; echo $?)"
 cp "$WITH/reference/entities/loan.md" "$TMP/loan.md"
@@ -160,7 +165,7 @@ if [ "$FAIL" -gt 0 ]; then
   echo "reference-layer: $PASS passed, $FAIL FAILED"
   exit 1
 fi
-MIN_CASES=41
+MIN_CASES=42
 if [ "$PASS" -lt "$MIN_CASES" ]; then
   echo "reference-layer: only $PASS cases ran, expected >= $MIN_CASES" >&2
   exit 1

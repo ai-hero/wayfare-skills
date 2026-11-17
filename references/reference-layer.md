@@ -153,11 +153,11 @@ repo has none; `hero_reference_pr_body` then returns the body unchanged.
 
 Each skill carries a few lines that point here; none restates the format.
 
-| Skill | When `reference/` exists |
+| Skill | What it does (each gated on `hero_reference_dir`) |
 | -- | -- |
 | wayfare-grill-idea, wayfare-one-shot | **Propose the reference edit first, then pin it.** Before the plan, read the files the work touches. When the reference already says what the work builds, pin those files at their current versions. When the work changes what a file means, the first Subtask is that edit (with its bump and changelog line), shown to the person with the plan, and the pin names the new version. When no file covers it, propose the new file at `@1` the same way. The pin is the first line of the item's `## Context`. |
 | wayfare-write-handoff | Carries the item's `Reference:` line into the handoff unchanged, and pins what the session changed in `reference/`. |
-| wayfare-build-task | Before the first edit, runs `hero_reference_resolve` on the item and reads every pinned file. A pin whose version is behind the file is re-read against its changelog lines, and a pin with no file is a Step 2 ambiguity. |
+| wayfare-build-task | Before the first edit, runs `hero_reference_resolve` on the item and reads every pinned file. A pin behind its file is checked against the changelog entries between; one that contradicts the plan, or a pin with no file, is a Step 2 ambiguity. |
 | wayfare-push-pr | Passes the PR body through `hero_reference_pr_body`, which adds the branch's `Reference:` line under the summary. |
 | wayfare-review-pr | Flags a behavior change whose PR has no `Reference:` line, and each `hero_reference_code_paths` hit, as Important; warns on each `hero_reference_unbumped` file whose diff changed meaning. |
 | wayfare-sync-plan | Reports `hero_reference_stale` as **reference-stale** in the source lane, quoting the changelog entries. |

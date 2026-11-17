@@ -3039,7 +3039,8 @@ hero_reference_branch_line() { # [BRANCH] [ROOT]
 # Every open item pinned behind the reference, as `item N: PIN is now @V` (or
 # `has no reference file`), each followed by the CHANGELOG entries between the
 # two versions, indented. An entry is a bullet with its wrapped lines, because
-# mdformat wraps a long changelog line. rc 1 when nothing is stale.
+# mdformat wraps a long changelog line. A missing CHANGELOG.md quotes nothing
+# rather than hiding the stale pins. rc 1 when nothing is stale.
 hero_reference_stale() { # [ROOT]
   local dir items f n out=""
   dir=$(hero_reference_dir "${1:-}") || return 1
@@ -3072,7 +3073,7 @@ hero_reference_stale() { # [ROOT]
           s = substr(s, j + length(t))
         }
       }
-    }' "$dir/CHANGELOG.md" -
+    }' <(cat "$dir/CHANGELOG.md" 2>/dev/null) -
 }
 
 # Each reference file that names a code path, as `path:line: token`. The

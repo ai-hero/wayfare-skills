@@ -99,6 +99,39 @@ class WorkflowOn(unittest.TestCase):
             self.assertEqual(audit.CHECKS["CI-21"](r), (audit.PASS, ""))
 
 
+class JUST04Venv(unittest.TestCase):
+    def check(self, files, venv=".venv", ignore=True, track=False):
+        with tempfile.TemporaryDirectory() as d:
+            r = git_repo(pathlib.Path(d), "r")
+            for rel, text in {"Justfile": "test:\n    .venv/bin/pytest\n", **files}.items():
+                write(r, rel, text)
+            if ignore:
+                write(r, ".gitignore", f"{venv}/\n")
+            write(r, f"{venv}/bin/python", "")
+            paths = ["Justfile", *files] + [".gitignore"] * ignore + [venv] * track
+            git(r, "add", "-f", "--", *paths)
+            git(r, "commit", "-q", "-m", "x")
+            return audit.CHECKS["JUST-04"](r)
+
+    def test_gitignored_tooling_venv_passes(self):
+        self.assertEqual(self.check({}), (audit.PASS, "containerized only"))
+        self.assertEqual(self.check({"ui/Makefile": "lint:\n\tuv run pytest\n"})[0], audit.PASS)
+
+    def test_tracked_venv_fails_even_once_ignored(self):
+        st, detail = self.check({}, venv="venv", track=True)
+        self.assertEqual(st, audit.FAIL)
+        self.assertIn("venv/ — the container is the environment", detail)
+
+    def test_unignored_venv_fails(self):
+        self.assertEqual(self.check({}, ignore=False)[0], audit.FAIL)
+
+    def test_recipe_serving_from_the_venv_fails(self):
+        st, detail = self.check({"Justfile": "api:\n    .venv/bin/uvicorn app:app\n"})
+        self.assertEqual((st, detail), (audit.FAIL, "host-run: .venv/ — Justfile starts a server from it"))
+        st, detail = self.check({"svc/Makefile": "api:\n\tuv run gunicorn app:app\n"})
+        self.assertEqual((st, detail), (audit.FAIL, "host-run: .venv/ — svc/Makefile starts a server from it"))
+
+
 class DOC04(unittest.TestCase):
     def check(self, setup):
         with tempfile.TemporaryDirectory() as d:

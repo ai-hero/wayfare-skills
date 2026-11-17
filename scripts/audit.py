@@ -2272,6 +2272,26 @@ def _(r):
     return PASS, "CLAUDE.md -> AGENTS.md (symlink; git rm CLAUDE.md, Claude Code v2.1.277+ loads AGENTS.md)"
 
 
+_SERVER = re.compile(
+    r"\b(uvicorn|gunicorn|hypercorn|daphne|granian|runserver|http\.server"
+    r"|(flask|fastapi|streamlit)\s+run|fastapi\s+dev)\b"
+)
+
+
+def _recipes(text):
+    """Split a Justfile or Makefile into recipe blocks: each unindented line and
+    the indented lines under it."""
+    blocks, cur = [], []
+    for line in text.splitlines():
+        if line and not line[0].isspace() and cur:
+            blocks.append("\n".join(cur))
+            cur = []
+        cur.append(line)
+    if cur:
+        blocks.append("\n".join(cur))
+    return blocks
+
+
 @check("JUST-04")
 def _(r):
     f = r / "Justfile"
@@ -2290,19 +2310,34 @@ def _(r):
     # rule is that no path starts a server on the host, not that one file
     # doesn't. The root-only version of this check passed all five repos while
     # four of them shipped exactly that.
-    # A language virtual environment is the same evasion as a host recipe: it
-    # is an environment that is not the container. None exist in the fleet
-    # today; the check is here so one cannot arrive quietly.
-    for venv in ("venv", ".venv", "virtualenv"):
-        if (r / venv).is_dir():
-            bad.append(f"{venv}/ — the container is the environment")
-    for sub in list(r.glob("*/Justfile")) + list(r.glob("*/Makefile")):
-        if "node_modules" in str(sub):
-            continue
+    subs = [s for s in list(r.glob("*/Justfile")) + list(r.glob("*/Makefile")) if "node_modules" not in str(s)]
+    for sub in subs:
         for i, line in enumerate(sub.read_text().splitlines(), 1):
             m = re.match(r"^(run|dev|serve|start):", line)
             if m:
                 bad.append(f"{sub.parent.name}/{sub.name}:{i} {m.group(1)}")
+    # A venv is host-run only when it is the repo's (tracked or unignored) or
+    # a recipe runs a server from it. A gitignored one that only runs
+    # pre-commit, pytest and mypy belongs to the machine, and failing it judges
+    # the checkout instead of the commit. "Ignored" is git's answer
+    # (check-ignore), never a reading of .gitignore. check-ignore does not
+    # report a directory that holds a tracked file, so a tracked venv fails
+    # here even when .gitignore lists it.
+    for venv in ("venv", ".venv", "virtualenv"):
+        if not (r / venv).is_dir():
+            continue
+        if sh(r, f"git check-ignore -q {venv}/ 2>/dev/null")[0] != 0:
+            bad.append(f"{venv}/ — the container is the environment")
+            continue
+        for runner in [f] + subs:
+            for recipe in _recipes(runner.read_text()):
+                # `uv run` executes from .venv without naming it.
+                uses = re.search(rf"(?<![\w.]){re.escape(venv)}/bin/", recipe) or (
+                    venv == ".venv" and re.search(r"\buv run\b", recipe)
+                )
+                if uses and _SERVER.search(recipe):
+                    bad.append(f"{venv}/ — {runner.relative_to(r)} starts a server from it")
+                    break
     if bad:
         return FAIL, "host-run: " + ", ".join(bad)
     return PASS, "containerized only"

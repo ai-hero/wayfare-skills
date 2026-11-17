@@ -28,10 +28,14 @@ else has a better home:
 
 ## The checks
 
-Mechanical, and `check-agents-md.sh` fails the commit:
+Mechanical. `check-agents-md.sh` fails the commit on an error and prints a
+warning without failing it:
 
-1. **R1, one file.** `AGENTS.md` is the file; `CLAUDE.md` is a symlink to it.
-   Two regular files diverge silently. A repo with only one of the two warns.
+1. **R1, one file.** `AGENTS.md` is the only file; Claude Code v2.1.277 and
+   later loads it. A `CLAUDE.md` symlink to it warns, with the fix
+   `git rm CLAUDE.md`; a symlink anywhere else warns and asks who aimed it. Two
+   regular files diverge silently and fail. A repo with only `CLAUDE.md` warns,
+   with the fix `git mv CLAUDE.md AGENTS.md`.
 2. **R2: 200 lines or fewer,** with a warning above 150. Block HTML comments are
    stripped before load and do not count, so maintainer notes are free.
 3. **R3, rules over 60 lines carry `paths:`.** An unscoped rule loads in every

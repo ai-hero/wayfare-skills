@@ -154,18 +154,10 @@ npm install express typescript @types/node @types/express tsx
 npx tsc --init
 ```
 
-## Step 5: Create AGENTS.md (+ CLAUDE.md symlink)
+## Step 5: Create AGENTS.md
 
-House standard: `AGENTS.md` is the real file and `CLAUDE.md` symlinks to it, so
-one file serves Claude Code, Cursor, and Copilot without drift. Write
-`AGENTS.md`, then:
-
-```bash
-ln -s AGENTS.md CLAUDE.md
-```
-
-If `ln -s` fails (Windows without Developer Mode), write a one-line `CLAUDE.md`
-containing `See [AGENTS.md](./AGENTS.md).` and tell the user why.
+House standard: `AGENTS.md` is the only instructions file; create no
+`CLAUDE.md`.
 
 `wayfare:wayfare-init-repo` (Step 1) fills in the Tech Stack / Best Practices /
 Coding Conventions sections after it investigates, so leave them out here.
@@ -246,7 +238,7 @@ If the repo was initialized standalone in Step 6 with an initial commit, the
 into a follow-up commit, ending with the same trailer as Step 6:
 
 ```bash
-git add HERO.md AGENTS.md CLAUDE.md
+git add HERO.md AGENTS.md
 git commit -m "$(cat <<'EOF'
 chore: add HERO.md and AGENTS.md from wayfare:wayfare-init-repo
 EOF
@@ -270,7 +262,7 @@ Pipeline:
 
 Created:
   - Project structure
-  - AGENTS.md (+ CLAUDE.md symlink)
+  - AGENTS.md
   - HERO.md
   - [Git repo initialized]
 
@@ -284,8 +276,7 @@ next-steps lead there once it passes.
 
 ## Notes
 
-- Always creates AGENTS.md with a CLAUDE.md symlink. Uses uv for all Python
-  projects.
+- Uses uv for all Python projects.
 - Frontend UI comes from the design-system registry in HERO.md when one is
   configured, else stock shadcn. Run `wayfare:wayfare-recomponentize-ui` after
   scaffolding to establish the atomic component layers.

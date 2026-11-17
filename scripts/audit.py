@@ -2215,16 +2215,15 @@ def _(r):
         return FAIL, "no AGENTS.md (the cross-vendor standard)"
     if not c.exists() and not c.is_symlink():
         return PASS, "AGENTS.md only"
-    # A SYMLINK, not a prose pointer and certainly not a copy. A pointer file
-    # is still a second file: it can accumulate content and drift. A symlink
-    # cannot — there is exactly one set of bytes, and git stores it as mode
-    # 120000 rather than a blob.
+    # A leftover symlink passes with its fix named, as check-agents-md.sh R1
+    # warns without failing: repos set up under the old standard all carry
+    # one. A second regular file still fails, because it drifts.
     if not c.is_symlink():
-        return FAIL, "CLAUDE.md is a real file — it must be a symlink to AGENTS.md"
+        return FAIL, "CLAUDE.md is a real file — merge it into AGENTS.md, then git rm CLAUDE.md"
     target = os.readlink(c)
     if pathlib.PurePath(target).name != "AGENTS.md":
-        return FAIL, f"CLAUDE.md symlinks to {target}, not AGENTS.md"
-    return PASS, "CLAUDE.md -> AGENTS.md (symlink)"
+        return MANUAL, f"CLAUDE.md symlinks to {target}, not AGENTS.md — ask who aimed it before removing it"
+    return PASS, "CLAUDE.md -> AGENTS.md (symlink; git rm CLAUDE.md, Claude Code v2.1.277+ loads AGENTS.md)"
 
 
 @check("JUST-04")

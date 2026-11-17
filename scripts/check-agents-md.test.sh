@@ -30,7 +30,7 @@ check() {
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-# fixture NAME: a repo root with a compliant 30-line AGENTS.md and the symlink.
+# fixture NAME: a repo root with a compliant 30-line AGENTS.md alone.
 # The R2 boundary cases below add to that 30.
 fixture() {
   local d="$WORK/$1"
@@ -41,7 +41,6 @@ fixture() {
     echo "## Conventions"
     for i in $(seq 1 27); do echo "- Rule $i names a trap and the fix for it."; done
   } > "$d/AGENTS.md"
-  ln -s AGENTS.md "$d/CLAUDE.md"
   echo "$d"
 }
 
@@ -69,43 +68,50 @@ run --warn-only "$d"
 check "flag before root: rc" "0" "$rc"
 
 # --- R1 ------------------------------------------------------------------------
-d=$(fixture both)
-rm "$d/CLAUDE.md"; cp "$d/AGENTS.md" "$d/CLAUDE.md"
+d=$(fixture symlink); ln -s AGENTS.md "$d/CLAUDE.md"
+run "$d"
+check "R1 CLAUDE.md symlink: rc (warn, not error)" "0" "$rc"
+check "R1 CLAUDE.md symlink: warned" "yes" "$(has 'WARN:  R1: CLAUDE.md is a symlink')"
+check "R1 CLAUDE.md symlink: fix is git rm" "yes" "$(has 'Fix:  git rm CLAUDE.md')"
+check "R1 CLAUDE.md symlink: no ln -s" "no" "$(has 'ln -s')"
+
+d=$(fixture both); cp "$d/AGENTS.md" "$d/CLAUDE.md"
 run "$d"
 check "R1 both regular files: rc" "1" "$rc"
 check "R1 both regular files: named" "yes" "$(has 'R1: AGENTS.md and CLAUDE.md are both regular')"
+check "R1 both regular files: fix" "yes" "$(has 'then git rm CLAUDE.md')"
+check "R1 both regular files: no ln -s" "no" "$(has 'ln -s')"
 
-d=$(fixture claude_only)
-rm "$d/CLAUDE.md"; mv "$d/AGENTS.md" "$d/CLAUDE.md"
+d=$(fixture claude_only); mv "$d/AGENTS.md" "$d/CLAUDE.md"
 run "$d"
 check "R1 CLAUDE.md only: rc (warn, not error)" "0" "$rc"
 check "R1 CLAUDE.md only: warned" "yes" "$(has 'WARN:  R1')"
+check "R1 CLAUDE.md only: fix is git mv alone" "yes" "$(has 'Fix:  git mv CLAUDE.md AGENTS.md')"
+check "R1 CLAUDE.md only: no ln -s" "no" "$(has 'ln -s')"
 
-d=$(fixture agents_only); rm "$d/CLAUDE.md"
+d=$(fixture agents_only)
 run "$d"
-check "R1 AGENTS.md only: rc (warn)" "0" "$rc"
-check "R1 AGENTS.md only: warned" "yes" "$(has 'CLAUDE.md is missing')"
+check "R1 AGENTS.md only: rc" "0" "$rc"
+check "R1 AGENTS.md only: clean" "yes" "$(has ' 0 error(s), 0 warning(s)')"
 
-# A wrong symlink is an R1 error, but the checks still run against AGENTS.md,
-# not through the link.
+# A symlink to another file may be deliberate, so it warns with no git rm fix,
+# and the checks run against AGENTS.md, not through the link.
 d=$(fixture wrong_link)
-rm "$d/CLAUDE.md"; lines 300 > "$d/README.md"; ln -s README.md "$d/CLAUDE.md"
+lines 300 > "$d/README.md"; ln -s README.md "$d/CLAUDE.md"
 run "$d"
-check "R1 wrong symlink target: rc" "1" "$rc"
+check "R1 wrong symlink target: rc" "0" "$rc"
+check "R1 wrong symlink target: names the target" "yes" "$(has 'symlink to '\''README.md')"
+check "R1 wrong symlink target: no git rm fix" "no" "$(has 'git rm CLAUDE.md')"
 check "R1 wrong symlink target: checks AGENTS.md not the link" "no" "$(has 'R2:')"
 
-d=$(fixture dot_link); rm "$d/CLAUDE.md"; ln -s ./AGENTS.md "$d/CLAUDE.md"
-run "$d"
-check "R1 ./AGENTS.md link form: rc" "0" "$rc"
-
-d=$(fixture dangling); rm "$d/AGENTS.md"
+d=$(fixture dangling); ln -s AGENTS.md "$d/CLAUDE.md"; rm "$d/AGENTS.md"
 run "$d"
 check "R1 dangling symlink: rc" "2" "$rc"
 check "R1 dangling symlink: summary still printed" "yes" "$(has 'error(s)')"
 run "$d" --warn-only
 check "R1 dangling symlink with --warn-only: still 2" "2" "$rc"
 
-d=$(fixture neither); rm "$d/CLAUDE.md" "$d/AGENTS.md"
+d=$(fixture neither); rm "$d/AGENTS.md"
 run "$d"
 check "R1 neither: rc" "2" "$rc"
 run "$d" --warn-only

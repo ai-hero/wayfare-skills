@@ -175,7 +175,8 @@ review() {
     [ -d "$repo_path/.plans/inbox" ] || printf 'NO_INBOX\t%s\t%s\n' "$name" "$repo_path/.plans/inbox"
     [ -f "$repo_path/HERO.md" ] || printf 'NO_HERO\t%s\t%s\n' "$name" "$repo_path"
     if [ -f "$repo_path/AGENTS.md" ] || [ -f "$repo_path/CLAUDE.md" ]; then
-      # CLAUDE.md is normally a symlink to AGENTS.md; read whichever resolves.
+      # A repo set up before AGENTS.md alone may still have only CLAUDE.md, or a
+      # leftover symlink to AGENTS.md; read whichever exists.
       grep -qs '^## Fleet' "$repo_path/AGENTS.md" "$repo_path/CLAUDE.md" || printf 'NOT_FLEET_AWARE\t%s\t%s\n' "$name" "$repo_path"
     else
       printf 'NO_AGENTS\t%s\t%s\n' "$name" "$repo_path"

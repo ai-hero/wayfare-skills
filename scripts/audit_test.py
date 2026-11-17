@@ -99,6 +99,38 @@ class WorkflowOn(unittest.TestCase):
             self.assertEqual(audit.CHECKS["CI-21"](r), (audit.PASS, ""))
 
 
+class DOC04(unittest.TestCase):
+    def check(self, setup):
+        with tempfile.TemporaryDirectory() as d:
+            r = pathlib.Path(d)
+            write(r, "AGENTS.md", "# x\n")
+            setup(r)
+            return audit.CHECKS["DOC-04"](r)
+
+    def test_agents_md_alone_passes(self):
+        self.assertEqual(self.check(lambda r: None), (audit.PASS, "AGENTS.md only"))
+
+    def test_symlink_passes_and_names_the_fix(self):
+        st, detail = self.check(lambda r: (r / "CLAUDE.md").symlink_to("AGENTS.md"))
+        self.assertEqual(st, audit.PASS)
+        self.assertIn("git rm CLAUDE.md", detail)
+
+    def test_two_regular_files_fail_without_suggesting_a_symlink(self):
+        st, detail = self.check(lambda r: write(r, "CLAUDE.md", "# y\n"))
+        self.assertEqual(st, audit.FAIL)
+        self.assertIn("git rm CLAUDE.md", detail)
+        self.assertNotIn("must be a symlink", detail)
+
+    def test_symlink_elsewhere_is_manual(self):
+        def setup(r):
+            write(r, "README.md", "# z\n")
+            (r / "CLAUDE.md").symlink_to("README.md")
+
+        st, detail = self.check(setup)
+        self.assertEqual(st, audit.MANUAL)
+        self.assertIn("README.md", detail)
+
+
 class ImageRefs(unittest.TestCase):
     def test_dockerfile(self):
         text = (

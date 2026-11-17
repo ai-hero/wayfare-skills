@@ -269,9 +269,10 @@ ls pyproject.toml package.json next.config.* vite.config.* 2>/dev/null
 ls backend/pyproject.toml frontend/package.json 2>/dev/null
 ```
 
-Check the project's `CLAUDE.md` for specific run instructions. Report what was
-detected; if nothing, ask the user. Install dependencies first when needed
-(`uv sync`, `npm install`, one per project for full-stack).
+Check the project's `AGENTS.md` (or `CLAUDE.md` where that is the only file) for
+specific run instructions. Report what was detected; if nothing, ask the user.
+Install dependencies first when needed (`uv sync`, `npm install`, one per
+project for full-stack).
 
 #### 2b: Verify Implementation (Lint, Typecheck, Unit Tests)
 
@@ -1377,7 +1378,8 @@ wayfare:wayfare-push-pr develop                               # Test, commit, pu
 - Always creates merge commits for traceability
 - Never commits or pushes directly to the default branch. Step 1 branches off
   first
-- Always check the project's CLAUDE.md first for custom run instructions
+- Always check the project's AGENTS.md (or CLAUDE.md where that is the only
+  file) first for custom run instructions
 - The frontend smoke is a **smoke** test, not a full E2E: cap routes at 5, skip
   large forms, do not chase flaky tests. If a real E2E suite already exists in
   the repo (Playwright config, Cypress, etc.), prefer running it directly

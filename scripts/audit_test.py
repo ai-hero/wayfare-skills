@@ -99,6 +99,39 @@ class WorkflowOn(unittest.TestCase):
             self.assertEqual(audit.CHECKS["CI-21"](r), (audit.PASS, ""))
 
 
+class JUST04Venv(unittest.TestCase):
+    def check(self, files, venv=".venv", ignore=True, track=False):
+        with tempfile.TemporaryDirectory() as d:
+            r = git_repo(pathlib.Path(d), "r")
+            for rel, text in {"Justfile": "test:\n    .venv/bin/pytest\n", **files}.items():
+                write(r, rel, text)
+            if ignore:
+                write(r, ".gitignore", f"{venv}/\n")
+            write(r, f"{venv}/bin/python", "")
+            paths = ["Justfile", *files] + [".gitignore"] * ignore + [venv] * track
+            git(r, "add", "-f", "--", *paths)
+            git(r, "commit", "-q", "-m", "x")
+            return audit.CHECKS["JUST-04"](r)
+
+    def test_gitignored_tooling_venv_passes(self):
+        self.assertEqual(self.check({}), (audit.PASS, "containerized only"))
+        self.assertEqual(self.check({"ui/Makefile": "lint:\n\tuv run pytest\n"})[0], audit.PASS)
+
+    def test_tracked_venv_fails_even_once_ignored(self):
+        st, detail = self.check({}, venv="venv", track=True)
+        self.assertEqual(st, audit.FAIL)
+        self.assertIn("venv/ — the container is the environment", detail)
+
+    def test_unignored_venv_fails(self):
+        self.assertEqual(self.check({}, ignore=False)[0], audit.FAIL)
+
+    def test_recipe_serving_from_the_venv_fails(self):
+        st, detail = self.check({"Justfile": "api:\n    .venv/bin/uvicorn app:app\n"})
+        self.assertEqual((st, detail), (audit.FAIL, "host-run: .venv/ — Justfile starts a server from it"))
+        st, detail = self.check({"svc/Makefile": "api:\n\tuv run gunicorn app:app\n"})
+        self.assertEqual((st, detail), (audit.FAIL, "host-run: .venv/ — svc/Makefile starts a server from it"))
+
+
 class DOC04(unittest.TestCase):
     def check(self, setup):
         with tempfile.TemporaryDirectory() as d:
@@ -2855,33 +2888,11 @@ class HeroMdField(unittest.TestCase):
 
 
 class ExtractTar(unittest.TestCase):
-    """_extract_tar is the only guard on 3.9.6, where `filter="data"` does not
-    exist. Each case also runs with `data_filter` removed, so the 3.9 branch
-    is exercised on whatever Python runs the suite."""
-
-    def both_branches(self, fn):
-        fn()
-        if hasattr(tarfile, "data_filter"):
-            saved = tarfile.data_filter
-            had_default = "extraction_filter" in tarfile.TarFile.__dict__
-            saved_default = tarfile.TarFile.__dict__.get("extraction_filter")
-            del tarfile.data_filter
-            # 3.14 extracts through data_filter when no filter is given, so with
-            # it deleted the default raises NameError. 3.9 applied no filter.
-            tarfile.TarFile.extraction_filter = staticmethod(lambda member, path: member)
-            try:
-                for p in self.dest.iterdir():
-                    shutil.rmtree(p) if p.is_dir() else p.unlink()
-                fn()
-            finally:
-                tarfile.data_filter = saved
-                if had_default:
-                    tarfile.TarFile.extraction_filter = saved_default
-                else:
-                    del tarfile.TarFile.extraction_filter
+    """_extract_tar refuses an unsafe archive before it writes anything, and
+    refuses every link, including one `filter="data"` would let through."""
 
     @staticmethod
-    def tar(*entries):
+    def tar(*entries, linkname="/etc/passwd"):
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode="w") as t:
             for name, kind in entries:
@@ -2889,7 +2900,7 @@ class ExtractTar(unittest.TestCase):
                 info.type = kind
                 info.mode = 0o755 if kind == tarfile.DIRTYPE else 0o644
                 if kind in (tarfile.SYMTYPE, tarfile.LNKTYPE):
-                    info.linkname = "/etc/passwd"
+                    info.linkname = linkname
                 data = b"x" if kind == tarfile.REGTYPE else b""
                 info.size = len(data)
                 t.addfile(info, io.BytesIO(data))
@@ -2913,7 +2924,7 @@ class ExtractTar(unittest.TestCase):
             audit._extract_tar(data, self.dest, "test")
             self.assertTrue((self.dest / "assets" / "a" / "caller.yaml").is_file())
 
-        self.both_branches(run)
+        run()
 
     def test_traversal_member_raises_and_writes_nothing(self):
         data = self.tar(("assets/ok.yaml", tarfile.REGTYPE), ("../escape.txt", tarfile.REGTYPE))
@@ -2924,7 +2935,7 @@ class ExtractTar(unittest.TestCase):
             self.assertFalse((self.root / "escape.txt").exists())
             self.assertEqual(list(self.dest.iterdir()), [], "validated before anything is written")
 
-        self.both_branches(run)
+        run()
 
     def test_absolute_and_link_members_raise(self):
         def run():
@@ -2936,7 +2947,12 @@ class ExtractTar(unittest.TestCase):
                 with self.assertRaises(RuntimeError, msg=entry):
                     audit._extract_tar(self.tar(entry), self.dest, "test")
 
-        self.both_branches(run)
+        run()
+
+    def test_link_inside_dest_raises(self):
+        data = self.tar(("assets/a.yaml", tarfile.REGTYPE), ("assets/link", tarfile.SYMTYPE), linkname="a.yaml")
+        with self.assertRaisesRegex(RuntimeError, "assets/link"):
+            audit._extract_tar(data, self.dest, "test")
 
 
 class SCAN01(unittest.TestCase):

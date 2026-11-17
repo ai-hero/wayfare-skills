@@ -37,9 +37,11 @@ files fleet setup restores, and with --extract unpacks exactly those.
 
 check --floors-only is the session-start hook's mode: it reads origin/main as
 last fetched, without fetching, runs only the --version of each floored tool on
-PATH, prints one line per tool below its floor, and is silent and exits 0 in
-every other case, a refusal included. A raised floor reaches a machine with
-its next fetch of the register.
+PATH, prints one line per tool below its floor (or one line when setup.yaml
+fails validation), and is otherwise silent. It exits 0 in every case, a gate
+refusal included, except a --file without --unreviewed, which exits 2 like any
+other command. A raised floor reaches a machine with its next fetch of the
+register.
 
 Exit: 0 done, 1 something missing or failed (or an archive refused), 2 invalid
 file or usage, 3 the review gate refused the file, 4 the register has no
@@ -1155,7 +1157,7 @@ def main(argv=None):
     ap.add_argument(
         "--unreviewed",
         action="store_true",
-        help="let apply run a --file that has not been through the register's review",
+        help="let a command other than validate read a --file that has not been through the register's review",
     )
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("validate")
@@ -1225,7 +1227,7 @@ def main(argv=None):
         )
         return 2
     if a.cmd == "check" and a.floors_only:
-        # Advisory, at session start: every refusal is silence and exit 0, so
+        # Advisory, at session start: a gate refusal is silence and exit 0, so
         # a machine outside a fleet, or a fleet with no floors, sees nothing.
         try:
             text, source, _ = load_file(a.file) if a.file else load_reviewed(a.fleet, fetch=False)

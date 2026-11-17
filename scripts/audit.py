@@ -60,7 +60,9 @@ The fleet's overlay (CONTROLS.yaml, CHECKS.yaml, checkers.py) is read from a
 commit of the register checkout: origin/main when it has an `origin` remote,
 else HEAD (`register:` in the header). Only a register with no .git is read
 from its working tree. Anything short of a clean, pushed, freshly fetched
-origin/main is unreviewed: the header names why, the overlay's changes to
+origin/main is unreviewed, and so is an origin that does not match both the
+FLEET.md register-repo and this machine's register pin, or a FLEET.md that
+differs from origin/main: the header names why, the overlay's changes to
 baseline records are dropped, its own checks read MANUAL, checkers.py is not
 loaded, and --fail-on exits 3.
 """
@@ -679,7 +681,10 @@ def register_source():
     The overlay is read from a commit extracted to a temporary directory:
     origin/main, freshly fetched, when the register has an `origin` remote and
     that resolves, else HEAD. Reviewed means origin/main, fetched this run, with
-    no uncommitted or unpushed change to the three files. Cached, so
+    no uncommitted or unpushed change to the three files, an origin that
+    matches both FLEET.md's register-repo and this machine's register pin, and,
+    when FLEET.md lives in the register, a FLEET.md identical to origin/main's.
+    Cached, so
     checkers.py and the YAML come from one sha even when origin/main moves
     between the two reads. The one working-tree read is a register with no
     .git: read in place, never reviewed, so its checkers.py never runs.
@@ -3571,19 +3576,17 @@ def _extract_tar(data, dest, origin):
     """Extract the tar `data` under `dest`, refusing anything but regular files
     and directories with relative names that stay inside `dest`.
 
-    The member check is the guard on every Python: `filter="data"` exists only
-    on 3.12+ and late 3.9-3.11 patch releases, and macOS's /usr/bin/python3 is
-    3.9.6, where passing it raises TypeError. Do not replace the member loop
-    with the filter: 3.9.6 would be unguarded. `members=` is passed so semgrep
-    sees the extraction is vetted. Links are refused on purpose, so a symlink
-    added under assets/ or the scripts makes every audit raise."""
+    Do not replace the member loop with `filter="data"`: that filter accepts a
+    link that stays inside `dest`, and links are refused on purpose, so a
+    symlink added under assets/ or the scripts makes every audit raise.
+    `members=` is passed so semgrep sees the extraction is vetted."""
     with tarfile.open(fileobj=io.BytesIO(data)) as t:
         members = t.getmembers()
         for m in members:
             parts = pathlib.PurePosixPath(m.name).parts
             if not (m.isreg() or m.isdir()) or m.name.startswith("/") or ".." in parts:
                 raise RuntimeError(f"{origin} holds an unsafe member {m.name!r}; nothing extracted")
-        t.extractall(dest, members=members, **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
+        t.extractall(dest, members=members, filter="data")
 
 
 class Unreadable(Exception):

@@ -192,6 +192,12 @@ printf '#!/bin/sh\necho "claude: command failed"\n' > "$CCV/bin/claude"
 OUT_CC=$(HOME="$CCV/home" PATH="$CCV/bin:$PATH" "$SCRIPT" --bucket tooling 2>&1)
 check "claude with no version: warns it could not read one" "could not read a version" "$OUT_CC"
 
+# A store backend that cannot be read is named, with the router's own reason,
+# never discarded and reported as something else.
+OUT_RT=$(cd "$(dirname "$SCRIPT")/.." && WAYFARE_STORE=htp://typo "$SCRIPT" --bucket repo 2>&1)
+check "store backend unreadable: a blocker that names the backend" "[BLOCKER] repo: the store backend cannot be read" "$OUT_RT"
+check "store backend unreadable: and the router's reason reaches the output" "'htp://typo' is neither 'local' nor an http(s) URL" "$OUT_RT"
+
 echo ""
 echo "preflight.test.sh: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

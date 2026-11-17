@@ -550,6 +550,12 @@ srv hero_deploy_pending_clear "$SW/.plans" "$SHA" >/dev/null 2>&1; check "store-
 check "store-guard: hero_deploy_pending still reads under a server backend" "$SHA" "$(srv hero_deploy_pending "$SW/.plans" | cut -f1)"
 ( unset WAYFARE_STORE; hero_msg_deposit "$SW/.plans" m-aa0001 "$TMP/srvmsg.md" >/dev/null 2>&1 ); check "store-guard: the same deposit lands on the local backend" "yes" "$([ -e "$SW/.plans/inbox/m-aa0001.md" ] && echo yes || echo no)"
 ( cd "$SW" && srv bash "$(dirname "$LIB")/migrate-plan.sh" >/dev/null 2>&1 ); check "store-guard: migrate-plan refuses under a server backend" "1" "$?"
+SN="$TMP/srvnostore"; mkdir -p "$SN"; git init -q "$SN" 2>/dev/null
+ERR=$(cd "$SN" && srv bash "$(dirname "$LIB")/migrate-plan.sh" 2>&1 >/dev/null); RC=$?
+check "store-guard: migrate-plan on a repo with no store refuses and creates no store or exclude entry" "1 no 0" \
+  "$RC $([ -e "$SN/.plans" ] && echo yes || echo no) $(grep -c plans "$SN/.git/info/exclude" 2>/dev/null || true)"
+case "$ERR" in *"refusing to write the local store (migrate-plan)"*) check "store-guard: the write guard refuses it, before the store is resolved" ok ok ;;
+  *) check "store-guard: the write guard refuses it, before the store is resolved" "the migrate-plan refusal" "$ERR" ;; esac
 rm -rf "$PX"
 
 # The walk covers ancestors, not just the folder holding .fleet/.

@@ -761,7 +761,9 @@ never a silent `local`: a fleet that meant the server would keep writing files
 the server never sees. A pin file holding URL lines that cannot be read is an
 error too, and so is a fleet map above the folder that cannot be read: either
 way the switch cannot be read, and reading it as `local` writes files the server
-never sees. A checkout outside every fleet folder reads `local` whatever the pin
+never sees. So is a pin line whose second field reads as a URL typed without its
+scheme (a host with a dot or a port, then one path segment): the error names the
+line. A checkout outside every fleet folder reads `local` whatever the pin
 holds, because a URL line names one fleet root and a repo under none of them
 (this plugin checkout, a scratch clone) is not that fleet's. A checkout under a
 URL line's root, or a worktree whose primary checkout is, with no fleet map
@@ -847,7 +849,14 @@ could not be asked and 1 only when there is no config or no such field, and the
 skills' Step 0 stops on 2: read as "no HERO.md", an outage sends a configured
 repo to `wayfare-init-repo`. `hero_item_set` checks a value before routing, so
 both backends accept and refuse the same ones, and quotes it locally by the
-renderer's rule; `blocked_on` stamps `blocked_since` locally.
+renderer's rule; `blocked_on` stamps `blocked_since` locally. `rank` 0 is
+refused on both, because the server stores 0 as no rank. A list element holding
+a comma or a space is quoted, so it reads back as one element. Only the repo a
+message was sent to replies to it or closes it, and a closed message is not
+closed again: the server lets the sender reply, so `hero_msg_reply` and
+`hero_msg_close` check the thread first and refuse with the local message. A
+local move away from `done` drops the item's `resolution`; the server refuses an
+agent that move.
 
 build-task's item writes follow the server's own moves. A claim sets a task
 active, `link_pr` and the merge verdict carry review and done, and the server

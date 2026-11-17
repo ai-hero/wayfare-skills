@@ -196,7 +196,7 @@ release_anchor() {
 }
 
 sc_messages() {
-  local before id rid out
+  local before id rid out sent
   before=$(hero_inbox_count "$ROOT/.plans" 2>/dev/null)
   id=$(hero_msg_send check request "parity $NONCE" "body $NONCE" "$ROOT" 2>/dev/null) || {
     ensure_anchor && id=$(hero_msg_send check request "parity $NONCE" "body $NONCE" "$ROOT" 2>/dev/null)
@@ -209,6 +209,13 @@ sc_messages() {
   out=$(hero_msg_close "$id" answered "done $NONCE" "$ROOT" 2>/dev/null)
   echo "close: ${out//$id/ID}"
   echo "unread after close: +$(($(hero_inbox_count "$ROOT/.plans" 2>/dev/null) - before))"
+  out=$(hero_msg_close "$id" declined "again $NONCE" "$ROOT" 2>&1 >/dev/null)
+  echo "re-close: rc=$? ${out//$id/ID}"
+  # A message this repo sent: locally it sits in the recipient's inbox, so any
+  # id absent from this one; on the stub, a thread from check to another project.
+  case "$(hero_store_backend "$ROOT")" in local) sent="m-5e0700" ;; *) sent=thr-sent ;; esac
+  out=$(hero_msg_reply "$sent" "parity $NONCE" "$ROOT" 2>&1 >/dev/null)
+  echo "reply on a sent message: rc=$? ${out//$sent/ID}"
   release_anchor 2>/dev/null || echo "release: the claim on item 2 was not released"
 }
 
@@ -261,7 +268,28 @@ sc_goal_ending() {
   echo "warnings naming goal 10: $(hero_ready_items "$ROOT/.plans" 2>&1 >/dev/null | grep -c '010-')"
 }
 
-SCENARIOS="ready item_fields write_item log messages hero_fields fleet audit build goal_ending"
+# Values a backend could not hold or read back whole: each round-trips or is
+# refused on both. The server stores rank 0 as no rank. A move away from done
+# leaves no resolution behind (the server refuses an agent that move; locally
+# it is made and the resolution goes).
+sc_edges() {
+  local f st
+  echo "rank 0: rc=$(hero_item_set 2 rank 0 "$ROOT" >/dev/null 2>&1; echo $?)"
+  f=$(hero_item_file 2 "$ROOT"); echo "rank reads: $(hero_item_field "$f" rank)"
+  echo "set source: $(hero_item_set 2 source '["src/a, b.go", src/two.go]' "$ROOT" 2>&1)"
+  f=$(hero_item_file 2 "$ROOT"); echo "source reads: $(hero_item_list_field "$f" source | tr '\n' '|')"
+  echo "set title: $(hero_item_set 2 title "\"It's\" done" "$ROOT" 2>&1)"
+  f=$(hero_item_file 2 "$ROOT"); echo "title reads: $(hero_item_field "$f" title)"
+  hero_item_set 2 rank 2 "$ROOT" >/dev/null 2>&1
+  hero_item_set 2 source "[src/two.go]" "$ROOT" >/dev/null 2>&1
+  hero_item_set 2 title "Parity ready one" "$ROOT" >/dev/null 2>&1
+  f=$(hero_item_file 2 "$ROOT"); echo "restored: $(hero_item_field "$f" title) $(hero_item_list_field "$f" source)"
+  hero_item_transition 1 planning "parity $NONCE" "" "$ROOT" >/dev/null 2>&1
+  f=$(hero_item_file 1 "$ROOT"); st=$(hero_item_field "$f" status)
+  echo "after a move from done, a resolution only at done: $([ "$st" = "done" ] || [ -z "$(hero_item_field "$f" resolution)" ] && echo yes || echo no)"
+}
+
+SCENARIOS="ready item_fields write_item log messages hero_fields fleet audit build goal_ending edges"
 
 # run_backend LABEL BACKEND : the scenarios on one backend, into $TMP/out/LABEL
 run_backend() {
@@ -342,6 +370,12 @@ case $sub in
     jq -c --argjson n "$n" --argjson p "$payload" 'map(if .number == $n then .log += [{at: "2026-11-14T10:00:00Z", by: "agent", tag: $p.tag, body: $p.text}] else . end)' "$S/items.json" | save items.json
     jq -c --argjson n "$n" '{item: (.[] | select(.number == $n))}' "$S/items.json" ;;
   messages) jq -c '{threads: .}' "$S/threads.json" ;;
+  transition)
+    n=$(printf '%s' "$payload" | jq '.number')
+    jq -e --argjson n "$n" 'any(.[]; .number == $n and .status == "done")' "$S/items.json" >/dev/null \
+      && { echo "an agent may not move an item from done" >&2; exit 1; }
+    jq -c --argjson n "$n" --argjson p "$payload" 'map(if .number == $n then .status = $p.to | .resolution = ($p.resolution // null) else . end)' "$S/items.json" | save items.json
+    jq -c --argjson n "$n" '{item: (.[] | select(.number == $n))}' "$S/items.json" ;;
   claim) : > "$S/claimed"; echo '{"task":{"status":"active"}}'; echo "Wayfare-Instance: inst-1" >&2 ;;
   release)
     [ -f "$S/claimed" ] || { echo "this agent does not hold a live claim on the task" >&2; exit 1; }
@@ -356,6 +390,8 @@ case $sub in
   reply) printf '{"thread":{"id":%s,"status":"OPEN"}}' "$(printf '%s' "$payload" | jq '.thread_id')" ;;
   close)
     id=$(printf '%s' "$payload" | jq -r '.thread_id')
+    jq -e --arg id "$id" 'any(.[]; .id == $id and (.status == "OPEN" or .status == "CLAIMED"))' "$S/threads.json" >/dev/null \
+      || { echo "thread is closed" >&2; exit 1; }
     jq -c --arg id "$id" 'map(if .id == $id then .status = "ANSWERED" else . end)' "$S/threads.json" | save threads.json
     echo "{\"thread\":{\"id\":\"$id\",\"status\":\"ANSWERED\"}}" ;;
   config) jq -n --rawfile m "$S/HERO.md" '{framing: "x", data: {exists: true, markdown: $m}}' ;;
@@ -384,7 +420,7 @@ cat > "$STUB/items.json" <<'EOF'
 {"number":10,"type":"goal","title":"Parity delivered goal","status":"done","resolution":"delivered","description":"","log":[]}
 ]
 EOF
-echo '[]' > "$STUB/threads.json"
+echo '[{"id":"thr-sent","from_project_id":"p-check","to_project_id":"p-other","status":"OPEN","subject":"sent elsewhere"}]' > "$STUB/threads.json"
 cat > "$STUB/fleet.json" <<'EOF'
 {"data":{"settings":{"org":"acme","template":"tpl","port_min":33000,"port_max":33099},"groups":[{"id":"g1","name":"Core"}],"rows":[{"project":{"slug":"check","group_id":"g1","port":33008,"what":"The check repo"}}]}}
 EOF
@@ -402,6 +438,10 @@ before_fail=$FAIL
 parity "stub: " "$STUB_URL"
 check "stub: every scenario passes against an unmutated stub, none of them vacuous" "$before_fail" "$FAIL"
 check "stub: the scenarios compared (two checks each)" "$((2 * $(wc -w <<< "$SCENARIOS")))" "$((PASS - 1))"
+# Agreeing is not enough where both backends shared one parser: a value split or
+# truncated the same way on both would pass the diff.
+check "stub: a list element holding ', ' reads back as one" "source reads: src/a, b.go|src/two.go|" "$(grep '^source reads:' "$TMP/out/local/edges.out")"
+check "stub: a title holding both quote kinds reads back whole" "title reads: \"It's\" done" "$(grep '^title reads:' "$TMP/out/local/edges.out")"
 
 # The mutations: each changes one server outcome and must fail exactly its own
 # scenario. FAIL is rolled back after, because the failure is the expected result.

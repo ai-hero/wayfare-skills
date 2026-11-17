@@ -94,8 +94,12 @@ LAUNCHERS = {"npx", "bunx", "pnpx", "uvx"}
 # --with (an extra dependency), npx -w is --workspace (not a package at all).
 # Only a flag that names the command makes the positional argument a command
 # name; an extra-dependency flag leaves the positional as the real package.
-COMMAND_FLAGS = {"npx": ("--package", "-p"), "bunx": ("--package", "-p"),
-                 "pnpx": ("--package", "-p"), "uvx": ("--from",)}
+COMMAND_FLAGS = {
+    "npx": ("--package", "-p"),
+    "bunx": ("--package", "-p"),
+    "pnpx": ("--package", "-p"),
+    "uvx": ("--from",),
+}
 EXTRA_FLAGS = {"uvx": ("--with", "-w")}
 VALUE_FLAGS = {"npx": ("--workspace", "-w")}
 PINNED_RE = re.compile(r"^@?[A-Za-z0-9][A-Za-z0-9._/-]*(@|==)\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$")
@@ -165,8 +169,7 @@ def launcher_packages(launcher, args):
     command_flags = COMMAND_FLAGS.get(launcher, ())
     extra_flags = EXTRA_FLAGS.get(launcher, ())
     value_flags = VALUE_FLAGS.get(launcher, ())
-    shorts = tuple(f for f in command_flags + extra_flags + value_flags
-                   if len(f) == 2)
+    shorts = tuple(f for f in command_flags + extra_flags + value_flags if len(f) == 2)
     pkgs, named, positional, i = [], False, [], 0
     while i < len(args):
         a = args[i]
@@ -1232,8 +1235,10 @@ def main(argv=None):
         except Invalid:
             # An unknown key from a newer schema lands here, and silence would
             # read as "every floor met" on a machine whose plugin is older.
-            print("wayfare: fleet floors not checked: setup.yaml failed validation "
-                  f"(from {HERE.parent} run: uv run scripts/fleet-setup.py --fleet {a.fleet} validate)")
+            print(
+                "wayfare: fleet floors not checked: setup.yaml failed validation "
+                f"(from {HERE.parent} run: uv run scripts/fleet-setup.py --fleet {a.fleet} validate)"
+            )
             return 0
         if platform_now() != doc["platform"]:
             return 0

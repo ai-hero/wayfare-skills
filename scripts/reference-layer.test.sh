@@ -92,7 +92,46 @@ check "pr body: the line follows the summary paragraph" \
 check "pr body: a branch with no pins is unchanged" "$BODY" \
   "$(cd "$WITH" && git checkout -q -b feat/none && hero_reference_pr_body "$BODY" "$WITH")"
 
+# What sync-plan lists. Item 3 is pinned to loan@1 (now @2) and to a file that
+# is gone; a done item pinned behind is history, not a finding.
+item "$WITH" 4 feat/old 'done' 'Reference: entity:loan@1'
+STALE=$(hero_reference_stale "$WITH")
+check "stale: the item, the pin and the current version" "item 3: entity:loan@1 is now @2" "$(printf '%s\n' "$STALE" | sed -n 1p)"
+check "stale: quotes the changelog entry between, unwrapped" "1" \
+  "$(printf '%s\n' "$STALE" | sed -n 2p | grep -c '^    - entity:loan@2: `due_on` is now required at checkout and `condition_on_return` was added; a build')"
+check "stale: a pin with no file" "item 3: entity:gone@1 has no reference file" "$(printf '%s\n' "$STALE" | sed -n 3p)"
+check "stale: current pins and done items are not listed" "3" "$(printf '%s\n' "$STALE" | wc -l | tr -d ' ')"
+check "stale: the @1 entry is not quoted for a pin already at @1" "0" "$(printf '%s\n' "$STALE" | grep -c 'first written')"
+
+# What review-pr flags.
+check "code paths: the example names none" "1" "$(hero_reference_code_paths "$WITH" >/dev/null; echo $?)"
+cp "$WITH/reference/entities/loan.md" "$TMP/loan.md"
+printf '\nStored by `src/loans/store.go` and apps/web/loan.tsx, served at /api/loans.\n' >>"$WITH/reference/entities/loan.md"
+check "code paths: each path a reference file names, not a URL path or a field" \
+  $'reference/entities/loan.md: src/loans/store.go\nreference/entities/loan.md: apps/web/loan.tsx' \
+  "$(hero_reference_code_paths "$WITH" | sed "s|^$WITH/||; s|:[0-9]*:|:|")"
+check "code paths: the prototype's own files are exempt" "0" "$(hero_reference_code_paths "$WITH" | grep -c prototype)"
+cp "$TMP/loan.md" "$WITH/reference/entities/loan.md"
+
+(
+  cd "$WITH" || exit 1
+  git add -A reference && git -c user.name=t -c user.email=t@t commit -qm base
+  sed -i.bak 's/seven days by default/ten days by default/' reference/entities/loan.md
+  sed -i.bak 's/^entity: tool@1$/entity: tool@2/; s/one physical tool/one physical tool, tagged/' reference/entities/tool.md
+  rm -f reference/entities/*.bak
+  printf 'entity: shed@1\n\n# Shed\n' >reference/entities/shed.md
+  git add -A reference && git -c user.name=t -c user.email=t@t commit -qm change
+) >/dev/null 2>&1
+check "unbumped: a changed file whose version did not move, and only that" "reference/entities/loan.md @2" \
+  "$(hero_reference_unbumped HEAD~1 "$WITH")"
+
 # ---------- a repo without reference/ -------------------------------------
+
+for fn in hero_reference_stale hero_reference_code_paths; do
+  out=$("$fn" "$WITHOUT" 2>&1); rc=$?
+  check "$fn: no reference/ is rc 1" "1" "$rc"
+  check "$fn: no reference/ prints nothing" "" "$out"
+done
 
 for fn in hero_reference_dir hero_reference_index; do
   out=$("$fn" "$WITHOUT" 2>&1); rc=$?
@@ -110,7 +149,7 @@ if [ "$FAIL" -gt 0 ]; then
   echo "reference-layer: $PASS passed, $FAIL FAILED"
   exit 1
 fi
-MIN_CASES=23
+MIN_CASES=36
 if [ "$PASS" -lt "$MIN_CASES" ]; then
   echo "reference-layer: only $PASS cases ran, expected >= $MIN_CASES" >&2
   exit 1

@@ -128,6 +128,9 @@ repo has none; `hero_reference_pr_body` then returns the body unchanged.
 | `hero_reference_resolve FILE [ROOT]` | each pin, the file's current version (`none` when gone), its path |
 | `hero_reference_line FILE...` | one `Reference:` line with every pin |
 | `hero_reference_branch_line [BRANCH] [ROOT]` | that line for every item whose `branch:` is BRANCH |
+| `hero_reference_stale [ROOT]` | each open item pinned behind its file, with the changelog entries between |
+| `hero_reference_code_paths [ROOT]` | each line of a reference file that names a code path |
+| `hero_reference_unbumped BASE [ROOT]` | each reference file changed since BASE with its version unmoved |
 | `hero_reference_pr_body BODY [ROOT]` | BODY with the branch's line after its `## Summary` paragraph |
 
 ## The hooks
@@ -140,3 +143,5 @@ Each skill carries a few lines that point here; none restates the format.
 | wayfare-write-handoff | Carries the item's `Reference:` line into the handoff unchanged, and pins what the session changed in `reference/`. |
 | wayfare-build-task | Before the first edit, runs `hero_reference_resolve` on the item and reads every pinned file. A pin whose version is behind the file is re-read against its changelog lines, and a pin with no file is a Step 2 ambiguity. |
 | wayfare-push-pr | Passes the PR body through `hero_reference_pr_body`, which adds the branch's `Reference:` line under the summary. |
+| wayfare-review-pr | Flags a behavior change whose PR has no `Reference:` line, and each `hero_reference_code_paths` hit, as Important; warns on each `hero_reference_unbumped` file whose diff changed meaning. |
+| wayfare-sync-plan | Reports `hero_reference_stale` as **reference-stale** in the source lane, quoting the changelog entries. |

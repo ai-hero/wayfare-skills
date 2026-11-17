@@ -3015,6 +3015,84 @@ hero_reference_branch_line() { # [BRANCH] [ROOT]
   hero_reference_line "${files[@]}"
 }
 
+# Every open item pinned behind the reference, as `item N: PIN is now @V` (or
+# `has no reference file`), each followed by the CHANGELOG entries between the
+# two versions, indented. An entry is a bullet with its wrapped lines, because
+# mdformat wraps a long changelog line. rc 1 when nothing is stale.
+hero_reference_stale() { # [ROOT]
+  local dir items f n out=""
+  dir=$(hero_reference_dir "${1:-}") || return 1
+  items=$(hero_items_dir "${1:-}") || return 1
+  for f in "$items"/*.md; do
+    [ -f "$f" ] || continue
+    case "$(hero_item_status "$f")" in done|dropped) continue ;; esac
+    n=$(hero_item_field "$f" id)
+    out+=$(hero_reference_resolve "$f" "${1:-}" 2>/dev/null | awk -F'\t' -v n="$n" '
+      { p = $1; v = p; sub(/^.*@/, "", v)
+        if ($2 == "none") print "item " n ": " p " has no reference file"
+        else if ($2 + 0 > v + 0) print "item " n ": " p " is now @" $2 "\t" v "\t" $2 }')
+    out+=$'\n'
+  done
+  out=$(printf '%s' "$out" | grep -v '^$') || return 1
+  printf '%s\n' "$out" | awk -F'\t' '
+    FILENAME == ARGV[1] {
+      if (/^- /) { e[++ne] = $0; next }
+      if (/^[[:space:]]+[^[:space:]]/ && ne) { l = $0; sub(/^[[:space:]]+/, " ", l); e[ne] = e[ne] l; next }
+      next
+    }
+    { print $1
+      if (NF < 3) next
+      k = $1; sub(/^item [0-9]+: /, "", k); sub(/@.*/, "", k)
+      for (i = 1; i <= ne; i++) for (x = $2 + 1; x <= $3 + 0; x++) {
+        t = k "@" x; s = e[i]
+        while ((j = index(s, t)) > 0) {
+          c = substr(s, j + length(t), 1)
+          if (c !~ /[0-9]/) { print "    " e[i]; x = $3 + 1; break }
+          s = substr(s, j + length(t))
+        }
+      }
+    }' "$dir/CHANGELOG.md" -
+}
+
+# Each reference file that names a code path, as `path:line: token`. The
+# prototype is code inside reference/ and is exempt; README and CHANGELOG carry
+# no header and are not reference files. rc 1 when none does.
+hero_reference_code_paths() { # [ROOT]
+  local files
+  files=$(hero_reference_index "${1:-}" | awk -F'\t' '$1 !~ /^prototype:/ && $3 !~ /\/prototype\// { print $3 }') || return 1
+  [ -n "$files" ] || return 1
+  printf '%s\n' "$files" | while IFS= read -r f; do
+    awk '{
+      s = $0
+      while (match(s, /(^|[^A-Za-z0-9_.\/-])((src|app|apps|lib|cmd|internal|pkg|server|web|ui|services|packages|tests?)\/[A-Za-z0-9_.\/-]+|[A-Za-z0-9_\/-]+\.(go|ts|tsx|js|jsx|py|rb|rs|java|kt|swift|sql|proto|sh))/)) {
+        t = substr(s, RSTART, RLENGTH); sub(/^[^A-Za-z0-9_.\/-]/, "", t)
+        print FILENAME ":" FNR ": " t
+        s = substr(s, RSTART + RLENGTH)
+      }
+    }' "$f"
+  done | grep . || return 1
+}
+
+# Each reference file changed in BASE...HEAD whose header version did not
+# move, as `path @version`. Whether the change altered meaning is the
+# reviewer's call; this only lists the candidates. A file new since BASE is not
+# listed. rc 1 when none is.
+hero_reference_unbumped() { # BASE [ROOT]
+  local root dir f old new out=""
+  root=${2:-$(hero_root)}
+  dir=$(hero_reference_dir "$root") || return 1
+  while IFS= read -r f; do
+    [ -f "$root/$f" ] || continue
+    new=$(awk 'NF { print; exit }' "$root/$f")
+    old=$(git -C "$root" show "$1:$f" 2>/dev/null | awk 'NF { print; exit }') || continue
+    [ -n "$old" ] || continue
+    case "$new" in *@[0-9]*) ;; *) continue ;; esac
+    [ "${new##*@}" = "${old##*@}" ] && out+="$f @${new##*@}"$'\n'
+  done < <(git -C "$root" diff --name-only "$1...HEAD" -- "${dir#"$root"/}" 2>/dev/null | grep '\.md$' | grep -v '/prototype/')
+  [ -n "$out" ] || return 1
+  printf '%s' "$out"
+}
+
 # BODY with this branch's Reference: line after its `## Summary` paragraph, or
 # BODY unchanged when the repo has no reference/ or nothing is pinned.
 hero_reference_pr_body() { # BODY [ROOT]

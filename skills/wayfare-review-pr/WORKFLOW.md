@@ -257,6 +257,21 @@ Wait for all agents to complete, then aggregate findings into: **Critical**
 Critical or Important per the spec above. Never bury an exploitable finding in
 Suggestions.
 
+**In a repo with `reference/`, add three reference checks** (the format is
+[reference-layer.md](../../references/reference-layer.md)). Skip them when
+`hero_reference_dir` returns 1.
+
+- **Important:** the diff changes behavior (not only tests, docs or
+  `reference/`) and the PR body has no `Reference:` line
+  (`gh pr view PR --json body -q .body | hero_reference_pins -` returns 1). Name
+  what changed and the reference file that should describe it.
+- **Important:** each line `hero_reference_code_paths` prints, a reference file
+  naming a code path. Links point from the work to the reference only.
+- **Suggestion, as a warning:** each file `hero_reference_unbumped origin/BASE`
+  lists, a reference file changed without a version bump. Read its diff: when a
+  rule, attribute, step, state or write changed meaning, it needs the bump and a
+  `CHANGELOG.md` line; rewording does not.
+
 ### Step 3: Post Review Comment
 
 Render the template with real findings, humanize it with

@@ -951,13 +951,13 @@ done
 # ── reference layer hooks are gated and point at the one rule doc ──
 # A hook that skips the hero_reference_* gate runs in repos with no reference/,
 # and one that restates the format instead of linking it drifts from it.
-REFERENCE_HOOKS="wayfare-grill-idea/SKILL.md wayfare-one-shot/SKILL.md wayfare-write-handoff/SKILL.md wayfare-build-task/WORKFLOW.md wayfare-push-pr/WORKFLOW.md"
+REFERENCE_HOOKS="skills/wayfare-grill-idea/SKILL.md skills/wayfare-one-shot/SKILL.md skills/wayfare-write-handoff/SKILL.md skills/wayfare-build-task/WORKFLOW.md skills/wayfare-push-pr/WORKFLOW.md skills/wayfare-review-pr/WORKFLOW.md references/sync.md"
 REFERENCE_HOOK_ERRORS=0
 for h in $REFERENCE_HOOKS; do
-  f="$SKILLS_DIR/$h"
-  grep -q 'hero_reference_' "$f" 2>/dev/null && grep -q 'references/reference-layer\.md' "$f" && continue
+  f="$PLUGIN_ROOT/$h"
+  grep -q 'hero_reference_' "$f" 2>/dev/null && grep -q 'reference-layer\.md' "$f" && continue
   REFERENCE_HOOK_ERRORS=$((REFERENCE_HOOK_ERRORS + 1))
-  error "reference hook is ungated or does not link the rule doc" "skills/$h" "" \
+  error "reference hook is ungated or does not link the rule doc" "$h" "" \
     "Gate the hook on a hero_reference_* call and link ../../references/reference-layer.md"
 done
 [[ $REFERENCE_HOOK_ERRORS -eq 0 ]] && pass "reference-layer hooks are gated and link references/reference-layer.md"

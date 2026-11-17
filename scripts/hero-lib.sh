@@ -1273,7 +1273,10 @@ hero_store_backend() { # [DIR]
     case "$rc" in
       0) ;;
       1) a=$(cd "${1:-$PWD}" 2>/dev/null && pwd -P) || a=
-         root=$(hero_store_path "$a"); root=${root%/.plans}
+         # From the work tree's top: only there does a worktree's .git file
+         # name its primary checkout.
+         root=$(git -C "$a" rev-parse --show-toplevel 2>/dev/null) || root=$a
+         root=$(hero_store_path "$root"); root=${root%/.plans}
          # A URL root above the checkout, or above a worktree's primary
          # checkout, means this is that fleet whatever hid its map (missing,
          # or the folder sits in a git work tree): answering local there

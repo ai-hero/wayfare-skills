@@ -248,6 +248,7 @@ srv hero_config_commands_approved "$APP" >/dev/null 2>&1; check "commands: the r
 printf 'boom\n' > "$STUB_DIR/config.fail"
 srv hero_config_commands_approved "$APP" >/dev/null 2>&1; check "commands: a server that fails the read is rc 2, never 0" "2" "$?"
 rm -f "$STUB_DIR/config.fail"
+(hero_srv_commands_approved() { return 1; }; srv hero_config_commands_approved "$APP" >/dev/null 2>&1); check "commands: an approval check that fails is rc 2, never 1" "2" "$?"
 ERR=$(srv hero_config_commands_approved "$APP" 2>&1 >/dev/null)
 case "$ERR" in *"task-runner: just"*"test-command: npm test"*"dev-command: npm run dev"*) check "commands: stderr names every command field" ok ok ;; *) check "commands: stderr names every command field" ok "$ERR" ;; esac
 check "commands: nothing is approved by reading" "no" "$([ -e "$APPROVALS" ] && echo yes || echo no)"
@@ -756,6 +757,11 @@ check "backend: a checkout inside the server fleet reads the server" "https://wf
 mkdir -p "$PO/nomap/app"; printf '%s https://wf.test/ws-2\n' "$(cd "$PO/nomap" && pwd -P)" >> "$PO/x/wayfare/registers"
 XDG_CONFIG_HOME="$PO/x" hero_store_backend "$PO/nomap/app" >/dev/null 2>"$TMP/e"; check "backend: under a URL root with no map found is rc 1, never local" "1" "$?"
 check "backend: and names the missing map" "1" "$(grep -c 'no fleet map is found' "$TMP/e")"
+mkdir -p "$PO/nomap/app/.git/worktrees/wt" "$PO/wt/sub"; printf 'gitdir: %s/nomap/app/.git/worktrees/wt\n' "$PO" > "$PO/wt/.git"
+XDG_CONFIG_HOME="$PO/x" hero_store_backend "$PO/wt" >/dev/null 2>&1; check "backend: a worktree whose primary checkout is under that root is rc 1" "1" "$?"
+git init -q "$PO/gwt-main" && git -C "$PO/gwt-main" -c user.name=t -c user.email=t@t commit -q --allow-empty -m i && git -C "$PO/gwt-main" worktree add -q "$PO/gwt" 2>/dev/null
+mkdir -p "$PO/gwt/sub"; printf '%s https://wf.test/ws-3\n' "$PO/gwt-main" >> "$PO/x/wayfare/registers"
+XDG_CONFIG_HOME="$PO/x" hero_store_backend "$PO/gwt/sub" >/dev/null 2>&1; check "backend: and so is a folder inside such a worktree" "1" "$?"
 PLUGIN_CHECKOUT="$(cd "$(dirname "$LIB")/.." && pwd -P)"
 if ! hero_fleet_root "$PLUGIN_CHECKOUT" >/dev/null 2>&1; then
   check "backend: the plugin checkout, outside any fleet, reads local under a URL pin" "local" "$(XDG_CONFIG_HOME="$PO/x" hero_store_backend "$PLUGIN_CHECKOUT" 2>/dev/null)"

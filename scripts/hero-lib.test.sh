@@ -484,6 +484,9 @@ check "item-write: ready also stamps ready_marked today" "$(date +%Y-%m-%d)" "$(
 check "item-write: committed is a local status" "status: committed" "$(sb hero_item_set_status 3 committed "" "$SW")"
 sb hero_item_set_status 3 "done" shipped "$SW" >/dev/null
 check "item-write: done takes its resolution" "done shipped" "$(hero_item_field "$SW/.plans/items/003-w.md" status) $(hero_item_field "$SW/.plans/items/003-w.md" resolution)"
+sb hero_item_set_status 3 active "" "$SW" >/dev/null
+check "item-write: a move away from done drops the resolution line" "active 0" "$(hero_item_field "$SW/.plans/items/003-w.md" status) $(grep -c '^resolution:' "$SW/.plans/items/003-w.md")"
+sb hero_item_set_status 3 "done" shipped "$SW" >/dev/null
 check "item-write: branch is a field write" "branch: feat/x" "$(sb hero_item_set 3 branch feat/x "$SW")"
 printf -- '---\nid: 4\ntype: task\nstatus: active\n---\n\n## Log\n' > "$SW/.plans/items/004-r.md"
 sb hero_item_set 4 replaced_by 3 "$SW" >/dev/null 2>&1; check "item-write: replaced_by on an item that is not dropped is rc 2" "2" "$?"
@@ -550,6 +553,12 @@ srv hero_deploy_pending_clear "$SW/.plans" "$SHA" >/dev/null 2>&1; check "store-
 check "store-guard: hero_deploy_pending still reads under a server backend" "$SHA" "$(srv hero_deploy_pending "$SW/.plans" | cut -f1)"
 ( unset WAYFARE_STORE; hero_msg_deposit "$SW/.plans" m-aa0001 "$TMP/srvmsg.md" >/dev/null 2>&1 ); check "store-guard: the same deposit lands on the local backend" "yes" "$([ -e "$SW/.plans/inbox/m-aa0001.md" ] && echo yes || echo no)"
 ( cd "$SW" && srv bash "$(dirname "$LIB")/migrate-plan.sh" >/dev/null 2>&1 ); check "store-guard: migrate-plan refuses under a server backend" "1" "$?"
+SN="$TMP/srvnostore"; mkdir -p "$SN"; git init -q "$SN" 2>/dev/null
+ERR=$(cd "$SN" && srv bash "$(dirname "$LIB")/migrate-plan.sh" 2>&1 >/dev/null); RC=$?
+check "store-guard: migrate-plan on a repo with no store refuses and creates no store or exclude entry" "1 no 0" \
+  "$RC $([ -e "$SN/.plans" ] && echo yes || echo no) $(grep -c plans "$SN/.git/info/exclude" 2>/dev/null || true)"
+case "$ERR" in *"refusing to write the local store (migrate-plan)"*) check "store-guard: the write guard refuses it, before the store is resolved" ok ok ;;
+  *) check "store-guard: the write guard refuses it, before the store is resolved" "the migrate-plan refusal" "$ERR" ;; esac
 rm -rf "$PX"
 
 # The walk covers ancestors, not just the folder holding .fleet/.

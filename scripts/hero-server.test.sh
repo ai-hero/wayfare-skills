@@ -724,6 +724,19 @@ XDG_CONFIG_HOME="$PB/x" hero_store_backend "$PB/fleet" >/dev/null 2>&1; check "b
 rmdir "$PB/fleet/.fleet/FLEET.md"; printf '# Fleet\n' > "$PB/fleet/.fleet/FLEET.md"
 check "backend: with the map readable the pin's URL answers" "https://wf.test/ws-1" "$(XDG_CONFIG_HOME="$PB/x" hero_store_backend "$PB/fleet" 2>/dev/null)"
 
+# A URL line typed without its scheme is an error naming the line; a register
+# line beside it (HOST/OWNER/NAME or OWNER/NAME) is not mistaken for one.
+cp "$PB/x/wayfare/registers" "$TMP/pin.kept"
+printf '%s github.com/acme/reg\n%s wf.test/ws-1\n' "$PB/fleet" "$PB/fleet" > "$PB/x/wayfare/registers"
+XDG_CONFIG_HOME="$PB/x" hero_store_backend "$PB/fleet" >/dev/null 2>"$TMP/e"; check "pin: a URL line with no scheme is rc 1, never local" "1" "$?"
+check "pin: and the error names its line and the fix" "1" "$(grep -c 'line 2 of the pin file .* no scheme; write it as https://wf.test/ws-1' "$TMP/e")"
+XDG_CONFIG_HOME="$PB/x" hero_srv_route_root "$PB/fleet" >/dev/null 2>&1; check "pin: the router does not read it as local either" "1" "$?"
+printf '%s localhost:8080/ws-1\n' "$PB/fleet" > "$PB/x/wayfare/registers"
+XDG_CONFIG_HOME="$PB/x" hero_store_backend "$PB/fleet" >/dev/null 2>&1; check "pin: a loopback host with a port and no scheme is rc 1 too" "1" "$?"
+printf '%s github.com/acme/reg\n%s acme/reg\n' "$PB/fleet" "$PB/other" > "$PB/x/wayfare/registers"
+check "pin: register lines alone still read local" "local" "$(XDG_CONFIG_HOME="$PB/x" hero_store_backend "$PB/fleet" 2>/dev/null)"
+cp "$TMP/pin.kept" "$PB/x/wayfare/registers"
+
 # The CLI's bearer token goes to the store URL: http is for loopback only.
 WAYFARE_STORE=http://example.com/ws-1 hero_store_backend >/dev/null 2>"$TMP/e"; check "https: a remote http URL is rc 1" "1" "$?"
 check "https: and the error names the loopback exception" "1" "$(grep -c 'only https is accepted.*localhost' "$TMP/e")"

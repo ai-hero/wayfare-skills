@@ -347,6 +347,14 @@ check_tooling() {
 check_repo() {
   ensure_gh_auth_probed
 
+  # 0. Which store this repo reads: a backend that cannot be read is named as
+  # such, with its reason on stderr, not reported as a HERO.md problem.
+  local route
+  route=$(hero_srv_route_root "$ROOT") || {
+    emit BLOCKER "repo: the store backend cannot be read (see stderr) — fix WAYFARE_STORE or the pin file"
+    return 0
+  }
+
   # 1. HERO.md present
   hero_config_exists "$ROOT"
   case $? in
@@ -372,7 +380,7 @@ check_repo() {
     .github/workflows .pre-commit-config.yaml \
     CLAUDE.md Makefile justfile Taskfile.yml 2>/dev/null \
     | grep -E '^[0-9]+$' || echo "")
-  if [ -z "$hero_time" ] && [ "$(hero_srv_route_root "$ROOT" 2>/dev/null)" = server ]; then
+  if [ -z "$hero_time" ] && [ "$route" = server ]; then
     emit SKIP "repo: HERO.md is on the Wayfare server, which keeps no commit time — staleness unknown"
   elif [ -z "$hero_time" ] && [ -z "$config_time" ]; then
     emit SKIP "repo: cannot read git history (empty repo?) — staleness unknown"

@@ -19,6 +19,13 @@ confirms.
 Read `wayfare:wayfare-review-product` for the Hard Rule and the findings table,
 so the two skills judge by one standard.
 
+**Where the line sits** in a repo with `reference/` (`hero_reference_dir`
+succeeds): the product description is the whiteboard view, one statement per
+feature; `DESIGN.md` is the code's structure; `reference/` is what the app is
+meant to be, at the depth of entities, processes and screen states
+([reference-layer.md](../../references/reference-layer.md)). A feature may name
+the value stream or process it serves by id, and never restates their detail.
+
 ## Instructions
 
 ### Step 0: Load

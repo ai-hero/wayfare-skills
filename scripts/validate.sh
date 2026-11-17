@@ -951,7 +951,7 @@ done
 # ── reference layer hooks are gated and point at the one rule doc ──
 # A hook that skips the hero_reference_* gate runs in repos with no reference/,
 # and one that restates the format instead of linking it drifts from it.
-REFERENCE_HOOKS="skills/wayfare-grill-idea/SKILL.md skills/wayfare-one-shot/SKILL.md skills/wayfare-write-handoff/SKILL.md skills/wayfare-build-task/WORKFLOW.md skills/wayfare-push-pr/WORKFLOW.md skills/wayfare-review-pr/WORKFLOW.md references/sync.md"
+REFERENCE_HOOKS="skills/wayfare-grill-idea/SKILL.md skills/wayfare-one-shot/SKILL.md skills/wayfare-write-handoff/SKILL.md skills/wayfare-build-task/WORKFLOW.md skills/wayfare-push-pr/WORKFLOW.md skills/wayfare-review-pr/WORKFLOW.md references/sync.md skills/wayfare-init-repo/SKILL.md skills/wayfare-model-data/SKILL.md skills/wayfare-recomponentize-ui/SKILL.md skills/wayfare-sync-product/SKILL.md skills/wayfare-sync-architecture/SKILL.md"
 REFERENCE_HOOK_ERRORS=0
 for h in $REFERENCE_HOOKS; do
   f="$PLUGIN_ROOT/$h"

@@ -2944,6 +2944,27 @@ hero_reference_dir() { # [ROOT]
   printf '%s' "$d"
 }
 
+# Write the minimal reference/ tree: a README pointing at the rule doc, an
+# empty CHANGELOG, and one kept folder per layer. Refuses (rc 1) a repo that
+# already has reference/, so it can never overwrite someone's reference.
+hero_reference_scaffold() { # [ROOT]
+  local root d
+  root=${1:-$(hero_root)}
+  if [ -e "$root/reference" ]; then echo "hero_reference_scaffold: $root/reference exists; nothing written" >&2; return 1; fi
+  for d in value-streams entities processes flows/screens flows/components prototype; do
+    mkdir -p "$root/reference/$d" && : >"$root/reference/$d/.gitkeep" || return 1
+  done
+  printf '%s\n' '# reference/' '' \
+    'What this app is meant to be, written before the code: value streams and' \
+    'capabilities, entities, processes, UX flow, and a throwaway prototype. The' \
+    "format is wayfare's references/reference-layer.md: every file opens with" \
+    '`KIND: ID@VERSION`, versions bump only when the meaning changes, and each bump' \
+    'adds a line to CHANGELOG.md.' >"$root/reference/README.md" || return 1
+  printf '%s\n' '# reference changelog' '' \
+    'One line per version bump, newest first: `KIND:ID@VERSION: what changed; what' \
+    'an item pinned to the old version must re-check`.' >"$root/reference/CHANGELOG.md"
+}
+
 # Every headed reference file as `kind:id<TAB>version<TAB>path`. The header is
 # the file's first non-blank line. `capabilities` is read as `capability`:
 # hero-template shipped that spelling before the format was fixed here.

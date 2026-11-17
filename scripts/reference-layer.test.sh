@@ -125,6 +125,17 @@ cp "$TMP/loan.md" "$WITH/reference/entities/loan.md"
 check "unbumped: a changed file whose version did not move, and only that" "reference/entities/loan.md @2" \
   "$(hero_reference_unbumped HEAD~1 "$WITH")"
 
+# What init-repo offers. Never over an existing folder, whatever is in it.
+before=$(find "$WITH/reference" -type f | sort | xargs cat | cksum)
+hero_reference_scaffold "$WITH" 2>/dev/null; check "scaffold: refuses a repo that has reference/" "1" "$?"
+check "scaffold: leaves that reference byte for byte" "$before" "$(find "$WITH/reference" -type f | sort | xargs cat | cksum)"
+mkdir -p "$TMP/fresh"
+hero_reference_scaffold "$TMP/fresh"; check "scaffold: writes into a repo without one" "0" "$?"
+check "scaffold: README, CHANGELOG and one kept folder per layer" \
+  "CHANGELOG.md README.md entities/.gitkeep flows/components/.gitkeep flows/screens/.gitkeep processes/.gitkeep prototype/.gitkeep value-streams/.gitkeep" \
+  "$(cd "$TMP/fresh/reference" && find . -type f | sed 's|^\./||' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
+check "scaffold: an empty tree indexes nothing" "" "$(hero_reference_index "$TMP/fresh")"
+
 # ---------- a repo without reference/ -------------------------------------
 
 for fn in hero_reference_stale hero_reference_code_paths; do
@@ -149,7 +160,7 @@ if [ "$FAIL" -gt 0 ]; then
   echo "reference-layer: $PASS passed, $FAIL FAILED"
   exit 1
 fi
-MIN_CASES=36
+MIN_CASES=41
 if [ "$PASS" -lt "$MIN_CASES" ]; then
   echo "reference-layer: only $PASS cases ran, expected >= $MIN_CASES" >&2
   exit 1

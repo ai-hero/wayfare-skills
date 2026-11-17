@@ -216,6 +216,14 @@ exist. Add `ui` and `blocks` as the lowest elements in the layer matrix.
 
 ## Step 3: Inventory the current UI (`inventory`)
 
+**Start from the reference's flows when there is one.** When
+`hero_reference_dir` succeeds and `reference/flows/` holds files, read the
+screens and components first: each screen's places and states, and each
+component's takes, affordances and states, are the component boundaries to build
+toward, and a state the code has no rule for is a finding
+([reference-layer.md](../../references/reference-layer.md)). Without the folder,
+inventory from the code alone.
+
 Find every hand-rolled element, every oversized component, and every off-token
 style. Use an Explore subagent for a large codebase.
 

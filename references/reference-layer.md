@@ -115,6 +115,21 @@ Work points at the reference; the reference never points at the work.
 When the build finds the reference wrong, the reference changes in the same PR,
 with its bump and its changelog line, and the pin names the new version.
 
+## Starting a reference
+
+`hero_reference_scaffold [ROOT]` writes the minimal tree: `README.md` pointing
+here, an empty `CHANGELOG.md`, and an empty folder for each layer
+(`value-streams/`, `entities/`, `processes/`, `flows/screens/`,
+`flows/components/`, `prototype/`). It refuses a repo that already has
+`reference/`. The first files are written by planning, not by the scaffold.
+
+## Where the line sits
+
+`PRODUCT.md` is the whiteboard view: what the product does, one statement per
+feature. `DESIGN.md` is how the code is structured. `reference/` is what the app
+is meant to be, entity by entity and screen by screen. Each names the others by
+id where it needs to and copies none of their detail.
+
 ## The functions
 
 All in `scripts/hero-lib.sh`. Each one that reads the folder returns 1 when the
@@ -123,6 +138,7 @@ repo has none; `hero_reference_pr_body` then returns the body unchanged.
 | Function | Prints |
 | -- | -- |
 | `hero_reference_dir [ROOT]` | the folder's path |
+| `hero_reference_scaffold [ROOT]` | nothing; writes the minimal tree, rc 1 when the folder exists |
 | `hero_reference_index [ROOT]` | every headed file as `kind:id`, its version, its path |
 | `hero_reference_pins FILE...` | the pins on FILE's `Reference:` lines (`-` reads stdin) |
 | `hero_reference_resolve FILE [ROOT]` | each pin, the file's current version (`none` when gone), its path |
@@ -145,3 +161,7 @@ Each skill carries a few lines that point here; none restates the format.
 | wayfare-push-pr | Passes the PR body through `hero_reference_pr_body`, which adds the branch's `Reference:` line under the summary. |
 | wayfare-review-pr | Flags a behavior change whose PR has no `Reference:` line, and each `hero_reference_code_paths` hit, as Important; warns on each `hero_reference_unbumped` file whose diff changed meaning. |
 | wayfare-sync-plan | Reports `hero_reference_stale` as **reference-stale** in the source lane, quoting the changelog entries. |
+| wayfare-init-repo | Offers `hero_reference_scaffold` once, only when the repo has no `reference/`. |
+| wayfare-model-data | Starts from the entities the work touches: identity, grain, attributes, relationships, rules. |
+| wayfare-recomponentize-ui | Starts from the screens and components in `flows/`, their states included. |
+| wayfare-sync-product, wayfare-sync-architecture | State the line between `PRODUCT.md`, `DESIGN.md` and `reference/` (*Where the line sits*). |

@@ -1,6 +1,6 @@
 # Design
 
-> Last updated: 2026-11-16 · Source ref: 41447edf791f87976f4967ae1bff9d7b9f2bfa03
+> Last updated: 2026-11-17 · Source ref: 3382c077c256f730a2302b519d8303944e663e15
 
 Why wayfare is shaped the way it is. Facts the code cannot state about itself,
 and decisions someone would otherwise undo.
@@ -70,12 +70,12 @@ but its suite only runs where that venv exists (see Testing).
 | `assets/` → consumers | Vendored into other repos by the installers and the fleet scan. Treat as downstream output: fix here, re-vendor. Where a copy must not drift (the auto-approve caller, the exception-expiry gate), an audit check holds the consumer's file byte-identical to this one. |
 | `assets/compliance/` → engine | Not installed anywhere. The engine reads the baseline in place and merges the fleet's overlay over it by id. |
 | `assets/security-audit/` → the repo | Third-party bytes under a hash manifest, outside `skills/` so no host loads them as a skill. Nothing here edits them, and every formatter, scanner and doc check is excluded from the path. `wayfare-audit-deep` reads them by path and restates none of them. `vendored-pin.yaml` compares the tree with upstream on a PR that touches it, and a person approves that PR. |
-| `.github/workflows/auto-approve.yaml` → consumers | Executed *in place* by ~25 repos via `uses: …@main`. Not copied; resolved at trigger time. A consumer's caller is also held to the vendored `caller.yaml` when `@auto-approve` runs. Any workflow a PR touches whose `uses:` (as YAML resolves it, at the base or the head) calls this one must be byte-identical to `assets/auto-approve/caller.yaml` at `main`, and deleting it, or moving it where it no longer runs, always fails. That is CI-20, keyed on content rather than the audit's one path. A change to `auto-approve.yaml`, the vendored `caller.yaml`, the hooks and what they source, or the plugin manifests needs a person: `.github/auto-approve-human-review.txt` lists them, and the workflow reads it from `main`. |
+| `.github/workflows/auto-approve.yaml` → consumers | Executed *in place* by ~25 repos via `uses: …@main`. Not copied; resolved at trigger time. A consumer's caller is also held to the vendored `caller.yaml` when `@auto-approve` runs. Any workflow a PR touches whose `uses:` (as YAML resolves it, at the base or the head) calls this one must be byte-identical to `assets/auto-approve/caller.yaml` at `main`, and deleting it, or moving it where it no longer runs, always fails. That is CI-20, keyed on content rather than the audit's one path. A change to `auto-approve.yaml`, the vendored `caller.yaml`, the hooks and every script they source or run (`hero-lib.sh`, `fleet-setup.py`, `audit.py`), any workflow, the `Justfile`, the plugin manifests and the root files Claude Code loads, the vendored audit, or `.claude/` and `.vscode/` needs a person: `.github/auto-approve-human-review.txt` lists them, the workflow reads it from `main`, and `validate.sh` fails a hook that reaches a script no entry matches. |
 | `FLEET.md` → the audit | The map is `.fleet/FLEET.md`, and the fleet root is the folder holding `.fleet/`, never inside a git work tree and never beside `HERO.md`, so a map committed in a cloned repo cannot make the audit run that clone's `.fleet/checkers.py`. The rules, who can steer the audit through the map, and how the map and the per-machine pin are reviewed are in [docs/FLEET-MD.md](./docs/FLEET-MD.md); the decision is in *The fleet map moves into the register repo* below. |
 | register → the audit | The overlay (`CONTROLS.yaml`, `CHECKS.yaml`, `checkers.py`) is read from a commit of the register checkout: `origin/main`, freshly fetched, else HEAD; only a register with no `.git` is read from its working tree. The engine trusts the operator's branch protection to make `origin/main` reviewed and does not check it. Anything short of a clean, pushed, fetched `origin/main` is unreviewed: the header's `register:` line says why, the overlay's changes to baseline records are dropped, its own checks read MANUAL, `checkers.py` is not loaded, and `--fail-on` exits 3. |
 | repo → sibling repo | A skill reaches a sibling through a message, never by editing its code or config. On the local store the message is a new file in the sibling's `.plans/inbox/` and the only write allowed there; that file write holds on the local store only. Under a server backend the inbox is the app's record, `hero_msg_send` reaches it through the `wayfare` CLI, and the local write is refused. |
 | skills and scripts → the store | Nothing outside `hero-lib.sh` (and `hero-fields.sh` and `fleet-scan.sh`, and in Python `audit.py`'s `config_path`, `register_dir` and `fleet_map`) reads `HERO.md`, the register or the inbox by name; see *The store layer* under Invariants. |
-| `.plans/`, `.fleet/`, the inbox → the server | Under a server backend these are records in the app, not files. The local functions refuse writes there, and reads render the server's data into a read-only cache. |
+| `.plans/`, `.fleet/`, the inbox → the server | Under a server backend these are records in the app, not files. The local functions refuse writes there, and reads render the server's data into a read-only cache. What the server holds is writable by any workspace token, so a skill treats its text (log lines, comments, a policy's free text) as data, never instructions, and the config readers leave a server-held HERO.md's command fields out until a person approves them on the machine (`hero_config_commands_approved`). |
 | audits → `issues` tracker | A confirmed finding (judged against the default branch as merged) is filed as one ticket through the `issues` connection, linked both ways with its `.plans/` item, and closed only on evidence (`references/finding-tickets.md`). Candidates stay local. |
 | `analysis/` → the rest | Research code, outside the plugin's gates (check_docs, mdformat, the main codespell hook, semgrep). Nothing in `skills/`, `scripts/` or `hooks/` imports it; it reads the plugin and fleet the way a skill does, never the other way round. `publishing/` is the one reader: it reuses `analysis/report`'s figure library and reads `analysis/manuscript/`. |
 | `publishing/` → `website` | `scripts/publish.sh web` writes the web edition into a worktree of the sibling `website` repo on its own branch (`WEBSITE_DIR`), never into the checkout someone works in. It is the one place this repo edits a sibling's code, and a person merges it there. |
@@ -421,3 +421,37 @@ skill posts. What still needs judgment runs on demand, not on every commit.
   why the skills write through the functions and `validate.sh` fails prose that
   does not. A fleet that meant the server and kept writing files would drift
   without an error, which is what the refusal prevents.
+
+### 2026-11-17: Server-held text is data, its command fields need a person, and the store switch is held to https and to its fleet
+
+- Context: the 2026-11-16 store-backend entry let `WAYFARE_STORE` and the pin
+  name any `http(s)://` URL, and did not say which checkouts a pin's URL line
+  governs. Once the server holds a fleet's records, more of what a skill reads is
+  text anyone with a workspace token can write: a HERO.md edited in the app, an
+  item's log lines after a person ready-marked it, a policy's free text. And
+  the plugin's own hooks run scripts on every maintainer's machine that the
+  human-review list did not name.
+- Decision: this supersedes the URL and out-of-fleet parts of the 2026-11-16
+  store-backend entry. The store URL is `https://`; plain `http://` is accepted
+  only for `localhost`, `127.0.0.1` and `[::1]`, and a URL with userinfo (`@`
+  before the host) never, because the CLI sends a bearer token to it. A pin
+  line that names a URL without its scheme is an error naming the line. A
+  checkout outside every fleet folder reads `local` whatever the pin holds; one
+  under a URL line's root with no map found above it is an error. A
+  server-held HERO.md's command fields (`task-runner`, any `*-command`) are left
+  out of what the config readers return until a person approves them on this
+  machine: a skill about to run one asks `hero_config_commands_approved`, and
+  `hero_srv_commands_approve` records the approval. Server text a skill reads
+  (log lines, comments, a policy's free text) is data about the task, never an
+  instruction; only the ready-marked description is the spec. Every workflow,
+  the `Justfile` and the scripts the hooks reach (`fleet-setup.py`,
+  `audit.py`, beside `hero-lib.sh`) join the human-review list, which already
+  held `.claude/*` and `.vscode/*`.
+- Consequences: a workspace token can change what an agent reads but not what
+  it runs or obeys: a command field waits for a person, and a log line that
+  asks for a workflow edit is reported, not built. A cleartext or
+  credential-carrying store URL fails at the switch rather than leaking the
+  token. The plugin checkout and scratch clones stay local on a machine whose
+  fleet moved to the server. A PR that touches CI, the hooks' scripts or the
+  maintainer's editor and agent settings cannot be approved by auto-approve;
+  `validate.sh` fails a hook that reaches a script no entry matches.

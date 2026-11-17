@@ -98,6 +98,7 @@ EOF
   printf -- '---\nid: 4\ntype: idea\ntitle: Parity parked idea\nstatus: accepted\n---\n' > "$i/004-parity-parked-idea.md"
   printf -- '---\nid: 5\ntype: task\ntitle: Parity wait on vendor\nstatus: ready\nshape: story\npriority: p2\nparent: 9\nrank: 5\nblocked_on: vendor review\nblocked_since: 2026-11-10\nsource: [src/five.go]\n---\n' > "$i/005-parity-wait-on-vendor.md"
   printf -- '---\nid: 9\ntype: goal\ntitle: Parity goal\nstatus: accepted\n---\n' > "$i/009-parity-goal.md"
+  printf -- '---\nid: 10\ntype: goal\ntitle: Parity delivered goal\nstatus: done\n---\n' > "$i/010-parity-delivered-goal.md"
   printf '# Fleet\n\n## Repos\n\n### check\n' > "$1/.fleet/FLEET.md"
 }
 
@@ -251,7 +252,16 @@ sc_build() {
   echo "box: $(grep -E '^[-*] \[[ xX]\] parity box' "$f")"
 }
 
-SCENARIOS="ready item_fields write_item log messages hero_fields fleet audit build"
+# A goal the server resolved `delivered` reads as a local done goal: done, with
+# no resolution and no warning from the listing.
+sc_goal_ending() {
+  local f
+  f=$(hero_item_file 10 "$ROOT") || { echo "item 10: no file"; return; }
+  echo "goal 10: $(hero_item_field "$f" status) resolution=[$(hero_item_field "$f" resolution)]"
+  echo "warnings naming goal 10: $(hero_ready_items "$ROOT/.plans" 2>&1 >/dev/null | grep -c '010-')"
+}
+
+SCENARIOS="ready item_fields write_item log messages hero_fields fleet audit build goal_ending"
 
 # run_backend LABEL BACKEND : the scenarios on one backend, into $TMP/out/LABEL
 run_backend() {
@@ -370,7 +380,8 @@ cat > "$STUB/items.json" <<'EOF'
 {"number":3,"type":"task","title":"Parity ready two","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":3,"sources":["src/three.go"],"depends_on":[2],"description":"## Subtasks\n\n- [ ] parity box","log":[]},
 {"number":4,"type":"idea","title":"Parity parked idea","status":"accepted","description":"","log":[]},
 {"number":5,"type":"task","title":"Parity wait on vendor","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":5,"sources":["src/five.go"],"depends_on":[],"blocked_on":"vendor review","blocked_since":"2026-11-10T00:00:00Z","blocked":true,"description":"","log":[]},
-{"number":9,"type":"goal","title":"Parity goal","status":"accepted","description":"","log":[]}
+{"number":9,"type":"goal","title":"Parity goal","status":"accepted","description":"","log":[]},
+{"number":10,"type":"goal","title":"Parity delivered goal","status":"done","resolution":"delivered","description":"","log":[]}
 ]
 EOF
 echo '[]' > "$STUB/threads.json"

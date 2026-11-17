@@ -3098,7 +3098,9 @@ _hero_srv_shape() { # ROOT SUB
 # number names a file, so anything but a whole number is an error, never a
 # path (`../../x`). Priority is the server's high/medium/low
 # against the local p1/p2/p3 (p0 has no server spelling, so a p0 reads back p1).
-# The server's shape `slice` is the local `story`; the other shapes match.
+# The server's shape `slice` is the local `story`; the other shapes match. A
+# goal's `delivered` renders as no resolution: a local goal ends done with none,
+# and hero_ready_items warns on an ending a goal does not have.
 _HERO_SRV_JQ='
 def clean: gsub("[[:cntrl:]]"; " ");
 def q: if type == "array" then "[" + (map(tostring | clean) | join(", ")) + "]"
@@ -3127,7 +3129,7 @@ def status_ok: if IN("new","accepted","planning","ready","active","review","comm
 def item_fm:
   "---\nid: \(.number | inum)\n" + opt("type"; .type) + opt("title"; .title)
   + "status: \(.status // "new" | clean | if . == "" then "new" else . end | status_ok)\n"
-  + opt("resolution"; .resolution) + opt("priority"; ((.priority // "") | pri)) + opt("severity"; .severity)
+  + opt("resolution"; (if .type == "goal" and .resolution == "delivered" then null else .resolution end)) + opt("priority"; ((.priority // "") | pri)) + opt("severity"; .severity)
   + opt("shape"; ((.shape // "") | shp)) + opt("channel"; .channel) + opt("parent"; .goal_number) + opt("rank"; .rank)
   + opt("depends_on"; .depends_on) + opt("blocked_on"; .blocked_on) + opt("blocked_since"; ((.blocked_since // "")[0:10]))
   + opt("source"; .sources) + opt("target"; .targets) + opt("bot"; .bot) + opt("success"; .success) + opt("origin"; .origin)

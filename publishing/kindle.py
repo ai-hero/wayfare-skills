@@ -134,7 +134,7 @@ class Images:
 def svg_image(src):
     """A drawn diagram that has no PNG, rendered through the same Chrome path as the cover, so its
     text is set in the design system's fonts rather than a rasterizer's fallback."""
-    import fitz
+    import pymupdf
     from PIL import Image
     from cover import chrome_pdf
 
@@ -143,9 +143,9 @@ def svg_image(src):
     w, h = (float(re.search(rf'<svg[^>]*\b{a}="([\d.]+)', svg).group(1)) for a in ("width", "height"))
     pdf = os.path.join(paths.BUILD, "kindle-svg.pdf")
     chrome_pdf(svg, w * 0.75, h * 0.75, pdf)
-    page = fitz.open(pdf)[0]
+    page = pymupdf.open(pdf)[0]
     z = IMAGE_W / page.rect.width
-    pix = page.get_pixmap(matrix=fitz.Matrix(z, z), alpha=False)
+    pix = page.get_pixmap(matrix=pymupdf.Matrix(z, z), alpha=False)
     os.remove(pdf)
     return Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
 

@@ -404,7 +404,7 @@ def prepare(files, folder, raster=True, warn=warn_stderr, drawing=False):
         )
     if svg == original and MARKER not in original:
         return files
-    import fitz
+    import pymupdf
     import book
 
     width, height = dimensions(svg)
@@ -422,9 +422,9 @@ def prepare(files, folder, raster=True, warn=warn_stderr, drawing=False):
         raise ValueError(f"artwork: {files['svg']} refused resources: " + ", ".join(sorted(book.REFUSED - refused)))
     if raster:
         out["png"] = stem + ".png"
-        with fitz.open(pdf_path) as pdf:
+        with pymupdf.open(pdf_path) as pdf:
             zoom = 1800 / pdf[0].rect.width
-            pdf[0].get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False).save(os.path.join(folder, out["png"]))
+            pdf[0].get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False).save(os.path.join(folder, out["png"]))
     with open(path, "w", encoding="utf-8") as f:
         f.write(svg)
     return out

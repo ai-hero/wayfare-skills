@@ -135,7 +135,7 @@ sys.path.insert(0, sys.argv[1])
 sys.path.insert(1, sys.argv[2])
 import artwork
 import book
-import fitz
+import pymupdf
 from PIL import Image
 
 book.font_faces = lambda: ''
@@ -148,7 +148,7 @@ files = artwork.prepare({'svg': 'figure.svg', 'png': 'figure.png'}, str(path))
 assert set(files) == {'svg', 'png', 'pdf'}
 with Image.open(path / files['png']) as im:
     assert all(abs(a - b) <= 1 for a, b in zip(im.getpixel((150, 150)), (186, 27, 69)))
-with fitz.open(path / files['pdf']) as pdf:
+with pymupdf.open(path / files['pdf']) as pdf:
     assert tuple(pdf[0].rect)[2:] == (120, 60)
 assert not book.REFUSED
 

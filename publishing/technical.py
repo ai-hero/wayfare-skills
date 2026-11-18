@@ -616,9 +616,9 @@ def build(doc, make, out, *args):
     if refs.unmapped:
         print(f"warn: {os.path.basename(path)}: references with no figure: {sorted(refs.unmapped)}")
     compile_pdf(path)
-    import fitz
+    import pymupdf
 
-    pdf = fitz.open(os.path.join(path, "paper.pdf"))
+    pdf = pymupdf.open(os.path.join(path, "paper.pdf"))
     dst = os.path.join(paths.DIST, out)
     pdf.save(dst, garbage=4, deflate=True, deflate_fonts=True, clean=True)
     return dst

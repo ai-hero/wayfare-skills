@@ -334,9 +334,9 @@ check("a float into the next section sets the figure after its heading and insid
       floated.index("<h2") < floated.index(">B</h2>") < floated.index("Two.") < floated.index('id="fig-diagram-9-1"')
       < floated.index("Three.") and floated.count('id="fig-diagram-9-1"') == 1)
 
-import fitz
+import pymupdf
 table_pages = []
-original_svg = fitz.Page.get_svg_image
+original_svg = pymupdf.Page.get_svg_image
 original_faces = book.font_faces
 
 
@@ -345,14 +345,14 @@ def capture_table_page(page, *args, **kwargs):
     return original_svg(page, *args, **kwargs)
 
 
-fitz.Page.get_svg_image = capture_table_page
+pymupdf.Page.get_svg_image = capture_table_page
 book.font_faces = lambda: ""
 try:
     long_table = {**table(["Name", "Description"], *[[str(i), "A table row."] for i in range(80)]),
                   "label": "Table", "number": "9.1"}
     book.table_svg(long_table, "<figcaption>A long table.</figcaption>")
 finally:
-    fitz.Page.get_svg_image = original_svg
+    pymupdf.Page.get_svg_image = original_svg
     book.font_faces = original_faces
 check("a long table spans multiple pages", True, len(table_pages) > 1)
 check("every table page repeats its number", True, all("TABLE 9.1" in page for page in table_pages))

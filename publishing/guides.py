@@ -13,7 +13,7 @@ import functools
 import json
 import os
 
-import fitz
+import pymupdf
 
 import paths
 from cover import FONTS, print_page, static_font
@@ -135,7 +135,7 @@ def print_pdf(svgs, out):
         )
     print_page(page, out, 6000)
     n = len(svgs)
-    with fitz.open(out) as doc:
+    with pymupdf.open(out) as doc:
         # A trailing page break leaves one blank page after the last SVG; any other count means a page
         # split or went missing, and trimming by count would silently drop the real last page.
         blank = len(doc) == n + 1 and not doc[-1].get_text().strip() and not doc[-1].get_drawings()

@@ -162,7 +162,7 @@ def table_svg(b, cap):
     A long table runs on to further turned pages with its header repeated."""
     if fig_id(b) in _TABLES:
         return _TABLES[fig_id(b)]
-    import fitz
+    import pymupdf
 
     HTML = weasy_html()
     rows = b["rows"]
@@ -184,14 +184,14 @@ def table_svg(b, cap):
         'font: 400 6.6pt "Geist Mono"; } }\n' + css + "</style></head><body>"
         f"<table><thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table>{cap}</body></html>"
     )
-    pdf = fitz.open(stream=HTML(string=page).write_pdf(), filetype="pdf")
+    pdf = pymupdf.open(stream=HTML(string=page).write_pdf(), filetype="pdf")
     out = os.path.join(paths.BUILD, "book")
     os.makedirs(out, exist_ok=True)
     files = []
     for i, pg in enumerate(pdf):
         path = os.path.join(out, f"{fig_id(b)}-{i + 1}.svg")
         with open(path, "w", encoding="utf-8") as f:
-            f.write(pg.get_svg_image(matrix=fitz.Matrix(0, -1, 1, 0, 0, pg.rect.width), text_as_path=True))
+            f.write(pg.get_svg_image(matrix=pymupdf.Matrix(0, -1, 1, 0, 0, pg.rect.width), text_as_path=True))
         files.append(path)
     _TABLES[fig_id(b)] = files
     return files
@@ -1088,14 +1088,14 @@ def min_scale(fig, img):
 def with_cover(interior):
     """`book.pdf` for reading on screen: the front cover, then the interior. Printers get
     `book-interior.pdf` and `cover-wrap.pdf` instead, which is why the cover is not a page of the book."""
-    import fitz
+    import pymupdf
 
     import cover
 
     cover.main()
     out = os.path.join(paths.DIST, "book.pdf")
-    doc = fitz.open(os.path.join(paths.BUILD, "cover-trim.pdf"))
-    body = fitz.open(interior)
+    doc = pymupdf.open(os.path.join(paths.BUILD, "cover-trim.pdf"))
+    body = pymupdf.open(interior)
     toc = body.get_toc()
     doc.insert_pdf(body)
     doc.set_toc([[lvl, title, page + 1] for lvl, title, page in toc])

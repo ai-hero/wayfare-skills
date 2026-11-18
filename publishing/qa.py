@@ -9,7 +9,7 @@ pages with an image and one from the middle, the first page with a table, and th
 import os
 import sys
 
-import fitz
+import pymupdf
 
 import paths
 
@@ -49,7 +49,7 @@ def sample(doc):
 
 def render(edition, wanted=None, spreads=None):
     path = pdf_for(edition)
-    doc = fitz.open(path)
+    doc = pymupdf.open(path)
     out = os.path.join(paths.QA, edition)
     os.makedirs(out, exist_ok=True)
     pages = (
@@ -74,10 +74,10 @@ def spread(doc, left, out):
     """Pages `left` (even page number, 0-based odd) and `left + 1` side by side."""
     a = doc[left]
     w, h = a.rect.width, a.rect.height
-    page = fitz.open().new_page(width=w * 2 + 12, height=h)
+    page = pymupdf.open().new_page(width=w * 2 + 12, height=h)
     page.draw_rect(page.rect, fill=(0.85, 0.85, 0.85), color=None)
-    page.show_pdf_page(fitz.Rect(0, 0, w, h), doc, left)
-    page.show_pdf_page(fitz.Rect(w + 12, 0, w * 2 + 12, h), doc, left + 1)
+    page.show_pdf_page(pymupdf.Rect(0, 0, w, h), doc, left)
+    page.show_pdf_page(pymupdf.Rect(w + 12, 0, w * 2 + 12, h), doc, left + 1)
     f = os.path.join(out, f"s{left + 1:03d}-{left + 2:03d}.png")
     page.get_pixmap(dpi=DPI).save(f)
     return f

@@ -10,7 +10,7 @@ marks, on US Letter portrait so it prints and fills by hand.
 import json
 import os
 
-import fitz
+import pymupdf
 
 import paths
 from cover import print_page
@@ -155,7 +155,7 @@ def main(argv=None):
         )
     print_page(page, out, 6000)
     os.remove(page)
-    with fitz.open(out) as doc:
+    with pymupdf.open(out) as doc:
         # A trailing page break leaves one blank page, which is all this count can catch: see fits().
         blank = len(doc) == 3 and not doc[-1].get_text().strip() and not doc[-1].get_drawings()
         if len(doc) != 2 and not blank:

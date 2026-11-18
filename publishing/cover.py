@@ -19,7 +19,7 @@ import os
 import re
 import subprocess
 
-import fitz
+import pymupdf
 
 import paths
 
@@ -603,21 +603,21 @@ def chrome_pdf(svg, w_pt, h_pt, out, fonts=True):
     os.remove(page)
     # Chrome rounds the page up to a whole CSS pixel, so a wrap comes out up to 1/96 in wider than
     # its spine calls for and a print service rejects it; trim the sliver back to the exact size.
-    doc = fitz.open(out)
+    doc = pymupdf.open(out)
     if any(abs(pg.rect.width - w_pt) > 0.01 or abs(pg.rect.height - h_pt) > 0.01 for pg in doc):
         for pg in doc:
             # set_mediabox resets the crop box to match. Never set the crop box after it: the media box is
             # stored as a float32 that can land just under w_pt, and the same rect is then refused as a crop.
-            pg.set_mediabox(fitz.Rect(0, 0, w_pt, h_pt))
+            pg.set_mediabox(pymupdf.Rect(0, 0, w_pt, h_pt))
         doc.save(out + ".tmp", garbage=3, deflate=True)
         doc.close()
         os.replace(out + ".tmp", out)
 
 
 def raster(pdf, out, dpi=None, size=None):
-    page = fitz.open(pdf)[0]
+    page = pymupdf.open(pdf)[0]
     z = (size[0] / page.rect.width) if size else dpi / 72
-    pix = page.get_pixmap(matrix=fitz.Matrix(z * 1.001, z * 1.001), alpha=False)
+    pix = page.get_pixmap(matrix=pymupdf.Matrix(z * 1.001, z * 1.001), alpha=False)
     if size and (pix.width, pix.height) != size:
         from PIL import Image
 
@@ -882,7 +882,7 @@ def main():
         raise SystemExit(
             f"cover: {book} is missing or older than the source; run scripts/publish.sh book, which draws the cover"
         )
-    pages = len(fitz.open(book))
+    pages = len(pymupdf.open(book))
     wsvg, ww, wh, spine = wrap_svg(meta, pages)
     chrome_pdf(wsvg, ww, wh, os.path.join(d, "cover-wrap.pdf"))
     with open(os.path.join(d, "cover-animated.svg"), "w", encoding="utf-8") as f:

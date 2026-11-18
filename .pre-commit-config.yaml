@@ -69,7 +69,7 @@ repos:
   # Markdown linting
   # ===========================================================================
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: e72a3ca1632f0b11a07d171449fe447a7ff6795e  # frozen: v0.48.0
+    rev: 5b5dddc4fb0f83c3ea1fc5616fa63e115dce83e0  # frozen: v0.49.1
     hooks:
       - id: markdownlint
         args: [--fix]
@@ -101,7 +101,7 @@ repos:
   # Typo detection
   # ===========================================================================
   - repo: https://github.com/codespell-project/codespell
-    rev: 2ccb47ff45ad361a21071a7eedda4c37e6ae8c5a  # frozen: v2.4.2
+    rev: 57b21406f092110c18776e39b0bda50d37c945c8  # frozen: v2.4.3
     hooks:
       - id: codespell
         # TeX Gyre Heros is a font and multline a LaTeX environment, both in publishing/technical.
@@ -117,7 +117,7 @@ repos:
   # Shell script linting
   # ===========================================================================
   - repo: https://github.com/shellcheck-py/shellcheck-py
-    rev: a23f6b85d0fdd5bb9d564e2579e678033debbdff  # frozen: v0.10.0.1
+    rev: 745eface02aef23e168a8afb6b5737818efbea95  # frozen: v0.11.0.1
     hooks:
       - id: shellcheck
         args: [--severity=warning]
@@ -151,7 +151,7 @@ repos:
   # bump is one sweep each January:
   #   pre-commit run insert-license --all-files
   - repo: https://github.com/Lucas-C/pre-commit-hooks
-    rev: a30f0d816e5062a67d87c8de753cfe499672b959  # frozen: v1.5.5
+    rev: ad1b27d73581aa16cca06fc4a0761fc563ffe8e8  # frozen: v1.5.6
     hooks:
       - id: insert-license
         name: copyright header (shell)
@@ -167,7 +167,7 @@ repos:
   # Pre-push, not pre-commit: it is the slowest hook here, and a push is the
   # last point where catching a finding is still cheap.
   - repo: https://github.com/semgrep/semgrep
-    rev: ab584982f6ecdaaa7954a14e5350a70c060e097f  # frozen: v1.156.0
+    rev: 240da9f30cd06fb4ee00c2c31c114c1c1f5ee0f4  # frozen: v1.182.0
     hooks:
       - id: semgrep
         stages: [pre-push]

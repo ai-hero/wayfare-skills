@@ -39,7 +39,8 @@ def sample(doc):
     with_img = [i for i in range(len(doc)) if doc[i].get_images()]
     pages.update(with_img[:3] + with_img[len(with_img) // 2 : len(with_img) // 2 + 1])
     for i in range(len(doc)):
-        if doc[i].find_tables().tables:
+        # Skip sampled pages: PyMuPDF 2 reads the book's Contents page as a table, and stopping there adds no page.
+        if i not in pages and doc[i].find_tables().tables:
             pages.add(i)
             break
     pages.add(len(doc) - 1)

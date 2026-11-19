@@ -253,7 +253,8 @@ checks:
   rule: >
     Each `KIND:ID@VERSION` pin of a fleet kind (vision, goal, segment,
     offering, value-stream, capability, unit, role, decision) that a repo
-    cites, in a headed file under `reference/` or on an open plan item's
+    cites, in a `.md` file under `reference/` other than `README.md` and
+    `CHANGELOG.md`, or on an open plan item's
     `Reference:` line, names a header at exactly that version in the
     register's `reference/` at `origin/main`. Not the register's working
     tree: a fleet PR merges before the app PR that pins it.
@@ -265,8 +266,10 @@ checks:
   detect:
     method: script
     description: >
-      NA without fleet pins; MANUAL, unverified, outside a fleet or when the
-      register's origin/main does not resolve; FAIL naming each pin with no
+      NA without fleet pins; MANUAL, unverified, outside a fleet, when the
+      register is unreviewed or its fetch failed, when its origin/main does
+      not resolve, when ls-tree fails, or when origin/main has no
+      reference/; FAIL naming each pin with no
       header at that version and where it is cited. README.md and CHANGELOG.md
       are history, not pins, and done or dropped items are skipped. Plan items
       are read from the audited tree when the repo tracks .plans/, else from

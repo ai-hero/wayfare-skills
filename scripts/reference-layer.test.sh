@@ -72,8 +72,8 @@ check "index: the header ends at the first other line" "0" \
   "$(printf 'role: a@1\n\n# A\n\nrole: b@1\n' >"$TMP/fleetrepo/reference/x.md"; hero_reference_index "$TMP/fleetrepo" | grep -c '^role:b	')"
 rm -f "$TMP/fleetrepo/reference/x.md"
 
-# Every pin either example home cites, in a headed file, is a header in one of
-# the two at that version: the example is the format, so a dangling pin in it
+# Every pin either example home cites, in any .md file but README.md and
+# CHANGELOG.md, is a header in one of the two at that version: the example is the format, so a dangling pin in it
 # teaches one.
 cited() { grep -rhoE '(^|[^a-z0-9-])[a-z][a-z-]*:[a-z0-9][a-z0-9-]*@[0-9]+' --include='*.md' --exclude=README.md --exclude=CHANGELOG.md "$@" | sed 's/^[^a-z]//' | LC_ALL=C sort -u; }
 defined=$( (hero_reference_index "$WITH"; hero_reference_index "$TMP/fleetrepo") | awk -F'\t' '{ print $1 "@" $2 }' | LC_ALL=C sort -u)
@@ -121,11 +121,35 @@ check "resolve: a fleet pin the fleet does not hold is none" "role:ghost@1	none	
   "$(hero_reference_resolve "$WITH/.plans/items/005-t.md" "$WITH" | sed -n 4p)"
 mkdir -p "$WITH/reference/organization/roles"
 printf 'role: desk-volunteer@2\n\n# Desk\n' >"$WITH/reference/organization/roles/desk-volunteer.md"
-check "resolve: the app's own copy wins over the fleet's" "role:desk-volunteer@1	2" \
-  "$(hero_reference_resolve "$WITH/.plans/items/005-t.md" "$WITH" | sed -n 2p | cut -f1,2)"
+check "resolve: the app's own copy wins over the fleet's, flagged as shadowing" \
+  "role:desk-volunteer@1	2	$WITH/reference/organization/roles/desk-volunteer.md	shadowed: app copy of a fleet kind" \
+  "$(hero_reference_resolve "$WITH/.plans/items/005-t.md" "$WITH" | sed -n 2p)"
+check "resolve: an app kind answered by the app is not flagged" "3" \
+  "$(hero_reference_resolve "$WITH/.plans/items/005-t.md" "$WITH" | sed -n 1p | awk -F'\t' '{ print NF }')"
 rm -rf "$WITH/reference/organization"
+RESOLVED=$(printf 'Reference: %s\n' "$(cited "$EXAMPLE" | paste -sd, -)" | hero_reference_resolve - "$WITH")
+check "example: one resolved line per pin the app cites" "$(cited "$EXAMPLE" | wc -l | tr -d ' ')" \
+  "$(printf '%s\n' "$RESOLVED" | grep -c .)"
 check "example: every app pin resolves at its version through the fleet" "" \
-  "$(printf 'Reference: %s\n' "$(cited "$EXAMPLE" | paste -sd, -)" | hero_reference_resolve - "$WITH" | awk -F'\t' '{ v = $1; sub(/.*@/, "", v); if ($2 != v) print }')"
+  "$(printf '%s\n' "$RESOLVED" | awk -F'\t' '{ v = $1; sub(/.*@/, "", v); if ($2 != v) print }')"
+chmod 000 "$TMP/.fleet/reference/organization"
+check "resolve: a fleet reference that cannot be read is unverified, not gone" "role:desk-volunteer@1	unresolved: fleet reference unreadable	" \
+  "$(hero_reference_resolve "$WITH/.plans/items/005-t.md" "$WITH" 2>/dev/null | sed -n 2p)"
+chmod 755 "$TMP/.fleet/reference/organization"
+
+# A stale fleet pin quotes the fleet's changelog, the home where it was bumped.
+SX="$(mktemp -d)"
+mkdir -p "$SX/.fleet/reference/organization/roles" "$SX/app/reference/personas"
+git -C "$SX/.fleet" init -q
+printf 'role: desk@2\n\n# Desk\n' >"$SX/.fleet/reference/organization/roles/desk.md"
+printf -- '- role:desk@2: now approves refunds; a build pinned to @1 must re-check the desk screen.\n' >"$SX/.fleet/reference/CHANGELOG.md"
+: >"$SX/app/reference/CHANGELOG.md"
+printf 'persona: p@1\n\ncites: role:desk@2\n' >"$SX/app/reference/personas/p.md"
+item "$SX/app" 5 feat/x ready 'Reference: role:desk@1'
+check "stale: a fleet pin quotes the fleet changelog" \
+  $'item 5: role:desk@1 is now @2\n    - role:desk@2: now approves refunds; a build pinned to @1 must re-check the desk screen.' \
+  "$(hero_reference_stale "$SX/app")"
+rm -rf "$SX"
 
 # No register checkout at all: the business layer is unverified, the run goes on.
 NOFLEET="$(mktemp -d)"
@@ -191,6 +215,24 @@ cp "$TMP/loan.md" "$WITH/reference/entities/loan.md"
 check "unbumped: a changed file whose version did not move, and only that" "reference/entities/loan.md @2" \
   "$(hero_reference_unbumped HEAD~1 "$WITH")"
 
+# A table file is judged per row: a row added beside an unbumped change to
+# another row must not hide it, and a bumped row is not listed.
+(
+  cd "$WITH" || exit 1
+  printf 'goal: a@1\n\ngoal: b@1\n\n# Strategy\n\n| Goal | Target |\n| -- | -- |\n| a | 10 |\n| b | 5 |\n' >reference/strategy.md
+  git add -A reference && git -c user.name=t -c user.email=t@t commit -qm table
+  printf 'goal: a@1\n\ngoal: b@2\n\ngoal: c@1\n\n# Strategy\n\n| Goal | Target |\n| -- | -- |\n| a | 20 |\n| b | 6 |\n| c | 1 |\n' >reference/strategy.md
+  git add -A reference && git -c user.name=t -c user.email=t@t commit -qm rows
+) >/dev/null 2>&1
+check "unbumped: a table row changed without its bump, beside an added row" "reference/strategy.md goal:a@1" \
+  "$(hero_reference_unbumped HEAD~1 "$WITH")"
+(
+  cd "$WITH" || exit 1
+  printf 'goal: a@1\n\ngoal: b@2\n\ngoal: c@1\n\ngoal: d@1\n\n# Strategy\n\n| Goal | Target |\n| -- | -- |\n| a | 20 |\n| b | 6 |\n| c | 1 |\n| d | 2 |\n' >reference/strategy.md
+  git add -A reference && git -c user.name=t -c user.email=t@t commit -qm add
+) >/dev/null 2>&1
+check "unbumped: only adding a row lists nothing" "1" "$(hero_reference_unbumped HEAD~1 "$WITH" >/dev/null; echo $?)"
+
 # What init-repo offers. Never over an existing folder, whatever is in it.
 before=$(find "$WITH/reference" -type f | sort | xargs cat | cksum)
 hero_reference_scaffold "$WITH" 2>/dev/null; check "scaffold: refuses a repo that has reference/" "1" "$?"
@@ -240,7 +282,7 @@ if [ "$FAIL" -gt 0 ]; then
   echo "reference-layer: $PASS passed, $FAIL FAILED"
   exit 1
 fi
-MIN_CASES=67
+MIN_CASES=73
 if [ "$PASS" -lt "$MIN_CASES" ]; then
   echo "reference-layer: only $PASS cases ran, expected >= $MIN_CASES" >&2
   exit 1

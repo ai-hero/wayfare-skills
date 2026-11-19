@@ -178,7 +178,10 @@ pins when one change bumped several ids.
 
 ## Links point up
 
-Within the reference, a file names only what sits above it:
+The layers stack in one order, top first: **organization, then business, then
+the app**. Business sits below organization because a goal or a stream needs an
+owner role, and the app sits below both. A file names only its own layer and the
+layers above it:
 
 - **`organization/` names nothing below it.** A role names its unit; nothing in
   the organization names a goal, a stream or an app.
@@ -209,20 +212,30 @@ with its bump and its changelog line, and the pin names the new version.
 
 An app resolves a pin in its own `reference/` first, then in the fleet repo's
 `reference/` in the register checkout, `../.fleet/reference/` from an app cloned
-beside it. `hero_reference_resolve` does both.
+beside it. `hero_reference_resolve` does both, in that order. A fleet-kind pin
+the app's own `reference/` answers is printed with a fourth field,
+`shadowed: app copy of a fleet kind`: a leftover app copy hides the fleet's
+file, and should move to the fleet and be deleted from the app.
+
+The resolver reads the register checkout's working tree, so it is **advisory**:
+an unpulled or unmerged fleet branch changes what it prints. REF-01, which reads
+the register's `origin/main`, is the gate.
 
 **A missing fleet is unverified, never invented.** When a fleet-kind pin does
 not resolve in the app and no register checkout (or no `reference/` in it) is in
-reach, the pin is reported `unresolved: no fleet reference` and the business
-layer is **unverified**. The run continues: a standalone clone still plans and
-builds. Nothing writes a local stand-in for the missing file: a copy of a role
-or a goal in the app is the drift two homes exist to prevent.
+reach, the pin is reported `unresolved: no fleet reference`
+(`unresolved: fleet reference unreadable` when the fleet's files cannot be read)
+and the business layer is **unverified**. The run continues: a standalone clone
+still plans and builds. Nothing writes a local stand-in for the missing file: a
+copy of a role or a goal in the app is the drift two homes exist to prevent.
 
 App CI does not check fleet pins, since an app's CI has no register checkout.
 The fleet audit does: check REF-01 in `scripts/audit.py` fails a repo that cites
 a fleet-kind pin, under `reference/` or on an open plan item's `Reference:`
-line, whose id at that version is not on the register's `origin/main`. Run it
-for the whole fleet with
+line, whose id at that version is not on the register's `origin/main`. It reads
+MANUAL, unverified, rather than failing when it cannot know: outside a fleet,
+when the register is unreviewed or its fetch failed, or when `origin/main` has
+no `reference/`. Run it for the whole fleet with
 `(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/audit.py --fleet FLEET_FOLDER --control REF-01)`.
 
 ## Changing a business fact
@@ -274,12 +287,12 @@ repo has none; `hero_reference_pr_body` then returns the body unchanged.
 | `hero_reference_fleet_scaffold [ROOT]` | nothing; writes the fleet home, rc 1 when the folder exists |
 | `hero_reference_index [ROOT]` | every header line as `kind:id`, its version, its path |
 | `hero_reference_pins FILE...` | the pins on FILE's `Reference:` lines (`-` reads stdin) |
-| `hero_reference_resolve FILE [ROOT]` | each pin, its current version (`none` when gone, `unresolved: no fleet reference` when a fleet pin has no fleet to look in), its path |
+| `hero_reference_resolve FILE [ROOT]` | each pin, its current version (`none` when gone, `unresolved: no fleet reference` when a fleet pin has no fleet to look in), its path, and `shadowed: app copy of a fleet kind` when the app answers a fleet pin |
 | `hero_reference_line FILE...` | one `Reference:` line with every pin |
 | `hero_reference_branch_line [BRANCH] [ROOT]` | that line for every item whose `branch:` is BRANCH |
-| `hero_reference_stale [ROOT]` | each open item pinned behind its file, with the changelog entries between |
+| `hero_reference_stale [ROOT]` | each open item pinned behind its file, with the entries between from the changelog of the home it resolved in |
 | `hero_reference_code_paths [ROOT]` | each line of a reference file that names a code path |
-| `hero_reference_unbumped BASE [ROOT]` | each reference file changed since BASE with its header unmoved |
+| `hero_reference_unbumped BASE [ROOT]` | each reference file changed since BASE with its header unmoved; in a table file, each row whose line changed with its header unmoved |
 | `hero_reference_pr_body BODY [ROOT]` | BODY with the branch's line after its `## Summary` paragraph |
 
 ## The hooks

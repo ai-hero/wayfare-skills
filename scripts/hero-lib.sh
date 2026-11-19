@@ -3084,24 +3084,36 @@ hero_reference_pins() { # FILE...
 }
 
 # Each pin of FILE against the reference as it stands, the app's reference/
-# first and then the fleet repo's (hero_reference_fleet_dir):
+# first and then, for a fleet kind, the fleet repo's (hero_reference_fleet_dir):
 # `pin<TAB>current version<TAB>path`, current `none` and path empty when no
 # file carries that kind:id. A fleet-kind pin the app does not hold, with no
-# fleet reference in reach, is `unresolved: no fleet reference`: unverified,
-# not gone, and never a reason to write a local copy. rc 1 when FILE pins
-# nothing.
+# fleet reference in reach, is `unresolved: no fleet reference` (or `unresolved:
+# fleet reference unreadable` when indexing it failed): unverified, not gone,
+# and never a reason to write a local copy. A fleet-kind pin the app's own
+# reference/ answers gets a fourth field, `shadowed: app copy of a fleet kind`:
+# that copy hides the fleet's file and is the drift the two homes exist to stop.
+# The fleet is read from the register's working tree, so this is advisory;
+# REF-01 in scripts/audit.py, against origin/main, is the gate. rc 1 when FILE
+# pins nothing.
 hero_reference_resolve() { # FILE [ROOT]
-  local pins fleet nofleet=1
+  local pins fleet fidx="" fstate=none
   hero_reference_dir "${2:-}" >/dev/null || return 1
   pins=$(hero_reference_pins "$1") || return 1
-  if fleet=$(hero_reference_fleet_dir "${2:-}"); then nofleet=0; fi
-  printf '%s\n' "$pins" | awk -F'\t' -v kinds="$_HERO_FLEET_KINDS" -v nofleet="$nofleet" '
-    FILENAME == ARGV[1] { if (!($1 in cur)) { cur[$1] = $2; path[$1] = $3 }; next }
+  if fleet=$(hero_reference_fleet_dir "${2:-}"); then
+    if fidx=$(_hero_reference_index_dir "$fleet"); then fstate=ok; else fstate=unreadable; fi
+  fi
+  printf '%s\n' "$pins" | awk -F'\t' -v kinds="$_HERO_FLEET_KINDS" -v fstate="$fstate" '
+    FILENAME == ARGV[1] { if (!($1 in ac)) { ac[$1] = $2; ap[$1] = $3 }; next }
+    FILENAME == ARGV[2] { if (!($1 in fc)) { fc[$1] = $2; fp[$1] = $3 }; next }
     { k = $0; sub(/@[0-9]+$/, "", k); kind = k; sub(/:.*/, "", kind)
-      if (k in cur) print $0 "\t" cur[k] "\t" path[k]
-      else if (nofleet && index(kinds, " " kind " ")) print $0 "\tunresolved: no fleet reference\t"
+      fk = index(kinds, " " kind " ") > 0
+      if (k in ac) print $0 "\t" ac[k] "\t" ap[k] (fk ? "\tshadowed: app copy of a fleet kind" : "")
+      else if (!fk) print $0 "\tnone\t"
+      else if (fstate == "none") print $0 "\tunresolved: no fleet reference\t"
+      else if (fstate == "unreadable") print $0 "\tunresolved: fleet reference unreadable\t"
+      else if (k in fc) print $0 "\t" fc[k] "\t" fp[k]
       else print $0 "\tnone\t" }
-  ' <(hero_reference_index "${2:-}" 2>/dev/null; [ "$nofleet" = 1 ] || _hero_reference_index_dir "$fleet" 2>/dev/null) -
+  ' <(hero_reference_index "${2:-}" 2>/dev/null) <(printf '%s' "$fidx") -
 }
 
 # One `Reference:` line carrying every pin of FILE..., for a PR body. rc 1 when
@@ -3129,42 +3141,47 @@ hero_reference_branch_line() { # [BRANCH] [ROOT]
 
 # Every open item pinned behind the reference, as `item N: PIN is now @V` (or
 # `has no reference file`), each followed by the CHANGELOG entries between the
-# two versions, indented. An entry is a bullet with its wrapped lines, because
-# mdformat wraps a long changelog line. A missing CHANGELOG.md quotes nothing
-# rather than hiding the stale pins. rc 1 when nothing is stale.
+# two versions, indented, from the CHANGELOG.md of the home the pin resolved in
+# (the app's, or the fleet repo's). An entry is a bullet with its wrapped
+# lines, because mdformat wraps a long changelog line. A missing CHANGELOG.md
+# quotes nothing rather than hiding the stale pins. rc 1 when nothing is stale.
 hero_reference_stale() { # [ROOT]
-  local dir items f n out=""
+  local dir items f n fleet out=""
   dir=$(hero_reference_dir "${1:-}") || return 1
   items=$(hero_items_dir "${1:-}") || return 1
+  fleet=$(hero_reference_fleet_dir "${1:-}") || fleet=""
   for f in "$items"/*.md; do
     [ -f "$f" ] || continue
     case "$(hero_item_status "$f")" in done|dropped) continue ;; esac
     n=$(hero_item_field "$f" id)
-    out+=$(hero_reference_resolve "$f" "${1:-}" 2>/dev/null | awk -F'\t' -v n="$n" '
+    out+=$(hero_reference_resolve "$f" "${1:-}" 2>/dev/null | awk -F'\t' -v n="$n" -v fd="$fleet" '
       { p = $1; v = p; sub(/^.*@/, "", v)
+        home = (fd != "" && index($3, fd "/") == 1) ? "fleet" : "app"
         if ($2 == "none") print "item " n ": " p " has no reference file"
-        else if ($2 + 0 > v + 0) print "item " n ": " p " is now @" $2 "\t" v "\t" $2 }')
+        else if ($2 + 0 > v + 0) print "item " n ": " p " is now @" $2 "\t" v "\t" $2 "\t" home }')
     out+=$'\n'
   done
   out=$(printf '%s' "$out" | grep -v '^$') || return 1
   printf '%s\n' "$out" | awk -F'\t' '
-    FILENAME == ARGV[1] {
-      if (/^- /) { e[++ne] = $0; next }
-      if (/^[[:space:]]+[^[:space:]]/ && ne) { l = $0; sub(/^[[:space:]]+/, " ", l); e[ne] = e[ne] l; next }
+    FILENAME == ARGV[1] || FILENAME == ARGV[2] {
+      h = FILENAME == ARGV[1] ? "app" : "fleet"
+      if (/^- /) { e[h, ++ne[h]] = $0; next }
+      if (/^[[:space:]]+[^[:space:]]/ && ne[h]) { l = $0; sub(/^[[:space:]]+/, " ", l); e[h, ne[h]] = e[h, ne[h]] l; next }
       next
     }
     { print $1
-      if (NF < 3) next
+      if (NF < 4) next
+      h = $4
       k = $1; sub(/^item [0-9]+: /, "", k); sub(/@.*/, "", k)
-      for (i = 1; i <= ne; i++) for (x = $2 + 1; x <= $3 + 0; x++) {
-        t = k "@" x; s = e[i]
+      for (i = 1; i <= ne[h]; i++) for (x = $2 + 1; x <= $3 + 0; x++) {
+        t = k "@" x; s = e[h, i]
         while ((j = index(s, t)) > 0) {
           c = substr(s, j + length(t), 1)
-          if (c !~ /[0-9]/) { print "    " e[i]; x = $3 + 1; break }
+          if (c !~ /[0-9]/) { print "    " e[h, i]; x = $3 + 1; break }
           s = substr(s, j + length(t))
         }
       }
-    }' <(cat "$dir/CHANGELOG.md" 2>/dev/null) -
+    }' <(cat "$dir/CHANGELOG.md" 2>/dev/null) <([ -z "$fleet" ] || cat "$fleet/CHANGELOG.md" 2>/dev/null) -
 }
 
 # Each reference file that names a code path, as `path:line: token`. The
@@ -3187,20 +3204,33 @@ hero_reference_code_paths() { # [ROOT]
 }
 
 # Each reference file changed in BASE...HEAD whose header did not move, as
-# `path @version` (the first header line's). Whether the change altered meaning
-# is the reviewer's call; this only lists the candidates. A file new since BASE
-# is not listed. rc 1 when none is.
+# `path @version`. A file with one header line per row (strategy.md and the
+# other fleet table files) is judged per row instead, as `path kind:id@version`
+# for each row whose header is unchanged but whose table line (`| id | ...`)
+# differs: comparing the whole header would let a row added beside it hide an
+# unbumped change to another row. Whether the change altered meaning is the
+# reviewer's call; this only lists the candidates. A file new since BASE is not
+# listed. rc 1 when none is.
 hero_reference_unbumped() { # BASE [ROOT]
-  local root dir f old new out="" head='NF == 0 { next } /^[a-z][a-z-]*: [a-z0-9][a-z0-9-]*@[0-9]+[[:space:]]*$/ { print; next } { exit }'
+  local root dir f old new oldtext line id out="" head='NF == 0 { next } /^[a-z][a-z-]*: [a-z0-9][a-z0-9-]*@[0-9]+[[:space:]]*$/ { print; next } { exit }'
   root=${2:-$(hero_root)}
   dir=$(hero_reference_dir "$root") || return 1
   while IFS= read -r f; do
     [ -f "$root/$f" ] || continue
     new=$(awk "$head" "$root/$f")
-    old=$(git -C "$root" show "$1:$f" 2>/dev/null | awk "$head") || continue
-    [ -n "$new" ] && [ "$new" = "$old" ] || continue
-    new=${new%%$'\n'*}
-    out+="$f @${new##*@}"$'\n'
+    oldtext=$(git -C "$root" show "$1:$f" 2>/dev/null) || continue
+    old=$(printf '%s\n' "$oldtext" | awk "$head")
+    [ -n "$new" ] || continue
+    if [ "$new" = "${new%%$'\n'*}" ]; then
+      [ "$new" = "$old" ] && out+="$f @${new##*@}"$'\n'
+      continue
+    fi
+    while IFS= read -r line; do
+      printf '%s\n' "$old" | grep -qxF "$line" || continue
+      id=${line#*: }; id=${id%@*}
+      [ "$(printf '%s\n' "$oldtext" | grep "^| $id |")" = "$(grep "^| $id |" "$root/$f")" ] ||
+        out+="$f ${line%%: *}:${line#*: }"$'\n'
+    done <<<"$new"
   done < <(git -C "$root" diff --name-only "$1...HEAD" -- "${dir#"$root"/}" 2>/dev/null | grep '\.md$' | grep -v '/prototype/')
   [ -n "$out" ] || return 1
   printf '%s' "$out"

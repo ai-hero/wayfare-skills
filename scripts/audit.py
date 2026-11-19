@@ -4214,6 +4214,8 @@ def _(r):
 
 
 # The kinds references/reference-layer.md places in the fleet repo, not the app.
+# scripts/hero-lib.sh keeps the same list as _HERO_FLEET_KINDS, and
+# audit_test.py fails when the two differ.
 FLEET_KINDS = ("vision", "goal", "segment", "offering", "value-stream", "capability", "unit", "role", "decision")
 _FLEET_PIN = re.compile(r"(?<![a-z0-9-])(" + "|".join(FLEET_KINDS) + r"):([a-z0-9][a-z0-9-]*)@([0-9]+)(?![0-9])")
 _REF_HEADER = re.compile(r"([a-z][a-z-]*): ([a-z0-9][a-z0-9-]*)@([0-9]+)\s*")
@@ -4222,7 +4224,8 @@ _FLEET_REFERENCE = {}  # REGISTER -> (index or None, note), one read per process
 
 def reference_header(text):
     """{kind:id: version} from the run of `KIND: ID@VERSION` lines that opens
-    a reference file, blank lines skipped, as hero_reference_index reads it."""
+    a reference file, blank lines skipped, stopping at the first other line:
+    the header grammar hero_reference_index reads."""
     out = {}
     for line in text.splitlines():
         if not line.strip():
@@ -4239,23 +4242,39 @@ def fleet_reference():
     """(index, note): every header in the register's reference/ at its
     origin/main, as {kind:id: version}, or None with why. Read from the ref,
     never the working tree: an unmerged fleet PR must not make an app's pin
-    pass, since the fleet PR merges first."""
+    pass, since the fleet PR merges first. Anything that leaves the index
+    unknown (an unreviewed register, a failed fetch, a failed ls-tree, no
+    reference/ on origin/main) is None, so the cell reads unverified: an empty
+    index would fail every pin and blame the app for the fleet's state."""
     if REGISTER is None:
         return None, "no register checkout, so unresolved: no fleet reference"
     if REGISTER not in _FLEET_REFERENCE:
-        register_source()  # fetches origin/main into _REGISTER_REF, once per process
+        # register_source() fetches origin/main only when the register has an
+        # origin; `reviewed` false covers a failed fetch, a fork and no origin.
+        _src, reviewed, note = register_source()
         ref = _REGISTER_REF
-        if sh(REGISTER, f"git rev-parse --verify -q {ref}^{{commit}}")[0]:
-            _FLEET_REFERENCE[REGISTER] = (None, "the register's origin/main does not resolve")
+        if not reviewed:
+            got = (None, f"register {note}")
+        elif sh(REGISTER, f"git rev-parse --verify -q {ref}^{{commit}}")[0]:
+            got = (None, "the register's origin/main does not resolve")
         else:
             rc, out = sh(REGISTER, f"git ls-tree -r --name-only {ref} -- reference")
-            index = {}
-            for path in out.splitlines() if rc == 0 else ():
-                if not path.endswith(".md") or path.rsplit("/", 1)[-1] in ("README.md", "CHANGELOG.md"):
-                    continue
-                _rc, text = sh(REGISTER, f"git show {shlex.quote(f'{ref}:{path}')}")
-                index.update(reference_header(text))
-            _FLEET_REFERENCE[REGISTER] = (index, "")
+            if rc:
+                got = (None, "git ls-tree on the register's origin/main failed")
+            elif not out:
+                got = (None, "the register's origin/main has no reference/, so unresolved: no fleet reference")
+            else:
+                index = {}
+                for path in out.splitlines():
+                    # README and CHANGELOG are the two headerless files the
+                    # format names; a changelog line that happens to open with
+                    # `KIND: ID@V` must not define that id.
+                    if not path.endswith(".md") or path.rsplit("/", 1)[-1] in ("README.md", "CHANGELOG.md"):
+                        continue
+                    _rc, text = sh(REGISTER, f"git show {shlex.quote(f'{ref}:{path}')}")
+                    index.update(reference_header(text))
+                got = (index, "")
+        _FLEET_REFERENCE[REGISTER] = got
     return _FLEET_REFERENCE[REGISTER]
 
 
@@ -4277,7 +4296,8 @@ def _open_item_texts(r):
 
 def fleet_pins(r):
     """{pin: [where]} for every fleet-kind pin the repo cites: anywhere in a
-    headed file under reference/, and on an open plan item's Reference: line."""
+    .md file under reference/ other than README.md and CHANGELOG.md, and on an
+    open plan item's Reference: line."""
     pins = {}
     ref = r / "reference"
     for f in sorted(ref.rglob("*.md")) if ref.is_dir() else ():

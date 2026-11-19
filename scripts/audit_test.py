@@ -3564,7 +3564,9 @@ class REF01(unittest.TestCase):
             ".fleet/reference/business/strategy.md",
             "goal: more-loans@1\n\ngoal: tools-that-work@2\n\n# Strategy\n",
         )
-        write(self.root, ".fleet/reference/CHANGELOG.md", "- role:ghost@1: never a header\n")
+        # Opens with a header-shaped line, so only the CHANGELOG exclusion
+        # keeps role:ghost@1 from being defined.
+        write(self.root, ".fleet/reference/CHANGELOG.md", "role: ghost@1\n\n- role:ghost@1: history\n")
         self.reg = review_register(self.root)
         self.app = git_repo(self.root, "app")
         with contextlib.redirect_stderr(io.StringIO()):
@@ -3628,6 +3630,80 @@ class REF01(unittest.TestCase):
         audit._REGISTER_READ.clear()
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(self.verdict()[0], audit.PASS, "merged, it resolves")
+
+    def test_the_fleet_changelog_defines_nothing(self):
+        self.cite("role:ghost@1")
+        self.assertEqual(self.verdict()[0], audit.FAIL)
+
+    def test_a_pin_needs_its_kind_whole_and_its_version_exact(self):
+        self.cite("subrole:desk-volunteer@1 and x-goal:more-loans@1")
+        self.assertEqual(self.verdict()[0], audit.NA, "a longer word ending in a kind is not a pin")
+        self.cite("role:desk-volunteer@10")
+        status, detail = self.verdict()
+        self.assertEqual(status, audit.FAIL)
+        self.assertIn("role:desk-volunteer@10", detail)
+
+    def test_reference_header_stops_at_the_first_other_line(self):
+        self.assertEqual(
+            audit.reference_header("role: a@1\n\nrole: b@2\n\n# A\n\nrole: x@1\n"), {"role:a": 1, "role:b": 2}
+        )
+        self.assertEqual(audit.reference_header("capabilities: shop@1\n"), {"capability:shop": 1})
+        self.assertEqual(audit.reference_header("# Title\nrole: x@1\n"), {})
+
+    def test_untracked_plans_come_from_the_checkout(self):
+        self.item(1, "ready", "Reference: role:ghost@4")
+        snap = self.root / "snap" / "app"
+        write(snap, "README.md", "x\n")
+        self.assertEqual(audit.REPO_DIR["app"], self.app)
+        self.assertEqual(
+            list(audit.fleet_pins(snap)), ["role:ghost@4"], "a snapshot without .plans/ reads the checkout's"
+        )
+        write(snap, ".plans/items/002-t.md", "---\nstatus: ready\n---\nReference: role:ghost@5\n")
+        self.assertEqual(list(audit.fleet_pins(snap)), ["role:ghost@5"], "a tracked .plans/ is the audited one")
+
+    def test_fleet_kinds_match_hero_lib(self):
+        lib = (HERE / "hero-lib.sh").read_text()
+        line = next(ln for ln in lib.splitlines() if ln.startswith("_HERO_FLEET_KINDS="))
+        self.assertEqual(tuple(line.split("=", 1)[1].strip('"').split()), audit.FLEET_KINDS)
+
+    def test_a_failed_fetch_is_unverified(self):
+        self.cite("role:desk-volunteer@1")
+        git(self.reg, "remote", "set-url", "origin", str(self.root / "gone.git"))
+        audit._REGISTER_READ.clear()  # configure() resolved it before the URL moved
+        with contextlib.redirect_stderr(io.StringIO()):
+            status, detail = self.verdict()
+        self.assertEqual(status, audit.MANUAL, "the ref may be stale or rewritten")
+        self.assertIn("fetching origin main failed", detail)
+
+    def test_origin_main_that_does_not_resolve_is_unverified(self):
+        self.cite("role:desk-volunteer@1")
+        git(self.reg, "update-ref", "-d", "refs/remotes/origin/main")
+        with mock.patch.object(audit, "register_source", return_value=(None, True, "x")):
+            status, detail = self.verdict()
+        self.assertEqual(status, audit.MANUAL)
+        self.assertIn("does not resolve", detail)
+
+    def test_origin_main_without_reference_is_unverified(self):
+        self.cite("role:desk-volunteer@1")
+        git(self.reg, "rm", "-rq", "reference")
+        git(self.reg, "commit", "-q", "-m", "drop reference")
+        git(self.reg, "push", "-q", "origin", "main")
+        with contextlib.redirect_stderr(io.StringIO()):
+            status, detail = self.verdict()
+        self.assertEqual(status, audit.MANUAL, "an empty fleet must not fail the app")
+        self.assertIn("no reference/", detail)
+
+    def test_a_failed_ls_tree_is_unverified(self):
+        self.cite("role:desk-volunteer@1")
+        real = audit.sh
+
+        def broken(cwd, cmd):
+            return (128, "") if "ls-tree" in cmd else real(cwd, cmd)
+
+        with contextlib.redirect_stderr(io.StringIO()), mock.patch.object(audit, "sh", broken):
+            status, detail = self.verdict()
+        self.assertEqual(status, audit.MANUAL)
+        self.assertIn("ls-tree", detail)
 
     def test_no_register_is_unverified_not_failed(self):
         self.cite("role:desk-volunteer@1")

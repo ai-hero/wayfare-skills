@@ -221,7 +221,9 @@ or a goal in the app is the drift two homes exist to prevent.
 App CI does not check fleet pins, since an app's CI has no register checkout.
 The fleet audit does: check REF-01 in `scripts/audit.py` fails a repo that cites
 a fleet-kind pin, under `reference/` or on an open plan item's `Reference:`
-line, whose id at that version is not on the register's `origin/main`.
+line, whose id at that version is not on the register's `origin/main`. Run it
+for the whole fleet with
+`(cd "$WAYFARE_ROOT" && env -u VIRTUAL_ENV -u CONDA_PREFIX -u UV_PYTHON -u UV_PROJECT_ENVIRONMENT uv run --no-config --quiet scripts/audit.py --fleet FLEET_FOLDER --control REF-01)`.
 
 ## Changing a business fact
 

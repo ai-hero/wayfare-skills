@@ -674,8 +674,9 @@ rather than reporting clean, the same rule the Upstream lane above follows):
   that no longer exists ([reference-layer.md](./reference-layer.md)).
   `hero_reference_stale` lists each, with the `CHANGELOG.md` entries between the
   two versions; quote them, since they say what the item must re-check, and
-  route the item back to planning when they contradict its plan. Without the
-  folder the function returns 1 and this finding does not exist.
+  route the item back to planning when they contradict its plan. A fleet pin
+  with no fleet checkout in reach is unverified, not stale, and is not listed.
+  Without the folder the function returns 1 and this finding does not exist.
 - **already-satisfied**: a `accepted` or `planning` item whose work has landed
   out-of-band. Propose `done` with the evidence, exactly as **covered** does.
   See also the pre-planning check, which exists because planning finished work

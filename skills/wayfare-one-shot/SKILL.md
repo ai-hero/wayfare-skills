@@ -94,8 +94,12 @@ It allocates the id, so none is written into the body.
   `note: drafted by wayfare-one-shot from a one-line description`.
 - In a repo with `reference/` (`hero_reference_dir` succeeds): any reference
   edit the change needs is the first Subtask, and `## Context` opens with the
-  `Reference:` pin (`../../references/reference-layer.md`, *The hooks*). Without
-  the folder, neither appears.
+  `Reference:` pin (`../../references/reference-layer.md`, *The hooks*). A pin
+  `hero_reference_resolve` prints as `unresolved: no fleet reference` is stated
+  as an unverified business layer, with no local stand-in. A change that needs a
+  new or changed business or organization fact is a fleet PR first: route it to
+  wayfare-grill-idea, since it is two items. Without the folder, neither
+  appears.
 
 Print the whole item. Then ask this question:
 

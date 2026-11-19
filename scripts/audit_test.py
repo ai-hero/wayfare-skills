@@ -3545,5 +3545,97 @@ class SENTRY06(unittest.TestCase):
         self.assertIn("not wrapped", detail)
 
 
+class REF01(unittest.TestCase):
+    """An app's fleet pins are checked against the register's origin/main,
+    not its working tree: the fleet PR merges first, so a fact that exists
+    only on an unmerged fleet branch must fail the app citing it."""
+
+    FLEET_MD = "## Fleet\n- name: fx\n## Repos\n### app\n- group: apps\n"
+
+    setUp_globals = Configured.setUp
+    tearDown_globals = Configured.tearDown
+
+    def setUp(self):
+        self.setUp_globals()
+        fleet_fixture(self.root, self.FLEET_MD)
+        write(self.root, ".fleet/reference/organization/roles/desk-volunteer.md", "role: desk-volunteer@1\n\n# Desk\n")
+        write(
+            self.root,
+            ".fleet/reference/business/strategy.md",
+            "goal: more-loans@1\n\ngoal: tools-that-work@2\n\n# Strategy\n",
+        )
+        write(self.root, ".fleet/reference/CHANGELOG.md", "- role:ghost@1: never a header\n")
+        self.reg = review_register(self.root)
+        self.app = git_repo(self.root, "app")
+        with contextlib.redirect_stderr(io.StringIO()):
+            audit.configure(self.root)
+
+    def tearDown(self):
+        audit._FLEET_REFERENCE.clear()
+        self.tearDown_globals()
+
+    def verdict(self):
+        return audit.CHECKS["REF-01"](self.app)
+
+    def cite(self, pin, rel="reference/personas/clerk.md"):
+        write(self.app, rel, f"persona: clerk@1\n\ncites: {pin}\n")
+
+    def item(self, n, status, line):
+        write(self.app, f".plans/items/{n:03d}-t.md", f"---\nid: {n}\nstatus: {status}\n---\n\n## Context\n\n{line}\n")
+
+    def test_no_fleet_pins_is_na(self):
+        write(self.app, "reference/entities/loan.md", "entity: loan@1\n\n# Loan\n")
+        write(self.app, "reference/CHANGELOG.md", "- role:ghost@1: history, not a pin\n")
+        self.assertEqual(self.verdict()[0], audit.NA)
+
+    def test_a_pin_on_origin_main_passes(self):
+        self.cite("role:desk-volunteer@1")
+        self.item(1, "ready", "Reference: goal:more-loans@1, entity:loan@1")
+        status, detail = self.verdict()
+        self.assertEqual(status, audit.PASS, detail)
+        self.assertIn("2 fleet pin(s)", detail)
+
+    def test_a_made_up_pin_fails(self):
+        self.cite("role:ghost@1")
+        status, detail = self.verdict()
+        self.assertEqual(status, audit.FAIL)
+        self.assertIn("role:ghost@1 (not on the register's origin/main; cited in reference/personas/clerk.md)", detail)
+
+    def test_a_row_header_at_another_version_fails(self):
+        self.cite("goal:tools-that-work@1")
+        status, detail = self.verdict()
+        self.assertEqual(status, audit.FAIL)
+        self.assertIn("origin/main has @2", detail)
+
+    def test_open_items_count_and_done_items_do_not(self):
+        self.item(1, "done", "Reference: role:ghost@1")
+        self.item(2, "ready", "Mentions role:ghost@2 off a Reference line.")
+        self.assertEqual(self.verdict()[0], audit.NA)
+        self.item(3, "ready", "Reference: role:ghost@3. Prose after the pin.")
+        status, detail = self.verdict()
+        self.assertEqual(status, audit.FAIL)
+        self.assertIn("role:ghost@3", detail)
+        self.assertIn(".plans/items/003-t.md", detail)
+
+    def test_an_unmerged_fleet_commit_does_not_resolve(self):
+        write(self.reg, "reference/organization/roles/clerk.md", "role: clerk@1\n\n# Clerk\n")
+        git(self.reg, "add", "-A")
+        git(self.reg, "commit", "-q", "-m", "unmerged role")
+        self.cite("role:clerk@1")
+        self.assertEqual(self.verdict()[0], audit.FAIL, "the working tree is not origin/main")
+        git(self.reg, "push", "-q", "origin", "main")
+        audit._FLEET_REFERENCE.clear()
+        audit._REGISTER_READ.clear()
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(self.verdict()[0], audit.PASS, "merged, it resolves")
+
+    def test_no_register_is_unverified_not_failed(self):
+        self.cite("role:desk-volunteer@1")
+        audit.REGISTER = None
+        status, detail = self.verdict()
+        self.assertEqual(status, audit.MANUAL)
+        self.assertIn("unresolved: no fleet reference", detail)
+
+
 if __name__ == "__main__":
     unittest.main()

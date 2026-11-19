@@ -2944,25 +2944,104 @@ hero_reference_dir() { # [ROOT]
   printf '%s' "$d"
 }
 
-# Write the minimal reference/ tree: a README pointing at the rule doc, an
-# empty CHANGELOG, and one kept folder per layer. Refuses (rc 1) a repo that
-# already has reference/, so it can never overwrite someone's reference.
+# The pin kinds that live in the fleet repo's reference/, not the app's.
+_HERO_FLEET_KINDS=" vision goal segment offering value-stream capability unit role decision "
+
+# The fleet repo's reference/ for the repo at ROOT: the register checkout
+# hero_register_find reaches from ROOT, `../.fleet/reference` for an app cloned
+# beside it. rc 1 when there is no register checkout or it holds no reference/.
+hero_reference_fleet_dir() { # [ROOT]
+  local reg
+  reg=$(hero_register_find "${1:-$(hero_root)}") || return 1
+  [ -d "$reg/.fleet/reference" ] || return 1
+  printf '%s' "$reg/.fleet/reference"
+}
+
+_hero_reference_changelog() { # DIR
+  printf '%s\n' '# reference changelog' '' \
+    'One line per version bump, newest first: `KIND:ID@VERSION: what changed; what' \
+    'an item pinned to the old version must re-check`.' >"$1/CHANGELOG.md"
+}
+
+# Write the app's minimal reference/ tree: a README pointing at the rule doc,
+# an empty CHANGELOG, and one kept folder per app layer. Business and
+# organization are not written here: they live in the fleet repo
+# (hero_reference_fleet_scaffold). Refuses (rc 1) a repo that already has
+# reference/, so it can never overwrite someone's reference.
 hero_reference_scaffold() { # [ROOT]
   local root d
   root=${1:-$(hero_root)}
   if [ -e "$root/reference" ]; then echo "hero_reference_scaffold: $root/reference exists; nothing written" >&2; return 1; fi
-  for d in value-streams entities processes flows/screens flows/components prototype; do
+  for d in personas entities processes flows/screens flows/components prototype; do
     mkdir -p "$root/reference/$d" && : >"$root/reference/$d/.gitkeep" || return 1
   done
   printf '%s\n' '# reference/' '' \
-    'What this app is meant to be, written before the code: value streams and' \
-    'capabilities, entities, processes, UX flow, and a throwaway prototype. The' \
-    "format is wayfare's references/reference-layer.md: every file opens with" \
-    '`KIND: ID@VERSION`, versions bump only when the meaning changes, and each bump' \
-    'adds a line to CHANGELOG.md.' >"$root/reference/README.md" || return 1
-  printf '%s\n' '# reference changelog' '' \
-    'One line per version bump, newest first: `KIND:ID@VERSION: what changed; what' \
-    'an item pinned to the old version must re-check`.' >"$root/reference/CHANGELOG.md"
+    'What this app is meant to be, written before the code: personas, entities,' \
+    'processes, UX flow, and a throwaway prototype. The business and organization' \
+    "they cite live in the fleet repo's reference/. The format is wayfare's" \
+    'references/reference-layer.md: every file opens with `KIND: ID@VERSION`,' \
+    'versions bump only when the meaning changes, and each bump adds a line to' \
+    'CHANGELOG.md.' >"$root/reference/README.md" || return 1
+  _hero_reference_changelog "$root/reference"
+}
+
+# Write the fleet repo's reference/ (ROOT is the fleet repo, the register
+# checkout): business/ and organization/ with every file the format names and
+# every field a placeholder. Placeholder ids are upper case, which the header
+# grammar does not accept, so nothing indexes or resolves until a person fills
+# the file in; a lower-case placeholder would resolve as a real role or goal.
+# Refuses (rc 1) a repo that already has reference/.
+hero_reference_fleet_scaffold() { # [ROOT]
+  local root r
+  root=${1:-$(hero_root)}
+  r="$root/reference"
+  if [ -e "$r" ]; then echo "hero_reference_fleet_scaffold: $r exists; nothing written" >&2; return 1; fi
+  mkdir -p "$r/business/value-streams" "$r/organization/roles" || return 1
+  printf '%s\n' '# reference/' '' \
+    "What we know about this customer's business and organization, written once" \
+    'and cited by every app of the customer by `KIND:ID@VERSION`. The format is' \
+    "wayfare's references/reference-layer.md. Every field is a placeholder until a" \
+    'person states it; a field nobody knows reads `unknown`, never a guess. Name' \
+    'roles, never people.' >"$r/README.md" || return 1
+  _hero_reference_changelog "$r" || return 1
+  printf '%s\n' 'vision: CUSTOMER@1' '' '# Vision' '' \
+    '- **Mission:** MISSION, one sentence' \
+    '- **Vision:** VISION, the world when the mission succeeds' \
+    '- **Customer outcome:** OUTCOME, what a customer has that they did not' >"$r/business/vision.md" || return 1
+  printf '%s\n' 'goal: GOAL-ID@1' '' '# Strategy' '' \
+    'One header line per goal, a blank line between them.' '' \
+    '| Goal | Statement | Measure | Target | Horizon | Owner role |' '| -- | -- | -- | -- | -- | -- |' \
+    '| GOAL-ID | STATEMENT | MEASURE | TARGET | HORIZON | role:ROLE@1 |' >"$r/business/strategy.md" || return 1
+  printf '%s\n' 'segment: SEGMENT-ID@1' '' 'offering: OFFERING-ID@1' '' '# Market' '' '## Segments' '' \
+    '| Segment | Who | Need |' '| -- | -- | -- |' '| SEGMENT-ID | WHO | NEED |' '' '## Offerings' '' \
+    '| Offering | What | Segment |' '| -- | -- | -- |' '| OFFERING-ID | WHAT | SEGMENT-ID |' >"$r/business/market.md" || return 1
+  printf '%s\n' 'value-stream: VERB-NOUN@1' '' '# VERB NOUN' '' \
+    '- **Trigger:** TRIGGER, who needs what' \
+    '- **Outcome:** OUTCOME, the value delivered' \
+    '- **Owner role:** role:ROLE@1' \
+    '- **serves:** goal:GOAL-ID@1' '' '## Stages' '' \
+    '| # | Stage | Entrance criteria | Exit criteria | Value item | Participating roles | Enabling capabilities |' \
+    '| -- | -- | -- | -- | -- | -- | -- |' \
+    '| 1 | STAGE | ENTRANCE | EXIT | VALUE-ITEM | role:ROLE@1 | capability:CAPABILITY-ID@1 |' '' '## Measures' '' \
+    '| # | Volume | Lead time | Process time | % complete and accurate | Source |' '| -- | -- | -- | -- | -- | -- |' \
+    '| 1 | unknown | unknown | unknown | unknown | none |' '' '## Constraint' '' 'CONSTRAINT, the stage that limits throughput' '' \
+    '## Where AI changes the work' '' \
+    '| # | Issues (waste, impact) | AI opportunity | Readiness | Priority |' '| -- | -- | -- | -- | -- |' \
+    '| 1 | ISSUES | OPPORTUNITY | READINESS | PRIORITY |' '' '## Questions' '' \
+    '- **Q1:** QUESTION, and how it would be answered' >"$r/business/value-streams/VERB-NOUN.md" || return 1
+  printf '%s\n' 'capability: CAPABILITY-ID@1' '' '# Capabilities' '' \
+    'One header line per capability, a blank line between them.' '' \
+    '| Capability | What | Stages that use it |' '| -- | -- | -- |' \
+    '| CAPABILITY-ID | WHAT | VERB-NOUN 1 |' >"$r/business/capabilities.md" || return 1
+  printf '%s\n' 'unit: UNIT-ID@1' '' '# Structure' '' \
+    '| Unit | What it does | Reports to |' '| -- | -- | -- |' '| UNIT-ID | WHAT | REPORTS-TO |' >"$r/organization/structure.md" || return 1
+  printf '%s\n' 'role: ROLE@1' '' '# ROLE' '' \
+    '- **Purpose:** PURPOSE' \
+    '- **Responsibilities:** RESPONSIBILITIES' \
+    '- **Unit:** unit:UNIT-ID@1' >"$r/organization/roles/ROLE.md" || return 1
+  printf '%s\n' 'decision: DECISION-ID@1' '' '# Governance' '' \
+    '| Decision | What | Decides | Approves | Consulted |' '| -- | -- | -- | -- | -- |' \
+    '| DECISION-ID | WHAT | role:ROLE@1 | role:ROLE@1 | role:ROLE@1 |' >"$r/organization/governance.md"
 }
 
 # Every header line of every reference file as `kind:id<TAB>version<TAB>path`.
@@ -3004,18 +3083,25 @@ hero_reference_pins() { # FILE...
   ' "$@"
 }
 
-# Each pin of FILE against the reference as it stands:
+# Each pin of FILE against the reference as it stands, the app's reference/
+# first and then the fleet repo's (hero_reference_fleet_dir):
 # `pin<TAB>current version<TAB>path`, current `none` and path empty when no
-# file carries that kind:id. rc 1 when FILE pins nothing.
+# file carries that kind:id. A fleet-kind pin the app does not hold, with no
+# fleet reference in reach, is `unresolved: no fleet reference`: unverified,
+# not gone, and never a reason to write a local copy. rc 1 when FILE pins
+# nothing.
 hero_reference_resolve() { # FILE [ROOT]
-  local pins
+  local pins fleet nofleet=1
   hero_reference_dir "${2:-}" >/dev/null || return 1
   pins=$(hero_reference_pins "$1") || return 1
-  printf '%s\n' "$pins" | awk -F'\t' '
-    FILENAME == ARGV[1] { cur[$1] = $2; path[$1] = $3; next }
-    { k = $0; sub(/@[0-9]+$/, "", k)
-      if (k in cur) print $0 "\t" cur[k] "\t" path[k]; else print $0 "\tnone\t" }
-  ' <(hero_reference_index "${2:-}" 2>/dev/null) -
+  if fleet=$(hero_reference_fleet_dir "${2:-}"); then nofleet=0; fi
+  printf '%s\n' "$pins" | awk -F'\t' -v kinds="$_HERO_FLEET_KINDS" -v nofleet="$nofleet" '
+    FILENAME == ARGV[1] { if (!($1 in cur)) { cur[$1] = $2; path[$1] = $3 }; next }
+    { k = $0; sub(/@[0-9]+$/, "", k); kind = k; sub(/:.*/, "", kind)
+      if (k in cur) print $0 "\t" cur[k] "\t" path[k]
+      else if (nofleet && index(kinds, " " kind " ")) print $0 "\tunresolved: no fleet reference\t"
+      else print $0 "\tnone\t" }
+  ' <(hero_reference_index "${2:-}" 2>/dev/null; [ "$nofleet" = 1 ] || _hero_reference_index_dir "$fleet" 2>/dev/null) -
 }
 
 # One `Reference:` line carrying every pin of FILE..., for a PR body. rc 1 when

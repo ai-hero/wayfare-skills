@@ -4,6 +4,8 @@ screen: catalog@1
 
 serves: borrow-tool.find, borrow-tool.reserve
 
+for: persona:weekend-member@1
+
 ## Loads
 
 - **on enter:** `ListTools(status: available)`, first page, giving tool.tool_id,

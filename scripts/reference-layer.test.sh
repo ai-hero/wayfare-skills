@@ -3,8 +3,10 @@
 # All Rights Reserved.
 
 # Regression table for the reference-layer functions in scripts/hero-lib.sh,
-# run against two fixture repos: one whose reference/ is a copy of
-# references/reference-example/, and one with no reference/ at all.
+# run against two fixture repos: one whose reference/ is a copy of the example
+# app (references/reference-example/app/), and one with no reference/ at all.
+# The example fleet (references/reference-example/fleet/) is the fleet repo's
+# reference/ those pins resolve against.
 #
 # The second fixture is the contract every hook leans on: a repo without
 # reference/ must get rc 1 and no output from every reader, and a PR body back
@@ -18,7 +20,8 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=/dev/null
 . "$HERE/hero-lib.sh" || { echo "cannot source hero-lib.sh"; exit 1; }
-EXAMPLE="$HERE/../references/reference-example"
+EXAMPLE="$HERE/../references/reference-example/app"
+FLEET_EXAMPLE="$HERE/../references/reference-example/fleet"
 export WAYFARE_STORE=local
 
 PASS=0
@@ -59,6 +62,24 @@ check "index: kind:id, version and path" "entity:loan	2	$WITH/reference/entities
   "$(hero_reference_index "$WITH" | grep '^entity:loan	')"
 check "index: README and CHANGELOG carry no header" "" \
   "$(hero_reference_index "$WITH" | grep -E '/(README|CHANGELOG)\.md$' | grep -v prototype)"
+
+mkdir -p "$TMP/fleetrepo"
+cp -R "$FLEET_EXAMPLE" "$TMP/fleetrepo/reference"
+check "index: a fleet table file has one row per header line" "20" "$(hero_reference_index "$TMP/fleetrepo" | wc -l | tr -d ' ')"
+check "index: a row id deeper in a table file's header" "goal:tools-that-work	1	$TMP/fleetrepo/reference/business/strategy.md" \
+  "$(hero_reference_index "$TMP/fleetrepo" | grep '^goal:tools-that-work	')"
+check "index: the header ends at the first other line" "0" \
+  "$(printf 'role: a@1\n\n# A\n\nrole: b@1\n' >"$TMP/fleetrepo/reference/x.md"; hero_reference_index "$TMP/fleetrepo" | grep -c '^role:b	')"
+rm -f "$TMP/fleetrepo/reference/x.md"
+
+# Every pin either example home cites, in a headed file, is a header in one of
+# the two at that version: the example is the format, so a dangling pin in it
+# teaches one.
+cited() { grep -rhoE '(^|[^a-z0-9-])[a-z][a-z-]*:[a-z0-9][a-z0-9-]*@[0-9]+' --include='*.md' --exclude=README.md --exclude=CHANGELOG.md "$@" | sed 's/^[^a-z]//' | LC_ALL=C sort -u; }
+defined=$( (hero_reference_index "$WITH"; hero_reference_index "$TMP/fleetrepo") | awk -F'\t' '{ print $1 "@" $2 }' | LC_ALL=C sort -u)
+check "example: the app cites the fleet" "1" "$(cited "$EXAMPLE" | grep -c '^role:desk-volunteer@1$')"
+check "example: every pin cited in the app or the fleet resolves at its version" "" \
+  "$(LC_ALL=C comm -23 <(cited "$EXAMPLE" "$FLEET_EXAMPLE") <(printf '%s\n' "$defined"))"
 
 mkdir -p "$TMP/legacy/reference"
 printf 'capabilities: shop@1\n\n# Map\n' >"$TMP/legacy/reference/capabilities.md"

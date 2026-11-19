@@ -2965,18 +2965,23 @@ hero_reference_scaffold() { # [ROOT]
     'an item pinned to the old version must re-check`.' >"$root/reference/CHANGELOG.md"
 }
 
-# Every headed reference file as `kind:id<TAB>version<TAB>path`. The header is
-# the file's first non-blank line. `capabilities` is read as `capability`:
-# hero-template shipped that spelling before the format was fixed here.
+# Every header line of every reference file as `kind:id<TAB>version<TAB>path`.
+# The header is the run of `KIND: ID@VERSION` lines that opens the file, blank
+# lines skipped: one line in most files, one per row in a fleet table file such
+# as strategy.md. `capabilities` is read as `capability`: hero-template shipped
+# that spelling before the format was fixed here.
 hero_reference_index() { # [ROOT]
   local dir
   dir=$(hero_reference_dir "${1:-}") || return 1
-  find "$dir" -name node_modules -prune -o -type f -name '*.md' -exec awk '
-    FNR == 1 { seen = 0 }
-    seen || !NF { next }
+  _hero_reference_index_dir "$dir"
+}
+
+_hero_reference_index_dir() { # DIR
+  find "$1" -name node_modules -prune -o -type f -name '*.md' -exec awk '
+    FNR == 1 { done = 0 }
+    done || !NF { next }
+    $0 !~ /^[a-z][a-z-]*: [a-z0-9][a-z0-9-]*@[0-9]+[[:space:]]*$/ { done = 1; next }
     {
-      seen = 1
-      if ($0 !~ /^[a-z][a-z-]*: [a-z0-9][a-z0-9-]*@[0-9]+[[:space:]]*$/) next
       k = $0; sub(/:.*/, "", k); if (k == "capabilities") k = "capability"
       i = $0; sub(/^[^:]*: /, "", i); v = i; sub(/@.*/, "", i); sub(/^[^@]*@/, "", v)
       print k ":" i "\t" (v + 0) "\t" FILENAME
@@ -3095,21 +3100,21 @@ hero_reference_code_paths() { # [ROOT]
   done | grep . || return 1
 }
 
-# Each reference file changed in BASE...HEAD whose header version did not
-# move, as `path @version`. Whether the change altered meaning is the
-# reviewer's call; this only lists the candidates. A file new since BASE is not
-# listed. rc 1 when none is.
+# Each reference file changed in BASE...HEAD whose header did not move, as
+# `path @version` (the first header line's). Whether the change altered meaning
+# is the reviewer's call; this only lists the candidates. A file new since BASE
+# is not listed. rc 1 when none is.
 hero_reference_unbumped() { # BASE [ROOT]
-  local root dir f old new out=""
+  local root dir f old new out="" head='NF == 0 { next } /^[a-z][a-z-]*: [a-z0-9][a-z0-9-]*@[0-9]+[[:space:]]*$/ { print; next } { exit }'
   root=${2:-$(hero_root)}
   dir=$(hero_reference_dir "$root") || return 1
   while IFS= read -r f; do
     [ -f "$root/$f" ] || continue
-    new=$(awk 'NF { print; exit }' "$root/$f")
-    old=$(git -C "$root" show "$1:$f" 2>/dev/null | awk 'NF { print; exit }') || continue
-    [ -n "$old" ] || continue
-    case "$new" in *@[0-9]*) ;; *) continue ;; esac
-    [ "${new##*@}" = "${old##*@}" ] && out+="$f @${new##*@}"$'\n'
+    new=$(awk "$head" "$root/$f")
+    old=$(git -C "$root" show "$1:$f" 2>/dev/null | awk "$head") || continue
+    [ -n "$new" ] && [ "$new" = "$old" ] || continue
+    new=${new%%$'\n'*}
+    out+="$f @${new##*@}"$'\n'
   done < <(git -C "$root" diff --name-only "$1...HEAD" -- "${dir#"$root"/}" 2>/dev/null | grep '\.md$' | grep -v '/prototype/')
   [ -n "$out" ] || return 1
   printf '%s' "$out"

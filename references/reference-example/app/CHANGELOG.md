@@ -9,7 +9,7 @@ One line per version bump, newest first:
 - entity:loan@2: `due_on` is now required at checkout and `condition_on_return`
   was added; a build pinned to @1 must reject a loan without a due date and
   store the condition the returns desk records.
-- value-stream:lend-a-tool@1, capability:tool-library@1, entity:member@1,
+- persona:weekend-member@1, persona:shift-volunteer@1, entity:member@1,
   entity:tool@1, entity:loan@1, process:borrow-tool@1, process:return-tool@1,
   screen:catalog@1, screen:returns-desk@1, component:tool-card@1,
   component:condition-check@1, prototype:tool-library@1: first written.

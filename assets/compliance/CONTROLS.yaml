@@ -92,3 +92,16 @@ controls:
     it unless something forces the question, and Docker Scout honours an
     OpenVEX statement whatever its `expired_at` says, so a dated exception
     with no gate is a permanent one.
+
+- id: C-REFERENCE
+  title: An app's business facts are the fleet's, as merged
+  severity: medium
+  intent: >
+    Every business or organization fact an app cites by pin exists, at that
+    version, in the fleet repo's reviewed main.
+  why: >
+    A customer's goals, roles and value streams are written once, in the fleet
+    repo, and every app cites them. App CI has no fleet checkout to check them
+    against, so a pin to a role nobody merged, or to a goal since rewritten,
+    builds green and ships against a business that does not exist. A local
+    copy in the app would pass and is the drift the fleet repo exists to stop.

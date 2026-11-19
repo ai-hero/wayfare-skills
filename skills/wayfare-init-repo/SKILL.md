@@ -51,7 +51,8 @@ Progress:
 - [ ] 6. Fill `## Scope`: a round that plans against "TODO" plans against
   nothing
 - [ ] 7. Offer `reference/` only when `hero_reference_dir` returns 1: ask once
-  whether to start one, and on a yes run `hero_reference_scaffold`
+  whether to start one, and on a yes run `hero_reference_scaffold`, the app
+  home; business and organization belong in the fleet repo
   ([reference-layer.md](../../references/reference-layer.md), *Starting a
   reference*). A repo that has the folder is offered nothing
 

@@ -3,8 +3,10 @@
 # All Rights Reserved.
 
 # Regression table for the reference-layer functions in scripts/hero-lib.sh,
-# run against two fixture repos: one whose reference/ is a copy of
-# references/reference-example/, and one with no reference/ at all.
+# run against two fixture repos: one whose reference/ is a copy of the example
+# app (references/reference-example/app/), and one with no reference/ at all.
+# The example fleet (references/reference-example/fleet/) is the fleet repo's
+# reference/ those pins resolve against.
 #
 # The second fixture is the contract every hook leans on: a repo without
 # reference/ must get rc 1 and no output from every reader, and a PR body back
@@ -18,7 +20,8 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=/dev/null
 . "$HERE/hero-lib.sh" || { echo "cannot source hero-lib.sh"; exit 1; }
-EXAMPLE="$HERE/../references/reference-example"
+EXAMPLE="$HERE/../references/reference-example/app"
+FLEET_EXAMPLE="$HERE/../references/reference-example/fleet"
 export WAYFARE_STORE=local
 
 PASS=0
@@ -60,6 +63,24 @@ check "index: kind:id, version and path" "entity:loan	2	$WITH/reference/entities
 check "index: README and CHANGELOG carry no header" "" \
   "$(hero_reference_index "$WITH" | grep -E '/(README|CHANGELOG)\.md$' | grep -v prototype)"
 
+mkdir -p "$TMP/fleetrepo"
+cp -R "$FLEET_EXAMPLE" "$TMP/fleetrepo/reference"
+check "index: a fleet table file has one row per header line" "20" "$(hero_reference_index "$TMP/fleetrepo" | wc -l | tr -d ' ')"
+check "index: a row id deeper in a table file's header" "goal:tools-that-work	1	$TMP/fleetrepo/reference/business/strategy.md" \
+  "$(hero_reference_index "$TMP/fleetrepo" | grep '^goal:tools-that-work	')"
+check "index: the header ends at the first other line" "0" \
+  "$(printf 'role: a@1\n\n# A\n\nrole: b@1\n' >"$TMP/fleetrepo/reference/x.md"; hero_reference_index "$TMP/fleetrepo" | grep -c '^role:b	')"
+rm -f "$TMP/fleetrepo/reference/x.md"
+
+# Every pin either example home cites, in any .md file but README.md and
+# CHANGELOG.md, is a header in one of the two at that version: the example is the format, so a dangling pin in it
+# teaches one.
+cited() { grep -rhoE '(^|[^a-z0-9-])[a-z][a-z-]*:[a-z0-9][a-z0-9-]*@[0-9]+' --include='*.md' --exclude=README.md --exclude=CHANGELOG.md "$@" | sed 's/^[^a-z]//' | LC_ALL=C sort -u; }
+defined=$( (hero_reference_index "$WITH"; hero_reference_index "$TMP/fleetrepo") | awk -F'\t' '{ print $1 "@" $2 }' | LC_ALL=C sort -u)
+check "example: the app cites the fleet" "1" "$(cited "$EXAMPLE" | grep -c '^role:desk-volunteer@1$')"
+check "example: every pin cited in the app or the fleet resolves at its version" "" \
+  "$(LC_ALL=C comm -23 <(cited "$EXAMPLE" "$FLEET_EXAMPLE") <(printf '%s\n' "$defined"))"
+
 mkdir -p "$TMP/legacy/reference"
 printf 'capabilities: shop@1\n\n# Map\n' >"$TMP/legacy/reference/capabilities.md"
 check "index: hero-template's capabilities spelling reads as capability" "capability:shop	1" \
@@ -79,6 +100,70 @@ check "resolve: a pin behind its file shows the current version" "entity:loan@1	
   "$(hero_reference_resolve "$WITH/.plans/items/003-t.md" "$WITH" | head -1 | cut -f1,2)"
 check "resolve: a pin with no file is none" "entity:gone@1	none	" \
   "$(hero_reference_resolve "$WITH/.plans/items/003-t.md" "$WITH" | tail -1)"
+
+# A fleet pin resolves through the register checkout beside the app, the way
+# ../.fleet/reference/ sits beside a hero-template clone.
+# Done, so the stale table below does not list its made-up pin.
+item "$WITH" 5 feat/role 'done' 'Reference: persona:shift-volunteer@1, role:desk-volunteer@1, goal:tools-that-work@1, role:ghost@1'
+check "fleet dir: none before the register is cloned" "1" "$(hero_reference_fleet_dir "$WITH" >/dev/null; echo $?)"
+mkdir -p "$TMP/.fleet" && git -C "$TMP/.fleet" init -q
+check "fleet dir: a register with no reference/ is none" "1" "$(hero_reference_fleet_dir "$WITH" >/dev/null; echo $?)"
+cp -R "$FLEET_EXAMPLE" "$TMP/.fleet/reference"
+FLEETREF="$(cd "$TMP/.fleet/reference" && pwd -P)"
+check "fleet dir: the register checkout's reference/" "$FLEETREF" "$(hero_reference_fleet_dir "$WITH")"
+check "resolve: an app pin still resolves in the app" "persona:shift-volunteer@1	1	$WITH/reference/personas/shift-volunteer.md" \
+  "$(hero_reference_resolve "$WITH/.plans/items/005-t.md" "$WITH" | sed -n 1p)"
+check "resolve: a role pin resolves through the register checkout" "role:desk-volunteer@1	1	$FLEETREF/organization/roles/desk-volunteer.md" \
+  "$(hero_reference_resolve "$WITH/.plans/items/005-t.md" "$WITH" | sed -n 2p)"
+check "resolve: a goal pin resolves to its row in a table file" "goal:tools-that-work@1	1	$FLEETREF/business/strategy.md" \
+  "$(hero_reference_resolve "$WITH/.plans/items/005-t.md" "$WITH" | sed -n 3p)"
+check "resolve: a fleet pin the fleet does not hold is none" "role:ghost@1	none	" \
+  "$(hero_reference_resolve "$WITH/.plans/items/005-t.md" "$WITH" | sed -n 4p)"
+mkdir -p "$WITH/reference/organization/roles"
+printf 'role: desk-volunteer@2\n\n# Desk\n' >"$WITH/reference/organization/roles/desk-volunteer.md"
+check "resolve: the app's own copy wins over the fleet's, flagged as shadowing" \
+  "role:desk-volunteer@1	2	$WITH/reference/organization/roles/desk-volunteer.md	shadowed: app copy of a fleet kind" \
+  "$(hero_reference_resolve "$WITH/.plans/items/005-t.md" "$WITH" | sed -n 2p)"
+check "resolve: an app kind answered by the app is not flagged" "3" \
+  "$(hero_reference_resolve "$WITH/.plans/items/005-t.md" "$WITH" | sed -n 1p | awk -F'\t' '{ print NF }')"
+rm -rf "$WITH/reference/organization"
+RESOLVED=$(printf 'Reference: %s\n' "$(cited "$EXAMPLE" | paste -sd, -)" | hero_reference_resolve - "$WITH")
+check "example: one resolved line per pin the app cites" "$(cited "$EXAMPLE" | wc -l | tr -d ' ')" \
+  "$(printf '%s\n' "$RESOLVED" | grep -c .)"
+check "example: every app pin resolves at its version through the fleet" "" \
+  "$(printf '%s\n' "$RESOLVED" | awk -F'\t' '{ v = $1; sub(/.*@/, "", v); if ($2 != v) print }')"
+chmod 000 "$TMP/.fleet/reference/organization"
+check "resolve: a fleet reference that cannot be read is unverified, not gone" "role:desk-volunteer@1	unresolved: fleet reference unreadable	" \
+  "$(hero_reference_resolve "$WITH/.plans/items/005-t.md" "$WITH" 2>/dev/null | sed -n 2p)"
+chmod 755 "$TMP/.fleet/reference/organization"
+
+# A stale fleet pin quotes the fleet's changelog, the home where it was bumped.
+SX="$(mktemp -d)"
+mkdir -p "$SX/.fleet/reference/organization/roles" "$SX/app/reference/personas"
+git -C "$SX/.fleet" init -q
+printf 'role: desk@2\n\n# Desk\n' >"$SX/.fleet/reference/organization/roles/desk.md"
+printf -- '- role:desk@2: now approves refunds; a build pinned to @1 must re-check the desk screen.\n' >"$SX/.fleet/reference/CHANGELOG.md"
+: >"$SX/app/reference/CHANGELOG.md"
+printf 'persona: p@1\n\ncites: role:desk@2\n' >"$SX/app/reference/personas/p.md"
+item "$SX/app" 5 feat/x ready 'Reference: role:desk@1'
+check "stale: a fleet pin quotes the fleet changelog" \
+  $'item 5: role:desk@1 is now @2\n    - role:desk@2: now approves refunds; a build pinned to @1 must re-check the desk screen.' \
+  "$(hero_reference_stale "$SX/app")"
+rm -rf "$SX"
+
+# No register checkout at all: the business layer is unverified, the run goes on.
+NOFLEET="$(mktemp -d)"
+mkdir -p "$NOFLEET/app"
+cp -R "$EXAMPLE" "$NOFLEET/app/reference"
+item "$NOFLEET/app" 1 feat/role ready 'Reference: role:desk-volunteer@1, entity:loan@2, entity:gone@1'
+out=$(hero_reference_resolve "$NOFLEET/app/.plans/items/001-t.md" "$NOFLEET/app"); rc=$?
+check "resolve: no register is rc 0" "0" "$rc"
+check "resolve: no register prints unresolved: no fleet reference for a fleet pin" "role:desk-volunteer@1	unresolved: no fleet reference	" \
+  "$(printf '%s\n' "$out" | sed -n 1p)"
+check "resolve: no register still resolves app pins and reports app gaps" $'entity:loan@2\t2\nentity:gone@1\tnone' \
+  "$(printf '%s\n' "$out" | sed -n '2,3p' | cut -f1,2)"
+check "stale: an unresolved fleet pin is unverified, not stale" "10" "$(hero_reference_stale "$NOFLEET/app" | grep -c 'gone')$(hero_reference_stale "$NOFLEET/app" | grep -c desk-volunteer)"
+rm -rf "$NOFLEET"
 
 check "line: one Reference line" "Reference: screen:returns-desk@1, entity:loan@2" \
   "$(hero_reference_line "$WITH/.plans/items/001-t.md")"
@@ -130,16 +215,48 @@ cp "$TMP/loan.md" "$WITH/reference/entities/loan.md"
 check "unbumped: a changed file whose version did not move, and only that" "reference/entities/loan.md @2" \
   "$(hero_reference_unbumped HEAD~1 "$WITH")"
 
+# A table file is judged per row: a row added beside an unbumped change to
+# another row must not hide it, and a bumped row is not listed.
+(
+  cd "$WITH" || exit 1
+  printf 'goal: a@1\n\ngoal: b@1\n\n# Strategy\n\n| Goal | Target |\n| -- | -- |\n| a | 10 |\n| b | 5 |\n' >reference/strategy.md
+  git add -A reference && git -c user.name=t -c user.email=t@t commit -qm table
+  printf 'goal: a@1\n\ngoal: b@2\n\ngoal: c@1\n\n# Strategy\n\n| Goal | Target |\n| -- | -- |\n| a | 20 |\n| b | 6 |\n| c | 1 |\n' >reference/strategy.md
+  git add -A reference && git -c user.name=t -c user.email=t@t commit -qm rows
+) >/dev/null 2>&1
+check "unbumped: a table row changed without its bump, beside an added row" "reference/strategy.md goal:a@1" \
+  "$(hero_reference_unbumped HEAD~1 "$WITH")"
+(
+  cd "$WITH" || exit 1
+  printf 'goal: a@1\n\ngoal: b@2\n\ngoal: c@1\n\ngoal: d@1\n\n# Strategy\n\n| Goal | Target |\n| -- | -- |\n| a | 20 |\n| b | 6 |\n| c | 1 |\n| d | 2 |\n' >reference/strategy.md
+  git add -A reference && git -c user.name=t -c user.email=t@t commit -qm add
+) >/dev/null 2>&1
+check "unbumped: only adding a row lists nothing" "1" "$(hero_reference_unbumped HEAD~1 "$WITH" >/dev/null; echo $?)"
+
 # What init-repo offers. Never over an existing folder, whatever is in it.
 before=$(find "$WITH/reference" -type f | sort | xargs cat | cksum)
 hero_reference_scaffold "$WITH" 2>/dev/null; check "scaffold: refuses a repo that has reference/" "1" "$?"
 check "scaffold: leaves that reference byte for byte" "$before" "$(find "$WITH/reference" -type f | sort | xargs cat | cksum)"
 mkdir -p "$TMP/fresh"
 hero_reference_scaffold "$TMP/fresh"; check "scaffold: writes into a repo without one" "0" "$?"
-check "scaffold: README, CHANGELOG and one kept folder per layer" \
-  "CHANGELOG.md README.md entities/.gitkeep flows/components/.gitkeep flows/screens/.gitkeep processes/.gitkeep prototype/.gitkeep value-streams/.gitkeep" \
+check "scaffold: README, CHANGELOG and one kept folder per app layer" \
+  "CHANGELOG.md README.md entities/.gitkeep flows/components/.gitkeep flows/screens/.gitkeep personas/.gitkeep processes/.gitkeep prototype/.gitkeep" \
   "$(cd "$TMP/fresh/reference" && find . -type f | sed 's|^\./||' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
 check "scaffold: an empty tree indexes nothing" "" "$(hero_reference_index "$TMP/fresh")"
+
+hero_reference_fleet_scaffold "$WITH" 2>/dev/null; check "fleet scaffold: refuses a repo that has reference/" "1" "$?"
+mkdir -p "$TMP/freshfleet"
+hero_reference_fleet_scaffold "$TMP/freshfleet"; check "fleet scaffold: writes into a fleet repo without one" "0" "$?"
+check "fleet scaffold: every business and organization file the format names" \
+  "CHANGELOG.md README.md business/capabilities.md business/market.md business/strategy.md business/value-streams/VERB-NOUN.md business/vision.md organization/governance.md organization/roles/ROLE.md organization/structure.md" \
+  "$(cd "$TMP/freshfleet/reference" && find . -type f | sed 's|^\./||' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')"
+check "fleet scaffold: placeholders index and resolve as nothing" "" "$(hero_reference_index "$TMP/freshfleet")"
+check "fleet scaffold: every field of the table is there" "7" \
+  "$(grep -cE '^- \*\*(Trigger|Outcome|Owner role|serves):\*\*|^## (Stages|Measures|Where AI changes the work)$' "$TMP/freshfleet/reference/business/value-streams/VERB-NOUN.md")"
+check "fleet scaffold: a goal row carries every strategy field" "1" \
+  "$(grep -c '^| GOAL-ID | STATEMENT | MEASURE | TARGET | HORIZON | role:ROLE@1 |$' "$TMP/freshfleet/reference/business/strategy.md")"
+check "fleet scaffold: governance carries decides, approves, consulted" "1" \
+  "$(grep -c '^| Decision | What | Decides | Approves | Consulted |$' "$TMP/freshfleet/reference/organization/governance.md")"
 
 # ---------- a repo without reference/ -------------------------------------
 
@@ -165,7 +282,7 @@ if [ "$FAIL" -gt 0 ]; then
   echo "reference-layer: $PASS passed, $FAIL FAILED"
   exit 1
 fi
-MIN_CASES=42
+MIN_CASES=73
 if [ "$PASS" -lt "$MIN_CASES" ]; then
   echo "reference-layer: only $PASS cases ran, expected >= $MIN_CASES" >&2
   exit 1

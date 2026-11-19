@@ -47,7 +47,7 @@ but its suite only runs where that venv exists (see Testing).
 | Path | What lives there |
 | -- | -- |
 | `skills/<name>/` | One skill each: instructions an agent follows, not code it runs. `SKILL.md` is the entrypoint an agent loads; a pipeline skill keeps its long procedure in a linked `WORKFLOW.md`, so activation stays short. |
-| `references/` | Procedure shared by several skills; a skill points at it rather than restating it. `authorization.md` says when a run continues, confirms, stops or defers, `client-capabilities.md` maps the skills' generic operations onto each host's tools, and `store-writes.md` fixes the two write channels: an item's own fields, and `DESIGN.md`. `reference-layer.md` is the format of a consumer repo's `reference/` and the hooks that read it. |
+| `references/` | Procedure shared by several skills; a skill points at it rather than restating it. `authorization.md` says when a run continues, confirms, stops or defers, `client-capabilities.md` maps the skills' generic operations onto each host's tools, and `store-writes.md` fixes the two write channels: an item's own fields, and `DESIGN.md`. `reference-layer.md` is the format of `reference/` in a fleet repo and in an app repo, and the hooks that read it. |
 | `docs/` | The standards: the store and its two backends, connections, the fleet map, messages, the product description, pipelines, and the rest. |
 | `scripts/` | The shell library every skill sources, its helpers and `*.test.sh` suites, the Python compliance engine (`audit.py`, `consistency.py`), and the Python checkers (`check_docs.py`, `pr_text_lint.py`, `diff_leftovers.py`). |
 | `hooks/` | Claude Code hooks (`hooks.json`): a Stop hook, `check-deferrals.sh`, that blocks a stop once when deferred work was never filed in `.plans/`, and a SessionStart hook, `check-floors.sh`, that warns when a tool the fleet's `setup.yaml` floors is installed below that floor. Claude Code only; other hosts do not run them. |
@@ -470,3 +470,24 @@ skill posts. What still needs judgment runs on demand, not on every commit.
 - Consequences: consumer repos write against this format, so changing it needs
   a migration of their pins. Every hook is gated on `hero_reference_dir`, so a
   repo without the folder behaves as before.
+
+### 2026-11-18: A customer's business and organization live once, in its fleet repo; each app keeps its personas and UX
+
+- Context: a value stream and a capability map written into one app's
+  `reference/` are copied into the next app of the same customer, and the copies
+  drift. Roles and goals are the customer's, not any one app's.
+- Decision: the reference has two homes. The fleet repo (the register checkout,
+  `.fleet/`) holds `reference/business/` and `reference/organization/` with a
+  fixed field table; each app repo holds personas, entities, processes, flows
+  and the prototype, and cites the fleet by `KIND:ID@VERSION`. A fleet table
+  file carries one header line per row id, so a goal or a capability is pinned
+  on its own version. Links point up, and a persona cites a role or a segment.
+  A fleet pin with no register checkout in reach reads
+  `unresolved: no fleet reference` and is never replaced by a local copy. A
+  business change is a fleet PR first, and the app PR depends on it. Chosen
+  over a second per-customer repo beside the register (two pins, two clones)
+  and over business in each app (one copy per app).
+- Consequences: the audit, not app CI, checks fleet pins (REF-01, against the
+  register's `origin/main`). The worked example here is fictional because this
+  repo is public; real strategy lives only in a customer's private fleet repo.
+  Pins are names, so moving a file between homes rewrites none.

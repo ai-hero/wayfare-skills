@@ -153,8 +153,14 @@ inputs.
 **In a repo with `reference/`** (`hero_reference_dir` succeeds), propose the
 reference edit first and pin it, per `../../references/reference-layer.md` (_The
 hooks_): any reference edit is the first Subtask and is shown at Step 3's gate,
-and each item's `## Context` opens with its `Reference:` line. Without the
-folder, skip this.
+and each item's `## Context` opens with its `Reference:` line. Run
+`hero_reference_resolve` on the pins: a line reading
+`unresolved: no fleet reference` means the business layer is unverified, so say
+that in the plan and write no local stand-in for the missing file. When the work
+needs a business or organization fact the fleet repo does not hold, or holds
+differently, the first Subtask is the fleet edit, a PR to the fleet repo with
+its version bump; the app item pins the new version and depends on it, and the
+fleet PR merges first. Without the folder, skip this.
 
 Write the conclusions into the existing task: `## Approach`, ordered
 `## Subtasks`, `## Definition of Done`, and one-line `success:`. Before writing

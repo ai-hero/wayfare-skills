@@ -2944,39 +2944,123 @@ hero_reference_dir() { # [ROOT]
   printf '%s' "$d"
 }
 
-# Write the minimal reference/ tree: a README pointing at the rule doc, an
-# empty CHANGELOG, and one kept folder per layer. Refuses (rc 1) a repo that
-# already has reference/, so it can never overwrite someone's reference.
+# The pin kinds that live in the fleet repo's reference/, not the app's.
+_HERO_FLEET_KINDS=" vision goal segment offering value-stream capability unit role decision "
+
+# The fleet repo's reference/ for the repo at ROOT: the register checkout
+# hero_register_find reaches from ROOT, `../.fleet/reference` for an app cloned
+# beside it. rc 1 when there is no register checkout or it holds no reference/.
+hero_reference_fleet_dir() { # [ROOT]
+  local reg
+  reg=$(hero_register_find "${1:-$(hero_root)}") || return 1
+  [ -d "$reg/.fleet/reference" ] || return 1
+  printf '%s' "$reg/.fleet/reference"
+}
+
+_hero_reference_changelog() { # DIR
+  printf '%s\n' '# reference changelog' '' \
+    'One line per version bump, newest first: `KIND:ID@VERSION: what changed; what' \
+    'an item pinned to the old version must re-check`.' >"$1/CHANGELOG.md"
+}
+
+# Write the app's minimal reference/ tree: a README pointing at the rule doc,
+# an empty CHANGELOG, and one kept folder per app layer. Business and
+# organization are not written here: they live in the fleet repo
+# (hero_reference_fleet_scaffold). Refuses (rc 1) a repo that already has
+# reference/, so it can never overwrite someone's reference.
 hero_reference_scaffold() { # [ROOT]
   local root d
   root=${1:-$(hero_root)}
   if [ -e "$root/reference" ]; then echo "hero_reference_scaffold: $root/reference exists; nothing written" >&2; return 1; fi
-  for d in value-streams entities processes flows/screens flows/components prototype; do
+  for d in personas entities processes flows/screens flows/components prototype; do
     mkdir -p "$root/reference/$d" && : >"$root/reference/$d/.gitkeep" || return 1
   done
   printf '%s\n' '# reference/' '' \
-    'What this app is meant to be, written before the code: value streams and' \
-    'capabilities, entities, processes, UX flow, and a throwaway prototype. The' \
-    "format is wayfare's references/reference-layer.md: every file opens with" \
-    '`KIND: ID@VERSION`, versions bump only when the meaning changes, and each bump' \
-    'adds a line to CHANGELOG.md.' >"$root/reference/README.md" || return 1
-  printf '%s\n' '# reference changelog' '' \
-    'One line per version bump, newest first: `KIND:ID@VERSION: what changed; what' \
-    'an item pinned to the old version must re-check`.' >"$root/reference/CHANGELOG.md"
+    'What this app is meant to be, written before the code: personas, entities,' \
+    'processes, UX flow, and a throwaway prototype. The business and organization' \
+    "they cite live in the fleet repo's reference/. The format is wayfare's" \
+    'references/reference-layer.md: every file opens with `KIND: ID@VERSION`,' \
+    'versions bump only when the meaning changes, and each bump adds a line to' \
+    'CHANGELOG.md.' >"$root/reference/README.md" || return 1
+  _hero_reference_changelog "$root/reference"
 }
 
-# Every headed reference file as `kind:id<TAB>version<TAB>path`. The header is
-# the file's first non-blank line. `capabilities` is read as `capability`:
-# hero-template shipped that spelling before the format was fixed here.
+# Write the fleet repo's reference/ (ROOT is the fleet repo, the register
+# checkout): business/ and organization/ with every file the format names and
+# every field a placeholder. Placeholder ids are upper case, which the header
+# grammar does not accept, so nothing indexes or resolves until a person fills
+# the file in; a lower-case placeholder would resolve as a real role or goal.
+# Refuses (rc 1) a repo that already has reference/.
+hero_reference_fleet_scaffold() { # [ROOT]
+  local root r
+  root=${1:-$(hero_root)}
+  r="$root/reference"
+  if [ -e "$r" ]; then echo "hero_reference_fleet_scaffold: $r exists; nothing written" >&2; return 1; fi
+  mkdir -p "$r/business/value-streams" "$r/organization/roles" || return 1
+  printf '%s\n' '# reference/' '' \
+    "What we know about this customer's business and organization, written once" \
+    'and cited by every app of the customer by `KIND:ID@VERSION`. The format is' \
+    "wayfare's references/reference-layer.md. Every field is a placeholder until a" \
+    'person states it; a field nobody knows reads `unknown`, never a guess. Name' \
+    'roles, never people.' >"$r/README.md" || return 1
+  _hero_reference_changelog "$r" || return 1
+  printf '%s\n' 'vision: CUSTOMER@1' '' '# Vision' '' \
+    '- **Mission:** MISSION, one sentence' \
+    '- **Vision:** VISION, the world when the mission succeeds' \
+    '- **Customer outcome:** OUTCOME, what a customer has that they did not' >"$r/business/vision.md" || return 1
+  printf '%s\n' 'goal: GOAL-ID@1' '' '# Strategy' '' \
+    'One header line per goal, a blank line between them.' '' \
+    '| Goal | Statement | Measure | Target | Horizon | Owner role |' '| -- | -- | -- | -- | -- | -- |' \
+    '| GOAL-ID | STATEMENT | MEASURE | TARGET | HORIZON | role:ROLE@1 |' >"$r/business/strategy.md" || return 1
+  printf '%s\n' 'segment: SEGMENT-ID@1' '' 'offering: OFFERING-ID@1' '' '# Market' '' '## Segments' '' \
+    '| Segment | Who | Need |' '| -- | -- | -- |' '| SEGMENT-ID | WHO | NEED |' '' '## Offerings' '' \
+    '| Offering | What | Segment |' '| -- | -- | -- |' '| OFFERING-ID | WHAT | SEGMENT-ID |' >"$r/business/market.md" || return 1
+  printf '%s\n' 'value-stream: VERB-NOUN@1' '' '# VERB NOUN' '' \
+    '- **Trigger:** TRIGGER, who needs what' \
+    '- **Outcome:** OUTCOME, the value delivered' \
+    '- **Owner role:** role:ROLE@1' \
+    '- **serves:** goal:GOAL-ID@1' '' '## Stages' '' \
+    '| # | Stage | Entrance criteria | Exit criteria | Value item | Participating roles | Enabling capabilities |' \
+    '| -- | -- | -- | -- | -- | -- | -- |' \
+    '| 1 | STAGE | ENTRANCE | EXIT | VALUE-ITEM | role:ROLE@1 | capability:CAPABILITY-ID@1 |' '' '## Measures' '' \
+    '| # | Volume | Lead time | Process time | % complete and accurate | Source |' '| -- | -- | -- | -- | -- | -- |' \
+    '| 1 | unknown | unknown | unknown | unknown | none |' '' '## Constraint' '' 'CONSTRAINT, the stage that limits throughput' '' \
+    '## Where AI changes the work' '' \
+    '| # | Issues (waste, impact) | AI opportunity | Readiness | Priority |' '| -- | -- | -- | -- | -- |' \
+    '| 1 | ISSUES | OPPORTUNITY | READINESS | PRIORITY |' '' '## Questions' '' \
+    '- **Q1:** QUESTION, and how it would be answered' >"$r/business/value-streams/VERB-NOUN.md" || return 1
+  printf '%s\n' 'capability: CAPABILITY-ID@1' '' '# Capabilities' '' \
+    'One header line per capability, a blank line between them.' '' \
+    '| Capability | What | Stages that use it |' '| -- | -- | -- |' \
+    '| CAPABILITY-ID | WHAT | VERB-NOUN 1 |' >"$r/business/capabilities.md" || return 1
+  printf '%s\n' 'unit: UNIT-ID@1' '' '# Structure' '' \
+    '| Unit | What it does | Reports to |' '| -- | -- | -- |' '| UNIT-ID | WHAT | REPORTS-TO |' >"$r/organization/structure.md" || return 1
+  printf '%s\n' 'role: ROLE@1' '' '# ROLE' '' \
+    '- **Purpose:** PURPOSE' \
+    '- **Responsibilities:** RESPONSIBILITIES' \
+    '- **Unit:** unit:UNIT-ID@1' >"$r/organization/roles/ROLE.md" || return 1
+  printf '%s\n' 'decision: DECISION-ID@1' '' '# Governance' '' \
+    '| Decision | What | Decides | Approves | Consulted |' '| -- | -- | -- | -- | -- |' \
+    '| DECISION-ID | WHAT | role:ROLE@1 | role:ROLE@1 | role:ROLE@1 |' >"$r/organization/governance.md"
+}
+
+# Every header line of every reference file as `kind:id<TAB>version<TAB>path`.
+# The header is the run of `KIND: ID@VERSION` lines that opens the file, blank
+# lines skipped: one line in most files, one per row in a fleet table file such
+# as strategy.md. `capabilities` is read as `capability`: hero-template shipped
+# that spelling before the format was fixed here.
 hero_reference_index() { # [ROOT]
   local dir
   dir=$(hero_reference_dir "${1:-}") || return 1
-  find "$dir" -name node_modules -prune -o -type f -name '*.md' -exec awk '
-    FNR == 1 { seen = 0 }
-    seen || !NF { next }
+  _hero_reference_index_dir "$dir"
+}
+
+_hero_reference_index_dir() { # DIR
+  find "$1" -name node_modules -prune -o -type f -name '*.md' -exec awk '
+    FNR == 1 { done = 0 }
+    done || !NF { next }
+    $0 !~ /^[a-z][a-z-]*: [a-z0-9][a-z0-9-]*@[0-9]+[[:space:]]*$/ { done = 1; next }
     {
-      seen = 1
-      if ($0 !~ /^[a-z][a-z-]*: [a-z0-9][a-z0-9-]*@[0-9]+[[:space:]]*$/) next
       k = $0; sub(/:.*/, "", k); if (k == "capabilities") k = "capability"
       i = $0; sub(/^[^:]*: /, "", i); v = i; sub(/@.*/, "", i); sub(/^[^@]*@/, "", v)
       print k ":" i "\t" (v + 0) "\t" FILENAME
@@ -2999,18 +3083,37 @@ hero_reference_pins() { # FILE...
   ' "$@"
 }
 
-# Each pin of FILE against the reference as it stands:
+# Each pin of FILE against the reference as it stands, the app's reference/
+# first and then, for a fleet kind, the fleet repo's (hero_reference_fleet_dir):
 # `pin<TAB>current version<TAB>path`, current `none` and path empty when no
-# file carries that kind:id. rc 1 when FILE pins nothing.
+# file carries that kind:id. A fleet-kind pin the app does not hold, with no
+# fleet reference in reach, is `unresolved: no fleet reference` (or `unresolved:
+# fleet reference unreadable` when indexing it failed): unverified, not gone,
+# and never a reason to write a local copy. A fleet-kind pin the app's own
+# reference/ answers gets a fourth field, `shadowed: app copy of a fleet kind`:
+# that copy hides the fleet's file and is the drift the two homes exist to stop.
+# The fleet is read from the register's working tree, so this is advisory;
+# REF-01 in scripts/audit.py, against origin/main, is the gate. rc 1 when FILE
+# pins nothing.
 hero_reference_resolve() { # FILE [ROOT]
-  local pins
+  local pins fleet fidx="" fstate=none
   hero_reference_dir "${2:-}" >/dev/null || return 1
   pins=$(hero_reference_pins "$1") || return 1
-  printf '%s\n' "$pins" | awk -F'\t' '
-    FILENAME == ARGV[1] { cur[$1] = $2; path[$1] = $3; next }
-    { k = $0; sub(/@[0-9]+$/, "", k)
-      if (k in cur) print $0 "\t" cur[k] "\t" path[k]; else print $0 "\tnone\t" }
-  ' <(hero_reference_index "${2:-}" 2>/dev/null) -
+  if fleet=$(hero_reference_fleet_dir "${2:-}"); then
+    if fidx=$(_hero_reference_index_dir "$fleet"); then fstate=ok; else fstate=unreadable; fi
+  fi
+  printf '%s\n' "$pins" | awk -F'\t' -v kinds="$_HERO_FLEET_KINDS" -v fstate="$fstate" '
+    FILENAME == ARGV[1] { if (!($1 in ac)) { ac[$1] = $2; ap[$1] = $3 }; next }
+    FILENAME == ARGV[2] { if (!($1 in fc)) { fc[$1] = $2; fp[$1] = $3 }; next }
+    { k = $0; sub(/@[0-9]+$/, "", k); kind = k; sub(/:.*/, "", kind)
+      fk = index(kinds, " " kind " ") > 0
+      if (k in ac) print $0 "\t" ac[k] "\t" ap[k] (fk ? "\tshadowed: app copy of a fleet kind" : "")
+      else if (!fk) print $0 "\tnone\t"
+      else if (fstate == "none") print $0 "\tunresolved: no fleet reference\t"
+      else if (fstate == "unreadable") print $0 "\tunresolved: fleet reference unreadable\t"
+      else if (k in fc) print $0 "\t" fc[k] "\t" fp[k]
+      else print $0 "\tnone\t" }
+  ' <(hero_reference_index "${2:-}" 2>/dev/null) <(printf '%s' "$fidx") -
 }
 
 # One `Reference:` line carrying every pin of FILE..., for a PR body. rc 1 when
@@ -3038,42 +3141,47 @@ hero_reference_branch_line() { # [BRANCH] [ROOT]
 
 # Every open item pinned behind the reference, as `item N: PIN is now @V` (or
 # `has no reference file`), each followed by the CHANGELOG entries between the
-# two versions, indented. An entry is a bullet with its wrapped lines, because
-# mdformat wraps a long changelog line. A missing CHANGELOG.md quotes nothing
-# rather than hiding the stale pins. rc 1 when nothing is stale.
+# two versions, indented, from the CHANGELOG.md of the home the pin resolved in
+# (the app's, or the fleet repo's). An entry is a bullet with its wrapped
+# lines, because mdformat wraps a long changelog line. A missing CHANGELOG.md
+# quotes nothing rather than hiding the stale pins. rc 1 when nothing is stale.
 hero_reference_stale() { # [ROOT]
-  local dir items f n out=""
+  local dir items f n fleet out=""
   dir=$(hero_reference_dir "${1:-}") || return 1
   items=$(hero_items_dir "${1:-}") || return 1
+  fleet=$(hero_reference_fleet_dir "${1:-}") || fleet=""
   for f in "$items"/*.md; do
     [ -f "$f" ] || continue
     case "$(hero_item_status "$f")" in done|dropped) continue ;; esac
     n=$(hero_item_field "$f" id)
-    out+=$(hero_reference_resolve "$f" "${1:-}" 2>/dev/null | awk -F'\t' -v n="$n" '
+    out+=$(hero_reference_resolve "$f" "${1:-}" 2>/dev/null | awk -F'\t' -v n="$n" -v fd="$fleet" '
       { p = $1; v = p; sub(/^.*@/, "", v)
+        home = (fd != "" && index($3, fd "/") == 1) ? "fleet" : "app"
         if ($2 == "none") print "item " n ": " p " has no reference file"
-        else if ($2 + 0 > v + 0) print "item " n ": " p " is now @" $2 "\t" v "\t" $2 }')
+        else if ($2 + 0 > v + 0) print "item " n ": " p " is now @" $2 "\t" v "\t" $2 "\t" home }')
     out+=$'\n'
   done
   out=$(printf '%s' "$out" | grep -v '^$') || return 1
   printf '%s\n' "$out" | awk -F'\t' '
-    FILENAME == ARGV[1] {
-      if (/^- /) { e[++ne] = $0; next }
-      if (/^[[:space:]]+[^[:space:]]/ && ne) { l = $0; sub(/^[[:space:]]+/, " ", l); e[ne] = e[ne] l; next }
+    FILENAME == ARGV[1] || FILENAME == ARGV[2] {
+      h = FILENAME == ARGV[1] ? "app" : "fleet"
+      if (/^- /) { e[h, ++ne[h]] = $0; next }
+      if (/^[[:space:]]+[^[:space:]]/ && ne[h]) { l = $0; sub(/^[[:space:]]+/, " ", l); e[h, ne[h]] = e[h, ne[h]] l; next }
       next
     }
     { print $1
-      if (NF < 3) next
+      if (NF < 4) next
+      h = $4
       k = $1; sub(/^item [0-9]+: /, "", k); sub(/@.*/, "", k)
-      for (i = 1; i <= ne; i++) for (x = $2 + 1; x <= $3 + 0; x++) {
-        t = k "@" x; s = e[i]
+      for (i = 1; i <= ne[h]; i++) for (x = $2 + 1; x <= $3 + 0; x++) {
+        t = k "@" x; s = e[h, i]
         while ((j = index(s, t)) > 0) {
           c = substr(s, j + length(t), 1)
-          if (c !~ /[0-9]/) { print "    " e[i]; x = $3 + 1; break }
+          if (c !~ /[0-9]/) { print "    " e[h, i]; x = $3 + 1; break }
           s = substr(s, j + length(t))
         }
       }
-    }' <(cat "$dir/CHANGELOG.md" 2>/dev/null) -
+    }' <(cat "$dir/CHANGELOG.md" 2>/dev/null) <([ -z "$fleet" ] || cat "$fleet/CHANGELOG.md" 2>/dev/null) -
 }
 
 # Each reference file that names a code path, as `path:line: token`. The
@@ -3095,21 +3203,34 @@ hero_reference_code_paths() { # [ROOT]
   done | grep . || return 1
 }
 
-# Each reference file changed in BASE...HEAD whose header version did not
-# move, as `path @version`. Whether the change altered meaning is the
+# Each reference file changed in BASE...HEAD whose header did not move, as
+# `path @version`. A file with one header line per row (strategy.md and the
+# other fleet table files) is judged per row instead, as `path kind:id@version`
+# for each row whose header is unchanged but whose table line (`| id | ...`)
+# differs: comparing the whole header would let a row added beside it hide an
+# unbumped change to another row. Whether the change altered meaning is the
 # reviewer's call; this only lists the candidates. A file new since BASE is not
 # listed. rc 1 when none is.
 hero_reference_unbumped() { # BASE [ROOT]
-  local root dir f old new out=""
+  local root dir f old new oldtext line id out="" head='NF == 0 { next } /^[a-z][a-z-]*: [a-z0-9][a-z0-9-]*@[0-9]+[[:space:]]*$/ { print; next } { exit }'
   root=${2:-$(hero_root)}
   dir=$(hero_reference_dir "$root") || return 1
   while IFS= read -r f; do
     [ -f "$root/$f" ] || continue
-    new=$(awk 'NF { print; exit }' "$root/$f")
-    old=$(git -C "$root" show "$1:$f" 2>/dev/null | awk 'NF { print; exit }') || continue
-    [ -n "$old" ] || continue
-    case "$new" in *@[0-9]*) ;; *) continue ;; esac
-    [ "${new##*@}" = "${old##*@}" ] && out+="$f @${new##*@}"$'\n'
+    new=$(awk "$head" "$root/$f")
+    oldtext=$(git -C "$root" show "$1:$f" 2>/dev/null) || continue
+    old=$(printf '%s\n' "$oldtext" | awk "$head")
+    [ -n "$new" ] || continue
+    if [ "$new" = "${new%%$'\n'*}" ]; then
+      [ "$new" = "$old" ] && out+="$f @${new##*@}"$'\n'
+      continue
+    fi
+    while IFS= read -r line; do
+      printf '%s\n' "$old" | grep -qxF "$line" || continue
+      id=${line#*: }; id=${id%@*}
+      [ "$(printf '%s\n' "$oldtext" | grep "^| $id |")" = "$(grep "^| $id |" "$root/$f")" ] ||
+        out+="$f ${line%%: *}:${line#*: }"$'\n'
+    done <<<"$new"
   done < <(git -C "$root" diff --name-only "$1...HEAD" -- "${dir#"$root"/}" 2>/dev/null | grep '\.md$' | grep -v '/prototype/')
   [ -n "$out" ] || return 1
   printf '%s' "$out"

@@ -4,7 +4,7 @@ screen: returns-desk@1
 
 serves: return-tool.receive, return-tool.inspect, return-tool.restock
 
-Used by desk volunteers only.
+for: persona:shift-volunteer@1, and no one else
 
 ## Loads
 

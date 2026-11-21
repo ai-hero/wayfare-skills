@@ -168,7 +168,7 @@ did not read. Do not rank by traffic unless you have traffic data.
   action in this session. Indexes reach production through the migration.
 - **"document db" here means MongoDB, not Amazon DocumentDB.** Do not apply
   DocumentDB's planner, `$hint`, or index limits.
-- **A shared comment is wrong about index names.** `hero-template`,
+- **A shared comment is wrong about index names.** `app-template`,
   `add-api-feature`, and some clones say that a same-name index with a new spec
   no-ops and reports success. It fails with error 86 and stops the boot. See
   [references/migrate.md](references/migrate.md).

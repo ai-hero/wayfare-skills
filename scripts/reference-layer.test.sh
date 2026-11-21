@@ -102,7 +102,7 @@ check "resolve: a pin with no file is none" "entity:gone@1	none	" \
   "$(hero_reference_resolve "$WITH/.plans/items/003-t.md" "$WITH" | tail -1)"
 
 # A fleet pin resolves through the register checkout beside the app, the way
-# ../.fleet/reference/ sits beside a hero-template clone.
+# ../.fleet/reference/ sits beside an app-template clone.
 # Done, so the stale table below does not list its made-up pin.
 item "$WITH" 5 feat/role 'done' 'Reference: persona:shift-volunteer@1, role:desk-volunteer@1, goal:tools-that-work@1, role:ghost@1'
 check "fleet dir: none before the register is cloned" "1" "$(hero_reference_fleet_dir "$WITH" >/dev/null; echo $?)"

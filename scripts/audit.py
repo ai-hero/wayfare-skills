@@ -957,7 +957,7 @@ def uncommented(text):
     and report it as the bug.
 
     Learned the hard way: GATE-02 greps for the invalid v1 spelling
-    `shadow: true`, and hero-template's .golangci.yaml has a header comment
+    `shadow: true`, and app-template's .golangci.yaml has a header comment
     warning that that spelling silently does nothing. The checker matched
     the warning and failed the one config in the fleet that is correct. A
     false FAIL is as corrosive as a false PASS — it trains you to ignore
@@ -2157,7 +2157,7 @@ def _(r):
     recipe — so `false | cat` succeeds and the recipe carries on. That is the
     silent success, and it needs a pipe, not merely a second line.
 
-    hero-template's `health` recipe documents exactly this trap: it avoids
+    app-template's `health` recipe documents exactly this trap: it avoids
     `curl -fsS ... | jq` because the pipe would swallow curl's status and make
     the documented "non-zero on 503" a lie.
     """
@@ -3347,7 +3347,7 @@ def _regenerates(repo, text):
 
     Matching only a literal `buf generate` would fail the repos doing it right.
     JUST-01 requires CI to invoke gates through the Justfile precisely so CI and
-    the runner cannot spell them differently and drift, so hero-template's job
+    the runner cannot spell them differently and drift, so app-template's job
     says `just proto-gen`. A checker that demands the raw command rewards
     restating it in the workflow — pushing repos toward the duplication another
     control exists to prevent.

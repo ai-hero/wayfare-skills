@@ -70,7 +70,7 @@
 
 ### reference
 
-- type: none # this repo IS the fleet's plugin; hero-template is a consumer of
+- type: none # this repo IS the fleet's plugin; app-template is a consumer of
   it, not a template for it
 
 ### architecture

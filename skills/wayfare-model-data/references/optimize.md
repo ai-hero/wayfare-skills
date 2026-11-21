@@ -40,7 +40,7 @@ and a cluster in different regions pay the distance on every command.
 
 ## Add a slow-command log
 
-`hero-template`'s `lib/store/slowlog.go` is the reference. If the repo logs no
+`app-template`'s `lib/store/slowlog.go` is the reference. If the repo logs no
 command durations, port it as its own PR. Add it to the repo's monitor chain,
 such as `chainMonitors`. If the repo has no command monitor, install one.
 

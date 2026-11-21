@@ -130,7 +130,7 @@ Three things it is for:
 
 - name: acme
 - org: acme-inc          # GitHub owner most rows live under; none if mixed
-- template: hero-template
+- template: app-template
 - port-range: 33000-33099
 - template-port: 33099   # the template's parking slot; a clone still on it is a bug
 - register: .fleet/      # the compliance register overlay + generated CONSISTENCY.md; a private checkout
@@ -165,21 +165,24 @@ Rules:
    collision and what lets the scanner pick the app's port over a database's in
    a multi-service compose file. `template` names the row the compliance engine
    compares callers against and the repo `wayfare-audit-compliance` backports
-   to; `template-port` is recorded for the operator. `register` names the
-   checkout holding the fleet's compliance overlay. It may only be `.fleet/`
-   (the default), and any other value stops the engine (see *Who can steer it*).
-   `register-repo` names that checkout's `origin` as `OWNER/NAME`; it is how a
-   fresh fleet folder knows what to clone, and the engine compares it to the
-   checkout's `origin` URL. The register is reviewed the way code is: it has a
-   private `origin` remote whose `main` takes changes only through a reviewed
-   PR, and the engine reads `CONTROLS.yaml`, `CHECKS.yaml` and `checkers.py`
-   from `origin/main`, fetched that run, not from the working tree. The engine
-   trusts that remote's branch protection; it does not check it. A register with
-   no remote, or whose `origin/main` does not resolve, is read at its HEAD, and
-   only a register with no `.git` is read from its working tree. Anything short
-   of a clean, pushed, freshly fetched `origin/main` is unreviewed: an
-   uncommitted or unpushed change to those three files, a `.fleet/FLEET.md` that
-   differs from `origin/main`, a failed fetch, no remote, no `.git` at all, no
+   to. A.I. Hero keeps three templates: `fleet-template` starts a customer's
+   fleet repo, `app-template` an app, and `lib-template` a lib; the example
+   names `app-template`, the one its apps are cloned from. `template-port` is
+   recorded for the operator. `register` names the checkout holding the fleet's
+   compliance overlay. It may only be `.fleet/` (the default), and any other
+   value stops the engine (see *Who can steer it*). `register-repo` names that
+   checkout's `origin` as `OWNER/NAME`; it is how a fresh fleet folder knows
+   what to clone, and the engine compares it to the checkout's `origin` URL. The
+   register is reviewed the way code is: it has a private `origin` remote whose
+   `main` takes changes only through a reviewed PR, and the engine reads
+   `CONTROLS.yaml`, `CHECKS.yaml` and `checkers.py` from `origin/main`, fetched
+   that run, not from the working tree. The engine trusts that remote's branch
+   protection; it does not check it. A register with no remote, or whose
+   `origin/main` does not resolve, is read at its HEAD, and only a register with
+   no `.git` is read from its working tree. Anything short of a clean, pushed,
+   freshly fetched `origin/main` is unreviewed: an uncommitted or unpushed
+   change to those three files, a `.fleet/FLEET.md` that differs from
+   `origin/main`, a failed fetch, no remote, no `.git` at all, no
    `register-repo` key, an `origin` that is not the repo `register-repo` names,
    or either of those disagreeing with this machine's pin (*The register is
    pinned per machine*). Then the report header's `register:` line names which,

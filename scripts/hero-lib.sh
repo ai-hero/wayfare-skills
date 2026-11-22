@@ -2496,10 +2496,8 @@ hero_ready_items() (
       echo "hero_ready_items: $f carries resolution '$resolution' at status '$state'; resolution is set only at done" >&2
     elif [ "$state" = "done" ]; then
       case "$itype:$resolution" in
-        task:shipped|signal:delivered|signal:rejected|idea:promoted|anti-feature:promoted|*:obsolete) ;;
         idea:|anti-feature:) echo "hero_ready_items: $f is a done $itype with no resolution; expected promoted or obsolete" >&2 ;;
-        *:) ;;
-        *) echo "hero_ready_items: $f is a $itype with resolution '$resolution', which is not an ending a $itype has (docs/PLAN.md)" >&2 ;;
+        *) _hero_resolution_fits "$itype" "$resolution" || echo "hero_ready_items: $f is a $itype with resolution '$resolution', which is not an ending a $itype has (docs/PLAN.md)" >&2 ;;
       esac
     fi
     # A replacement on a live item is a drop rolled back without clearing it.
@@ -3850,6 +3848,25 @@ _hero_srv_safe_value() { # FUNC KEY VALUE
   esac
 }
 
+# rc 0 when RESOLUTION is an ending TYPE has (docs/PLAN.md); an empty RESOLUTION
+# fits every type. The writers check it before writing, because a goal closed
+# `done shipped` reads fine in its own file and only hero_ready_items notices.
+_hero_resolution_fits() { # TYPE RESOLUTION
+  case "$1:$2" in
+    *:|task:shipped|signal:delivered|signal:rejected|idea:promoted|anti-feature:promoted|*:obsolete) return 0 ;;
+  esac
+  return 1
+}
+
+_hero_resolution_guard() { # FUNC FILE RESOLUTION
+  local t
+  t=$(hero_item_type "$2")
+  [ -z "$t" ] && return 0
+  _hero_resolution_fits "$t" "$3" && return 0
+  echo "$1: '$3' is not an ending a $t has (docs/PLAN.md)" >&2
+  return 1
+}
+
 # Move an item to status TO, with a REASON and, for done, a RESOLUTION; prints
 # `status: TO` and, with one, `resolution: R`. Local writes the frontmatter and
 # a `status` log line, dropping a resolution on any move but done; the server
@@ -3870,6 +3887,7 @@ hero_item_transition() { # NUMBER TO REASON [RESOLUTION] [ROOT]
   if [ "$r" = local ]; then
     hero_store_require_local "$root" hero_item_transition || return 1
     f=$(hero_item_file "$n" "$root") || return 1
+    _hero_resolution_guard hero_item_transition "$f" "${4:-}" || return 2
     _hero_local_set "$f" status "$2" || return 1
     if [ "$2" != "done" ]; then _hero_local_unset "$f" resolution || return 1
     elif [ -n "${4:-}" ]; then _hero_local_set "$f" resolution "$4" || return 1; fi
@@ -3908,6 +3926,7 @@ hero_item_set_status() { # NUMBER STATUS [RESOLUTION] [ROOT]
   if [ "$r" = local ]; then
     hero_store_require_local "$root" hero_item_set_status || return 1
     f=$(hero_item_file "$n" "$root") || return 1
+    _hero_resolution_guard hero_item_set_status "$f" "${3:-}" || return 2
     _hero_local_set "$f" status "$2" || return 1
     [ "$2" != ready ] || _hero_local_set "$f" ready_marked "$(date +%Y-%m-%d)" || return 1
     if [ "$2" != "done" ]; then _hero_local_unset "$f" resolution || return 1

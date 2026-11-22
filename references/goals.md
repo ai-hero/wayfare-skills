@@ -901,12 +901,13 @@ between turns:
    `committed`, which is what `sync` reports and what the dependency check in
    *Advancing one item* refuses to build against. A `merged, not deployed` stop
    leaves them `committed` as well: `done` means the deploy was verified. Then
-   run step 8, then run `hero_item_set_status GOAL_ID done shipped` on the goal,
-   and only if step 8 admitted nothing. Admitted work is work this goal still
-   owes, so a goal that absorbed an item is not done; it stays `active` for the
-   next turn. A STOP from wayfare-build-task (a declined gate, REQUEST_CHANGES,
-   a failed workflow) is the turn's stop too, reported with the gate it rested
-   at; the goal stays `active` and the next turn resumes from the same branch.
+   run step 8, then run `hero_item_set_status GOAL_ID done` on the goal, with no
+   resolution (a goal has no ending but `obsolete`, docs/PLAN.md), and only if
+   step 8 admitted nothing. Admitted work is work this goal still owes, so a
+   goal that absorbed an item is not done; it stays `active` for the next turn.
+   A STOP from wayfare-build-task (a declined gate, REQUEST_CHANGES, a failed
+   workflow) is the turn's stop too, reported with the gate it rested at; the
+   goal stays `active` and the next turn resumes from the same branch.
 
 8. **Admit what the turn discovered, before deciding the goal is done.** Each
    task's run reports the items its Step 2a wrote, each with the goal DoD line

@@ -486,6 +486,14 @@ sb hero_item_set_status 3 "done" shipped "$SW" >/dev/null
 check "item-write: done takes its resolution" "done shipped" "$(hero_item_field "$SW/.plans/items/003-w.md" status) $(hero_item_field "$SW/.plans/items/003-w.md" resolution)"
 sb hero_item_set_status 3 active "" "$SW" >/dev/null
 check "item-write: a move away from done drops the resolution line" "active 0" "$(hero_item_field "$SW/.plans/items/003-w.md" status) $(grep -c '^resolution:' "$SW/.plans/items/003-w.md")"
+printf -- '---\nid: 5\ntype: goal\nstatus: active\n---\n\n## Log\n' > "$SW/.plans/items/005-g.md"
+sb hero_item_set_status 5 "done" shipped "$SW" >/dev/null 2>&1; check "item-write: shipped on a goal is rc 2" "2" "$?"
+check "item-write: and the goal stays as it was" "active 0" "$(hero_item_field "$SW/.plans/items/005-g.md" status) $(grep -c '^resolution:' "$SW/.plans/items/005-g.md")"
+sb hero_item_transition 5 "done" merged shipped "$SW" >/dev/null 2>&1; check "item-write: transition refuses shipped on a goal too" "2 active" "$? $(hero_item_field "$SW/.plans/items/005-g.md" status)"
+sb hero_item_set_status 5 "done" "" "$SW" >/dev/null
+check "item-write: a goal closes done with no resolution" "done 0" "$(hero_item_field "$SW/.plans/items/005-g.md" status) $(grep -c '^resolution:' "$SW/.plans/items/005-g.md")"
+sb hero_item_set_status 5 "done" obsolete "$SW" >/dev/null
+check "item-write: obsolete fits a goal" "obsolete" "$(hero_item_field "$SW/.plans/items/005-g.md" resolution)"
 sb hero_item_set_status 3 "done" shipped "$SW" >/dev/null
 check "item-write: branch is a field write" "branch: feat/x" "$(sb hero_item_set 3 branch feat/x "$SW")"
 printf -- '---\nid: 4\ntype: task\nstatus: active\n---\n\n## Log\n' > "$SW/.plans/items/004-r.md"

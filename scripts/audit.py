@@ -3809,10 +3809,18 @@ def _(r):
 @check("CI-25")
 def _(r):
     # Claude Approvals reads approvals.yml ahead of approvals.yaml, so a .yml
-    # beside the vendored file is the policy in force and this comparison
-    # would never read it.
+    # is the policy in force and this comparison would never read it.
     if (r / ".claude" / "approvals.yml").is_file():
-        return FAIL, ".claude/approvals.yml present; it shadows the vendored approvals.yaml"
+        return FAIL, ".claude/approvals.yml present; Approvals reads it ahead of the vendored approvals.yaml"
+    # The nearest policy file to a change decides it, so a nested one can let
+    # Claude approve a whole subtree while the root copy stays byte-identical.
+    nested = sorted(
+        str(p.relative_to(r))
+        for p in r.rglob("approvals.y*ml")
+        if p.parent.name == ".claude" and p.parent.parent != r and ".git" not in p.relative_to(r).parts
+    )
+    if nested:
+        return FAIL, "nested policy files: " + ", ".join(nested)
     return _matches_reference(r / ".claude" / "approvals.yaml", _PLUGIN_ASSETS / "approvals" / "approvals.yaml")
 
 

@@ -1,10 +1,10 @@
 # Vendored from wayfare-skills assets/approvals/approvals.yaml by
 # scripts/install-approvals.sh. Change it there and re-vendor: the fleet audit
-# (CI-25) fails any copy that differs, so a local edit is reverted next sweep.
+# (CI-25) fails any copy that differs, and any nested policy file.
 #
 # `mode: observe` stays until the fleet has two people able to fill `seats`.
-# Enforced with one, every change Claude does not approve waits on a second
-# person nobody can supply.
+# Enforced with one, every change Claude does not approve, and every change
+# under .claude/, waits on a second person nobody can supply.
 version: 1
 mode: observe
 rules:

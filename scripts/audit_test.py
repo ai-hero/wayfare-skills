@@ -2586,6 +2586,15 @@ class CI25ApprovalsPolicy(unittest.TestCase):
     def test_yml_spelling_alone_fails(self):
         self.assertEqual(self._verdict({"approvals.yml": self.asset}), audit.FAIL)
 
+    def test_nested_policy_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = pathlib.Path(d)
+            (repo / ".claude").mkdir()
+            (repo / ".claude" / "approvals.yaml").write_bytes(self.asset)
+            (repo / "src" / ".claude").mkdir(parents=True)
+            (repo / "src" / ".claude" / "approvals.yaml").write_bytes(self.asset)
+            self.assertEqual(audit.CHECKS["CI-25"](repo)[0], audit.FAIL)
+
     def test_yml_beside_pristine_yaml_fails(self):
         self.assertEqual(self._verdict({"approvals.yaml": self.asset, "approvals.yml": self.asset}), audit.FAIL)
 

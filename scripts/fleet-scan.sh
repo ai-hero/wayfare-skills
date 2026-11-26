@@ -86,10 +86,17 @@ ROOT=$(cd "$ROOT" 2>/dev/null && pwd -P) || { echo "fleet-scan: no such director
 RANGE=$(hero_fleet_field port-range "$ROOT" 2>/dev/null || true)
 
 scan() {
-  local d
+  local d real
   for d in "$ROOT"/*/; do
     d="${d%/}"
     [ -e "$d/.git" ] || continue
+    # A rename leaves old-name -> new-name beside the checkout. Listing the
+    # link too made the repo a PORT_COLLISION with itself. A link to a
+    # checkout outside the folder is still the only listing of that repo.
+    if [ -L "$d" ]; then
+      real=$(cd -P "$d" 2>/dev/null && pwd -P) || real=""
+      [ -n "$real" ] && [ "${real%/*}" = "$ROOT" ] && continue
+    fi
     printf '%s\t%s\t%s\n' "${d##*/}" "$d" "$(hero_compose_port "$d" "$RANGE")"
   done
 }

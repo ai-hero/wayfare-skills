@@ -11,7 +11,8 @@ compatibility: "Requires the complete Wayfare plugin, git, GitHub CLI, network a
 An agent takes one task from the Wayfare server and carries it to a pull
 request: read the claimable tasks, claim one, build it, open the PR, link it to
 the task, report and comment. One run works one task. It never reviews its own
-task, merges, or passes a gate: Plan is a person's, and another agent reviews.
+task, merges, or passes a gate: Plan is a person's, and another agent reviews
+with `wayfare:wayfare-review-task`.
 
 The stage model it drives is in aihero-wayfare's `DESIGN.md` (*Flows*, the task
 table). The facts this skill relies on:

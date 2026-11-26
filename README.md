@@ -548,6 +548,7 @@ procedures:
 | `wayfare:wayfare-sync-product` | Write the whiteboard view of the product: what it is, its features with shipped, partial or planned status, and one statement each, with no restated code. Locally it writes `PRODUCT.md` ([docs/PRODUCT-MD.md](./docs/PRODUCT-MD.md)); on the Wayfare server it files the features as ideas a person accepts. Writes only what you confirm |
 | `wayfare:wayfare-review-product` | Report where `PRODUCT.md` (or the filed feature ideas) and the code have drifted: stale claims, wrong statuses, features nobody described. Writes nothing |
 | `wayfare:wayfare-work-task` | Pick up a ready task from the Wayfare server over MCP: claim it, build it through `wayfare-build-task`, open the PR, link it to the task, then report and comment. Releases the claim and says why when the build fails. Never reviews or merges its own task |
+| `wayfare:wayfare-review-task` | The review agent's half: as a different issuer agent from the builder, claim a task waiting at review, review its PR through `wayfare-review-pr`, ship it through `wayfare-ship-pr` or verify it already merged, then report the merging verdict and comment. Holds the task for a person with `no_verdict` when the review cannot decide |
 | `wayfare:wayfare-write-handoff` | Distill the current conversation into one self-contained work-item for a downstream agent (optionally filed to the tracker, or to **another repo** with `--repo OWNER/NAME`) |
 
 ### Utilities

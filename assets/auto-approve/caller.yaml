@@ -23,7 +23,7 @@ jobs:
     # The actor test is a different failure: a Dependabot-TRIGGERED event gets
     # no access to repository secrets, so ANTHROPIC_API_KEY below resolves to
     # empty, and passing an undefined secret to a reusable workflow kills the
-    # run at startup — zero jobs, nothing to read. Measured on hero-template:
+    # run at startup — zero jobs, nothing to read. Measured on app-template:
     # same caller, same callee, same day, the human-triggered run passed and
     # all three Dependabot-triggered ones failed. This skips only a comment
     # posted BY Dependabot; a human commenting @auto-approve on a Dependabot

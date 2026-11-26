@@ -3806,6 +3806,16 @@ def _(r):
     return _matches_reference(mine, _PLUGIN_ASSETS / "auto-approve" / "caller.yaml")
 
 
+@check("CI-25")
+def _(r):
+    # Claude Approvals reads approvals.yml ahead of approvals.yaml, so a .yml
+    # beside the vendored file is the policy in force and this comparison
+    # would never read it.
+    if (r / ".claude" / "approvals.yml").is_file():
+        return FAIL, ".claude/approvals.yml present; it shadows the vendored approvals.yaml"
+    return _matches_reference(r / ".claude" / "approvals.yaml", _PLUGIN_ASSETS / "approvals" / "approvals.yaml")
+
+
 _EXPIRY_GATE = "check-exception-expiry.sh"
 _EXCEPTION_INPUTS = {"vex-location", "trivyignores"}
 _GATE_CMD = re.compile(r"^\s*(?:bash\s+)?(?:\./)?scripts/check-exception-expiry\.sh(?:\s+(.*))?$")

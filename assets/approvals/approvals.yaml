@@ -1,0 +1,19 @@
+# Vendored from wayfare-skills assets/approvals/approvals.yaml by
+# scripts/install-approvals.sh. Change it there and re-vendor: the fleet audit
+# (CI-25) fails any copy that differs, so a local edit is reverted next sweep.
+#
+# `mode: observe` stays until the fleet has two people able to fill `seats`.
+# Enforced with one, every change Claude does not approve waits on a second
+# person nobody can supply.
+version: 1
+mode: observe
+rules:
+  - purpose: "A change takes two people. When Claude's review passes, one is enough and Claude approves."
+    paths: ["**"]
+    verdict: { claude: comments, seats: 2 }
+    override:
+      - { if: "claude/code_review = pass", verdict: { claude: approves, seats: 1 } }
+  - purpose: "A change to the review rules takes two people."
+    paths: ["**/.claude/**"]
+    nested: inherit
+    verdict: { claude: comments, seats: 2 }

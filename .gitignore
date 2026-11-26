@@ -219,6 +219,7 @@ __marimo__/
 .claude/*
 !.claude/skills/
 !.claude/rules/
+!.claude/approvals.yaml
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 

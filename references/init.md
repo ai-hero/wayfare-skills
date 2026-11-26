@@ -1392,6 +1392,28 @@ Next: add REGISTRY_TOKEN to .env (never commit it), then run
 wayfare:wayfare-recomponentize-ui to migrate the UI.
 ```
 
+## Step 6c: Install the Claude Approvals Policy (Claude Ship orgs)
+
+When the repo's GitHub org uses Claude Ship, vendor the policy. Same exit-code
+contract as Step 6a, plus 4: the repo's `.gitignore` hides the file, so add
+`!.claude/approvals.yaml` beside the other `!.claude/` lines first. Stage
+`.claude/approvals.yaml` only on 0:
+
+```bash
+APPROVALS_RC=255
+if [ -n "$PLUGIN_ROOT" ] && [ -x "$PLUGIN_ROOT/scripts/install-approvals.sh" ]; then
+  set +e
+  "$PLUGIN_ROOT/scripts/install-approvals.sh" "$ROOT"
+  APPROVALS_RC=$?
+  set -e
+fi
+```
+
+The policy ships in observe mode. Requiring the `Claude Approvals` check in
+branch protection comes after enforce mode, and the source must be pinned to the
+Claude GitHub App: a requirement open to any source passes a same-named check
+from any workflow.
+
 ## Step 7: Commit HERO.md
 
 Always commit `HERO.md` to the repo. Do NOT ask whether to commit or whether to

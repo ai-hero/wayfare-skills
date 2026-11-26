@@ -3045,7 +3045,7 @@ hero_reference_fleet_scaffold() { # [ROOT]
 # Every header line of every reference file as `kind:id<TAB>version<TAB>path`.
 # The header is the run of `KIND: ID@VERSION` lines that opens the file, blank
 # lines skipped: one line in most files, one per row in a fleet table file such
-# as strategy.md. `capabilities` is read as `capability`: app-template shipped
+# as strategy.md. `capabilities` is read as `capability`: hero-template shipped
 # that spelling before the format was fixed here.
 hero_reference_index() { # [ROOT]
   local dir

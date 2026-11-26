@@ -561,10 +561,11 @@ procedures:
 
 ## Updating vendored assets in a downstream repo
 
-`scripts/install-design-system.sh`, `scripts/install-stop-checks.sh` and
-`scripts/install-auto-approve.sh` copy files *into* consuming repos
-(`.claude/rules/`, `.claude/hooks/`). Those copies are vendored, not authored:
-fix bugs here, then re-vendor.
+`scripts/install-design-system.sh`, `scripts/install-stop-checks.sh`,
+`scripts/install-auto-approve.sh` and `scripts/install-approvals.sh` copy files
+*into* consuming repos (`.claude/rules/`, `.claude/hooks/`,
+`.github/workflows/`, `.claude/approvals.yaml`). Those copies are vendored, not
+authored: fix bugs here, then re-vendor.
 
 `install-stop-checks.sh` wires a Stop hook that runs the repo's
 `just check-fast` before an agent ends its turn and sends it back to work on a

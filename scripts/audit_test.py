@@ -2556,6 +2556,49 @@ class ReviewedRegister(unittest.TestCase):
         self.assertEqual(ctrl["C-SUPPLY"]["severity"], "low")
 
 
+class CI25ApprovalsPolicy(unittest.TestCase):
+    def setUp(self):
+        self._saved_assets = audit._PLUGIN_ASSETS
+        audit._PLUGIN_ASSETS = HERE.parent / "assets"
+        self.asset = (HERE.parent / "assets" / "approvals" / "approvals.yaml").read_bytes()
+
+    def tearDown(self):
+        audit._PLUGIN_ASSETS = self._saved_assets
+
+    def _verdict(self, files):
+        with tempfile.TemporaryDirectory() as d:
+            repo = pathlib.Path(d)
+            (repo / ".claude").mkdir()
+            for name, body in files.items():
+                (repo / ".claude" / name).write_bytes(body)
+            return audit.CHECKS["CI-25"](repo)[0]
+
+    def test_vendored_policy_passes(self):
+        self.assertEqual(self._verdict({"approvals.yaml": self.asset}), audit.PASS)
+
+    def test_missing_policy_fails(self):
+        self.assertEqual(self._verdict({}), audit.FAIL)
+
+    def test_enforce_flip_in_one_repo_fails(self):
+        drifted = self.asset.replace(b"mode: observe\n", b"")
+        self.assertEqual(self._verdict({"approvals.yaml": drifted}), audit.FAIL)
+
+    def test_yml_spelling_alone_fails(self):
+        self.assertEqual(self._verdict({"approvals.yml": self.asset}), audit.FAIL)
+
+    def test_nested_policy_fails(self):
+        with tempfile.TemporaryDirectory() as d:
+            repo = pathlib.Path(d)
+            (repo / ".claude").mkdir()
+            (repo / ".claude" / "approvals.yaml").write_bytes(self.asset)
+            (repo / "src" / ".claude").mkdir(parents=True)
+            (repo / "src" / ".claude" / "approvals.yaml").write_bytes(self.asset)
+            self.assertEqual(audit.CHECKS["CI-25"](repo)[0], audit.FAIL)
+
+    def test_yml_beside_pristine_yaml_fails(self):
+        self.assertEqual(self._verdict({"approvals.yaml": self.asset, "approvals.yml": self.asset}), audit.FAIL)
+
+
 class CI20Owner(unittest.TestCase):
     """CI-20 must not be silenceable by the repo it is auditing.
 

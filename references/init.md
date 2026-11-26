@@ -789,6 +789,11 @@ demand instead; see `scripts/check-hero-staleness.sh`.
   - If the workflow exists locally but is not on the default branch yet, remind
     the user that `@auto-approve` will be a no-op until that file lands on the
     default branch.
+- Whether the GitHub org uses Claude Ship. If `.claude/approvals.yaml` is
+  absent, ask: *"Does this repo's GitHub org use Claude Ship's Claude Approvals?
+  If so, vendor the shared approval policy (observe mode) to
+  `.claude/approvals.yaml`."*
+  - If the user says yes, run the install in Step 6c below.
 
 ### Group 6: "For UI work" (`wayfare:wayfare-recomponentize-ui`)
 
@@ -1391,6 +1396,41 @@ Design-system enforcement installed.
 Next: add REGISTRY_TOKEN to .env (never commit it), then run
 wayfare:wayfare-recomponentize-ui to migrate the UI.
 ```
+
+## Step 6c: Install the Claude Approvals Policy (Claude Ship orgs)
+
+If the user said yes in Group 4, vendor the policy. The lookup is repeated here
+because each shell block starts fresh, and Step 6a's `PLUGIN_ROOT` is set only
+when auto-approve was installed. Stage `.claude/approvals.yaml` only on 0:
+
+```bash
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+APPROVALS_RC=255
+if [ -x "$WAYFARE_ROOT/scripts/install-approvals.sh" ]; then
+  set +e
+  "$WAYFARE_ROOT/scripts/install-approvals.sh" "$ROOT"
+  APPROVALS_RC=$?
+  set -e
+else
+  echo "Could not locate scripts/install-approvals.sh under WAYFARE_ROOT ($WAYFARE_ROOT)."
+  echo "Export WAYFARE_ROOT as the plugin root and re-run this step."
+fi
+
+case "$APPROVALS_RC" in
+  0) echo "Policy in sync; stage .claude/approvals.yaml." ;;
+  2) echo "Not staged: follow the installer's EXISTS lines above, then re-run." ;;
+  4) echo "Not staged: add the .gitignore line the installer printed, then re-run; stage on 0." ;;
+  5) echo "Not staged: git could not check .gitignore here; run the command the installer printed." ;;
+  3) echo "The wayfare plugin is missing assets/approvals/approvals.yaml. Reinstall the plugin." ;;
+  255) ;;
+  *) echo "Installer failed with exit code $APPROVALS_RC. Investigate before committing." ;;
+esac
+```
+
+The policy ships in observe mode. Requiring the `Claude Approvals` check in
+branch protection comes after enforce mode, and the source must be pinned to the
+Claude GitHub App: a requirement open to any source passes a same-named check
+from any workflow.
 
 ## Step 7: Commit HERO.md
 

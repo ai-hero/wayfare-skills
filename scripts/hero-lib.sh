@@ -4016,19 +4016,26 @@ _hero_item_max_id() { # DIR
 # in, the rendered item shows two `## Log` sections. Anchors and blocked_on are
 # not create-item fields, so they follow as one update-item. A field the server
 # has no value for (`one_way_door: true`, `pr`, `branch`) is refused before
-# anything is filed; filing without it would drop a one-way door unseen.
+# anything is filed; filing without it would drop a one-way door unseen. A
+# goal's budget is a person's on the server and blocked_since is the server's
+# own stamp, so those are left out and named on stderr, never refused: refusing
+# budget would leave sync unable to file any goal.
 _hero_srv_item_create() { # ROOT TYPE TITLE BODY_FILE FRONTMATTER DEFAULT_STATUS
-  local root=$1 type=$2 title=$3 body=$4 fm=$5 sv tmp k v pri shp ints text logs anchors_tsv blk req pid json n upd
+  local root=$1 type=$2 title=$3 body=$4 fm=$5 sv tmp k v pri shp ints text logs anchors_tsv blk req pid json n upd errf rc left=
   tmp=$(mktemp "${TMPDIR:-/tmp}/wayfare-create.XXXXXX") || return 1
   printf -- '---\n%s\n---\n' "$fm" > "$tmp" || { rm -f "$tmp"; return 1; }
   for k in $(printf '%s\n' "$fm" | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\):.*/\1/p'); do
     case "$k" in
-      status|shape|priority|severity|origin|success|depends_on|parent|rank|discovered_from|source|target|anchors|blocked_on|blocked_since) continue ;;
+      status|shape|priority|severity|origin|success|depends_on|parent|rank|discovered_from|source|target|anchors|blocked_on) continue ;;
     esac
     v=$(hero_item_list_field "$tmp" "$k" | tr '\n' ' ' | sed 's/ $//')
-    case "$k:$v" in "$k:"|one_way_door:false) continue ;; esac
+    case "$k:$v" in "$k:"|one_way_door:false) continue ;; budget:*|budget_max:*|blocked_since:*) left="$left $k"; continue ;; esac
     rm -f "$tmp"
-    echo "hero_item_create: the Wayfare server's create-item has no field for $k ($v); nothing was filed. File the item without it, or set it in the app" >&2
+    if [ "$k" = one_way_door ]; then
+      echo "hero_item_create: the Wayfare server's create-item cannot hold one_way_door ($v); nothing was filed. Do not file it without the flag: stop and have a person file it in the app" >&2
+    else
+      echo "hero_item_create: the Wayfare server's create-item has no field for $k ($v); nothing was filed. File the item without it, or set it in the app" >&2
+    fi
     return 1
   done
   sv=$(hero_item_field "$tmp" status); [ -n "$sv" ] || sv=$6
@@ -4055,7 +4062,7 @@ _hero_srv_item_create() { # ROOT TYPE TITLE BODY_FILE FRONTMATTER DEFAULT_STATUS
   anchors_tsv=$(printf '%s\n' "$fm" | awk '
     /^anchors:/ { a = 1; next }
     a && /^[[:space:]]+(source|target):/ { k = $1; sub(/:$/, "", k); v = $0; sub(/^[^:]*:[[:space:]]*/, "", v); sub(/[[:space:]]+#.*/, "", v)
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); if (v != "") print "anchor_" k "\t" v; next }
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); gsub(/^["\047]|["\047]$/, "", v); if (v != "") print "anchor_" k "\t" v; next }
     /^[^[:space:]]/ { a = 0 }')
   blk=$(hero_item_field "$tmp" blocked_on)
   req=$(jq -n --arg type "$type" --arg title "$title" --arg status "$sv" --arg priority "$pri" \
@@ -4074,7 +4081,22 @@ _hero_srv_item_create() { # ROOT TYPE TITLE BODY_FILE FRONTMATTER DEFAULT_STATUS
   rm -f "$tmp"
   [ -n "$req" ] || return 1
   pid=$(hero_srv_project "$root") || return 1
-  json=$(hero_srv_cli "$root" create-item --json "$(printf '%s' "$req" | jq -c --arg pid "$pid" '{project_id: $pid} + .')") || return 1
+  errf=$(mktemp "${TMPDIR:-/tmp}/wayfare-create-err.XXXXXX") || return 1
+  json=$(hero_srv_cli "$root" create-item --json "$(printf '%s' "$req" | jq -c --arg pid "$pid" '{project_id: $pid} + .')" 2>"$errf"); rc=$?
+  cat "$errf" >&2
+  if [ "$rc" -ne 0 ]; then
+    # The server creates the item before it writes the log lines, and a timeout
+    # can land after the commit: a failed call may still have filed it.
+    n=$(sed -n 's/.*item \([0-9][0-9]*\) was created.*/\1/p' "$errf" | head -1)
+    rm -f "$errf"
+    if [ -n "$n" ]; then
+      echo "hero_item_create: item $n exists on the server although the call failed; do not file it again" >&2
+      printf '%s\n' "$n"; return 1
+    fi
+    echo "hero_item_create: the create-item call failed, and the server may still hold the item; look for its title in the project before filing it again" >&2
+    return 1
+  fi
+  rm -f "$errf"
   n=$(printf '%s' "$json" | jq -er '.item.number | numbers | select(. == floor and . > 0)') || { _hero_srv_shape "$root" create-item; return 1; }
   if [ -n "$anchors_tsv$blk" ]; then
     upd=$(printf '%s\n' "$anchors_tsv" | jq -Rsc --arg pid "$pid" --argjson n "$n" --arg blk "$blk" '
@@ -4086,6 +4108,7 @@ _hero_srv_item_create() { # ROOT TYPE TITLE BODY_FILE FRONTMATTER DEFAULT_STATUS
       return 1
     fi
   fi
+  [ -z "$left" ] || echo "hero_item_create: item $n was filed without${left}: a goal's budget is set by a person in the app, and the server stamps its own blocked_since" >&2
   printf '%s\n' "$n"
 }
 

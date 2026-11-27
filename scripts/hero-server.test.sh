@@ -399,7 +399,7 @@ success: "it: works #1"
 one_way_door: false
 resolution: # set only at done
 anchors:
-  source: abc123 # head planned against
+  source: "abc123" # head planned against
 ---
 
 ## Context
@@ -420,7 +420,7 @@ check "create: the server prints the number it allocated" "42" "$(srv hero_item_
 check "create: sent the fields local creation writes, in the server's spellings" \
   '{"project_id":"p-app","type":"task","title":"New item","status":"planning","priority":"high","shape":"slice","origin":"wayfare-grill-idea","success":"it: works #1","description":"## Context\n\nWhy.","goal_number":9,"rank":4,"discovered_from":3,"depends_on":[1,2],"sources":["src/a.go","src/b c.go"],"log":[{"tag":"note","text":"filed from a grill"}]}' \
   "$(jq -c . "$STUB_DIR/payload.create-item")"
-check "create: the anchors follow as one update-item on the new number" '{"project_id":"p-app","number":42,"anchor_source":"abc123"}' "$(jq -c . "$STUB_DIR/payload.update-item")"
+check "create: the anchors follow as one update-item on the new number, quotes stripped" '{"project_id":"p-app","number":42,"anchor_source":"abc123"}' "$(jq -c . "$STUB_DIR/payload.update-item")"
 check "create: no local file is written" "$BEFORE" "$(find "$APP/.plans" -type f | wc -l | tr -d ' ')"
 reset
 printf -- '---\nblocked_on: "vendor #2"\n---\n' > "$TMP/create-blocked.md"
@@ -437,6 +437,22 @@ for bad in "one_way_door: true" "pr: https://github.com/acme/app/pull/1" "channe
   check "create: '${bad%%:*}' the server cannot hold is rc 1 before any call" "1 " "$RC $(calls)"
   case "$E" in *"${bad%%:*}"*"nothing was filed"*) check "create: and the refusal names '${bad%%:*}'" ok ok ;; *) check "create: and the refusal names '${bad%%:*}'" "names it" "$E" ;; esac
 done
+reset; printf -- '---\none_way_door: true\n---\n' > "$TMP/create-bad.md"
+case "$(srv hero_item_create task "Bad" "$TMP/create-bad.md" "$APP" 2>&1 >/dev/null)" in *"Do not file it without the flag"*) check "create: the one-way-door refusal says not to refile without the flag" ok ok ;; *) check "create: the one-way-door refusal says not to refile without the flag" "says so" "refile hint missing" ;; esac
+reset; printf -- '---\nbudget: 3\nbudget_max: 6\nblocked_since: 2026-01-01\n---\n\n## Plan\n\nx\n' > "$TMP/create-goal.md"
+OUT=$(srv hero_item_create goal "Goal" "$TMP/create-goal.md" "$APP" 2>"$TMP/err"); RC=$?
+check "create: a goal's budget and blocked_since are left out, not refused" "0 42 planning" "$RC $OUT $(jq -r .status "$STUB_DIR/payload.create-item")"
+check "create: and none of them is sent" "0" "$(grep -c 'budget\|blocked_since' "$STUB_DIR/payload.create-item")"
+case "$(cat "$TMP/err")" in *"without budget budget_max blocked_since"*) check "create: and stderr names what was left out" ok ok ;; *) check "create: and stderr names what was left out" "names them" "$(cat "$TMP/err")" ;; esac
+reset; echo "boom: item 42 was created, but its log lines 1 to 1 were not written" > "$STUB_DIR/create-item.fail"
+OUT=$(srv hero_item_create task "New item" "$TMP/create-body.md" "$APP" 2>"$TMP/err"); RC=$?
+check "create: a failed call that created the item still prints its number, rc 1" "1 42" "$RC $OUT"
+case "$(cat "$TMP/err")" in *"item 42 exists"*"do not file it again"*) check "create: and says not to file it again" ok ok ;; *) check "create: and says not to file it again" "says so" "$(cat "$TMP/err")" ;; esac
+reset; echo "boom: token rejected" > "$STUB_DIR/create-item.fail"
+OUT=$(set +o pipefail; srv hero_item_create task "New item" "$TMP/create-body.md" "$APP" 2>"$TMP/err"); RC=$?
+check "create: a failing create-item alone is rc 1 with nothing on stdout" "1 " "$RC $OUT"
+case "$(cat "$TMP/err")" in *"$URL"*"boom: token rejected"*"may still hold"*) check "create: and names the server, the reason and the doubt" ok ok ;; *) check "create: and names the server, the reason and the doubt" "names them" "$(cat "$TMP/err")" ;; esac
+rm -f "$STUB_DIR/create-item.fail"
 reset; printf -- '---\nrank: 0\n---\n' > "$TMP/create-bad.md"
 srv hero_item_create task "Bad" "$TMP/create-bad.md" "$APP" >/dev/null 2>&1; check "create: rank 0 is rc 2 before any call" "2 " "$? $(calls)"
 reset; printf -- '---\npriority: urgent\n---\n' > "$TMP/create-bad.md"

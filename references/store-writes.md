@@ -40,17 +40,26 @@ A path that already exists and a symlinked items directory are refused.
 On a server backend it files the item through the CLI's `create-item` and prints
 the number the server allocated. The frontmatter maps to the server's fields
 (`parent` is `goal_number`, `source` and `target` are `sources` and `targets`,
-`story` is `slice`, p0 and p1 are `high`), the sections become the description,
-and the dated lines of a `## Log` section become the item's log. `anchors` and
-`blocked_on` follow as one `update-item`; if that call fails, the number is
-still printed, rc is 1, and the item exists, so do not file it again. A field
-the server cannot hold (`one_way_door: true`, `pr`, `branch`, `channel`, and any
-other the server has no create field for) is refused with rc 1 before anything
-is filed; an empty field, or `one_way_door: false`, is skipped. When it returns
-1 with no number, report that the item was not filed, name the work it carried,
-and stop there; hand-writing the file is the failure this refusal exists to
-stop. `scripts/validate.sh` fails a routed skill or reference that tells the
-agent to write an item file by hand.
+`story` is `slice`, p0 and p1 are `high`), and the sections become the
+description. Every line of a `## Log` section must be a dated
+`- YYYY-MM-DD (author) tag: text` line, or the call is rc 2; each becomes a log
+entry, which the server dates and attributes itself. `anchors` and `blocked_on`
+follow as one `update-item`. A goal's `budget` and `budget_max` are a person's
+on the server and `blocked_since` is the server's own stamp, so those are left
+out and named on stderr. Any other field the server cannot hold
+(`one_way_door: true`, `pr`, `branch`, `channel`) is refused with rc 1 before
+anything is filed; an empty field, or `one_way_door: false`, is skipped. Never
+refile an item without its `one_way_door: true`: a person files that one in the
+app.
+
+Rc 1 with a number printed means the item exists although part of the call
+failed, so do not file it again. Rc 1 with no number after a refusal means
+nothing was filed. Rc 1 with no number after the call itself failed (a timeout,
+a server error) means the server may still hold the item: look for its title in
+the project before filing again. When nothing was filed, report that, name the
+work it carried, and stop there; hand-writing the file is the failure this
+refusal exists to stop. `scripts/validate.sh` fails a routed skill or reference
+that tells the agent to write an item file by hand.
 
 ## The DESIGN.md channel
 

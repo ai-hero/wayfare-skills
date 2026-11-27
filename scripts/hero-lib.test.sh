@@ -932,9 +932,9 @@ check "connection: issues.at none is an answer, not a bad repo name" \
   "none" "$(hero_connection issues at "$FL/app" 2>/dev/null)"
 
 # A block with no `type:` line is half written, not a declared absence.
-printf '# H\n\n## Connections\n\n### reference\n\n- at: hero-template\n' > "$FL/app/HERO.md"
+printf '# H\n\n## Connections\n\n### reference\n\n- at: app-template\n' > "$FL/app/HERO.md"
 check "connections: a missing type prints ?, never none" \
-  "reference	?	hero-template	-" "$(hero_connections "$FL/app" 2>/dev/null)"
+  "reference	?	app-template	-" "$(hero_connections "$FL/app" 2>/dev/null)"
 
 # The guard belongs to the VALUE, not to the spelling that carried it. Applied
 # only to `## Connections`, it guards every repo except the unmigrated ones

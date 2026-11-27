@@ -943,14 +943,14 @@ class Snapshot(unittest.TestCase):
         # FAMILY is bound by configure() from FLEET.md (or the lone repo), so
         # the fixture binds its own: the snapshot walks family_repos().
         self.saved = audit.ROOT, audit.FAMILY, dict(audit.REPO_DIR)
-        audit.ROOT, audit.FAMILY = self.root, ("hero-template",)
+        audit.ROOT, audit.FAMILY = self.root, ("app-template",)
         audit.REPO_DIR.clear()
         # Mapped under a subdirectory, so cleanup must go through REPO_DIR: a
         # regression to `ROOT / rn` would leave the worktree behind and the
         # count below would still read 1 only by accident of the fallback.
-        audit.REPO_DIR["hero-template"] = self.root / "sub" / "hero-template"
+        audit.REPO_DIR["app-template"] = self.root / "sub" / "app-template"
         (self.root / "sub").mkdir()
-        git_repo(self.root / "sub", "hero-template")
+        git_repo(self.root / "sub", "app-template")
 
     def tearDown(self):
         audit.ROOT, audit.FAMILY, saved_dirs = self.saved
@@ -961,7 +961,7 @@ class Snapshot(unittest.TestCase):
     def worktrees(self):
         out = subprocess.run(
             ["git", "worktree", "list"],
-            cwd=self.root / "sub" / "hero-template",
+            cwd=self.root / "sub" / "app-template",
             capture_output=True,
             text=True,
             env=CLEAN_ENV,
@@ -972,8 +972,8 @@ class Snapshot(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(RuntimeError):
                 with audit.snapshot_family("HEAD"):
-                    self.assertNotEqual(audit.repo_path("hero-template"), self.root / "sub" / "hero-template")
-                    self.assertEqual(audit.repo_path("hero-template").name, "hero-template")
+                    self.assertNotEqual(audit.repo_path("app-template"), self.root / "sub" / "app-template")
+                    self.assertEqual(audit.repo_path("app-template").name, "app-template")
                     raise RuntimeError("boom")
         self.assertEqual(audit.REPO_PATH, {})
         self.assertEqual(audit._FLEET, {})
@@ -982,7 +982,7 @@ class Snapshot(unittest.TestCase):
     def test_unknown_ref_audits_checkout(self):
         with contextlib.redirect_stderr(io.StringIO()):
             with audit.snapshot_family("no-such-ref"):
-                self.assertEqual(audit.repo_path("hero-template"), self.root / "sub" / "hero-template")
+                self.assertEqual(audit.repo_path("app-template"), self.root / "sub" / "app-template")
         self.assertEqual(len(self.worktrees()), 1)
 
 
@@ -2099,7 +2099,7 @@ class Runner(unittest.TestCase):
         audit.CHECKS["ZZ-00"] = lambda r: ("pass", "")
         try:
             with contextlib.redirect_stderr(io.StringIO()):
-                rows, fails, errors = audit.run_matrix([{"id": "ZZ-00", "control": "C"}], ["hero-template"])
+                rows, fails, errors = audit.run_matrix([{"id": "ZZ-00", "control": "C"}], ["app-template"])
         finally:
             del audit.CHECKS["ZZ-00"]
         self.assertEqual(rows[0][1][0][0], audit.ERROR)

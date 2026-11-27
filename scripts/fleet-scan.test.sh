@@ -301,6 +301,18 @@ EOM
 OUT=$("$SCAN" "$F" --review); RC=$?
 check "review: clean fleet exits 0 with no output" "0|" "$RC|$OUT"
 
+# A rename leaves old-name -> new-name in the folder; it is the same checkout.
+ln -s auth "$F/auth-old"
+OUT=$("$SCAN" "$F" --review); RC=$?
+check "review: a symlink to a checkout in the folder is not a second repo" "0|" "$RC|$OUT"
+check "list: a symlink to a checkout in the folder is not listed" \
+  "" "$("$SCAN" "$F" --list | awk -F'\t' '$1=="auth-old"')"
+rm "$F/auth-old"
+mkdir -p "$TMP/outside/.git"; ln -s "$TMP/outside" "$F/linked"
+check "list: a symlink to a checkout outside the folder is listed" \
+  "linked	$F/linked	-" "$("$SCAN" "$F" --list | awk -F'\t' '$1=="linked"')"
+rm "$F/linked"
+
 # The map is shared through the register, so a row this machine never cloned
 # is normal: reported, never a reason to exit 1.
 printf '\n### elsewhere\n\n- group: apps\n- port: 33040\n' >> "$F/.fleet/FLEET.md"

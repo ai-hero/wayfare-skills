@@ -83,7 +83,7 @@ check "example: every pin cited in the app or the fleet resolves at its version"
 
 mkdir -p "$TMP/legacy/reference"
 printf 'capabilities: shop@1\n\n# Map\n' >"$TMP/legacy/reference/capabilities.md"
-check "index: hero-template's capabilities spelling reads as capability" "capability:shop	1" \
+check "index: app-template's capabilities spelling reads as capability" "capability:shop	1" \
   "$(hero_reference_index "$TMP/legacy" | cut -f1,2)"
 
 check "pins: in order, from the Reference line" $'screen:returns-desk@1\nentity:loan@2' \

@@ -92,6 +92,11 @@ class WorkflowOn(unittest.TestCase):
             self.assertEqual(st, audit.MANUAL)
             self.assertIn("ci.yaml", detail)
 
+    def test_this_repo_passes_ci21(self):
+        # vendored-pin.yaml skips its compare in a step; a `paths:` filter put
+        # back there fails here, not only in the fleet table.
+        self.assertEqual(audit.CHECKS["CI-21"](HERE.parent), (audit.PASS, ""))
+
     def test_list_form_passes_ci21(self):
         with tempfile.TemporaryDirectory() as d:
             r = pathlib.Path(d)
@@ -191,15 +196,50 @@ class ImageRefs(unittest.TestCase):
             f = write(pathlib.Path(d), "docker-compose.dev.yaml", text)
             self.assertEqual(audit._image_refs(f), [("minio", "latest"), ("mongo", "8")])
 
+    def _compose(self, text):
+        with tempfile.TemporaryDirectory() as d:
+            return audit._image_refs(write(pathlib.Path(d), "docker-compose.dev.yaml", text))
+
     def test_compose_alias_reads_its_anchor(self):
         text = (
             "x-img: &img rustfs/rustfs:1.0.3@sha256:" + "a" * 64 + "\n"
             "x-bad: &bad minio/minio:latest\n"
-            "services:\n  a:\n    image: *img\n  b:\n    image: *bad\n  c:\n    image: *missing\n"
+            "services:\n  a:\n    image: *img\n  b:\n    image: *bad\n"
         )
+        self.assertEqual(self._compose(text), [("minio", "latest")])
+
+    def test_compose_reused_anchor_never_passes(self):
+        # A later digest-pinned `&img` must not stand in for the floating one
+        # service a actually runs. PyYAML rejects the reused name, so the
+        # alias is left as written and fails.
+        text = (
+            "x-a: &img nginx:latest\nservices:\n  a:\n    image: *img\nx-b: &img nginx:1.27@sha256:" + "b" * 64 + "\n"
+        )
+        self.assertEqual(self._compose(text), [("*img", "")])
+
+    def test_compose_anchor_inside_a_string_is_not_an_anchor(self):
+        text = (
+            "x-real: &rustfs rustfs/rustfs\n"
+            "services:\n  a:\n    image: *rustfs\n"
+            '    command: sh -c "x &rustfs rustfs/rustfs:1.0@sha256:' + "c" * 64 + '"\n'
+        )
+        self.assertEqual(self._compose(text), [("rustfs", "")])
+
+    def test_compose_image_line_carrying_its_own_anchor_is_checked(self):
+        self.assertEqual(self._compose("services:\n  a:\n    image: &img minio/minio:latest\n"), [("minio", "latest")])
+
+    def test_compose_merge_key_and_commented_anchor(self):
+        text = "# x-old: &img minio/minio:1.0\nx-svc: &svc\n  image: redis:latest\nservices:\n  a:\n    <<: *svc\n"
+        self.assertEqual(self._compose(text), [("redis", "latest")])
+
+    def test_compose_alias_with_no_anchor_fails_ctr09(self):
         with tempfile.TemporaryDirectory() as d:
-            f = write(pathlib.Path(d), "docker-compose.dev.yaml", text)
-            self.assertEqual(audit._image_refs(f), [("minio", "latest"), ("*missing", "")])
+            r = pathlib.Path(d)
+            write(r, "Dockerfile.prod", "FROM alpine:3.24\n")
+            write(r, "docker-compose.dev.yaml", "services:\n  a:\n    image: *missing\n")
+            st, detail = audit.CHECKS["CTR-09"](r)
+            self.assertEqual(st, audit.FAIL, detail)
+            self.assertIn("*missing (alias with no anchor", detail)
 
     def test_ctr09_and_ctr11(self):
         with tempfile.TemporaryDirectory() as d:
@@ -786,12 +826,18 @@ class CI01(unittest.TestCase):
         st, detail = self._check("ai-hero/infrastructure-environments/.github/workflows/deploy-swarm.yaml@main")
         self.assertEqual(st, audit.PASS, detail)
 
+    def test_wayfare_skills_keeps_its_v_tag(self):
+        st, detail = self._check("ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@v1")
+        self.assertEqual(st, audit.PASS, detail)
+
     def test_other_ai_hero_repos_at_main_fail(self):
         for uses in (
             "ai-hero/other-repo/.github/workflows/x.yaml@main",
             "ai-hero/infrastructure-environments-fork/.github/workflows/deploy-swarm.yaml@main",
             "ai-hero/infrastructure-environments/.github/workflows/deploy-swarm.yaml@feature",
             "ai-hero/infrastructure-environments/action@main",
+            # Tags are not under branch protection; only wayfare-skills keeps one.
+            "ai-hero/infrastructure-environments/.github/workflows/deploy-swarm.yaml@v1",
             "ai-hero/hero-skills/.github/workflows/auto-approve.yaml@main",
             "ai-hero/wayfare-skills-fork/.github/workflows/auto-approve.yaml@main",
             "ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@feature",

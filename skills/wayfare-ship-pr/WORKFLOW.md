@@ -40,7 +40,9 @@ merge and moves it to In Review when this repo was the last one listed. Steps 7c
 *replace* `merge`, `reset`, and `verify-deploy`: there is no merge to verify
 deployment health for. On those paths render
 `(✗) merge → ( ) reset → ( ) verify-deploy` and stop, never
-`(✓) merge → (✓) reset → (✓) verify-deploy`.
+`(✓) merge → (✓) reset → (✓) verify-deploy`. Step 3c's hand-off to a person is
+the same kind of end state, before `trigger`: render `(✓) gates → ( ) trigger`
+and stop at `awaiting-human`.
 
 The workflow lives at `.github/workflows/auto-approve.yaml` (or `.yml`, since
 both are honoured). **GitHub only honors `issue_comment`-triggered workflows
@@ -442,9 +444,9 @@ Recommended next step: wayfare:wayfare-respond-pr
 
 Do not proceed. Do not post `@auto-approve`.
 
-Only when **all five gates pass** continue to Step 3a, then Step 3b. Both run
-before Step 4. (The `3a` to `3e` labels in the script above name the gates, not
-these headings.)
+Only when **all five gates pass** continue to Step 3a, then Step 3b, then Step
+3c. All three run before Step 4. (The `3a` to `3e` labels in the script above
+name the gates, not these headings.)
 
 #### Step 3a: rebase onto the base, before the trigger and never after the verdict
 
@@ -509,6 +511,45 @@ hold is `stop: awaiting-human`.
 
 A publisher that cannot be compared does not hold. Post one PR comment naming
 it, then continue.
+
+#### Step 3c: a PR only a person can merge still gets the whole gate
+
+A repo can list paths auto-approve never approves in
+`.github/auto-approve-human-review.txt` on its default branch (wayfare-skills
+does: the shared workflow, `scripts/audit.py`, every workflow, the hooks). A PR
+touching one is merged by a person, not by this skill. **Step 3's gate still
+applies in full, prior review included.** Skipping the review because no
+`@auto-approve` will run gets it backwards: these are the riskiest paths, and
+the person's merge is the only gate left. That mistake shipped
+wayfare-skills#249 with tests alone; the review it skipped, run after the merge,
+found three real defects.
+
+```bash
+BASE=$(gh pr view "$PR_NUMBER" --json baseRefName -q .baseRefName)
+LIST=$(gh api "repos/{owner}/{repo}/contents/.github/auto-approve-human-review.txt?ref=$BASE" \
+  -H "Accept: application/vnd.github.raw" 2>/dev/null) || LIST=""
+HUMAN_PATHS=$(
+  shopt -s nocasematch
+  gh pr view "$PR_NUMBER" --json files -q '.files[].path' | while IFS= read -r p; do
+    while IFS= read -r g; do
+      case "$g" in '' | '#'*) continue ;; esac
+      # [[ == ]] lets `*` cross `/`, matching the workflow's own glob rule.
+      [[ "$p" == $g ]] && { echo "$p"; break; }
+    done <<<"$LIST"
+  done
+)
+echo "HUMAN_PATHS=${HUMAN_PATHS:-none}"
+```
+
+When `HUMAN_PATHS` names any file:
+
+1. Pass Step 3 first. With no prior review, run `wayfare:wayfare-review-pr` (the
+   full six agents: a listed path is the *content overrides size* case) and
+   apply its fixes before going on.
+2. Post no `@auto-approve`: the workflow would refuse it.
+3. Stop with `stop: awaiting-human`. Name the PR, the listed paths, the review's
+   findings and what was fixed, and ask the person to merge. Do not merge it
+   yourself, and never with `--admin`.
 
 ### Step 4: Post the @auto-approve Trigger Comment
 

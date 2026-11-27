@@ -105,6 +105,9 @@ is the fleet's.
   *before* `@auto-approve`, never between the verdict and the merge: branch
   protection dismisses approvals on push.
 
+- **A PR auto-approve won't judge still gets `wayfare-review-pr`**, fixes
+  applied, before a person is asked to merge it (`wayfare-ship-pr` Step 3c).
+
 - **Four nouns, and each owns one file.** `hero` is the single focus agent in
   one repo (`HERO.md`); `fleet` is the floor those repos sit on (`FLEET.md`,
   [docs/FLEET-MD.md](./docs/FLEET-MD.md)); `wayfare` is the route between the

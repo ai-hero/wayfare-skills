@@ -40,7 +40,9 @@ merge and moves it to In Review when this repo was the last one listed. Steps 7c
 *replace* `merge`, `reset`, and `verify-deploy`: there is no merge to verify
 deployment health for. On those paths render
 `(✗) merge → ( ) reset → ( ) verify-deploy` and stop, never
-`(✓) merge → (✓) reset → (✓) verify-deploy`.
+`(✓) merge → (✓) reset → (✓) verify-deploy`. Step 3c's hand-off to a person is
+the same kind of end state, before `trigger`: render `(✓) gates → ( ) trigger`
+and stop at `awaiting-human`.
 
 The workflow lives at `.github/workflows/auto-approve.yaml` (or `.yml`, since
 both are honoured). **GitHub only honors `issue_comment`-triggered workflows
@@ -442,9 +444,9 @@ Recommended next step: wayfare:wayfare-respond-pr
 
 Do not proceed. Do not post `@auto-approve`.
 
-Only when **all five gates pass** continue to Step 3a, then Step 3b. Both run
-before Step 4. (The `3a` to `3e` labels in the script above name the gates, not
-these headings.)
+Only when **all five gates pass** continue to Step 3a, then Step 3b, then Step
+3c. All three run before Step 4. (The `3a` to `3e` labels in the script above
+name the gates, not these headings.)
 
 #### Step 3a: rebase onto the base, before the trigger and never after the verdict
 
@@ -509,6 +511,39 @@ hold is `stop: awaiting-human`.
 
 A publisher that cannot be compared does not hold. Post one PR comment naming
 it, then continue.
+
+#### Step 3c: a PR only a person can merge still gets the whole gate
+
+In wayfare-skills, auto-approve never approves a PR touching a path listed in
+`.github/auto-approve-human-review.txt` (its header says why each is there); a
+person merges it. **That is not a reason to skip the review.** These are the
+riskiest paths, and the person's merge is the only gate left, so the review has
+to happen before the hand-off.
+
+The check is a script, run with an explicit `bash`, because the agent's shell
+may be zsh, where the same glob matching silently matches nothing. It reads the
+list and the changed files exactly as the workflow does.
+
+```bash
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+bash "$WAYFARE_ROOT/scripts/human-review-paths.sh" "$PR_NUMBER"; echo "HUMAN_RC=$?"
+```
+
+`HUMAN_RC=0` continues to Step 4. `1` (it prints the listed paths) and `2` (it
+could not tell) both take this path, because reading "could not tell" as
+"nothing listed" is how the review gets skipped:
+
+1. Make sure the prior review Step 3 found is a full `wayfare:wayfare-review-pr`
+   run with all six agents (a listed path is its *content overrides size* case).
+   If it was smaller, or inline, run it now and apply its fixes.
+2. If that pushed commits, wait for CI to go green on the new head, as Step 3's
+   CI gate does.
+3. Post no `@auto-approve`: the workflow would refuse it.
+4. Stop with `stop: awaiting-human`. Name the PR, the listed paths (or why the
+   check could not tell), the review's findings and what was fixed, and ask the
+   person to merge. Never merge it yourself, and never with `--admin`. Say that
+   once it is merged, running this skill again with the branch still checked out
+   resumes at Step 7b (Step 1's merged row) for the post-merge steps.
 
 ### Step 4: Post the @auto-approve Trigger Comment
 

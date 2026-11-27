@@ -1220,25 +1220,23 @@ def _(r):
             if not m:
                 continue
             ref = m.group(1)
-            # A shared reusable WORKFLOW may ride `main` or a v-tag — the CI-01
-            # carve-out. Narrow on every axis:
-            #   - only the repos in _MAIN_WORKFLOW_REPOS, never any ai-hero repo:
-            #     members can create repos in the org, and a caller aimed at one
-            #     (or at ai-hero/hero-skills, the pre-rename path anyone could
-            #     claim) hands whoever owns it the caller's secrets — the deploy
+            # A shared reusable WORKFLOW may ride `main` — the CI-01 carve-out.
+            # Narrow on every axis:
+            #   - only the repos in _MAIN_WORKFLOW_REPOS (see there for what
+            #     admits one), never any ai-hero repo: members can create repos
+            #     in the org, and a caller aimed at one (or at
+            #     ai-hero/hero-skills, the pre-rename path anyone could claim)
+            #     hands whoever owns it the caller's secrets — the deploy
             #     credentials, or ANTHROPIC_API_KEY and pull-requests: write;
             #   - only a reusable workflow, not a plain action, which is no
             #     kind of fleet-wide distribution mechanism;
-            #   - only `main`, the callee's PROTECTED default branch, never an
-            #     arbitrary branch. @main is acceptable BECAUSE the plugin repo
-            #     gates main on review — approval required, stale approvals
-            #     dismissed, last-push approval required. A feature branch is
-            #     gated on nothing;
-            #   - a v-tag stays permitted for repos not yet migrated.
-            if re.fullmatch(
-                rf"ai-hero/({'|'.join(map(re.escape, _MAIN_WORKFLOW_REPOS))})/\.github/workflows/[^@]+@(main|v[0-9]\S*)",
-                ref,
-            ):
+            #   - only `main`, the callee's PROTECTED default branch. A feature
+            #     branch is gated on nothing, and neither is a tag: branch
+            #     protection does not cover tags, so anyone with write access
+            #     can point `v1` at an unreviewed commit and every caller on
+            #     `@v1` runs it. No v-tag, for any repo.
+            repos = "|".join(map(re.escape, _MAIN_WORKFLOW_REPOS))
+            if re.fullmatch(rf"ai-hero/({repos})/\.github/workflows/[^@]+@main", ref):
                 continue
             if not re.search(r"@[0-9a-f]{40}$", ref):
                 bad += 1
@@ -3425,12 +3423,15 @@ def _(r):
     return FAIL, "TS generated outside the UI tree: " + ", ".join(o for o in outs if "gen" in o)
 
 
+# The plugin repo: owner of the auto-approve workflow every caller delegates to.
+# One repo name, not a list: CI-20 tells a caller from the plugin by this name,
+# so other repos with shared workflows go in _MAIN_WORKFLOW_REPOS, never here.
 _SHARED_WORKFLOW_OWNER = "wayfare-skills"
-# CI-01 lets a reusable workflow from these repos ride @main. Add a repo only
-# when it already exists in ai-hero and its main requires an approval that is
-# dismissed on push: @main is safe only because that review gates it.
-# infrastructure-environments holds deploy-swarm.yaml and diagnose-swarm.yaml
-# and publishes no tags, so a SHA pin there would never be bumped.
+# CI-01 lets a reusable workflow from these repos ride @main, and @main is safe
+# only because review gates it. Add a repo only when it already exists in
+# ai-hero and its main requires an approval, dismisses stale approvals on push,
+# and requires last-push approval. A rename or deletion frees the name for any
+# org member to claim, and this tuple would keep passing callers aimed at it.
 _MAIN_WORKFLOW_REPOS = (_SHARED_WORKFLOW_OWNER, "infrastructure-environments")
 # The env var name is a contract with whoever sets it, so it keeps its
 # spelling; the default path is not, and it moved with the folder. A wrong
@@ -3648,14 +3649,59 @@ def _matches_reference(mine, ref, extract=None):
 
 
 _FROM_RE = re.compile(r"^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?", re.I | re.M)
-_IMAGE_RE = re.compile(r"^\s*image:\s*['\"]?(\S+?)['\"]?\s*$", re.M)
+# The optional `&name ` lets `image: &x repo:tag` match: without it the anchor
+# is the captured token and the line never matches, so the image goes unchecked.
+_IMAGE_RE = re.compile(r"^\s*image:\s*(?:&[\w.-]+\s+)?['\"]?(\S+?)['\"]?\s*$", re.M)
+
+
+class _ComposeLoader(yaml.SafeLoader):
+    """SafeLoader that accepts Compose's own merge tags. Without them a valid
+    file using `!reset` or `!override` does not parse, and its aliases are
+    reported unresolved."""
+
+
+for _tag in ("!reset", "!override"):
+    _ComposeLoader.add_constructor(
+        _tag,
+        lambda loader, node: (
+            loader.construct_scalar(node)
+            if isinstance(node, yaml.ScalarNode)
+            else loader.construct_sequence(node)
+            if isinstance(node, yaml.SequenceNode)
+            else loader.construct_mapping(node)
+        ),
+    )
+
+
+def _compose_images(text):
+    """Each service's `image:` in a compose file, with YAML aliases resolved.
+
+    Parsed, not grepped: `image: *rustfs` names whatever `&rustfs` holds, and a
+    regex over anchors lets a reused name, or a `&x value` inside a command
+    string, stand in for the real image. PyYAML rejects a reused anchor and an
+    undefined alias outright, so such a file falls back to the line regex,
+    which leaves aliases as written: they fail rather than pass. Images under
+    an `x-` key that no service uses never run and are not read. A non-string
+    `image:` is returned as text, so it fails as untagged instead of vanishing."""
+    loader = _ComposeLoader(text)
+    try:
+        doc = loader.get_single_data()
+    except yaml.YAMLError:
+        return _IMAGE_RE.findall(uncommented(text))
+    finally:
+        loader.dispose()
+    services = doc.get("services") if isinstance(doc, dict) else None
+    if not isinstance(services, dict):
+        return []
+    return [str(s["image"]) for s in services.values() if isinstance(s, dict) and s.get("image") is not None]
 
 
 def _image_refs(path):
     """(name, tag) for every pullable image reference in a Dockerfile or
     compose file — name is the last path segment, tag "" when absent. Stage
     names, scratch, variables and digest-pinned refs are not references to a
-    tag and are dropped."""
+    tag and are dropped. A compose alias that could not be resolved comes back
+    as written, name `*x` and tag "", so no caller can read it as a pass."""
     text = path.read_text()
     if path.name.startswith("Dockerfile"):
         from_lines = list(_FROM_RE.finditer(text))
@@ -3663,13 +3709,7 @@ def _image_refs(path):
         refs = [m.group(1) for m in from_lines]
     else:
         stages = set()
-        text = uncommented(text)
-        # `image: *rustfs` is an alias, and the image is wherever `&rustfs`
-        # sits, usually an `x-` key no `image:` match reaches. Read the alias
-        # as written and it reports an untagged image while the real pin goes
-        # unchecked. An alias with no anchor stays as written, so it fails.
-        anchors = dict(re.findall(r"&([\w.-]+)[ \t]+['\"]?([^\s'\"]+)", text))
-        refs = [anchors.get(ref[1:], ref) if ref.startswith("*") else ref for ref in _IMAGE_RE.findall(text)]
+        refs = _compose_images(text)
     out = []
     for ref in refs:
         if ref in stages or ref == "scratch" or "$" in ref or "@sha256:" in ref:
@@ -4040,7 +4080,9 @@ def _(r):
     if not _ships_image(r):
         return NA, "no image"
     bad = [
-        f"{f.name}: {name}:{tag or '<untagged>'}"
+        f"{f.name}: {name} (alias not resolved: the file is not plain YAML)"
+        if name.startswith("*")
+        else f"{f.name}: {name}:{tag or '<untagged>'}"
         for f in _image_files(r)
         for name, tag in _image_refs(f)
         if not tag or tag == "latest"

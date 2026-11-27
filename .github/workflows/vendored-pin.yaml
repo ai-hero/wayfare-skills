@@ -1,9 +1,9 @@
 name: Vendored pin
 
 # Runs on every PR but compares only when the PR touches the tree, so the
-# normal path stays offline. The skip is a step, not a `paths:` filter: a
-# filtered workflow never reports, so a required check waits forever and CI-21
-# fails.
+# normal path stays offline. The skip is a step, not a `paths:` filter: CI-21
+# forbids the filter, because a PR the filter skips gets no check run, and a
+# required check then waits on it forever.
 on:
   pull_request:
     branches: [main]
@@ -22,21 +22,34 @@ jobs:
     timeout-minutes: 5
     steps:
       # Depth 2 reaches the merge commit's first parent, which is the base, so
-      # HEAD^1..HEAD is exactly what the PR changes.
+      # HEAD^1..HEAD is exactly what the PR changes. The step below refuses
+      # any other checkout rather than diff the wrong range.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
           persist-credentials: false
 
+      # Fails closed, and on purpose has no `git diff | grep -q`: inside an
+      # `if`, set -e is off and pipefail turns a git error, or the SIGPIPE
+      # grep -q sends a long diff, into "no change", which skips the compare
+      # and goes green. scripts/vendored-pin.test.sh runs this block.
       - name: does the PR touch assets/security-audit/
         id: touched
         run: |
+          # test: begin touched
           set -euo pipefail
-          if git diff --name-only HEAD^1 HEAD | grep -q '^assets/security-audit/'; then
-            echo "yes=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "no change under assets/security-audit/; nothing to compare"
-          fi
+          git rev-parse --verify -q 'HEAD^2' > /dev/null || {
+            echo "::error::expected the PR merge commit; refusing to guess the diff range"
+            exit 1
+          }
+          rc=0
+          git diff --quiet 'HEAD^1' HEAD -- assets/security-audit/ || rc=$?
+          case "$rc" in
+            0) echo "no change under assets/security-audit/; nothing to compare" ;;
+            1) echo "yes=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::git diff failed ($rc)"; exit 1 ;;
+          esac
+          # test: end touched
 
       - if: steps.touched.outputs.yes == 'true'
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4

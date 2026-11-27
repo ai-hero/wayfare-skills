@@ -43,8 +43,8 @@ checks:
     version in a trailing comment. No mutable tags. ONE exception: a reusable
     WORKFLOW in ai-hero/wayfare-skills (the shared auto-approve workflow) or
     ai-hero/infrastructure-environments (the shared deploy workflows) may
-    reference `main` — the callee's protected default branch — or a
-    v-prefixed release tag. Any other branch is never acceptable, and neither
+    reference `main`, the callee's protected default branch. No other branch
+    and no tag is acceptable, and neither
     any other ai-hero repo nor a plain first-party action is covered: the
     carve-out is for the fleet's shared workflows, not for the org.
   why: >
@@ -52,14 +52,16 @@ checks:
     registry and deploy credentials. The carve-out is the price of a shared
     workflow being shared at all — pinning its SHA turns every fix into one
     follow-up PR per consumer, and neither repo publishes tags Dependabot could
-    bump — and it is safe only because the callee gates its default branch on
-    review.
+    bump — and it is safe only because each callee gates its default branch on
+    review: an approval, dismissed on push, with last-push approval. Branch
+    protection does not cover tags, which is why a tag is no substitute.
   example: |
     # correct - third-party action pinned to a full SHA, version in a comment
     - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
 
-    # correct - the ONE carve-out: a shared reusable WORKFLOW at @main
+    # correct - the ONE carve-out: the shared auto-approve WORKFLOW at @main
     uses: ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@main
+    # correct - the same carve-out: the shared deploy WORKFLOW at @main
     uses: ai-hero/infrastructure-environments/.github/workflows/deploy-swarm.yaml@main
 
     # WRONG - mutable tag on a third-party action
@@ -69,9 +71,11 @@ checks:
     - uses: ai-hero/some-action@some-branch
     # WRONG - any other ai-hero repo, including the pre-rename hero-skills path
     uses: ai-hero/hero-skills/.github/workflows/auto-approve.yaml@main
+    # WRONG - a tag is not under branch protection
+    uses: ai-hero/infrastructure-environments/.github/workflows/deploy-swarm.yaml@v1
   detect:
     method: script
-    description: every `uses:` in .github/workflows/ carries a 40-hex SHA, except a reusable workflow in `ai-hero/wayfare-skills` (the shared auto-approve workflow) or `ai-hero/infrastructure-environments` (the shared deploy workflows) at `@main` or a v-tag
+    description: every `uses:` in .github/workflows/ carries a 40-hex SHA, except a reusable workflow in `ai-hero/wayfare-skills` (the shared auto-approve workflow) or `ai-hero/infrastructure-environments` (the shared deploy workflows) at `@main`
 
 - id: CI-02
   control: C-SUPPLY

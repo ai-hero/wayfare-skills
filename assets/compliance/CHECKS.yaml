@@ -41,23 +41,26 @@ checks:
   rule: >
     Every third-party action is pinned to a 40-character commit SHA with the
     version in a trailing comment. No mutable tags. ONE exception: a reusable
-    WORKFLOW in ai-hero/wayfare-skills, the fleet's shared workflow repo, may
+    WORKFLOW in ai-hero/wayfare-skills (the shared auto-approve workflow) or
+    ai-hero/infrastructure-environments (the shared deploy workflows) may
     reference `main` — the callee's protected default branch — or a
     v-prefixed release tag. Any other branch is never acceptable, and neither
     any other ai-hero repo nor a plain first-party action is covered: the
-    carve-out is for the fleet's distribution mechanism, not for the org.
+    carve-out is for the fleet's shared workflows, not for the org.
   why: >
     A repointed tag silently changes what runs in a workflow that holds
     registry and deploy credentials. The carve-out is the price of a shared
-    auto-approve workflow being shared at all — pinning its SHA turns every
-    fix into one follow-up PR per consumer — and it is safe only because the
-    callee gates its default branch on review.
+    workflow being shared at all — pinning its SHA turns every fix into one
+    follow-up PR per consumer, and neither repo publishes tags Dependabot could
+    bump — and it is safe only because the callee gates its default branch on
+    review.
   example: |
     # correct - third-party action pinned to a full SHA, version in a comment
     - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8  # v5.0.0
 
-    # correct - the ONE carve-out: the ai-hero/wayfare-skills reusable WORKFLOW at @main
+    # correct - the ONE carve-out: a shared reusable WORKFLOW at @main
     uses: ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@main
+    uses: ai-hero/infrastructure-environments/.github/workflows/deploy-swarm.yaml@main
 
     # WRONG - mutable tag on a third-party action
     - uses: actions/checkout@v5
@@ -68,7 +71,7 @@ checks:
     uses: ai-hero/hero-skills/.github/workflows/auto-approve.yaml@main
   detect:
     method: script
-    description: every `uses:` in .github/workflows/ carries a 40-hex SHA, except a reusable workflow in `ai-hero/wayfare-skills` (the owner of the shared auto-approve workflow) at `@main` or a v-tag
+    description: every `uses:` in .github/workflows/ carries a 40-hex SHA, except a reusable workflow in `ai-hero/wayfare-skills` (the shared auto-approve workflow) or `ai-hero/infrastructure-environments` (the shared deploy workflows) at `@main` or a v-tag
 
 - id: CI-02
   control: C-SUPPLY

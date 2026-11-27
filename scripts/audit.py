@@ -1220,12 +1220,13 @@ def _(r):
             if not m:
                 continue
             ref = m.group(1)
-            # The shared wayfare-skills reusable WORKFLOW may ride `main` or a
-            # v-tag — the CI-01 carve-out. Narrow on every axis:
-            #   - only ai-hero/wayfare-skills, never any ai-hero repo: members
-            #     can create repos in the org, and a caller aimed at one (or at
-            #     ai-hero/hero-skills, the pre-rename path anyone could claim) hands
-            #     whoever owns it ANTHROPIC_API_KEY and pull-requests: write;
+            # A shared reusable WORKFLOW may ride `main` or a v-tag — the CI-01
+            # carve-out. Narrow on every axis:
+            #   - only the repos in _MAIN_WORKFLOW_REPOS, never any ai-hero repo:
+            #     members can create repos in the org, and a caller aimed at one
+            #     (or at ai-hero/hero-skills, the pre-rename path anyone could
+            #     claim) hands whoever owns it the caller's secrets — the deploy
+            #     credentials, or ANTHROPIC_API_KEY and pull-requests: write;
             #   - only a reusable workflow, not a plain action, which is no
             #     kind of fleet-wide distribution mechanism;
             #   - only `main`, the callee's PROTECTED default branch, never an
@@ -1235,7 +1236,7 @@ def _(r):
             #     gated on nothing;
             #   - a v-tag stays permitted for repos not yet migrated.
             if re.fullmatch(
-                rf"ai-hero/{_SHARED_WORKFLOW_OWNER}/\.github/workflows/[^@]+@(main|v[0-9]\S*)",
+                rf"ai-hero/({'|'.join(map(re.escape, _MAIN_WORKFLOW_REPOS))})/\.github/workflows/[^@]+@(main|v[0-9]\S*)",
                 ref,
             ):
                 continue
@@ -3425,6 +3426,12 @@ def _(r):
 
 
 _SHARED_WORKFLOW_OWNER = "wayfare-skills"
+# CI-01 lets a reusable workflow from these repos ride @main. Add a repo only
+# when it already exists in ai-hero and its main requires an approval that is
+# dismissed on push: @main is safe only because that review gates it.
+# infrastructure-environments holds deploy-swarm.yaml and diagnose-swarm.yaml
+# and publishes no tags, so a SHA pin there would never be bumped.
+_MAIN_WORKFLOW_REPOS = (_SHARED_WORKFLOW_OWNER, "infrastructure-environments")
 # The env var name is a contract with whoever sets it, so it keeps its
 # spelling; the default path is not, and it moved with the folder. A wrong
 # default here does NOT fail loudly: _matches_reference returns MANUAL for an
@@ -3656,7 +3663,13 @@ def _image_refs(path):
         refs = [m.group(1) for m in from_lines]
     else:
         stages = set()
-        refs = _IMAGE_RE.findall(uncommented(text))
+        text = uncommented(text)
+        # `image: *rustfs` is an alias, and the image is wherever `&rustfs`
+        # sits, usually an `x-` key no `image:` match reaches. Read the alias
+        # as written and it reports an untagged image while the real pin goes
+        # unchecked. An alias with no anchor stays as written, so it fails.
+        anchors = dict(re.findall(r"&([\w.-]+)[ \t]+['\"]?([^\s'\"]+)", text))
+        refs = [anchors.get(ref[1:], ref) if ref.startswith("*") else ref for ref in _IMAGE_RE.findall(text)]
     out = []
     for ref in refs:
         if ref in stages or ref == "scratch" or "$" in ref or "@sha256:" in ref:

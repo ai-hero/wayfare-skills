@@ -191,6 +191,16 @@ class ImageRefs(unittest.TestCase):
             f = write(pathlib.Path(d), "docker-compose.dev.yaml", text)
             self.assertEqual(audit._image_refs(f), [("minio", "latest"), ("mongo", "8")])
 
+    def test_compose_alias_reads_its_anchor(self):
+        text = (
+            "x-img: &img rustfs/rustfs:1.0.3@sha256:" + "a" * 64 + "\n"
+            "x-bad: &bad minio/minio:latest\n"
+            "services:\n  a:\n    image: *img\n  b:\n    image: *bad\n  c:\n    image: *missing\n"
+        )
+        with tempfile.TemporaryDirectory() as d:
+            f = write(pathlib.Path(d), "docker-compose.dev.yaml", text)
+            self.assertEqual(audit._image_refs(f), [("minio", "latest"), ("*missing", "")])
+
     def test_ctr09_and_ctr11(self):
         with tempfile.TemporaryDirectory() as d:
             r = pathlib.Path(d)
@@ -754,9 +764,9 @@ class CI14(unittest.TestCase):
 
 
 class CI01(unittest.TestCase):
-    """Only ai-hero/wayfare-skills' reusable workflow may ride @main: any
-    other ai-hero repo can be created by an org member and would be handed
-    the caller's secrets."""
+    """Only a reusable workflow from a repo in _MAIN_WORKFLOW_REPOS may ride
+    @main: any other ai-hero repo can be created by an org member and would be
+    handed the caller's secrets."""
 
     def _check(self, uses):
         with tempfile.TemporaryDirectory() as d:
@@ -772,9 +782,16 @@ class CI01(unittest.TestCase):
             st, detail = audit.CHECKS["CI-01"](r)
             self.assertEqual(st, audit.PASS, detail)
 
+    def test_infrastructure_environments_workflow_at_main_passes(self):
+        st, detail = self._check("ai-hero/infrastructure-environments/.github/workflows/deploy-swarm.yaml@main")
+        self.assertEqual(st, audit.PASS, detail)
+
     def test_other_ai_hero_repos_at_main_fail(self):
         for uses in (
             "ai-hero/other-repo/.github/workflows/x.yaml@main",
+            "ai-hero/infrastructure-environments-fork/.github/workflows/deploy-swarm.yaml@main",
+            "ai-hero/infrastructure-environments/.github/workflows/deploy-swarm.yaml@feature",
+            "ai-hero/infrastructure-environments/action@main",
             "ai-hero/hero-skills/.github/workflows/auto-approve.yaml@main",
             "ai-hero/wayfare-skills-fork/.github/workflows/auto-approve.yaml@main",
             "ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@feature",

@@ -26,7 +26,8 @@
 #
 # Re-runnable: scenarios that write put back what they changed, except what
 # the server keeps forever. Priority and rank are restored; a message thread
-# is closed; an audit result is a merge by check id. A log line stays (the log
+# is closed; an audit result is a merge by check id; a created item is dropped
+# (the server keeps it, so each live run adds one). A log line stays (the log
 # is append-only), so the assertion is the last line carrying this run's nonce,
 # never a count of lines, and re-importing the fixture does not remove it
 # either (the importer keeps log lines the files never had).
@@ -289,7 +290,24 @@ sc_edges() {
   echo "after a move from done, a resolution only at done: $([ "$st" = "done" ] || [ -z "$(hero_item_field "$f" resolution)" ] && echo yes || echo no)"
 }
 
-SCENARIOS="ready item_fields write_item log messages hero_fields fleet audit build goal_ending edges"
+# Filing an item: the number differs by store (and live, by run), so only that
+# one was printed is compared, and every field is read back by that number.
+sc_create() {
+  local id f body="$TMP/create-$NONCE.md"
+  printf -- '---\nshape: docs\npriority: p2\nparent: 9\ndepends_on: [1]\nsource: [src/new.go]\norigin: parity\nsuccess: "parity create works"\n---\n\n## Context\n\nparity create\n' > "$body"
+  id=$(hero_item_create task "Parity created $NONCE" "$body" "$ROOT" 2>/dev/null)
+  echo "create: rc=$? $([ -n "$id" ] && echo id)"
+  f=$(hero_item_file "$id" "$ROOT" 2>/dev/null) || { echo "read: failed"; return; }
+  for k in type status shape priority parent origin success; do echo "$k: $(hero_item_field "$f" "$k")"; done
+  echo "title: $(hero_item_field "$f" title | sed "s/ $NONCE\$//")"
+  echo "depends_on: $(hero_item_deps "$f" | tr '\n' ' ')"
+  echo "source: $(hero_item_list_field "$f" source | tr '\n' ' ')"
+  echo "context: $(grep -c '^parity create$' "$f")"
+  hero_item_set_status "$id" dropped "" "$ROOT" >/dev/null 2>&1
+  f=$(hero_item_file "$id" "$ROOT") && echo "dropped: $(hero_item_field "$f" status)"
+}
+
+SCENARIOS="ready item_fields write_item log messages hero_fields fleet audit build goal_ending edges create"
 
 # run_backend LABEL BACKEND : the scenarios on one backend, into $TMP/out/LABEL
 run_backend() {
@@ -369,6 +387,12 @@ case $sub in
     [ "$STUB_MUTATE" = build ] && payload=$(printf '%s' "$payload" | jq -c 'if .tag == "tick" then .tag = "note" else . end')
     jq -c --argjson n "$n" --argjson p "$payload" 'map(if .number == $n then .log += [{at: "2026-11-14T10:00:00Z", by: "agent", tag: $p.tag, body: $p.text}] else . end)' "$S/items.json" | save items.json
     jq -c --argjson n "$n" '{item: (.[] | select(.number == $n))}' "$S/items.json" ;;
+  create-item)
+    n=$(jq '[.[].number] | max + 1' "$S/items.json")
+    [ "$STUB_MUTATE" = create ] && payload=$(printf '%s' "$payload" | jq -c 'del(.shape)')
+    jq -c --argjson n "$n" --argjson p "$payload" '. + [($p | del(.project_id, .log)) + {number: $n,
+      log: [($p.log // [])[] | {at: "2026-11-14T10:00:00Z", by: "agent", tag, body: .text}]}]' "$S/items.json" | save items.json
+    jq -c --argjson n "$n" '{item: (.[] | select(.number == $n))}' "$S/items.json" ;;
   messages) jq -c '{threads: .}' "$S/threads.json" ;;
   transition)
     n=$(printf '%s' "$payload" | jq '.number')
@@ -445,7 +469,7 @@ check "stub: a title holding both quote kinds reads back whole" "title reads: \"
 
 # The mutations: each changes one server outcome and must fail exactly its own
 # scenario. FAIL is rolled back after, because the failure is the expected result.
-for m in write_item log messages audit build; do
+for m in write_item log messages audit build create; do
   reset_stub; STUB_MUTATE=$m; export STUB_MUTATE
   p0=$PASS; f0=$FAIL
   out=$(parity "mutated($m): " "$STUB_URL")

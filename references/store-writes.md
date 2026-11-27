@@ -37,11 +37,20 @@ for an idea, anti-feature or signal. The id is the highest in the store plus
 one, read when the function runs, so none is carried from earlier in a session.
 A path that already exists and a symlinked items directory are refused.
 
-On a server backend the function returns 1 and files nothing: the server has no
-create-item yet (aihero-wayfare). Report that the item was not filed, name the
-work it carried, and stop there; hand-writing the file is the failure this
-refusal exists to stop. `scripts/validate.sh` fails a routed skill or reference
-that tells the agent to write an item file by hand.
+On a server backend it files the item through the CLI's `create-item` and prints
+the number the server allocated. The frontmatter maps to the server's fields
+(`parent` is `goal_number`, `source` and `target` are `sources` and `targets`,
+`story` is `slice`, p0 and p1 are `high`), the sections become the description,
+and the dated lines of a `## Log` section become the item's log. `anchors` and
+`blocked_on` follow as one `update-item`; if that call fails, the number is
+still printed, rc is 1, and the item exists, so do not file it again. A field
+the server cannot hold (`one_way_door: true`, `pr`, `branch`, `channel`, and any
+other the server has no create field for) is refused with rc 1 before anything
+is filed; an empty field, or `one_way_door: false`, is skipped. When it returns
+1 with no number, report that the item was not filed, name the work it carried,
+and stop there; hand-writing the file is the failure this refusal exists to
+stop. `scripts/validate.sh` fails a routed skill or reference that tells the
+agent to write an item file by hand.
 
 ## The DESIGN.md channel
 

@@ -787,14 +787,13 @@ the cutover imports from the local files and the dry run compares against them.
 A hand edit of a `.plans/` file does not pass through a function and is not
 refused, which is why a skill writes its item through `hero_item_set_status`,
 `hero_item_set`, `hero_item_tick` and `hero_item_log` instead, and files a new
-item with `hero_item_create TYPE TITLE BODY_FILE`, which returns 1 and writes
-nothing on a server backend until the server has a create-item command.
-wayfare-build-task, wayfare-drop-item, wayfare-grill-idea, wayfare-one-shot,
-wayfare-write-handoff, wayfare-sync-plan, wayfare-audit-security,
-wayfare-audit-compliance and wayfare-audit-deep do, and `validate.sh` fails
-their prose, and every file in `references/`, if it tells the agent to set
-`status:` or `branch:` or write an item file by hand. Other skills join that
-check as they are routed.
+item with `hero_item_create TYPE TITLE BODY_FILE`, which on a server backend
+files it through `create-item`. wayfare-build-task, wayfare-drop-item,
+wayfare-grill-idea, wayfare-one-shot, wayfare-write-handoff, wayfare-sync-plan,
+wayfare-audit-security, wayfare-audit-compliance and wayfare-audit-deep do, and
+`validate.sh` fails their prose, and every file in `references/`, if it tells
+the agent to set `status:` or `branch:` or write an item file by hand. Other
+skills join that check as they are routed.
 
 The server backend is the store functions calling the `wayfare` CLI
 (`WAYFARE_CLI`, else `wayfare` on PATH), with the URL's one path segment as the
@@ -805,7 +804,8 @@ project whose slug is its directory name. Built: `hero_ready_items`,
 it), `hero_item_file`, `hero_item_set`, `hero_item_log` and
 `hero_item_transition` (one item; a status moves by transition, never by
 `hero_item_set`), `hero_item_set_status` and `hero_item_tick` (below),
-`hero_msg_send`, `hero_msg_reply`, `hero_msg_close`, `hero_msg_find`,
+`hero_item_create` (`create-item`; references/store-writes.md, *Creating an
+item*), `hero_msg_send`, `hero_msg_reply`, `hero_msg_close`, `hero_msg_find`,
 `hero_inbox_exists` and `hero_inbox_count` (messages), the config readers behind
 `hero_config_file` (`hero_field` and its siblings), `hero_plan_field`,
 `hero_fleet_repos`, `hero_fleet_repo_field`, `hero_fleet_field` (fleet) and

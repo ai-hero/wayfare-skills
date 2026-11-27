@@ -4010,14 +4010,93 @@ _hero_item_max_id() { # DIR
   printf '%d' "$max"
 }
 
+# hero_item_create under the server: BODY_FILE's frontmatter is create-item's
+# fields, its sections the description, and the server's number is printed. A
+# `## Log` section's dated lines are the item's log, not description text: left
+# in, the rendered item shows two `## Log` sections. Anchors and blocked_on are
+# not create-item fields, so they follow as one update-item. A field the server
+# has no value for (`one_way_door: true`, `pr`, `branch`) is refused before
+# anything is filed; filing without it would drop a one-way door unseen.
+_hero_srv_item_create() { # ROOT TYPE TITLE BODY_FILE FRONTMATTER DEFAULT_STATUS
+  local root=$1 type=$2 title=$3 body=$4 fm=$5 sv tmp k v pri shp ints text logs anchors_tsv blk req pid json n upd
+  tmp=$(mktemp "${TMPDIR:-/tmp}/wayfare-create.XXXXXX") || return 1
+  printf -- '---\n%s\n---\n' "$fm" > "$tmp" || { rm -f "$tmp"; return 1; }
+  for k in $(printf '%s\n' "$fm" | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\):.*/\1/p'); do
+    case "$k" in
+      status|shape|priority|severity|origin|success|depends_on|parent|rank|discovered_from|source|target|anchors|blocked_on|blocked_since) continue ;;
+    esac
+    v=$(hero_item_list_field "$tmp" "$k" | tr '\n' ' ' | sed 's/ $//')
+    case "$k:$v" in "$k:"|one_way_door:false) continue ;; esac
+    rm -f "$tmp"
+    echo "hero_item_create: the Wayfare server's create-item has no field for $k ($v); nothing was filed. File the item without it, or set it in the app" >&2
+    return 1
+  done
+  sv=$(hero_item_field "$tmp" status); [ -n "$sv" ] || sv=$6
+  pri=$(hero_item_field "$tmp" priority)
+  case "$pri" in ''|high|medium|low) ;; p0|p1) pri=high ;; p2) pri=medium ;; p3) pri=low ;;
+    *) rm -f "$tmp"; echo "hero_item_create: priority '$pri' is not p0-p3 or high/medium/low" >&2; return 2 ;; esac
+  shp=$(hero_item_field "$tmp" shape); [ "$shp" != story ] || shp=slice
+  ints=$(for k in parent rank discovered_from; do printf '%s\n' "$(hero_item_field "$tmp" "$k")"; done; hero_item_deps "$tmp")
+  if printf '%s\n' "$ints" | grep -q '[^0-9]'; then
+    rm -f "$tmp"; echo "hero_item_create: parent, rank, discovered_from and depends_on take whole numbers" >&2; return 2
+  fi
+  # The server stores rank 0 as no rank, so it would read back unranked.
+  v=$(hero_item_field "$tmp" rank)
+  if [ -n "$v" ] && [ "$((10#$v))" -eq 0 ]; then
+    rm -f "$tmp"; echo "hero_item_create: a rank is 1 or more; the Wayfare server cannot hold rank 0" >&2; return 2
+  fi
+  if [ -n "$fm" ]; then text=$(awk 'NR == 1 { next } !done && /^---[[:space:]]*$/ { done = 1; next } done { print }' "$4")
+  else text=$(cat "$4"); fi
+  logs=$(printf '%s\n' "$text" | awk '/^## Log[[:space:]]*$/ { inlog = 1; next } inlog && /^## / { inlog = 0 } inlog' | jq -Rsc '
+    split("\n") | map(select(test("^[[:space:]]*$|^<!--.*-->$") | not)) | map(. as $l
+      | (capture("^- [0-9]{4}-[0-9]{2}-[0-9]{2} \\([^)]*\\) (?<tag>[a-z][a-z-]*): (?<text>.*[^[:space:]].*)$") // error($l)))') || {
+    rm -f "$tmp"; echo "hero_item_create: every line of the body's ## Log is '- YYYY-MM-DD (author) tag: text'" >&2; return 2; }
+  text=$(printf '%s\n' "$text" | awk '/^## Log[[:space:]]*$/ { inlog = 1; next } inlog && /^## / { inlog = 0 } !inlog')
+  anchors_tsv=$(printf '%s\n' "$fm" | awk '
+    /^anchors:/ { a = 1; next }
+    a && /^[[:space:]]+(source|target):/ { k = $1; sub(/:$/, "", k); v = $0; sub(/^[^:]*:[[:space:]]*/, "", v); sub(/[[:space:]]+#.*/, "", v)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", v); if (v != "") print "anchor_" k "\t" v; next }
+    /^[^[:space:]]/ { a = 0 }')
+  blk=$(hero_item_field "$tmp" blocked_on)
+  req=$(jq -n --arg type "$type" --arg title "$title" --arg status "$sv" --arg priority "$pri" \
+    --arg severity "$(hero_item_field "$tmp" severity)" --arg shape "$shp" --arg origin "$(hero_item_field "$tmp" origin)" \
+    --arg success "$(hero_item_field "$tmp" success)" --arg goal "$(hero_item_field "$tmp" parent)" \
+    --arg rank "$(hero_item_field "$tmp" rank)" --arg df "$(hero_item_field "$tmp" discovered_from)" \
+    --arg deps "$(hero_item_deps "$tmp")" --arg src "$(hero_item_list_field "$tmp" source)" \
+    --arg tgt "$(hero_item_list_field "$tmp" target)" --arg desc "$text" --argjson log "$logs" '
+    def lines: split("\n") | map(select(. != ""));
+    {type: $type, title: $title, status: $status}
+    + ({priority: $priority, severity: $severity, shape: $shape, origin: $origin, success: $success,
+        description: ($desc | sub("^[[:space:]]+"; "") | sub("[[:space:]]+$"; ""))} | with_entries(select(.value != "")))
+    + ({goal_number: $goal, rank: $rank, discovered_from: $df} | with_entries(select(.value != "") | .value |= tonumber))
+    + ({depends_on: ($deps | lines | map(tonumber)), sources: ($src | lines), targets: ($tgt | lines), log: $log}
+        | with_entries(select(.value != [])))')
+  rm -f "$tmp"
+  [ -n "$req" ] || return 1
+  pid=$(hero_srv_project "$root") || return 1
+  json=$(hero_srv_cli "$root" create-item --json "$(printf '%s' "$req" | jq -c --arg pid "$pid" '{project_id: $pid} + .')") || return 1
+  n=$(printf '%s' "$json" | jq -er '.item.number | numbers | select(. == floor and . > 0)') || { _hero_srv_shape "$root" create-item; return 1; }
+  if [ -n "$anchors_tsv$blk" ]; then
+    upd=$(printf '%s\n' "$anchors_tsv" | jq -Rsc --arg pid "$pid" --argjson n "$n" --arg blk "$blk" '
+      {project_id: $pid, number: $n} + (split("\n") | map(select(. != "") | split("\t") | {(.[0]): .[1]}) | add // {})
+      + (if $blk == "" then {} else {blocked_on: $blk} end)')
+    if ! hero_srv_cli "$root" update-item --json "$upd" >/dev/null; then
+      echo "hero_item_create: item $n was filed on the server, but its anchors and blocked_on were not set; do not file it again" >&2
+      printf '%s\n' "$n"
+      return 1
+    fi
+  fi
+  printf '%s\n' "$n"
+}
+
 # File a new item and print its id. BODY_FILE holds the item minus `id:`,
 # `type:` and `title:` (those are the arguments, and a copy in the file is rc 2
 # so two spellings never disagree): an optional frontmatter block, then the
 # sections. `status:` defaults to planning (new for an idea, anti-feature or
 # signal). The id is the highest one in the store plus one, read here and never
 # cached, and the file is linked into place under a lock so an existing path is
-# refused, not overwritten. The server has no create-item yet, so there it refuses and
-# files nothing.
+# refused, not overwritten. Under the server it is `create-item`
+# (_hero_srv_item_create) and the server allocates the id.
 hero_item_create() { # TYPE TITLE BODY_FILE [ROOT]
   local root dir type title body slug n f tmp max k st fm r rc
   type=${1:-}; title=${2:-}; body=${3:-}
@@ -4027,23 +4106,20 @@ hero_item_create() { # TYPE TITLE BODY_FILE [ROOT]
   [ -f "$body" ] || { echo "hero_item_create: BODY_FILE '$body' is not a file" >&2; return 2; }
   root=$(hero_srv_root "${4:-}")
   r=$(hero_srv_route_root "$root") || return 1
-  if [ "$r" != local ]; then
-    echo "hero_item_create: the server has no create-item yet (aihero-wayfare); this item was not filed" >&2
-    return 1
-  fi
-  hero_store_require_local "$root" hero_item_create || return 1
-  dir="$(hero_store_path "$root")/items"
-  [ ! -L "$dir" ] || { echo "hero_item_create: $dir is a symlink; refusing to write through it" >&2; return 1; }
-  [ -d "$dir" ] || { echo "hero_item_create: no item directory at $dir" >&2; return 1; }
   fm=$(awk 'NR == 1 && !/^---[[:space:]]*$/ { exit } NR > 1 && /^---[[:space:]]*$/ { exit } NR > 1 { print }' "$body")
   for k in id type title; do
     if printf '%s\n' "$fm" | grep -qE "^$k:"; then
       echo "hero_item_create: BODY_FILE carries its own $k:; it is an argument (id is allocated)" >&2; return 2
     fi
   done
+  case "$type" in idea|anti-feature|signal) st=new ;; *) st=planning ;; esac
+  if [ "$r" != local ]; then _hero_srv_item_create "$root" "$type" "$title" "$body" "$fm" "$st"; return; fi
+  hero_store_require_local "$root" hero_item_create || return 1
+  dir="$(hero_store_path "$root")/items"
+  [ ! -L "$dir" ] || { echo "hero_item_create: $dir is a symlink; refusing to write through it" >&2; return 1; }
+  [ -d "$dir" ] || { echo "hero_item_create: no item directory at $dir" >&2; return 1; }
   slug=$(printf '%s' "$title" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]\{1,\}/-/g; s/^-//; s/-$//' | cut -c1-60 | sed 's/-$//')
   [ -n "$slug" ] || slug=item
-  case "$type" in idea|anti-feature|signal) st=new ;; *) st=planning ;; esac
   # Two creators that read the same highest id would both take the next one
   # under different slugs, and ln only refuses the same path; the lock makes
   # read-and-link one step.

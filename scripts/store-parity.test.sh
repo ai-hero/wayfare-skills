@@ -26,7 +26,8 @@
 #
 # Re-runnable: scenarios that write put back what they changed, except what
 # the server keeps forever. Priority and rank are restored; a message thread
-# is closed; an audit result is a merge by check id. A log line stays (the log
+# is closed; an audit result is a merge by check id; a created item is dropped
+# (the server keeps it, so each live run adds one). A log line stays (the log
 # is append-only), so the assertion is the last line carrying this run's nonce,
 # never a count of lines, and re-importing the fixture does not remove it
 # either (the importer keeps log lines the files never had).
@@ -93,7 +94,7 @@ make_fixture() { # DIR
 EOF
   printf -- '---\nschema: 1\nrepo: acme/check\nnext_id: 20\nsource:\n  root: .\n  head: aaaa1111\ntarget:\n  project: D\n  head: bbbb2222\n---\n' > "$d/.plans/PLAN.md"
   printf -- '---\nid: 1\ntype: task\ntitle: Parity bootstrap\nstatus: done\nresolution: shipped\nshape: structural\npriority: p2\nparent: 9\nrank: 1\nsource: [src/one.go]\n---\n' > "$i/001-parity-bootstrap.md"
-  printf -- '---\nid: 2\ntype: task\ntitle: Parity ready one\nstatus: ready\nshape: story\npriority: p2\nparent: 9\nrank: 2\ndepends_on: [1]\nsource: [src/two.go]\n---\n' > "$i/002-parity-ready-one.md"
+  printf -- '---\nid: 2\ntype: task\ntitle: Parity ready one\nstatus: ready\nshape: story\npriority: p2\nparent: 9\nrank: 2\ndepends_on: [1]\nready_marked: 2026-11-01\none_way_door: true\nsource: [src/two.go]\n---\n' > "$i/002-parity-ready-one.md"
   printf -- '---\nid: 3\ntype: task\ntitle: Parity ready two\nstatus: ready\nshape: story\npriority: p2\nparent: 9\nrank: 3\ndepends_on: [2]\nsource: [src/three.go]\n---\n\n## Subtasks\n\n- [ ] parity box\n' > "$i/003-parity-ready-two.md"
   printf -- '---\nid: 4\ntype: idea\ntitle: Parity parked idea\nstatus: accepted\n---\n' > "$i/004-parity-parked-idea.md"
   printf -- '---\nid: 5\ntype: task\ntitle: Parity wait on vendor\nstatus: ready\nshape: story\npriority: p2\nparent: 9\nrank: 5\nblocked_on: vendor review\nblocked_since: 2026-11-10\nsource: [src/five.go]\n---\n' > "$i/005-parity-wait-on-vendor.md"
@@ -123,7 +124,7 @@ fleet_md() { # FLEET_JSON_FILE
 # parent. Output that legitimately differs (message ids, who wrote a log line)
 # is normalised here, so the diff means a real difference.
 
-FIELDS_TASK="type title status shape priority rank parent"
+FIELDS_TASK="type title status shape priority rank parent ready_marked one_way_door"
 
 sc_ready() {
   hero_ready_items "$ROOT/.plans" 2>/dev/null | grep -E '[[:space:]]00[0-9]-' | sed 's/[[:space:]]*$//'
@@ -289,7 +290,24 @@ sc_edges() {
   echo "after a move from done, a resolution only at done: $([ "$st" = "done" ] || [ -z "$(hero_item_field "$f" resolution)" ] && echo yes || echo no)"
 }
 
-SCENARIOS="ready item_fields write_item log messages hero_fields fleet audit build goal_ending edges"
+# Filing an item: the number differs by store (and live, by run), so only that
+# one was printed is compared, and every field is read back by that number.
+sc_create() {
+  local id f body="$TMP/create-$NONCE.md"
+  printf -- '---\nshape: docs\npriority: p2\nparent: 9\ndepends_on: [1]\nsource: [src/new.go]\norigin: parity\nsuccess: "parity create works"\n---\n\n## Context\n\nparity create\n' > "$body"
+  id=$(hero_item_create task "Parity created $NONCE" "$body" "$ROOT" 2>/dev/null)
+  echo "create: rc=$? $([ -n "$id" ] && echo id)"
+  f=$(hero_item_file "$id" "$ROOT" 2>/dev/null) || { echo "read: failed"; return; }
+  for k in type status shape priority parent origin success; do echo "$k: $(hero_item_field "$f" "$k")"; done
+  echo "title: $(hero_item_field "$f" title | sed "s/ $NONCE\$//")"
+  echo "depends_on: $(hero_item_deps "$f" | tr '\n' ' ')"
+  echo "source: $(hero_item_list_field "$f" source | tr '\n' ' ')"
+  echo "context: $(grep -c '^parity create$' "$f")"
+  hero_item_set_status "$id" dropped "" "$ROOT" >/dev/null 2>&1
+  f=$(hero_item_file "$id" "$ROOT") && echo "dropped: $(hero_item_field "$f" status)"
+}
+
+SCENARIOS="ready item_fields write_item log messages hero_fields fleet audit build goal_ending edges create"
 
 # run_backend LABEL BACKEND : the scenarios on one backend, into $TMP/out/LABEL
 run_backend() {
@@ -369,6 +387,12 @@ case $sub in
     [ "$STUB_MUTATE" = build ] && payload=$(printf '%s' "$payload" | jq -c 'if .tag == "tick" then .tag = "note" else . end')
     jq -c --argjson n "$n" --argjson p "$payload" 'map(if .number == $n then .log += [{at: "2026-11-14T10:00:00Z", by: "agent", tag: $p.tag, body: $p.text}] else . end)' "$S/items.json" | save items.json
     jq -c --argjson n "$n" '{item: (.[] | select(.number == $n))}' "$S/items.json" ;;
+  create-item)
+    n=$(jq '[.[].number] | max + 1' "$S/items.json")
+    [ "$STUB_MUTATE" = create ] && payload=$(printf '%s' "$payload" | jq -c 'del(.shape)')
+    jq -c --argjson n "$n" --argjson p "$payload" '. + [($p | del(.project_id, .log)) + {number: $n,
+      log: [($p.log // [])[] | {at: "2026-11-14T10:00:00Z", by: "agent", tag, body: .text}]}]' "$S/items.json" | save items.json
+    jq -c --argjson n "$n" '{item: (.[] | select(.number == $n))}' "$S/items.json" ;;
   messages) jq -c '{threads: .}' "$S/threads.json" ;;
   transition)
     n=$(printf '%s' "$payload" | jq '.number')
@@ -412,7 +436,7 @@ cp "$FIXTURE/check/HERO.md" "$STUB/HERO.md"
 cat > "$STUB/items.json" <<'EOF'
 [
 {"number":1,"type":"task","title":"Parity bootstrap","status":"done","resolution":"shipped","shape":"structural","priority":"medium","goal_number":9,"rank":1,"sources":["src/one.go"],"depends_on":[],"description":"","log":[]},
-{"id":"t-2","number":2,"type":"task","title":"Parity ready one","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":2,"sources":["src/two.go"],"depends_on":[1],"description":"","log":[]},
+{"id":"t-2","number":2,"type":"task","title":"Parity ready one","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":2,"ready_marked_by":"rahul","ready_marked_at":"2026-11-01T09:00:00Z","one_way_door":true,"sources":["src/two.go"],"depends_on":[1],"description":"","log":[]},
 {"number":3,"type":"task","title":"Parity ready two","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":3,"sources":["src/three.go"],"depends_on":[2],"description":"## Subtasks\n\n- [ ] parity box","log":[]},
 {"number":4,"type":"idea","title":"Parity parked idea","status":"accepted","description":"","log":[]},
 {"number":5,"type":"task","title":"Parity wait on vendor","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":5,"sources":["src/five.go"],"depends_on":[],"blocked_on":"vendor review","blocked_since":"2026-11-10T00:00:00Z","blocked":true,"description":"","log":[]},
@@ -445,7 +469,7 @@ check "stub: a title holding both quote kinds reads back whole" "title reads: \"
 
 # The mutations: each changes one server outcome and must fail exactly its own
 # scenario. FAIL is rolled back after, because the failure is the expected result.
-for m in write_item log messages audit build; do
+for m in write_item log messages audit build create; do
   reset_stub; STUB_MUTATE=$m; export STUB_MUTATE
   p0=$PASS; f0=$FAIL
   out=$(parity "mutated($m): " "$STUB_URL")

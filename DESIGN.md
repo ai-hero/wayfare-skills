@@ -122,9 +122,10 @@ yet gets one in `hero-lib.sh`; there is no opt-out marker.
 
 Writes follow the same rule. A skill writes an item through
 `hero_item_set_status`, `hero_item_set`, `hero_item_tick` and `hero_item_log`,
-and files a new one with `hero_item_create`, which returns 1 and writes nothing
-on a server backend until the server has create-item. The functions' local
-writes are refused under a server backend (`hero_store_require_local`).
+and files a new one with `hero_item_create`, which on a server backend is the
+CLI's `create-item` and refuses, filing nothing, a body field the server cannot
+hold. The functions' local writes are refused under a server backend
+(`hero_store_require_local`).
 
 ### Testing
 

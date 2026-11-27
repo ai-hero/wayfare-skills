@@ -516,7 +516,7 @@ for c in "hero_item_set_status 3 active ''" "hero_item_set 3 branch feat/y" "her
   check "item-write: '${c%% *}' under a server backend fails naming the server, file untouched" "1 names $SUM" "$RC $N $(cksum < "$SW/.plans/items/003-w.md")"
 done
 
-# hero_item_create: local files an item the listing reads; a server backend refuses and writes nothing.
+# hero_item_create: local files an item the listing reads; under a server backend it never writes a local file (hero-server.test.sh covers create-item).
 CR="$TMP/create"; mkdir -p "$CR"; git init -q "$CR" 2>/dev/null
 ( unset WAYFARE_STORE; hero_work_store "$CR" >/dev/null 2>&1 )
 mkdir -p "$CR/.plans/items"
@@ -552,7 +552,7 @@ rm "$CR/.plans/items"; mv "$CR/.plans/real-items" "$CR/.plans/items"
 BEFORE=$(ls "$CR/.plans/items" | wc -l | tr -d ' ')
 ERR=$(srv hero_item_create task "Server" "$TMP/create-bare.md" "$CR" 2>&1 >/dev/null); RC=$?
 check "create: under a server backend it fails and writes no file" "1 $BEFORE" "$RC $(ls "$CR/.plans/items" | wc -l | tr -d ' ')"
-case "$ERR" in *"no create-item yet"*) check "create: the refusal names create-item" ok ok ;; *) check "create: the refusal names create-item" "names it" "$ERR" ;; esac
+case "$ERR" in *https://app.example.com*) check "create: the failure names the server" ok ok ;; *) check "create: the failure names the server" "names it" "$ERR" ;; esac
 
 SHA=$(printf 'a%.0s' $(seq 40))
 srv hero_deploy_pending_add "$SW/.plans" "$SHA" 7 >/dev/null 2>&1; check "store-guard: hero_deploy_pending_add refuses under a server backend" "1 no" "$? $([ -e "$SW/.plans/.deploy-pending" ] && echo yes || echo no)"

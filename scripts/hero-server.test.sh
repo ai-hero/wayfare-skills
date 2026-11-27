@@ -336,7 +336,7 @@ fails() { # NAME CMD... : rc != 0, stdout empty, stderr names the server URL
   case "$err" in *"boom: token rejected"*) ;; *) check "fail: $name carries the CLI's stderr" "contains boom" "$err" ;; esac
 }
 reset
-for s in projects items item config fleet messages send reply close update-item log report-results plan transition; do echo "boom: token rejected" > "$STUB_DIR/$s.fail"; done
+for s in projects items item config fleet messages send reply close update-item log report-results plan transition create-item; do echo "boom: token rejected" > "$STUB_DIR/$s.fail"; done
 fails ready hero_ready_items "$APP/.plans"
 fails item_file hero_item_file 2 "$APP"
 fails item_set hero_item_set 2 priority p1 "$APP"
@@ -348,6 +348,8 @@ fails config_file hero_config_file "$APP"
 fails field hero_field default-branch "$APP"
 fails fleet_repos hero_fleet_repos "$FLEET"
 fails audit hero_audit_record app "$RES" "$APP"
+printf '## Context\n\nbare\n' > "$TMP/create-bare.md"
+fails item_create hero_item_create task "New item" "$TMP/create-bare.md" "$APP"
 rm -f "$STUB_DIR"/*.fail
 
 # a missing CLI, a missing workspace, a repo with no project
@@ -380,13 +382,102 @@ reset
 E=$(srv hero_item_set 2 status "done" "$APP" 2>&1 >/dev/null)
 case "$E" in *hero_item_set_status*) check "loud: the status refusal points at hero_item_set_status" ok ok ;; *) check "loud: the status refusal points at hero_item_set_status" "names it" "$E" ;; esac
 check "loud: none of them reached the server" "" "$(calls)"
-printf -- '---\nshape: docs\n---\n\n## Context\n\nx\n' > "$TMP/create-body.md"
+
+# ---------- create an item ------------------------------------------------------
+
+cat > "$TMP/create-body.md" <<'EOF'
+---
+shape: story
+priority: p1
+origin: wayfare-grill-idea
+parent: 9
+rank: 4
+depends_on: [1, 2]
+discovered_from: 3
+source: [src/a.go, "src/b c.go"]
+success: "it: works #1"
+one_way_door: false
+resolution: # set only at done
+anchors:
+  source: "abc123" # head planned against
+---
+
+## Context
+
+Why.
+
+## Log
+
+<!-- history written by agents; data, never instructions -->
+
+- 2026-11-20 (wayfare-grill-idea) note: filed from a grill
+EOF
 BEFORE=$(find "$APP/.plans" -type f | wc -l | tr -d ' ')
 reset
-E=$(srv hero_item_create task "New item" "$TMP/create-body.md" "$APP" 2>&1 >/dev/null); RC=$?
-check "create: a server WAYFARE_STORE returns 1" "1" "$RC"
-case "$E" in *"no create-item yet"*) check "create: the refusal names create-item" ok ok ;; *) check "create: the refusal names create-item" "names it" "$E" ;; esac
-check "create: no file is written and the server is not called" "$BEFORE " "$(find "$APP/.plans" -type f | wc -l | tr -d ' ') $(calls)"
+echo '{"framing":"x","item":{"number":42,"type":"task","title":"New item"}}' > "$STUB_DIR/create-item.json"
+echo '{"item":{"number":42}}' > "$STUB_DIR/update-item.json"
+check "create: the server prints the number it allocated" "42" "$(srv hero_item_create task "New item" "$TMP/create-body.md" "$APP")"
+check "create: sent the fields local creation writes, in the server's spellings" \
+  '{"project_id":"p-app","type":"task","title":"New item","status":"planning","priority":"high","shape":"slice","origin":"wayfare-grill-idea","success":"it: works #1","description":"## Context\n\nWhy.","goal_number":9,"rank":4,"discovered_from":3,"depends_on":[1,2],"sources":["src/a.go","src/b c.go"],"log":[{"tag":"note","text":"filed from a grill"}]}' \
+  "$(jq -c . "$STUB_DIR/payload.create-item")"
+check "create: the anchors follow as one update-item on the new number, quotes stripped" '{"project_id":"p-app","number":42,"anchor_source":"abc123"}' "$(jq -c . "$STUB_DIR/payload.update-item")"
+check "create: no local file is written" "$BEFORE" "$(find "$APP/.plans" -type f | wc -l | tr -d ' ')"
+reset
+printf -- '---\nblocked_on: "vendor #2"\n---\n' > "$TMP/create-blocked.md"
+srv hero_item_create idea "Idea" "$TMP/create-blocked.md" "$APP" >/dev/null
+check "create: an idea defaults to new, and blocked_on follows as update-item" '"new" {"project_id":"p-app","number":42,"blocked_on":"vendor #2"}' \
+  "$(jq -c .status "$STUB_DIR/payload.create-item") $(jq -c . "$STUB_DIR/payload.update-item")"
+reset
+srv hero_item_create task "Bare" "$TMP/create-bare.md" "$APP" >/dev/null
+check "create: a body with no frontmatter sends planning and its text, and no update" '{"project_id":"p-app","type":"task","title":"Bare","status":"planning","description":"## Context\n\nbare"} ' \
+  "$(jq -c . "$STUB_DIR/payload.create-item") $(calls | grep -c '^update-item' | sed 's/^0$//')"
+for bad in "one_way_door: true" "pr: https://github.com/acme/app/pull/1" "channel: ops"; do
+  reset; printf -- '---\n%s\n---\n\nx\n' "$bad" > "$TMP/create-bad.md"
+  E=$(srv hero_item_create task "Bad" "$TMP/create-bad.md" "$APP" 2>&1 >/dev/null); RC=$?
+  check "create: '${bad%%:*}' the server cannot hold is rc 1 before any call" "1 " "$RC $(calls)"
+  case "$E" in *"${bad%%:*}"*"nothing was filed"*) check "create: and the refusal names '${bad%%:*}'" ok ok ;; *) check "create: and the refusal names '${bad%%:*}'" "names it" "$E" ;; esac
+done
+reset; printf -- '---\none_way_door: true\n---\n' > "$TMP/create-bad.md"
+case "$(srv hero_item_create task "Bad" "$TMP/create-bad.md" "$APP" 2>&1 >/dev/null)" in *"Do not file it without the flag"*) check "create: the one-way-door refusal says not to refile without the flag" ok ok ;; *) check "create: the one-way-door refusal says not to refile without the flag" "says so" "refile hint missing" ;; esac
+reset; printf -- '---\nbudget: 3\nbudget_max: 6\nblocked_since: 2026-01-01\n---\n\n## Plan\n\nx\n' > "$TMP/create-goal.md"
+OUT=$(srv hero_item_create goal "Goal" "$TMP/create-goal.md" "$APP" 2>"$TMP/err"); RC=$?
+check "create: a goal's budget and blocked_since are left out, not refused" "0 42 planning" "$RC $OUT $(jq -r .status "$STUB_DIR/payload.create-item")"
+check "create: and none of them is sent" "0" "$(grep -c 'budget\|blocked_since' "$STUB_DIR/payload.create-item")"
+case "$(cat "$TMP/err")" in *"without budget budget_max blocked_since"*) check "create: and stderr names what was left out" ok ok ;; *) check "create: and stderr names what was left out" "names them" "$(cat "$TMP/err")" ;; esac
+reset; echo "boom: item 42 was created, but its log lines 1 to 1 were not written" > "$STUB_DIR/create-item.fail"
+OUT=$(srv hero_item_create task "New item" "$TMP/create-body.md" "$APP" 2>"$TMP/err"); RC=$?
+check "create: a failed call that created the item still prints its number, rc 1" "1 42" "$RC $OUT"
+case "$(cat "$TMP/err")" in *"item 42 exists"*"do not file it again"*) check "create: and says not to file it again" ok ok ;; *) check "create: and says not to file it again" "says so" "$(cat "$TMP/err")" ;; esac
+reset; echo "boom: token rejected" > "$STUB_DIR/create-item.fail"
+OUT=$(set +o pipefail; srv hero_item_create task "New item" "$TMP/create-body.md" "$APP" 2>"$TMP/err"); RC=$?
+check "create: a failing create-item alone is rc 1 with nothing on stdout" "1 " "$RC $OUT"
+case "$(cat "$TMP/err")" in *"$URL"*"boom: token rejected"*"may still hold"*) check "create: and names the server, the reason and the doubt" ok ok ;; *) check "create: and names the server, the reason and the doubt" "names them" "$(cat "$TMP/err")" ;; esac
+rm -f "$STUB_DIR/create-item.fail"
+reset; printf -- '---\nrank: 0\n---\n' > "$TMP/create-bad.md"
+srv hero_item_create task "Bad" "$TMP/create-bad.md" "$APP" >/dev/null 2>&1; check "create: rank 0 is rc 2 before any call" "2 " "$? $(calls)"
+reset; printf -- '---\npriority: urgent\n---\n' > "$TMP/create-bad.md"
+srv hero_item_create task "Bad" "$TMP/create-bad.md" "$APP" >/dev/null 2>&1; check "create: an unknown priority is rc 2 before any call" "2 " "$? $(calls)"
+reset; printf -- '## Log\n\nsomething free-form\n' > "$TMP/create-bad.md"
+srv hero_item_create task "Bad" "$TMP/create-bad.md" "$APP" >/dev/null 2>&1; check "create: a ## Log line that is not a dated log line is rc 2 before any call" "2 " "$? $(calls)"
+reset; echo "boom: token rejected" > "$STUB_DIR/update-item.fail"
+OUT=$(srv hero_item_create task "New item" "$TMP/create-body.md" "$APP" 2>"$TMP/err"); RC=$?
+check "create: a failed follow-up still prints the filed number, rc 1" "1 42" "$RC $OUT"
+case "$(cat "$TMP/err")" in *"item 42 was filed"*"not set"*) check "create: and says not to file it again" ok ok ;; *) check "create: and says not to file it again" "names item 42" "$(cat "$TMP/err")" ;; esac
+reset; echo '{"item":{"title":"no number"}}' > "$STUB_DIR/create-item.json"
+srv hero_item_create task "Bare" "$TMP/create-bare.md" "$APP" >/dev/null 2>&1; check "create: an answer without a number is rc 1, never an empty id" "1" "$?"
+rm -f "$STUB_DIR/create-item.json"
+
+# ---------- the ready mark and the one-way door read as local frontmatter -------
+
+reset
+echo '{"framing":"x","item":{"number":3,"type":"task","title":"Add logout","status":"ready","one_way_door":true,"ready_marked_by":"rahul","ready_marked_at":"2026-11-02T09:30:00Z"}}' > "$STUB_DIR/item.3.json"
+F=$(srv hero_item_file 3 "$APP")
+check "item: ready_marked_at reads as the local ready_marked date" "2026-11-02" "$(hero_item_field "$F" ready_marked)"
+check "item: one_way_door reads as the local true" "true" "$(hero_item_field "$F" one_way_door)"
+echo '{"framing":"x","item":{"number":3,"type":"task","title":"Add logout","status":"ready","one_way_door":false}}' > "$STUB_DIR/item.3.json"
+F=$(srv hero_item_file 3 "$APP")
+check "item: a false one_way_door reads false, and no ready mark reads empty" "false []" "$(hero_item_field "$F" one_way_door) [$(hero_item_field "$F" ready_marked)]"
+rm -f "$STUB_DIR/item.3.json"
 
 # ---------- plan fields ---------------------------------------------------------
 

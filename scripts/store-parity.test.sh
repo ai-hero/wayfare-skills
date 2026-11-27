@@ -93,7 +93,7 @@ make_fixture() { # DIR
 EOF
   printf -- '---\nschema: 1\nrepo: acme/check\nnext_id: 20\nsource:\n  root: .\n  head: aaaa1111\ntarget:\n  project: D\n  head: bbbb2222\n---\n' > "$d/.plans/PLAN.md"
   printf -- '---\nid: 1\ntype: task\ntitle: Parity bootstrap\nstatus: done\nresolution: shipped\nshape: structural\npriority: p2\nparent: 9\nrank: 1\nsource: [src/one.go]\n---\n' > "$i/001-parity-bootstrap.md"
-  printf -- '---\nid: 2\ntype: task\ntitle: Parity ready one\nstatus: ready\nshape: story\npriority: p2\nparent: 9\nrank: 2\ndepends_on: [1]\nsource: [src/two.go]\n---\n' > "$i/002-parity-ready-one.md"
+  printf -- '---\nid: 2\ntype: task\ntitle: Parity ready one\nstatus: ready\nshape: story\npriority: p2\nparent: 9\nrank: 2\ndepends_on: [1]\nready_marked: 2026-11-01\none_way_door: true\nsource: [src/two.go]\n---\n' > "$i/002-parity-ready-one.md"
   printf -- '---\nid: 3\ntype: task\ntitle: Parity ready two\nstatus: ready\nshape: story\npriority: p2\nparent: 9\nrank: 3\ndepends_on: [2]\nsource: [src/three.go]\n---\n\n## Subtasks\n\n- [ ] parity box\n' > "$i/003-parity-ready-two.md"
   printf -- '---\nid: 4\ntype: idea\ntitle: Parity parked idea\nstatus: accepted\n---\n' > "$i/004-parity-parked-idea.md"
   printf -- '---\nid: 5\ntype: task\ntitle: Parity wait on vendor\nstatus: ready\nshape: story\npriority: p2\nparent: 9\nrank: 5\nblocked_on: vendor review\nblocked_since: 2026-11-10\nsource: [src/five.go]\n---\n' > "$i/005-parity-wait-on-vendor.md"
@@ -123,7 +123,7 @@ fleet_md() { # FLEET_JSON_FILE
 # parent. Output that legitimately differs (message ids, who wrote a log line)
 # is normalised here, so the diff means a real difference.
 
-FIELDS_TASK="type title status shape priority rank parent"
+FIELDS_TASK="type title status shape priority rank parent ready_marked one_way_door"
 
 sc_ready() {
   hero_ready_items "$ROOT/.plans" 2>/dev/null | grep -E '[[:space:]]00[0-9]-' | sed 's/[[:space:]]*$//'
@@ -412,7 +412,7 @@ cp "$FIXTURE/check/HERO.md" "$STUB/HERO.md"
 cat > "$STUB/items.json" <<'EOF'
 [
 {"number":1,"type":"task","title":"Parity bootstrap","status":"done","resolution":"shipped","shape":"structural","priority":"medium","goal_number":9,"rank":1,"sources":["src/one.go"],"depends_on":[],"description":"","log":[]},
-{"id":"t-2","number":2,"type":"task","title":"Parity ready one","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":2,"sources":["src/two.go"],"depends_on":[1],"description":"","log":[]},
+{"id":"t-2","number":2,"type":"task","title":"Parity ready one","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":2,"ready_marked_by":"rahul","ready_marked_at":"2026-11-01T09:00:00Z","one_way_door":true,"sources":["src/two.go"],"depends_on":[1],"description":"","log":[]},
 {"number":3,"type":"task","title":"Parity ready two","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":3,"sources":["src/three.go"],"depends_on":[2],"description":"## Subtasks\n\n- [ ] parity box","log":[]},
 {"number":4,"type":"idea","title":"Parity parked idea","status":"accepted","description":"","log":[]},
 {"number":5,"type":"task","title":"Parity wait on vendor","status":"ready","shape":"slice","priority":"medium","goal_number":9,"rank":5,"sources":["src/five.go"],"depends_on":[],"blocked_on":"vendor review","blocked_since":"2026-11-10T00:00:00Z","blocked":true,"description":"","log":[]},

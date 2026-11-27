@@ -3493,6 +3493,7 @@ def item_fm:
   + opt("resolution"; (if .type == "goal" and .resolution == "delivered" then null else .resolution end)) + opt("priority"; ((.priority // "") | pri)) + opt("severity"; .severity)
   + opt("shape"; ((.shape // "") | shp)) + opt("channel"; .channel) + opt("parent"; .goal_number) + opt("rank"; .rank)
   + opt("depends_on"; .depends_on) + opt("blocked_on"; .blocked_on) + opt("blocked_since"; ((.blocked_since // "")[0:10]))
+  + opt("ready_marked"; ((.ready_marked_at // "")[0:10])) + opt("one_way_door"; .one_way_door)
   + opt("source"; .sources) + opt("target"; .targets) + opt("bot"; .bot) + opt("success"; .success) + opt("origin"; .origin)
   + opt("pr"; .pr) + opt("branch"; branch_of) + opt("discovered_from"; .discovered_from) + "---\n";
 def log_line: "- \((.at // "")[0:10] | clean) (\(.by // "agent" | clean)) \(.tag // "" | clean): \(.body // "" | clean)";

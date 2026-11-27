@@ -73,7 +73,7 @@ merge_repo "$WORK/sibling" assets/security-audit-notes/x.md
 check "a sibling folder is not the tree" "0|" "$(run "$WORK/sibling")"
 
 # More than a pipe buffer of paths, the tree sorting first: `diff | grep -q`
-# read this as "no change" under pipefail.
+# reads this as "no change" under pipefail.
 many=(assets/security-audit/a.md)
 for i in $(seq 1 2500); do many+=("z/long-directory-name-to-fill-the-pipe-buffer/file-$i.txt"); done
 merge_repo "$WORK/big" "${many[@]}"
@@ -81,7 +81,38 @@ check "a diff larger than a pipe buffer still asks" "0|yes=true" "$(run "$WORK/b
 
 g init -q "$WORK/flat"
 (cd "$WORK/flat" && echo a > a && g add . && g commit -qm a && mkdir -p assets/security-audit && echo b > assets/security-audit/b && g add . && g commit -qm b)
+# Guard: with no commit, every git call fails and the next case passes vacuously.
+check "the non-merge repo has its commits" "2" "$(git -C "$WORK/flat" rev-list --count HEAD 2>/dev/null)"
 check "a checkout that is not a merge commit fails" "1|" "$(run "$WORK/flat")"
+
+# The checkout CI actually makes: two levels of history, no more.
+git clone -q --depth 2 "file://$WORK/touch" "$WORK/shallow" 2>/dev/null
+check "a depth-2 clone still asks" "0|yes=true" "$(run "$WORK/shallow")"
+
+# A PR that only deletes a file in the tree still changes it.
+g init -q "$WORK/del"
+(
+  cd "$WORK/del" || exit 1
+  mkdir -p assets/security-audit && echo x > assets/security-audit/x && g add . && g commit -qm base
+  g checkout -qb pr && g rm -q assets/security-audit/x && g commit -qm pr
+  g checkout -q main && echo o > o && g add . && g commit -qm other
+  g merge -q --no-ff -m merge pr
+)
+check "a deletion in the tree asks" "0|yes=true" "$(run "$WORK/del")"
+
+# git diff failing (128) must fail the step, never read as "no change".
+mkdir -p "$WORK/shim"
+cat > "$WORK/shim/git" <<EOF
+#!/usr/bin/env bash
+[ "\$1" = diff ] && { echo "fatal: bad object" >&2; exit 128; }
+exec "$(command -v git)" "\$@"
+EOF
+chmod +x "$WORK/shim/git"
+out="$WORK/out.shim"
+: > "$out"
+rc=0
+(cd "$WORK/touch" && PATH="$WORK/shim:$PATH" GITHUB_OUTPUT="$out" bash "$WORK/touched.sh" > /dev/null 2>&1) || rc=$?
+check "a git diff error fails the step" "1|" "$rc|$(cat "$out")"
 
 echo "vendored-pin: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -43,9 +43,8 @@ checks:
     version in a trailing comment. No mutable tags. ONE exception: a reusable
     WORKFLOW in ai-hero/wayfare-skills (the shared auto-approve workflow) or
     ai-hero/infrastructure-environments (the shared deploy workflows) may
-    reference `main`, the callee's protected default branch; wayfare-skills
-    may also be called at a v-prefixed release tag. Any other branch is never
-    acceptable, nor a tag on infrastructure-environments, and neither
+    reference `main`, the callee's protected default branch. No other branch
+    and no tag is acceptable, and neither
     any other ai-hero repo nor a plain first-party action is covered: the
     carve-out is for the fleet's shared workflows, not for the org.
   why: >
@@ -76,7 +75,7 @@ checks:
     uses: ai-hero/infrastructure-environments/.github/workflows/deploy-swarm.yaml@v1
   detect:
     method: script
-    description: every `uses:` in .github/workflows/ carries a 40-hex SHA, except a reusable workflow in `ai-hero/wayfare-skills` (the shared auto-approve workflow) or `ai-hero/infrastructure-environments` (the shared deploy workflows) at `@main`, or wayfare-skills at a v-tag
+    description: every `uses:` in .github/workflows/ carries a 40-hex SHA, except a reusable workflow in `ai-hero/wayfare-skills` (the shared auto-approve workflow) or `ai-hero/infrastructure-environments` (the shared deploy workflows) at `@main`
 
 - id: CI-02
   control: C-SUPPLY

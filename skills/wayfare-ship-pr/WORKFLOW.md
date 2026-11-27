@@ -514,42 +514,36 @@ it, then continue.
 
 #### Step 3c: a PR only a person can merge still gets the whole gate
 
-A repo can list paths auto-approve never approves in
-`.github/auto-approve-human-review.txt` on its default branch (wayfare-skills
-does: the shared workflow, `scripts/audit.py`, every workflow, the hooks). A PR
-touching one is merged by a person, not by this skill. **Step 3's gate still
-applies in full, prior review included.** Skipping the review because no
-`@auto-approve` will run gets it backwards: these are the riskiest paths, and
-the person's merge is the only gate left. That mistake shipped
-wayfare-skills#249 with tests alone; the review it skipped, run after the merge,
-found three real defects.
+In wayfare-skills, auto-approve never approves a PR touching a path listed in
+`.github/auto-approve-human-review.txt` (its header says why each is there); a
+person merges it. **That is not a reason to skip the review.** These are the
+riskiest paths, and the person's merge is the only gate left, so the review has
+to happen before the hand-off.
+
+The check is a script, run with an explicit `bash`, because the agent's shell
+may be zsh, where the same glob matching silently matches nothing. It reads the
+list and the changed files exactly as the workflow does.
 
 ```bash
-BASE=$(gh pr view "$PR_NUMBER" --json baseRefName -q .baseRefName)
-LIST=$(gh api "repos/{owner}/{repo}/contents/.github/auto-approve-human-review.txt?ref=$BASE" \
-  -H "Accept: application/vnd.github.raw" 2>/dev/null) || LIST=""
-HUMAN_PATHS=$(
-  shopt -s nocasematch
-  gh pr view "$PR_NUMBER" --json files -q '.files[].path' | while IFS= read -r p; do
-    while IFS= read -r g; do
-      case "$g" in '' | '#'*) continue ;; esac
-      # [[ == ]] lets `*` cross `/`, matching the workflow's own glob rule.
-      [[ "$p" == $g ]] && { echo "$p"; break; }
-    done <<<"$LIST"
-  done
-)
-echo "HUMAN_PATHS=${HUMAN_PATHS:-none}"
+WAYFARE_ROOT="${CLAUDE_PLUGIN_ROOT:-${WAYFARE_ROOT:-$HOME/.claude/plugins/wayfare-skills}}"
+bash "$WAYFARE_ROOT/scripts/human-review-paths.sh" "$PR_NUMBER"; echo "HUMAN_RC=$?"
 ```
 
-When `HUMAN_PATHS` names any file:
+`HUMAN_RC=0` continues to Step 4. `1` (it prints the listed paths) and `2` (it
+could not tell) both take this path, because reading "could not tell" as
+"nothing listed" is how the review gets skipped:
 
-1. Pass Step 3 first. With no prior review, run `wayfare:wayfare-review-pr` (the
-   full six agents: a listed path is the *content overrides size* case) and
-   apply its fixes before going on.
-2. Post no `@auto-approve`: the workflow would refuse it.
-3. Stop with `stop: awaiting-human`. Name the PR, the listed paths, the review's
-   findings and what was fixed, and ask the person to merge. Do not merge it
-   yourself, and never with `--admin`.
+1. Make sure the prior review Step 3 found is a full `wayfare:wayfare-review-pr`
+   run with all six agents (a listed path is its *content overrides size* case).
+   If it was smaller, or inline, run it now and apply its fixes.
+2. If that pushed commits, wait for CI to go green on the new head, as Step 3's
+   CI gate does.
+3. Post no `@auto-approve`: the workflow would refuse it.
+4. Stop with `stop: awaiting-human`. Name the PR, the listed paths (or why the
+   check could not tell), the review's findings and what was fixed, and ask the
+   person to merge. Never merge it yourself, and never with `--admin`. Say that
+   once it is merged, running this skill again with the branch still checked out
+   resumes at Step 7b (Step 1's merged row) for the post-merge steps.
 
 ### Step 4: Post the @auto-approve Trigger Comment
 

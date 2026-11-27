@@ -2,8 +2,8 @@ name: Vendored pin
 
 # Runs on every PR but compares only when the PR touches the tree, so the
 # normal path stays offline. The skip is a step, not a `paths:` filter: CI-21
-# forbids the filter, and a filtered workflow leaves no check run, so it could
-# never be made a required check.
+# forbids the filter, because a PR the filter skips gets no check run, and a
+# required check then waits on it forever.
 on:
   pull_request:
     branches: [main]

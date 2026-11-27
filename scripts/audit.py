@@ -1233,13 +1233,10 @@ def _(r):
             #   - only `main`, the callee's PROTECTED default branch. A feature
             #     branch is gated on nothing, and neither is a tag: branch
             #     protection does not cover tags, so anyone with write access
-            #     can point `v1` at an unreviewed commit. wayfare-skills keeps
-            #     its old v-tag allowance; it publishes no tags today, and no
-            #     other repo gets one.
+            #     can point `v1` at an unreviewed commit and every caller on
+            #     `@v1` runs it. No v-tag, for any repo.
             repos = "|".join(map(re.escape, _MAIN_WORKFLOW_REPOS))
-            if re.fullmatch(rf"ai-hero/({repos})/\.github/workflows/[^@]+@main", ref) or re.fullmatch(
-                rf"ai-hero/{re.escape(_SHARED_WORKFLOW_OWNER)}/\.github/workflows/[^@]+@v[0-9]\S*", ref
-            ):
+            if re.fullmatch(rf"ai-hero/({repos})/\.github/workflows/[^@]+@main", ref):
                 continue
             if not re.search(r"@[0-9a-f]{40}$", ref):
                 bad += 1
@@ -3427,8 +3424,8 @@ def _(r):
 
 
 # The plugin repo: owner of the auto-approve workflow every caller delegates to.
-# CI-20 matches callers against this name alone, so it must not grow to cover
-# other repos with shared workflows; those go in _MAIN_WORKFLOW_REPOS.
+# One repo name, not a list: CI-20 tells a caller from the plugin by this name,
+# so other repos with shared workflows go in _MAIN_WORKFLOW_REPOS, never here.
 _SHARED_WORKFLOW_OWNER = "wayfare-skills"
 # CI-01 lets a reusable workflow from these repos ride @main, and @main is safe
 # only because review gates it. Add a repo only when it already exists in
@@ -3652,34 +3649,59 @@ def _matches_reference(mine, ref, extract=None):
 
 
 _FROM_RE = re.compile(r"^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?", re.I | re.M)
-_IMAGE_RE = re.compile(r"^\s*image:\s*['\"]?(\S+?)['\"]?\s*$", re.M)
+# The optional `&name ` lets `image: &x repo:tag` match: without it the anchor
+# is the captured token and the line never matches, so the image goes unchecked.
+_IMAGE_RE = re.compile(r"^\s*image:\s*(?:&[\w.-]+\s+)?['\"]?(\S+?)['\"]?\s*$", re.M)
+
+
+class _ComposeLoader(yaml.SafeLoader):
+    """SafeLoader that accepts Compose's own merge tags. Without them a valid
+    file using `!reset` or `!override` does not parse, and its aliases are
+    reported unresolved."""
+
+
+for _tag in ("!reset", "!override"):
+    _ComposeLoader.add_constructor(
+        _tag,
+        lambda loader, node: (
+            loader.construct_scalar(node)
+            if isinstance(node, yaml.ScalarNode)
+            else loader.construct_sequence(node)
+            if isinstance(node, yaml.SequenceNode)
+            else loader.construct_mapping(node)
+        ),
+    )
 
 
 def _compose_images(text):
     """Each service's `image:` in a compose file, with YAML aliases resolved.
 
-    Parsed, not grepped: `image: *rustfs` names whatever `&rustfs` holds, and
-    an alias binds to the nearest anchor ABOVE it. A regex reading anchors
-    across the whole file let a reused name, or a `&x value` inside a command
-    string, stand in for the real image and pass a floating tag. It also never
-    matched `image: &x repo:tag`, so an anchored image nobody aliased went
-    unchecked. A file that will not parse falls back to the line regex with
-    aliases left as written, so they fail rather than pass."""
+    Parsed, not grepped: `image: *rustfs` names whatever `&rustfs` holds, and a
+    regex over anchors lets a reused name, or a `&x value` inside a command
+    string, stand in for the real image. PyYAML rejects a reused anchor and an
+    undefined alias outright, so such a file falls back to the line regex,
+    which leaves aliases as written: they fail rather than pass. Images under
+    an `x-` key that no service uses never run and are not read. A non-string
+    `image:` is returned as text, so it fails as untagged instead of vanishing."""
+    loader = _ComposeLoader(text)
     try:
-        doc = yaml.safe_load(text)
+        doc = loader.get_single_data()
     except yaml.YAMLError:
         return _IMAGE_RE.findall(uncommented(text))
+    finally:
+        loader.dispose()
     services = doc.get("services") if isinstance(doc, dict) else None
     if not isinstance(services, dict):
         return []
-    return [s["image"] for s in services.values() if isinstance(s, dict) and isinstance(s.get("image"), str)]
+    return [str(s["image"]) for s in services.values() if isinstance(s, dict) and s.get("image") is not None]
 
 
 def _image_refs(path):
     """(name, tag) for every pullable image reference in a Dockerfile or
     compose file — name is the last path segment, tag "" when absent. Stage
     names, scratch, variables and digest-pinned refs are not references to a
-    tag and are dropped."""
+    tag and are dropped. A compose alias that could not be resolved comes back
+    as written, name `*x` and tag "", so no caller can read it as a pass."""
     text = path.read_text()
     if path.name.startswith("Dockerfile"):
         from_lines = list(_FROM_RE.finditer(text))
@@ -4058,7 +4080,7 @@ def _(r):
     if not _ships_image(r):
         return NA, "no image"
     bad = [
-        f"{f.name}: {name} (alias with no anchor; file does not parse)"
+        f"{f.name}: {name} (alias not resolved: the file is not plain YAML)"
         if name.startswith("*")
         else f"{f.name}: {name}:{tag or '<untagged>'}"
         for f in _image_files(r)

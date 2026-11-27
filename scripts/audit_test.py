@@ -93,8 +93,8 @@ class WorkflowOn(unittest.TestCase):
             self.assertIn("ci.yaml", detail)
 
     def test_this_repo_passes_ci21(self):
-        # vendored-pin.yaml skips its compare in a step; a `paths:` filter put
-        # back there fails here, not only in the fleet table.
+        # vendored-pin.yaml skips its compare in a step; a `paths:` filter
+        # there fails here, not only in the fleet table.
         self.assertEqual(audit.CHECKS["CI-21"](HERE.parent), (audit.PASS, ""))
 
     def test_list_form_passes_ci21(self):
@@ -239,7 +239,29 @@ class ImageRefs(unittest.TestCase):
             write(r, "docker-compose.dev.yaml", "services:\n  a:\n    image: *missing\n")
             st, detail = audit.CHECKS["CTR-09"](r)
             self.assertEqual(st, audit.FAIL, detail)
-            self.assertIn("*missing (alias with no anchor", detail)
+            self.assertIn("*missing (alias not resolved", detail)
+
+    def test_compose_fallback_still_reports_floating_tags(self):
+        # Unparsable (undefined alias): every other image is still read, an
+        # anchored line included, and a commented one is not.
+        text = (
+            "services:\n  a:\n    image: *missing\n  b:\n    image: minio/minio:latest\n"
+            "  c:\n    image: &r redis:latest\n  # image: old:latest\n"
+        )
+        self.assertEqual(self._compose(text), [("*missing", ""), ("minio", "latest"), ("redis", "latest")])
+
+    def test_compose_override_tags_parse(self):
+        text = (
+            "x-img: &img minio/minio:latest\n"
+            "services:\n  a:\n    image: *img\n    ports: !reset []\n  b:\n    image: !override redis:7\n"
+        )
+        self.assertEqual(self._compose(text), [("minio", "latest"), ("redis", "7")])
+
+    def test_compose_odd_shapes(self):
+        self.assertEqual(self._compose("services:\n  a:\n    image: 7.0\n"), [("7.0", "")])
+        for text in ("", "services:\n", "services: []\n", "services:\n  a:\n    image:\n", "services:\n  a: {}\n"):
+            with self.subTest(text=text):
+                self.assertEqual(self._compose(text), [])
 
     def test_ctr09_and_ctr11(self):
         with tempfile.TemporaryDirectory() as d:
@@ -826,18 +848,18 @@ class CI01(unittest.TestCase):
         st, detail = self._check("ai-hero/infrastructure-environments/.github/workflows/deploy-swarm.yaml@main")
         self.assertEqual(st, audit.PASS, detail)
 
-    def test_wayfare_skills_keeps_its_v_tag(self):
-        st, detail = self._check("ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@v1")
-        self.assertEqual(st, audit.PASS, detail)
-
     def test_other_ai_hero_repos_at_main_fail(self):
         for uses in (
             "ai-hero/other-repo/.github/workflows/x.yaml@main",
             "ai-hero/infrastructure-environments-fork/.github/workflows/deploy-swarm.yaml@main",
             "ai-hero/infrastructure-environments/.github/workflows/deploy-swarm.yaml@feature",
             "ai-hero/infrastructure-environments/action@main",
-            # Tags are not under branch protection; only wayfare-skills keeps one.
+            # Tags are not under branch protection, so no repo rides one.
             "ai-hero/infrastructure-environments/.github/workflows/deploy-swarm.yaml@v1",
+            "ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@v1",
+            "ai-hero/hero-skills/.github/workflows/auto-approve.yaml@v1",
+            "ai-hero/wayfare-skills-fork/.github/workflows/auto-approve.yaml@v1",
+            "ai-hero/wayfare-skills/action@v1",
             "ai-hero/hero-skills/.github/workflows/auto-approve.yaml@main",
             "ai-hero/wayfare-skills-fork/.github/workflows/auto-approve.yaml@main",
             "ai-hero/wayfare-skills/.github/workflows/auto-approve.yaml@feature",
